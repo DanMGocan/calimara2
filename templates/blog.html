@@ -6,7 +6,7 @@
         <div class="p-4 mb-4 bg-white rounded-3 shadow-sm">
             <h1 class="display-6 fw-bold">Călimara lui @{{ blog_owner.username }}</h1>
             {% if blog_owner.subtitle %}
-            <p class="fs-5 text-muted">{{ blog_owner.subtitle }}</p>
+            <p class="fs-5">{{ blog_owner.subtitle }}</p>
             {% else %}
             <p class="fs-5 text-muted">Bun venit pe microblogul meu!</p>
             {% endif %}
@@ -23,17 +23,6 @@
                 <p class="card-text text-muted">Categorii: {{ post.categories }}</p>
                 {% endif %}
                 <p class="card-text">{{ post.content }}</p>
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary like-button" data-post-id="{{ post.id }}">
-                            Apreciază (<span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>)
-                        </button>
-                        <!-- Social Media Share Buttons (placeholders) -->
-                        <a href="#" class="btn btn-sm btn-outline-secondary ms-2">Distribuie pe X</a>
-                        <a href="#" class="btn btn-sm btn-outline-secondary">Distribuie pe Facebook</a>
-                    </div>
-                </div>
-
                 <hr>
                 <h6>Comentarii ({{ post.comments|length }})</h6>
                 <div class="comments-section">
@@ -45,11 +34,12 @@
                     {% endfor %}
                 </div>
 
-                <form class="comment-form mt-3" data-post-id="{{ post.id }}">
+                <form action="/api/posts/{{ post.id }}/comments" method="post" class="mt-3"> {# Form submits directly to API endpoint #}
                     <h6 class="mb-2">Adaugă un Comentariu</h6>
                     <div class="mb-2">
                         <textarea class="form-control" rows="3" placeholder="Comentariul tău..." name="content" required></textarea>
                     </div>
+                    {% if not current_user %} {# Only show author fields if not logged in #}
                     <div class="row mb-2">
                         <div class="col-md-6">
                             <input type="text" class="form-control" placeholder="Numele tău (opțional)" name="author_name">
@@ -58,8 +48,11 @@
                             <input type="email" class="form-control" placeholder="Emailul tău (opțional)" name="author_email">
                         </div>
                     </div>
+                    {% endif %}
+                    {% if comment_error %}
+                    <div class="alert alert-danger mt-2">{{ comment_error }}</div>
+                    {% endif %}
                     <button type="submit" class="btn btn-sm btn-primary">Trimite Comentariu</button>
-                    <div class="comment-error alert alert-danger mt-2" style="display: none;"></div>
                 </form>
             </div>
         </div>

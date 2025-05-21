@@ -8,7 +8,7 @@
                 <h2 class="mb-0">Creează Postare Nouă</h2>
             </div>
             <div class="card-body">
-                <form id="createPostForm">
+                <form action="/api/posts/" method="post"> {# Form submits directly to API endpoint #}
                     <div class="mb-3">
                         <label for="postTitle" class="form-label">Titlu</label>
                         <input type="text" class="form-control" id="postTitle" name="title" required>
@@ -21,8 +21,9 @@
                         <label for="postCategories" class="form-label">Categorii (separate prin virgulă, ex: poezii, proză)</label>
                         <input type="text" class="form-control" id="postCategories" name="categories">
                     </div>
-                    <div id="postError" class="alert alert-danger" style="display: none;"></div>
-                    <div id="postSuccess" class="alert alert-success" style="display: none;"></div>
+                    {% if error_message %}
+                    <div class="alert alert-danger">{{ error_message }}</div>
+                    {% endif %}
                     <button type="submit" class="btn btn-primary">Publică Postare</button>
                 </form>
             </div>

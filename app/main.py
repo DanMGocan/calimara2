@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv() # Load environment variables from .env
 
 from datetime import timedelta # Import timedelta
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Response, Form # Import Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -73,97 +73,139 @@ class SubdomainMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SubdomainMiddleware)
 
-# Dependency to get client IP for anonymous likes
+# Dependency to get client IP for anonymous likes (no longer used for likes, but kept for potential future use)
 def get_client_ip(request: Request):
     return request.client.host
 
 # --- API Endpoints (Authentication & User Management) ---
 
-@app.post("/api/register", response_model=schemas.UserInDB)
-async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
-    db_user_email = crud.get_user_by_email(db, email=user.email.lower()) # Ensure email is lowercased for uniqueness
+@app.post("/api/register") # No response_model, as it redirects
+async def register_user(
+    request: Request,
+    username: str = Form(...),
+    subtitle: Optional[str] = Form(None),
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    logger.info(f"Se încearcă înregistrarea utilizatorului: {email} cu numele de utilizator: {username}")
+    db_user_email = crud.get_user_by_email(db, email=email.lower()) # Ensure email is lowercased for uniqueness
     if db_user_email:
-        logger.warning(f"Înregistrare eșuată: Emailul {user.email} este deja înregistrat.")
-        raise HTTPException(status_code=400, detail="Emailul este deja înregistrat")
-    db_user_username = crud.get_user_by_username(db, username=user.username.lower()) # Ensure username is lowercased for uniqueness
+        logger.warning(f"Înregistrare eșuată: Emailul {email} este deja înregistrat.")
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error_message": "Emailul este deja înregistrat", "current_user": None, "current_domain": request.url.hostname},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    db_user_username = crud.get_user_by_username(db, username=username.lower()) # Ensure username is lowercased for uniqueness
     if db_user_username:
-        logger.warning(f"Înregistrare eșuată: Numele de utilizator {user.username} este deja luat.")
-        raise HTTPException(status_code=400, detail="Numele de utilizator este deja luat")
+        logger.warning(f"Înregistrare eșuată: Numele de utilizator {username} este deja luat.")
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error_message": "Numele de utilizator este deja luat", "current_user": None, "current_domain": request.url.hostname},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
-    # Ensure username and email are stored in lowercase
-    user.username = user.username.lower()
-    user.email = user.email.lower()
-
-    new_user = crud.create_user(db=db, user=user)
+    user_create_schema = schemas.UserCreate(
+        username=username.lower(),
+        email=email.lower(),
+        password=password,
+        subtitle=subtitle
+    )
+    new_user = crud.create_user(db=db, user=user_create_schema)
     logger.info(f"Utilizator înregistrat cu succes: {new_user.email}")
-    return new_user
+
+    # Auto-login after registration
+    request.session["user_id"] = new_user.id
+    logger.info(f"Autentificare automată reușită pentru {new_user.email}. Sesiune setată.")
+    return RedirectResponse(url=f"//{new_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)):
+    if current_user: # If already logged in, redirect to their blog
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
+    return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/api/token")
-async def login_for_access_token(request: Request, form_data: schemas.UserLogin, db: Session = Depends(get_db)):
-    logger.info(f"Se încearcă autentificarea pentru email: {form_data.email}")
-    user = crud.get_user_by_email(db, email=form_data.email)
-    if not user or not crud.verify_password(form_data.password, user.password_hash):
-        logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {form_data.email}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email sau parolă incorecte",
-            headers={"WWW-Authenticate": "Bearer"},
+async def login_for_access_token(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    logger.info(f"Se încearcă autentificarea pentru email: {email}")
+    user = crud.get_user_by_email(db, email=email)
+    if not user or not crud.verify_password(password, user.password_hash):
+        logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {email}")
+        # Redirect back to login page with an error message
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error_message": "Email sau parolă incorecte"},
+            status_code=status.HTTP_401_UNAUTHORIZED
         )
     
     # Set user ID in session
     request.session["user_id"] = user.id
     logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată.")
-    return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
+    # Redirect to user's subdomain dashboard after successful login
+    return RedirectResponse(url=f"//{user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
 @app.get("/api/logout")
 async def logout_user(request: Request):
     request.session.clear() # Clear session
     logger.info("Utilizator deconectat. Sesiune ștearsă.")
-    return {"message": "Deconectat cu succes"}
+    # Redirect to main domain after logout
+    return RedirectResponse(url="//calimara.ro", status_code=status.HTTP_302_FOUND)
 
-@app.put("/api/users/me", response_model=schemas.UserInDB)
+@app.post("/api/users/me") # Changed to POST for form submission
 async def update_current_user(
-    user_update: schemas.UserBase, # Use UserBase for updatable fields
+    request: Request,
+    subtitle: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
     logger.info(f"Se încearcă actualizarea profilului pentru utilizatorul: {current_user.username}")
-    # Only allow updating subtitle for now
-    if user_update.subtitle is not None:
-        current_user.subtitle = user_update.subtitle
+    current_user.subtitle = subtitle # Update subtitle
     
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
     logger.info(f"Profil utilizator actualizat cu succes: {current_user.username}")
-    return current_user
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
 # --- API Endpoints (Posts) ---
 
-@app.post("/api/posts/", response_model=schemas.Post)
+@app.post("/api/posts/") # No response_model, as it redirects
 async def create_post(
-    post: schemas.PostCreate,
+    request: Request,
+    title: str = Form(...),
+    content: str = Form(...),
+    categories: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
-    return crud.create_user_post(db=db, post=post, user_id=current_user.id)
+    post_create_schema = schemas.PostCreate(title=title, content=content, categories=categories)
+    crud.create_user_post(db=db, post=post_create_schema, user_id=current_user.id)
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
-@app.put("/api/posts/{post_id}", response_model=schemas.Post)
+@app.post("/api/posts/{post_id}/update") # Changed to POST for form submission
 async def update_post_api(
     post_id: int,
-    post_update: schemas.PostUpdate,
+    request: Request,
+    title: str = Form(...),
+    content: str = Form(...),
+    categories: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
-    return crud.update_post(db=db, post_id=post_id, post_update=post_update)
+    
+    post_update_schema = schemas.PostUpdate(title=title, content=content, categories=categories)
+    crud.update_post(db=db, post_id=post_id, post_update=post_update_schema)
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
-@app.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.post("/api/posts/{post_id}/delete") # Changed to POST for form submission
 async def delete_post_api(
     post_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
@@ -171,15 +213,17 @@ async def delete_post_api(
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
     crud.delete_post(db=db, post_id=post_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
 # --- API Endpoints (Comments) ---
 
-@app.post("/api/posts/{post_id}/comments", response_model=schemas.Comment)
+@app.post("/api/posts/{post_id}/comments") # No response_model, as it redirects
 async def add_comment_to_post(
     post_id: int,
-    comment: schemas.CommentCreate,
     request: Request,
+    content: str = Form(...),
+    author_name: Optional[str] = Form(None),
+    author_email: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user) # Optional for unlogged users
 ):
@@ -188,14 +232,36 @@ async def add_comment_to_post(
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     user_id = current_user.id if current_user else None
-    if not user_id and (not comment.author_name or not comment.author_email):
-        raise HTTPException(status_code=400, detail="Numele și emailul autorului sunt obligatorii pentru comentariile neautentificate")
+    if not user_id and (not author_name or not author_email):
+        # If unlogged and no author details, redirect back with error
+        return templates.TemplateResponse(
+            "blog.html",
+            {
+                "request": request,
+                "blog_owner": db_post.owner,
+                "posts": [db_post], # Pass the single post back
+                "random_posts": crud.get_random_posts(db, limit=10),
+                "random_users": crud.get_random_users(db, limit=10),
+                "blog_categories": crud.get_distinct_categories(db, user_id=db_post.user_id),
+                "current_user": current_user,
+                "current_domain": request.url.hostname,
+                "comment_error": "Numele și emailul autorului sunt obligatorii pentru comentariile neautentificate"
+            },
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
-    return crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
+    comment_create_schema = schemas.CommentCreate(
+        content=content,
+        author_name=author_name,
+        author_email=author_email
+    )
+    crud.create_comment(db=db, comment=comment_create_schema, post_id=post_id, user_id=user_id)
+    return RedirectResponse(url=request.url.path + f"#post-{post_id}", status_code=status.HTTP_302_FOUND) # Redirect back to the post
 
-@app.put("/api/comments/{comment_id}/approve", response_model=schemas.Comment)
+@app.post("/api/comments/{comment_id}/approve") # Changed to POST for form submission
 async def approve_comment_api(
     comment_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
@@ -208,11 +274,13 @@ async def approve_comment_api(
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Nu sunteți autorizat să aprobați acest comentariu")
     
-    return crud.approve_comment(db=db, comment_id=comment_id)
+    crud.approve_comment(db=db, comment_id=comment_id)
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
-@app.delete("/api/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@app.post("/api/comments/{comment_id}/delete") # Changed to POST for form submission
 async def delete_comment_api(
     comment_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
@@ -226,33 +294,10 @@ async def delete_comment_api(
         raise HTTPException(status_code=403, detail="Nu sunteți autorizat să ștergeți acest comentariu")
     
     crud.delete_comment(db=db, comment_id=comment_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
 
 # --- API Endpoints (Likes) ---
-
-@app.post("/api/posts/{post_id}/likes", response_model=schemas.Like)
-async def add_like_to_post(
-    post_id: int,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_current_user) # Optional for unlogged users
-):
-    db_post = crud.get_post(db, post_id=post_id)
-    if not db_post:
-        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
-
-    user_id = current_user.id if current_user else None
-    ip_address = get_client_ip(request) if not user_id else None # Only use IP if user is not logged in
-
-    db_like = crud.create_like(db=db, post_id=post_id, user_id=user_id, ip_address=ip_address)
-    if not db_like:
-        raise HTTPException(status_code=409, detail="Ați apreciat deja această postare")
-    return db_like
-
-@app.get("/api/posts/{post_id}/likes/count")
-async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
-    count = crud.get_likes_count_for_post(db, post_id)
-    return {"post_id": post_id, "likes_count": count}
+# Removed likes endpoints as per user request for server-side only.
 
 # --- HTML Routes ---
 
@@ -278,7 +323,8 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         # Get approved comments for each post
         for post in posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            post.likes_count = crud.get_likes_count_for_post(db, post.id)
+            # No likes count needed if likes are removed
+            # post.likes_count = crud.get_likes_count_for_post(db, post.id)
 
         return templates.TemplateResponse(
             "blog.html",
@@ -317,9 +363,9 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
     
-    # Add likes count to posts
-    for post in user_posts:
-        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+    # Add likes count to posts (no longer needed if likes are removed)
+    # for post in user_posts:
+    #     post.likes_count = crud.get_likes_count_for_post(db, post.id)
 
     return templates.TemplateResponse(
         "admin_dashboard.html",
@@ -378,10 +424,10 @@ async def register_page(request: Request, current_user: Optional[models.User] = 
         "current_domain": request.url.hostname # Pass current domain
     })
 
-# Redirect /login to main page, as login is a modal
-@app.get("/login", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND)
-async def login_redirect():
-    return "/"
+# Redirect /login to main page, as login is a modal (this route is now handled by the new /login GET route)
+# @app.get("/login", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND)
+# async def login_redirect():
+#     return "/"
 
 # Catch-all for subdomains that don't match specific routes (e.g., /static on subdomain)
 @app.get("/{path:path}", response_class=HTMLResponse)
@@ -398,7 +444,8 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
 
         for post in posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            post.likes_count = crud.get_likes_count_for_post(db, post.id)
+            # No likes count needed if likes are removed
+            # post.likes_count = crud.get_likes_count_for_post(db, post.id)
 
         return templates.TemplateResponse(
             "blog.html",
