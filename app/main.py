@@ -122,6 +122,23 @@ async def logout_user(request: Request):
     logger.info("Utilizator deconectat. Sesiune ștearsă.")
     return {"message": "Deconectat cu succes"}
 
+@app.put("/api/users/me", response_model=schemas.UserInDB)
+async def update_current_user(
+    user_update: schemas.UserBase, # Use UserBase for updatable fields
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    logger.info(f"Se încearcă actualizarea profilului pentru utilizatorul: {current_user.username}")
+    # Only allow updating subtitle for now
+    if user_update.subtitle is not None:
+        current_user.subtitle = user_update.subtitle
+    
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    logger.info(f"Profil utilizator actualizat cu succes: {current_user.username}")
+    return current_user
+
 # --- API Endpoints (Posts) ---
 
 @app.post("/api/posts/", response_model=schemas.Post)
