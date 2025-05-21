@@ -19,14 +19,14 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     {% if current_user %}
-                    <li class="nav-item" id="nav-create-post" style="display: none;">
+                    <li class="nav-item" id="nav-create-post"> {# Removed style="display: none;" #}
                         <a class="nav-link" href="/create-post">Creează Postare</a>
                     </li>
-                    <li class="nav-item" id="nav-admin-dashboard" style="display: none;">
+                    <li class="nav-item" id="nav-admin-dashboard"> {# Removed style="display: none;" #}
                         <a class="nav-link" href="/dashboard">Panou Admin</a>
                     </li>
                     {% endif %}
-                    <li class="nav-item" id="nav-main-domain"> {# Always visible, not just for logged in #}
+                    <li class="nav-item" id="nav-main-domain"> {# Always visible #}
                         <a class="nav-link" href="//calimara.ro">Domeniul Principal</a>
                     </li>
                     {% if not current_user %}
@@ -35,8 +35,8 @@
                         <a class="nav-link" href="/register">Înregistrare</a>
                     </li>
                     {% else %}
-                    <li class="nav-item" id="nav-logout" style="display: none;">
-                        <a class="nav-link" href="#" id="logoutButton">Deconectare (<span id="loggedInUsername"></span>)</a>
+                    <li class="nav-item" id="nav-logout"> {# Removed style="display: none;" #}
+                        <a class="nav-link" href="#" id="logoutButton">Deconectare ({{ current_user.username }})</a> {# Populated by Jinja2 #}
                     </li>
                     {% endif %}
                 </ul>

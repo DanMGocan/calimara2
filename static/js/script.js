@@ -10,40 +10,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const editPostForm = document.getElementById('editPostForm');
     const editPostError = document.getElementById('editPostError');
     const editPostSuccess = document.getElementById('editPostSuccess');
-    const logoutButton = document.getElementById('logoutButton'); // Re-added
-    const loggedInUsernameSpan = document.getElementById('loggedInUsername'); // Re-added
+    const logoutButton = document.getElementById('logoutButton');
+    // Removed loggedInUsernameSpan as it's now populated by Jinja2
 
-    // Function to check login status and update UI based on localStorage
-    function checkLoginStatus() {
-        const username = localStorage.getItem('username'); // Source of truth for client-side UI
-        const navLoginRegister = document.getElementById('nav-login-register');
-        const navLogout = document.getElementById('nav-logout');
-        const navCreatePost = document.getElementById('nav-create-post');
-        const navAdminDashboard = document.getElementById('nav-admin-dashboard');
-        const navMainDomain = document.getElementById('nav-main-domain'); // This element is always visible
-
-        if (username) { // If username exists in localStorage, user is considered logged in for UI purposes
-            if (navLoginRegister) navLoginRegister.style.display = 'none';
-            if (navLogout) navLogout.style.display = 'block';
-            if (navCreatePost) navCreatePost.style.display = 'block';
-            if (navAdminDashboard) navAdminDashboard.style.display = 'block';
-            // navMainDomain is always visible, no need to toggle its display
-
-            if (loggedInUsernameSpan) {
-                loggedInUsernameSpan.textContent = username;
-            }
-        } else {
-            // User is not logged in
-            if (navLoginRegister) navLoginRegister.style.display = 'block';
-            if (navLogout) navLogout.style.display = 'none';
-            if (navCreatePost) navCreatePost.style.display = 'none';
-            if (navAdminDashboard) navAdminDashboard.style.display = 'none';
-            // navMainDomain is always visible, no need to toggle its display
-        }
-    }
-
-    // Initial check on page load
-    checkLoginStatus();
+    // Removed checkLoginStatus function as UI visibility is now controlled by Jinja2
+    // Removed localStorage usage for login status
 
     // Login Form Submission
     if (loginForm) {
@@ -71,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
                     if (loginModal) loginModal.hide();
                     
-                    localStorage.setItem('username', data.username); // Store username in localStorage
+                    // localStorage.setItem('username', data.username); // Removed localStorage usage
                     
                     console.log('Autentificare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     window.location.reload(); // Reload page to get server-rendered logged-in state
@@ -99,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 console.log('Status răspuns API deconectare:', response.status);
                 if (response.ok) {
-                    localStorage.removeItem('username'); // Clear stored username
+                    // localStorage.removeItem('username'); // Removed localStorage usage
                     console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     window.location.reload(); // Reload page to get server-rendered logged-out state
                 } else {
@@ -117,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         registerForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
-            const subtitle = document.getElementById('subtitle').value; // Get subtitle value
+            const subtitle = document.getElementById('subtitle').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             console.log('Se încearcă înregistrarea cu nume de utilizator:', username, 'email:', email, 'motto:', subtitle);
@@ -128,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ username, subtitle, email, password }), // Include subtitle in payload
+                    body: JSON.stringify({ username, subtitle, email, password }),
                 });
 
                 console.log('Status răspuns API înregistrare:', response.status);
@@ -149,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginData = await loginResponse.json();
 
                     if (loginResponse.ok) {
-                        localStorage.setItem('username', loginData.username); // Store username
+                        // localStorage.setItem('username', loginData.username); // Removed localStorage usage
                         registerSuccess.textContent = 'Înregistrare reușită! Te autentificăm...';
                         registerSuccess.style.display = 'block';
                         registerError.style.display = 'none';
@@ -157,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log('Auto-login successful, reloading page to update UI and redirect.');
                         window.location.href = `//${loginData.username}.calimara.ro`; 
                     } else {
-                        registerError.textContent = loginData.detail || 'Autentificare automată eșuată. Te rugăm să încerci să te autentifici manual.';
+                        registerError.textContent = data.detail || 'Autentificare automată eșuată. Te rugăm să încerci să te autentifici manual.';
                         registerError.style.display = 'block';
                         registerSuccess.style.display = 'none';
                         console.error('Auto-login failed:', loginData.detail);
@@ -285,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Like Button (Re-added)
+    // Like Button
     document.querySelectorAll('.like-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const postId = e.target.dataset.postId;
