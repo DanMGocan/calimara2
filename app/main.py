@@ -19,7 +19,12 @@ from . import models, schemas, crud, auth
 from .database import SessionLocal, engine, get_db
 
 # Configure logging
-LOG_FILE = "/var/log/calimara_app_python.log"
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
+LOG_FILE = os.path.join(LOG_DIR, "calimara_app_python.log")
+
+# Ensure log directory exists
+os.makedirs(LOG_DIR, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
