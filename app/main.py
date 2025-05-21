@@ -43,7 +43,15 @@ SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "super-secret-session-key-f
 app = FastAPI()
 
 # Add Session Middleware
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=SESSION_SECRET_KEY,
+    session_cookie="session", # Default name, but explicit
+    max_age=14 * 24 * 60 * 60, # 14 days, default is 2 weeks
+    httponly=True, # Default
+    samesite="lax", # Default
+    domain=".calimara.ro" # Crucial for subdomains
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
