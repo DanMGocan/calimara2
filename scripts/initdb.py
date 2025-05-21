@@ -113,16 +113,16 @@ def init_db():
                 INSERT INTO users (username, email, password_hash, subtitle)
                 VALUES (:username, :email, :password_hash, :subtitle);
             """), {
-                "username": "Ganduri si limbrici",
+                "username": "gandurisilimbrici", # Corrected username to be one word
                 "email": "sad@sad.sad",
                 "password_hash": hashed_password,
                 "subtitle": "Mi-am facut si io blog, sa nu mor prost lol"
             })
             connection.commit()
-            print("Test user 'Ganduri si limbrici' added.")
+            print("Test user 'gandurisilimbrici' added.")
 
             # Get the ID of the test user
-            result = connection.execute(text("SELECT id FROM users WHERE username = :username;"), {"username": "Ganduri si limbrici"})
+            result = connection.execute(text("SELECT id FROM users WHERE username = :username;"), {"username": "gandurisilimbrici"}) # Corrected username
             test_user_id = result.scalar_one()
 
             # Add 3 test posts for the user
