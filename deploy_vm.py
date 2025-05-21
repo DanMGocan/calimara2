@@ -51,15 +51,10 @@ def deploy_vm():
         sys.exit(1)
     print(f"{GUNICORN_SERVICE} service restarted.")
 
-    # 3. Run initdb.py script
-    # Note: initdb.py is designed to reset the DB. Only run if this is desired on every deploy.
-    # If you want to preserve data, you'd use migrations instead of initdb.py.
-    print("\n--- Running initdb.py ---")
-    # Ensure the script is run with the correct Python interpreter from the venv
-    if not run_command(f'{VENV_PYTHON} {INITDB_SCRIPT}', cwd=APP_DIR, shell=True):
-        print("Failed to run initdb.py. Aborting VM deployment.")
-        sys.exit(1)
-    print("initdb.py executed successfully.")
+    # Note: initdb.py is designed to reset the DB. It should only be run for initial setup.
+    # For ongoing deployments, use database migration tools (like Alembic) to preserve data.
+    # We are removing it from automated deployment to prevent data loss.
+    print("\n--- Skipping initdb.py (run manually for initial setup) ---")
 
     print("\nVM deployment automation completed successfully.")
 
