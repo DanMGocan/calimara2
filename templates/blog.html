@@ -5,7 +5,11 @@
     <div class="col-md-8">
         <div class="p-4 mb-4 bg-white rounded-3 shadow-sm">
             <h1 class="display-6 fw-bold">Călimara lui @{{ blog_owner.username }}</h1>
-            <p class="fs-5 text-muted">{{ blog_owner.subtitle if blog_owner.subtitle else "Bun venit pe microblogul meu!" }}</p>
+            {% if blog_owner.subtitle %}
+            <p class="fs-5 text-muted">{{ blog_owner.subtitle }}</p>
+            {% else %}
+            <p class="fs-5 text-muted">Bun venit pe microblogul meu!</p>
+            {% endif %}
         </div>
 
         <h2 class="mb-3">Ultima postare</h2> {# Changed to singular #}
