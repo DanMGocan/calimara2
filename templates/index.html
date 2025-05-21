@@ -7,12 +7,16 @@
             <div class="container-fluid py-5">
                 <h1 class="display-5 fw-bold">Bun venit pe Calimara.ro</h1>
                 <p class="col-md-8 fs-4">Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</p>
-                <a class="btn btn-primary btn-lg" href="/register" role="button">Deschide-ți și tu o calimara!</a>
+                <a class="btn btn-primary btn-lg" href="//calimara.ro/register" role="button">Deschide-ți și tu o calimara!</a>
             </div>
         </div>
 
+        </div> {# End of p-5 mb-4 bg-white rounded-3 shadow-sm #}
+    </div> {# End of col-md-8 #}
+
+    <div class="col-md-4">
         <h2 class="mb-3">Postări Aleatorii</h2>
-        <div class="row row-cols-1 g-4">
+        <div class="row row-cols-1 g-4 mb-4"> {# Added mb-4 for spacing #}
             {% for post in random_posts %}
             <div class="col">
                 <div class="card shadow-sm">
@@ -26,9 +30,7 @@
             </div>
             {% endfor %}
         </div>
-    </div>
 
-    <div class="col-md-4">
         <div class="card shadow-sm mb-4">
             <div class="card-header">
                 Bloguri Aleatorii
