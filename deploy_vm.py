@@ -51,10 +51,27 @@ def deploy_vm():
         sys.exit(1)
     print(f"{GUNICORN_SERVICE} service restarted.")
 
-    # Note: initdb.py is designed to reset the DB. It should only be run for initial setup.
-    # For ongoing deployments, use database migration tools (like Alembic) to preserve data.
-    # We are removing it from automated deployment to prevent data loss.
-    print("\n--- Skipping initdb.py (run manually for initial setup) ---")
+    # 3. Reload Systemd daemon and restart Nginx
+    print("\n--- Reloading Systemd daemon and restarting Nginx ---")
+    if not run_command('sudo systemctl daemon-reload', shell=True):
+        print("Failed to reload Systemd daemon. Continuing, but may need manual intervention.")
+    if not run_command('sudo systemctl restart nginx', shell=True):
+        print("Failed to restart Nginx. Aborting VM deployment.")
+        sys.exit(1)
+    print("Nginx restarted.")
+
+    # 3. Run initdb.py script
+    # IMPORTANT: The user has explicitly requested initdb.py to be run on each deploy.
+    # This means the database will be wiped and recreated on every deployment,
+    # resulting in loss of all existing data (users, posts, comments, likes).
+    # This is suitable for testing environments where a fresh database is desired.
+    # For production, consider using database migration tools (e.g., Alembic).
+    print("\n--- Running initdb.py (as per user request - WARNING: Data will be wiped!) ---")
+    # Ensure the script is run with the correct Python interpreter from the venv
+    if not run_command(f'{VENV_PYTHON} {INITDB_SCRIPT}', cwd=APP_DIR, shell=True):
+        print("Failed to run initdb.py. Aborting VM deployment.")
+        sys.exit(1)
+    print("initdb.py executed successfully.")
 
     print("\nVM deployment automation completed successfully.")
 
