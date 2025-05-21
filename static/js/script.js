@@ -162,7 +162,8 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
-            console.log('Se încearcă crearea postării cu titlul:', title);
+            const categories = document.getElementById('postCategories').value;
+            console.log('Se încearcă crearea postării cu titlul:', title, 'categorii:', categories);
 
             try {
                 const response = await fetch('/api/posts/', {
@@ -170,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ title, content }),
+                    body: JSON.stringify({ title, content, categories }),
                 });
 
                 console.log('Status răspuns API creare postare:', response.status);
@@ -206,6 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const postId = editPostForm.dataset.postId;
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
+            const categories = document.getElementById('postCategories').value;
 
             try {
                 const response = await fetch(`/api/posts/${postId}`, {
@@ -213,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ title, content }),
+                    body: JSON.stringify({ title, content, categories }),
                 });
 
                 const data = await response.json();

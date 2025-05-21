@@ -21,7 +21,7 @@ def get_user_by_username(db: Session, username: str):
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = get_password_hash(user.password)
-    db_user = models.User(username=user.username, email=user.email, password_hash=hashed_password)
+    db_user = models.User(username=user.username, email=user.email, password_hash=hashed_password, subtitle=user.subtitle)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -31,10 +31,10 @@ def get_post(db: Session, post_id: int):
     return db.query(models.Post).filter(models.Post.id == post_id).first()
 
 def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
-    return db.query(models.Post).filter(models.Post.user_id == user_id).offset(skip).limit(limit).all()
+    return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
-    db_post = models.Post(title=post.title, content=post.content, user_id=user_id)
+    db_post = models.Post(title=post.title, content=post.content, categories=post.categories, user_id=user_id)
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
@@ -43,11 +43,35 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if db_post:
+        # Update fields from post_update schema
         for key, value in post_update.model_dump(exclude_unset=True).items():
             setattr(db_post, key, value)
         db.commit()
         db.refresh(db_post)
     return db_post
+
+def get_distinct_categories(db: Session, user_id: Optional[int] = None):
+    """
+    Retrieves distinct categories for a specific user's posts, or all posts if user_id is None.
+    Returns a list of strings.
+    """
+    query = db.query(models.Post.categories)
+    if user_id:
+        query = query.filter(models.Post.user_id == user_id)
+    
+    # Filter out None or empty strings, then split and flatten
+    categories_raw = query.filter(models.Post.categories != None, models.Post.categories != '').all()
+    
+    all_categories = set()
+    for row in categories_raw:
+        if row.categories:
+            # Split by comma, strip whitespace, convert to lowercase, and add to set
+            for cat in row.categories.split(','):
+                stripped_cat = cat.strip().lower()
+                if stripped_cat: # Ensure no empty strings after stripping
+                    all_categories.add(stripped_cat)
+    
+    return sorted(list(all_categories))
 
 def delete_post(db: Session, post_id: int):
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()

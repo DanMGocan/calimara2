@@ -4,17 +4,20 @@
 <div class="row">
     <div class="col-md-8">
         <div class="p-4 mb-4 bg-white rounded-3 shadow-sm">
-            <h1 class="display-6 fw-bold">Blogul lui {{ blog_owner.username }}</h1>
-            <p class="fs-5 text-muted">Bun venit pe microblogul meu!</p>
-            <a class="btn btn-primary" href="//calimara.ro/register">Deschide-ți și tu o calimara!</a>
+            <h1 class="display-6 fw-bold">Călimara lui @{{ blog_owner.username }}</h1>
+            <p class="fs-5 text-muted">{{ blog_owner.subtitle if blog_owner.subtitle else "Bun venit pe microblogul meu!" }}</p>
         </div>
 
-        <h2 class="mb-3">Ultimele Postări</h2>
-        {% for post in posts %}
+        <h2 class="mb-3">Ultima postare</h2> {# Changed to singular #}
+        {% if posts %}
+        {% set post = posts[0] %} {# Only show the first (latest) post #}
         <div class="card mb-4 shadow-sm" id="post-{{ post.id }}">
             <div class="card-body">
                 <h5 class="card-title">{{ post.title }}</h5>
                 <h6 class="card-subtitle mb-2 text-muted">Postat pe {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6>
+                {% if post.categories %}
+                <p class="card-text text-muted">Categorii: {{ post.categories }}</p>
+                {% endif %}
                 <p class="card-text">{{ post.content }}</p>
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
@@ -56,7 +59,9 @@
                 </form>
             </div>
         </div>
-        {% endfor %}
+        {% else %}
+        <p>Acest blog nu are încă postări.</p>
+        {% endif %}
     </div>
 
     <div class="col-md-4">
@@ -84,6 +89,10 @@
                 </li>
                 {% endfor %}
             </ul>
+        </div>
+        {# Move "Deschide-ți și tu o calimara!" button here #}
+        <div class="d-grid gap-2">
+            <a class="btn btn-primary mt-4" href="//calimara.ro/register">Deschide-ți și tu o calimara!</a>
         </div>
     </div>
 </div>

@@ -5,6 +5,7 @@ from typing import Optional
 class UserBase(BaseModel):
     username: str
     email: EmailStr
+    subtitle: Optional[str] = None # New field
 
 class UserCreate(UserBase):
     password: str
@@ -24,6 +25,7 @@ class UserInDB(UserBase):
 class PostBase(BaseModel):
     title: str
     content: str
+    categories: Optional[str] = None # New field
 
 class PostCreate(PostBase):
     pass

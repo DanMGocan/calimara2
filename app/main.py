@@ -82,15 +82,19 @@ def get_client_ip(request: Request):
 @app.post("/api/register", response_model=schemas.UserInDB)
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
-    db_user_email = crud.get_user_by_email(db, email=user.email)
+    db_user_email = crud.get_user_by_email(db, email=user.email.lower()) # Ensure email is lowercased for uniqueness
     if db_user_email:
         logger.warning(f"Înregistrare eșuată: Emailul {user.email} este deja înregistrat.")
         raise HTTPException(status_code=400, detail="Emailul este deja înregistrat")
-    db_user_username = crud.get_user_by_username(db, username=user.username)
+    db_user_username = crud.get_user_by_username(db, username=user.username.lower()) # Ensure username is lowercased for uniqueness
     if db_user_username:
         logger.warning(f"Înregistrare eșuată: Numele de utilizator {user.username} este deja luat.")
         raise HTTPException(status_code=400, detail="Numele de utilizator este deja luat")
     
+    # Ensure username and email are stored in lowercase
+    user.username = user.username.lower()
+    user.email = user.email.lower()
+
     new_user = crud.create_user(db=db, user=user)
     logger.info(f"Utilizator înregistrat cu succes: {new_user.email}")
     return new_user
@@ -243,9 +247,12 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         if not user:
             raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
         
-        posts = crud.get_latest_posts_for_user(db, user.id, limit=5) # Get latest 5 posts for the blog
+        posts = crud.get_latest_posts_for_user(db, user.id, limit=1) # Get only the last post
         random_posts = crud.get_random_posts(db, limit=10)
         random_users = crud.get_random_users(db, limit=10)
+        
+        # Get distinct categories for this user's blog
+        blog_categories = crud.get_distinct_categories(db, user_id=user.id)
 
         # Get approved comments for each post
         for post in posts:
@@ -260,6 +267,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
                 "posts": posts,
                 "random_posts": random_posts,
                 "random_users": random_users,
+                "blog_categories": blog_categories, # Pass blog categories
                 "current_user": current_user, # Pass actual current_user
                 "current_domain": request.url.hostname # Pass current domain
             }

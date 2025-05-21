@@ -52,6 +52,7 @@ def init_db():
                     username VARCHAR(255) UNIQUE NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
+                    subtitle VARCHAR(500), -- New field for blog subtitle
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -64,6 +65,7 @@ def init_db():
                     user_id INT NOT NULL,
                     title VARCHAR(255) NOT NULL,
                     content TEXT NOT NULL,
+                    categories VARCHAR(255), -- New field for comma-separated categories
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
