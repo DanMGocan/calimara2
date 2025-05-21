@@ -258,6 +258,10 @@ async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
+    # If user is logged in and on the main domain, redirect to their subdomain
+    if not request.state.is_subdomain and current_user:
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
+
     if request.state.is_subdomain:
         username = request.state.username
         user = crud.get_user_by_username(db, username=username)
@@ -290,7 +294,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
             }
         )
     else:
-        # Main domain logic
+        # Main domain logic (if not logged in)
         random_posts = crud.get_random_posts(db, limit=10)
         random_users = crud.get_random_users(db, limit=10)
         return templates.TemplateResponse(
@@ -306,6 +310,10 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
+    # If logged in and on main domain, redirect to subdomain dashboard
+    if request.url.hostname == "calimara.ro":
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
+
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
     
@@ -326,6 +334,10 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
 
 @app.get("/create-post", response_class=HTMLResponse)
 async def create_post_page(request: Request, current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
+    # If logged in and on main domain, redirect to subdomain create-post
+    if request.url.hostname == "calimara.ro":
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/create-post", status_code=status.HTTP_302_FOUND)
+
     return templates.TemplateResponse(
         "create_post.html",
         {
@@ -337,6 +349,10 @@ async def create_post_page(request: Request, current_user: models.User = Depends
 
 @app.get("/edit-post/{post_id}", response_class=HTMLResponse)
 async def edit_post_page(post_id: int, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
+    # If logged in and on main domain, redirect to subdomain edit-post
+    if request.url.hostname == "calimara.ro":
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/edit-post/{post_id}", status_code=status.HTTP_302_FOUND)
+
     post = crud.get_post(db, post_id)
     if not post or post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
@@ -352,6 +368,10 @@ async def edit_post_page(post_id: int, request: Request, db: Session = Depends(g
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
+    # If logged in and on main domain, redirect to their subdomain
+    if request.url.hostname == "calimara.ro" and current_user:
+        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
+
     return templates.TemplateResponse("register.html", {
         "request": request,
         "current_user": current_user, # Pass actual current_user
