@@ -166,8 +166,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         registerError.style.display = 'none';
                         registerForm.reset();
                         checkLoginStatus();
-                        console.log('Auto-login successful, redirecting to dashboard.');
-                        window.location.href = `/dashboard`; // Redirect to dashboard, which will then redirect to blog
+                        console.log('Auto-login successful, redirecting to user\'s blog.');
+                        window.location.href = `//${loginData.username}.calimara.ro`; // Redirect to user's subdomain
                     } else {
                         registerError.textContent = loginData.detail || 'Auto-login failed. Please try logging in manually.';
                         registerError.style.display = 'block';

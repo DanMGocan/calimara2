@@ -49,8 +49,11 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     )
     
     token = request.cookies.get("access_token") # Try to get token from cookie
-    if token:
-        print(f"Token found in cookie: {token[:10]}...") # Log first 10 chars of token
+    if token and token.startswith("Bearer "):
+        token = token.split(" ")[1] # Strip "Bearer " prefix
+        print(f"Token found in cookie (stripped Bearer): {token[:10]}...") # Log first 10 chars of token
+    elif token:
+        print(f"Token found in cookie (no Bearer): {token[:10]}...")
     else:
         # Fallback to Authorization header if not in cookie (e.g., for API calls from other clients)
         auth_header = request.headers.get("Authorization")
