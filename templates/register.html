@@ -12,7 +12,7 @@
                     <div class="mb-3">
                         <label for="username" class="form-label">Nume de utilizator:</label>
                         <input type="text" class="form-control" id="username" name="username" required>
-                        <small class="form-text text-muted">Micul tău blog se va găsi la subdomeniu ({{ "numeutilizator" if not current_domain or current_domain == "calimara.ro" else current_domain.split('.')[0] }}).calimara.ro. Nu poți modifica această opțiune mai târziu!</small>
+                        <small class="form-text text-muted">Micul tău blog se va găsi la subdomeniu ({{ "numeutilizator" if not current_domain or current_domain == "calimara.ro" else current_domain.split('.')[0] }}).calimara.ro. Numele de utilizator trebuie să fie un singur cuvânt, fără spații. Nu poți modifica această opțiune mai târziu!</small>
                     </div>
                     <div class="mb-3">
                         <label for="subtitle" class="form-label">Motto:</label>

@@ -82,6 +82,12 @@ def get_client_ip(request: Request):
 @app.post("/api/register", response_model=schemas.UserInDB) # Re-added response_model
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
+    
+    # Validate username: must be one word (no spaces)
+    if " " in user.username:
+        logger.warning(f"Înregistrare eșuată: Numele de utilizator '{user.username}' conține spații.")
+        raise HTTPException(status_code=400, detail="Numele de utilizator nu poate conține spații. Vă rugăm să folosiți un singur cuvânt.")
+
     db_user_email = crud.get_user_by_email(db, email=user.email.lower()) # Ensure email is lowercased for uniqueness
     if db_user_email:
         logger.warning(f"Înregistrare eșuată: Emailul {user.email} este deja înregistrat.")
@@ -263,10 +269,7 @@ async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
-    # If user is logged in and on the main domain, redirect to their subdomain
-    if not request.state.is_subdomain and current_user:
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
-
+    # If it's a subdomain, render the blog page
     if request.state.is_subdomain:
         username = request.state.username
         user = crud.get_user_by_username(db, username=username)
@@ -299,7 +302,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
             }
         )
     else:
-        # Main domain logic (if not logged in)
+        # If not a subdomain (i.e., calimara.ro), always render the main landing page
         random_posts = crud.get_random_posts(db, limit=10)
         random_users = crud.get_random_users(db, limit=10)
         return templates.TemplateResponse(
