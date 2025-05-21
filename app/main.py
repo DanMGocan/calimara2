@@ -1,4 +1,5 @@
 import os
+import logging # Import logging
 from dotenv import load_dotenv
 load_dotenv() # Load environment variables from .env
 
@@ -16,6 +17,18 @@ from starlette.middleware.sessions import SessionMiddleware # Import SessionMidd
 
 from . import models, schemas, crud, auth
 from .database import SessionLocal, engine, get_db
+
+# Configure logging
+LOG_FILE = "/var/log/calimara_app_python.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler() # Also output to console/syslog
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Ensure tables are created (this is for development, initdb.py is for explicit reset)
 # models.Base.metadata.create_all(bind=engine)
@@ -57,26 +70,26 @@ def get_client_ip(request: Request):
 
 @app.post("/api/register", response_model=schemas.UserInDB)
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    print(f"Attempting to register user: {user.email} with username: {user.username}")
+    logger.info(f"Attempting to register user: {user.email} with username: {user.username}")
     db_user_email = crud.get_user_by_email(db, email=user.email)
     if db_user_email:
-        print(f"Registration failed: Email {user.email} already registered.")
+        logger.warning(f"Registration failed: Email {user.email} already registered.")
         raise HTTPException(status_code=400, detail="Email already registered")
     db_user_username = crud.get_user_by_username(db, username=user.username)
     if db_user_username:
-        print(f"Registration failed: Username {user.username} already taken.")
+        logger.warning(f"Registration failed: Username {user.username} already taken.")
         raise HTTPException(status_code=400, detail="Username already taken")
     
     new_user = crud.create_user(db=db, user=user)
-    print(f"User registered successfully: {new_user.email}")
+    logger.info(f"User registered successfully: {new_user.email}")
     return new_user
 
 @app.post("/api/token")
 async def login_for_access_token(request: Request, form_data: schemas.UserLogin, db: Session = Depends(get_db)):
-    print(f"Attempting login for email: {form_data.email}")
+    logger.info(f"Attempting login for email: {form_data.email}")
     user = crud.get_user_by_email(db, email=form_data.email)
     if not user or not crud.verify_password(form_data.password, user.password_hash):
-        print(f"Login failed: Incorrect credentials for {form_data.email}")
+        logger.warning(f"Login failed: Incorrect credentials for {form_data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -85,13 +98,13 @@ async def login_for_access_token(request: Request, form_data: schemas.UserLogin,
     
     # Set user ID in session
     request.session["user_id"] = user.id
-    print(f"Login successful for {user.email}. Session set.")
+    logger.info(f"Login successful for {user.email}. Session set.")
     return {"message": "Logged in successfully", "username": user.username} # Return username for client-side redirect
 
 @app.get("/api/logout")
 async def logout_user(request: Request):
     request.session.clear() # Clear session
-    print("User logged out. Session cleared.")
+    logger.info("User logged out. Session cleared.")
     return {"message": "Logged out successfully"}
 
 # --- API Endpoints (Posts) ---
