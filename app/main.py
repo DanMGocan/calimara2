@@ -48,28 +48,38 @@ def get_client_ip(request: Request):
 
 @app.post("/api/register", response_model=schemas.UserInDB)
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    print(f"Attempting to register user: {user.email} with username: {user.username}")
     db_user_email = crud.get_user_by_email(db, email=user.email)
     if db_user_email:
+        print(f"Registration failed: Email {user.email} already registered.")
         raise HTTPException(status_code=400, detail="Email already registered")
     db_user_username = crud.get_user_by_username(db, username=user.username)
     if db_user_username:
+        print(f"Registration failed: Username {user.username} already taken.")
         raise HTTPException(status_code=400, detail="Username already taken")
-    return crud.create_user(db=db, user=user)
+    
+    new_user = crud.create_user(db=db, user=user)
+    print(f"User registered successfully: {new_user.email}")
+    return new_user
 
 @app.post("/api/token")
 async def login_for_access_token(response: Response, form_data: schemas.UserLogin, db: Session = Depends(get_db)):
+    print(f"Attempting login for email: {form_data.email}")
     user = crud.get_user_by_email(db, email=form_data.email)
     if not user or not crud.verify_password(form_data.password, user.password_hash):
+        print(f"Login failed: Incorrect credentials for {form_data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
     access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True, samesite="Lax")
+    print(f"Login successful for {user.email}. Token issued.")
     return {"access_token": access_token, "token_type": "bearer", "username": user.username}
 
 @app.get("/api/logout")

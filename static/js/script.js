@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
+            console.log('Attempting login with email:', email);
 
             try {
                 const response = await fetch('/api/token', {
@@ -73,7 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ email, password }),
                 });
 
+                console.log('Login API response status:', response.status);
                 const data = await response.json();
+                console.log('Login API response data:', data);
 
                 if (response.ok) {
                     localStorage.setItem('username', data.username); // Store username
@@ -81,14 +84,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
                     if (loginModal) loginModal.hide();
                     checkLoginStatus();
-                    // Redirect to dashboard or user's blog
+                    console.log('Login successful, redirecting to dashboard.');
                     window.location.href = `/dashboard`; // Or `http://${data.username}.calimara.ro`
                 } else {
                     loginError.textContent = data.detail || 'Login failed';
                     loginError.style.display = 'block';
+                    console.error('Login failed:', data.detail);
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error during login fetch:', error);
                 loginError.textContent = 'An unexpected error occurred.';
                 loginError.style.display = 'block';
             }
@@ -99,19 +103,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logoutButton) {
         logoutButton.addEventListener('click', async (e) => {
             e.preventDefault();
+            console.log('Attempting logout.');
             try {
                 const response = await fetch('/api/logout', {
                     method: 'GET',
                 });
+                console.log('Logout API response status:', response.status);
                 if (response.ok) {
                     localStorage.removeItem('username'); // Clear stored username
                     checkLoginStatus();
+                    console.log('Logout successful, redirecting to main page.');
                     window.location.href = '/'; // Redirect to main page
                 } else {
-                    console.error('Logout failed');
+                    const data = await response.json();
+                    console.error('Logout failed:', data.detail);
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error during logout fetch:', error);
             }
         });
     }
@@ -123,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            console.log('Attempting registration with username:', username, 'email:', email);
 
             try {
                 const response = await fetch('/api/register', {
@@ -133,22 +142,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ username, email, password }),
                 });
 
+                console.log('Register API response status:', response.status);
                 const data = await response.json();
+                console.log('Register API response data:', data);
 
                 if (response.ok) {
                     registerSuccess.textContent = 'Registration successful! You can now log in.';
                     registerSuccess.style.display = 'block';
                     registerError.style.display = 'none';
                     registerForm.reset();
-                    // Optionally, auto-login or redirect to login modal
-                    // setTimeout(() => { window.location.href = '/'; }, 2000);
+                    console.log('Registration successful.');
                 } else {
                     registerError.textContent = data.detail || 'Registration failed';
                     registerError.style.display = 'block';
                     registerSuccess.style.display = 'none';
+                    console.error('Registration failed:', data.detail);
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error during registration fetch:', error);
                 registerError.textContent = 'An unexpected error occurred.';
                 registerError.style.display = 'block';
                 registerSuccess.style.display = 'none';
@@ -163,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
             const accessToken = getCookie('access_token');
+            console.log('Attempting to create post with title:', title);
 
             try {
                 const response = await fetch('/api/posts/', {
@@ -174,21 +186,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ title, content }),
                 });
 
+                console.log('Create Post API response status:', response.status);
                 const data = await response.json();
+                console.log('Create Post API response data:', data);
 
                 if (response.ok) {
                     postSuccess.textContent = 'Post created successfully!';
                     postSuccess.style.display = 'block';
                     postError.style.display = 'none';
                     createPostForm.reset();
+                    console.log('Post created successfully, redirecting to dashboard.');
                     setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
                 } else {
                     postError.textContent = data.detail || 'Failed to create post';
                     postError.style.display = 'block';
                     postSuccess.style.display = 'none';
+                    console.error('Failed to create post:', data.detail);
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('Error during create post fetch:', error);
                 postError.textContent = 'An unexpected error occurred.';
                 postError.style.display = 'block';
                 postSuccess.style.display = 'none';

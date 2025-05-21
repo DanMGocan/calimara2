@@ -41,6 +41,7 @@ def verify_token(token: str, credentials_exception):
     return token_data
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
+    print("get_current_user called.")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -48,17 +49,32 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     )
     
     token = request.cookies.get("access_token") # Try to get token from cookie
-    if not token:
+    if token:
+        print(f"Token found in cookie: {token[:10]}...") # Log first 10 chars of token
+    else:
         # Fallback to Authorization header if not in cookie (e.g., for API calls from other clients)
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
+            print(f"Token found in Authorization header: {token[:10]}...")
     
     if not token:
+        print("No token found in cookie or Authorization header.")
         raise credentials_exception
 
-    token_data = verify_token(token, credentials_exception)
+    try:
+        token_data = verify_token(token, credentials_exception)
+        print(f"Token verified for email: {token_data['email']}")
+    except HTTPException as e:
+        print(f"Token verification failed: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f"Unexpected error during token verification: {e}")
+        raise credentials_exception
+
     user = crud.get_user_by_email(db, email=token_data["email"])
     if user is None:
+        print(f"User not found for email: {token_data['email']}")
         raise credentials_exception
+    print(f"Current user retrieved: {user.username}")
     return user
