@@ -104,6 +104,57 @@ def init_db():
             """))
             print("Table 'likes' created.")
 
+            # Add a test user
+            from passlib.context import CryptContext
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            hashed_password = pwd_context.hash("123")
+
+            connection.execute(text("""
+                INSERT INTO users (username, email, password_hash, subtitle)
+                VALUES (:username, :email, :password_hash, :subtitle);
+            """), {
+                "username": "Ganduri si limbrici",
+                "email": "sad@sad.sad",
+                "password_hash": hashed_password,
+                "subtitle": "Mi-am facut si io blog, sa nu mor prost lol"
+            })
+            connection.commit()
+            print("Test user 'Ganduri si limbrici' added.")
+
+            # Get the ID of the test user
+            result = connection.execute(text("SELECT id FROM users WHERE username = :username;"), {"username": "Ganduri si limbrici"})
+            test_user_id = result.scalar_one()
+
+            # Add 3 test posts for the user
+            test_posts = [
+                {
+                    "user_id": test_user_id,
+                    "title": "Primul meu gând",
+                    "content": "Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.",
+                    "categories": "gânduri, filozofie"
+                },
+                {
+                    "user_id": test_user_id,
+                    "title": "Limbrici și poezie",
+                    "content": "Chiar și limbricii au o frumusețe aparte, o mișcare lentă, dar hotărâtă. Așa și poezia, se strecoară în suflet și lasă urme adânci.",
+                    "categories": "poezii, natură"
+                },
+                {
+                    "user_id": test_user_id,
+                    "title": "O zi obișnuită",
+                    "content": "O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie. Să fim recunoscători pentru fiecare clipă.",
+                    "categories": "proză, viață"
+                }
+            ]
+
+            for post in test_posts:
+                connection.execute(text("""
+                    INSERT INTO posts (user_id, title, content, categories)
+                    VALUES (:user_id, :title, :content, :categories);
+                """), post)
+            connection.commit()
+            print(f"3 test posts added for user ID {test_user_id}.")
+
             print("Database initialization complete.")
 
     except SQLAlchemyError as e:
