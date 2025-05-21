@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const email = document.getElementById('loginEmail').value;
             const password = document.getElementById('loginPassword').value;
-            console.log('Attempting login with email:', email);
+            console.log('Se încearcă autentificarea cu email:', email);
 
             try {
                 const response = await fetch('/api/token', {
@@ -82,9 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ email, password }),
                 });
 
-                console.log('Login API response status:', response.status);
-                const data = await response.json(); // Expecting {"message": "Logged in successfully", "username": "..."}
-                console.log('Login API response data:', data);
+                console.log('Status răspuns API autentificare:', response.status);
+                const data = await response.json();
+                console.log('Date răspuns API autentificare:', data);
 
                 if (response.ok) {
                     loginError.style.display = 'none';
@@ -94,17 +94,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Store username in localStorage for display in navbar (since session is httponly)
                     localStorage.setItem('username', data.username); 
                     
-                    console.log('Login successful, reloading page to update UI.');
+                    console.log('Autentificare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     // Reload page to get server-rendered logged-in state
                     window.location.reload(); 
                 } else {
-                    loginError.textContent = data.detail || 'Login failed';
+                    loginError.textContent = data.detail || 'Autentificare eșuată';
                     loginError.style.display = 'block';
-                    console.error('Login failed:', data.detail);
+                    console.error('Autentificare eșuată:', data.detail);
                 }
             } catch (error) {
-                console.error('Error during login fetch:', error);
-                loginError.textContent = 'An unexpected error occurred.';
+                console.error('Eroare la solicitarea de autentificare:', error);
+                loginError.textContent = 'A apărut o eroare neașteptată.';
                 loginError.style.display = 'block';
             }
         });
@@ -114,22 +114,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (logoutButton) {
         logoutButton.addEventListener('click', async (e) => {
             e.preventDefault();
-            console.log('Attempting logout.');
+            console.log('Se încearcă deconectarea.');
             try {
                 const response = await fetch('/api/logout', {
                     method: 'GET',
                 });
-                console.log('Logout API response status:', response.status);
+                console.log('Status răspuns API deconectare:', response.status);
                 if (response.ok) {
                     localStorage.removeItem('username'); // Clear stored username
-                    console.log('Logout successful, reloading page to update UI.');
+                    console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     window.location.reload(); // Reload page to get server-rendered logged-out state
                 } else {
                     const data = await response.json();
-                    console.error('Logout failed:', data.detail);
+                    console.error('Deconectare eșuată:', data.detail);
                 }
             } catch (error) {
-                console.error('Error during logout fetch:', error);
+                console.error('Eroare la solicitarea de deconectare:', error);
             }
         });
     }
@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            console.log('Attempting registration with username:', username, 'email:', email);
+            console.log('Se încearcă înregistrarea cu nume de utilizator:', username, 'email:', email);
 
             try {
                 const response = await fetch('/api/register', {
@@ -152,12 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ username, email, password }),
                 });
 
-                console.log('Register API response status:', response.status);
+                console.log('Status răspuns API înregistrare:', response.status);
                 const data = await response.json();
-                console.log('Register API response data:', data);
+                console.log('Date răspuns API înregistrare:', data);
 
                 if (response.ok) {
-                    console.log('Registration successful. Attempting to log in automatically...');
+                    console.log('Înregistrare reușită. Se încearcă autentificarea automată...');
                     // Attempt to auto-login the user
                     const loginResponse = await fetch('/api/token', {
                         method: 'POST',
@@ -171,28 +171,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (loginResponse.ok) {
                         localStorage.setItem('username', loginData.username); // Store username
-                        registerSuccess.textContent = 'Registration successful! Logging you in...';
+                        registerSuccess.textContent = 'Înregistrare reușită! Te autentificăm...';
                         registerSuccess.style.display = 'block';
                         registerError.style.display = 'none';
                         registerForm.reset();
-                        console.log('Auto-login successful, reloading page to update UI and redirect.');
+                        console.log('Autentificare automată reușită, se reîncarcă pagina pentru a actualiza interfața și a redirecționa.');
                         // Redirect to user's subdomain after successful auto-login
                         window.location.href = `//${loginData.username}.calimara.ro`; 
                     } else {
-                        registerError.textContent = loginData.detail || 'Auto-login failed. Please try logging in manually.';
+                        registerError.textContent = loginData.detail || 'Autentificare automată eșuată. Te rugăm să încerci să te autentifici manual.';
                         registerError.style.display = 'block';
                         registerSuccess.style.display = 'none';
-                        console.error('Auto-login failed:', loginData.detail);
+                        console.error('Autentificare automată eșuată:', loginData.detail);
                     }
                 } else {
-                    registerError.textContent = data.detail || 'Registration failed';
+                    registerError.textContent = data.detail || 'Înregistrare eșuată';
                     registerError.style.display = 'block';
                     registerSuccess.style.display = 'none';
-                    console.error('Registration failed:', data.detail);
+                    console.error('Înregistrare eșuată:', data.detail);
                 }
             } catch (error) {
-                console.error('Error during registration or auto-login fetch:', error);
-                registerError.textContent = 'An unexpected error occurred during registration or auto-login.';
+                console.error('Eroare la solicitarea de înregistrare sau autentificare automată:', error);
+                registerError.textContent = 'A apărut o eroare neașteptată în timpul înregistrării sau autentificării automate.';
                 registerError.style.display = 'block';
                 registerSuccess.style.display = 'none';
             }
@@ -205,40 +205,37 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
-            // No longer getting token from cookie, rely on browser sending session cookie
-            // const accessToken = getCookie('access_token'); 
-            console.log('Attempting to create post with title:', title);
+            console.log('Se încearcă crearea postării cu titlul:', title);
 
             try {
                 const response = await fetch('/api/posts/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({ title, content }),
                 });
 
-                console.log('Create Post API response status:', response.status);
+                console.log('Status răspuns API creare postare:', response.status);
                 const data = await response.json();
-                console.log('Create Post API response data:', data);
+                console.log('Date răspuns API creare postare:', data);
 
                 if (response.ok) {
-                    postSuccess.textContent = 'Post created successfully!';
+                    postSuccess.textContent = 'Postare creată cu succes!';
                     postSuccess.style.display = 'block';
                     postError.style.display = 'none';
                     createPostForm.reset();
-                    console.log('Post created successfully, redirecting to dashboard.');
+                    console.log('Postare creată cu succes, se redirecționează către panoul de administrare.');
                     setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
                 } else {
-                    postError.textContent = data.detail || 'Failed to create post';
+                    postError.textContent = data.detail || 'Crearea postării a eșuat';
                     postError.style.display = 'block';
                     postSuccess.style.display = 'none';
-                    console.error('Failed to create post:', data.detail);
+                    console.error('Crearea postării a eșuat:', data.detail);
                 }
             } catch (error) {
-                console.error('Error during create post fetch:', error);
-                postError.textContent = 'An unexpected error occurred.';
+                console.error('Eroare la solicitarea de creare postare:', error);
+                postError.textContent = 'A apărut o eroare neașteptată.';
                 postError.style.display = 'block';
                 postSuccess.style.display = 'none';
             }
@@ -252,15 +249,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const postId = editPostForm.dataset.postId;
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
-            // No longer getting token from cookie, rely on browser sending session cookie
-            // const accessToken = getCookie('access_token'); 
 
             try {
                 const response = await fetch(`/api/posts/${postId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({ title, content }),
                 });
@@ -268,18 +262,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
 
                 if (response.ok) {
-                    editPostSuccess.textContent = 'Post updated successfully!';
+                    editPostSuccess.textContent = 'Postare actualizată cu succes!';
                     editPostSuccess.style.display = 'block';
                     editPostError.style.display = 'none';
                     setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
                 } else {
-                    editPostError.textContent = data.detail || 'Failed to update post';
+                    editPostError.textContent = data.detail || 'Actualizarea postării a eșuat';
                     editPostError.style.display = 'block';
                     editPostSuccess.style.display = 'none';
                 }
             } catch (error) {
-                console.error('Error:', error);
-                editPostError.textContent = 'An unexpected error occurred.';
+                console.error('Eroare la solicitarea de actualizare postare:', error);
+                editPostError.textContent = 'A apărut o eroare neașteptată.';
                 editPostError.style.display = 'block';
                 editPostSuccess.style.display = 'none';
             }
@@ -290,26 +284,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.delete-post-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const postId = e.target.dataset.postId;
-            if (confirm('Are you sure you want to delete this post?')) {
-                // No longer getting token from cookie, rely on browser sending session cookie
-                // const accessToken = getCookie('access_token'); 
+            if (confirm('Ești sigur că vrei să ștergi această postare?')) {
                 try {
                     const response = await fetch(`/api/posts/${postId}`, {
                         method: 'DELETE',
-                        headers: {
-                            // 'Authorization': accessToken, // No longer sending Authorization header for session auth
-                        },
+                        headers: {},
                     });
                     if (response.status === 204) {
                         e.target.closest('tr').remove(); // Remove row from table
-                        alert('Post deleted successfully!');
+                        alert('Postare ștearsă cu succes!');
                     } else {
                         const data = await response.json();
-                        alert(data.detail || 'Failed to delete post');
+                        alert(data.detail || 'Ștergerea postării a eșuat');
                     }
                 } catch (error) {
-                    console.error('Error:', error);
-                    alert('An unexpected error occurred.');
+                    console.error('Eroare la solicitarea de ștergere postare:', error);
+                    alert('A apărut o eroare neașteptată.');
                 }
             }
         });
@@ -319,15 +309,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.like-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const postId = e.target.dataset.postId;
-            // No longer getting token from cookie, rely on browser sending session cookie
-            // const accessToken = getCookie('access_token'); // May be null if unlogged
 
             try {
                 const response = await fetch(`/api/posts/${postId}/likes`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        // 'Authorization': accessToken || '', // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({}),
                 });
@@ -341,14 +328,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         likesCountSpan.textContent = currentCount + 1;
                     }
                 } else if (response.status === 409) {
-                    alert('You have already liked this post!');
+                    alert('Ai apreciat deja această postare!');
                 } else {
                     const data = await response.json();
-                    alert(data.detail || 'Failed to like post');
+                    alert(data.detail || 'Aprecierea postării a eșuat');
                 }
             } catch (error) {
-                console.error('Error:', error);
-                alert('An unexpected error occurred.');
+                console.error('Eroare la solicitarea de apreciere postare:', error);
+                alert('A apărut o eroare neașteptată.');
             }
         });
     });
@@ -361,13 +348,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = form.querySelector('textarea[name="content"]').value;
             const author_name = form.querySelector('input[name="author_name"]').value;
             const author_email = form.querySelector('input[name="author_email"]').value;
-            // No longer getting token from cookie, rely on browser sending session cookie
-            // const accessToken = getCookie('access_token'); // May be null if unlogged
             const commentErrorDiv = form.querySelector('.comment-error');
 
             const commentData = { content };
-            // If not logged in, include author details
-            // We can't check accessToken directly anymore, so we'll assume if username is not in localStorage, they are unlogged
             if (!localStorage.getItem('username')) { 
                 commentData.author_name = author_name;
                 commentData.author_email = author_email;
@@ -378,7 +361,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        // 'Authorization': accessToken || '', // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify(commentData),
                 });
@@ -386,16 +368,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
 
                 if (response.ok) {
-                    alert('Comment submitted successfully! It will appear after approval.');
+                    alert('Comentariu trimis cu succes! Va apărea după aprobare.');
                     form.reset();
                     commentErrorDiv.style.display = 'none';
                 } else {
-                    commentErrorDiv.textContent = data.detail || 'Failed to submit comment';
+                    commentErrorDiv.textContent = data.detail || 'Trimiterea comentariului a eșuat';
                     commentErrorDiv.style.display = 'block';
                 }
             } catch (error) {
-                console.error('Error:', error);
-                commentErrorDiv.textContent = 'An unexpected error occurred.';
+                console.error('Eroare la solicitarea de trimitere comentariu:', error);
+                commentErrorDiv.textContent = 'A apărut o eroare neașteptată.';
                 commentErrorDiv.style.display = 'block';
             }
         });
@@ -405,25 +387,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.approve-comment-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const commentId = e.target.dataset.commentId;
-            // No longer getting token from cookie, rely on browser sending session cookie
-            // const accessToken = getCookie('access_token'); 
             try {
                 const response = await fetch(`/api/comments/${commentId}/approve`, {
                     method: 'PUT',
-                    headers: {
-                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
-                    },
+                    headers: {},
                 });
                 if (response.ok) {
                     e.target.closest('tr').remove(); // Remove row from table
-                    alert('Comment approved successfully!');
+                    alert('Comentariu aprobat cu succes!');
                 } else {
                     const data = await response.json();
-                    alert(data.detail || 'Failed to approve comment');
+                    alert(data.detail || 'Aprobarea comentariului a eșuat');
                 }
             } catch (error) {
-                console.error('Error:', error);
-                alert('An unexpected error occurred.');
+                console.error('Eroare la solicitarea de aprobare comentariu:', error);
+                alert('A apărut o eroare neașteptată.');
             }
         });
     });
@@ -432,26 +410,22 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.delete-comment-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const commentId = e.target.dataset.commentId;
-            if (confirm('Are you sure you want to delete this comment?')) {
-                // No longer getting token from cookie, rely on browser sending session cookie
-                // const accessToken = getCookie('access_token'); 
+            if (confirm('Ești sigur că vrei să ștergi acest comentariu?')) {
                 try {
                     const response = await fetch(`/api/comments/${commentId}`, {
                         method: 'DELETE',
-                        headers: {
-                            // 'Authorization': accessToken, // No longer sending Authorization header for session auth
-                        },
+                        headers: {},
                     });
                     if (response.status === 204) {
                         e.target.closest('tr').remove(); // Remove row from table
-                        alert('Comment deleted successfully!');
+                        alert('Comentariu șters cu succes!');
                     } else {
                         const data = await response.json();
-                        alert(data.detail || 'Failed to delete comment');
+                        alert(data.detail || 'Ștergerea comentariului a eșuat');
                     }
                 } catch (error) {
-                    console.error('Error:', error);
-                    alert('An unexpected error occurred.');
+                    console.error('Eroare la solicitarea de ștergere comentariu:', error);
+                    alert('A apărut o eroare neașteptată.');
                 }
             }
         });

@@ -81,42 +81,42 @@ def get_client_ip(request: Request):
 
 @app.post("/api/register", response_model=schemas.UserInDB)
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    logger.info(f"Attempting to register user: {user.email} with username: {user.username}")
+    logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
     db_user_email = crud.get_user_by_email(db, email=user.email)
     if db_user_email:
-        logger.warning(f"Registration failed: Email {user.email} already registered.")
-        raise HTTPException(status_code=400, detail="Email already registered")
+        logger.warning(f"Înregistrare eșuată: Emailul {user.email} este deja înregistrat.")
+        raise HTTPException(status_code=400, detail="Emailul este deja înregistrat")
     db_user_username = crud.get_user_by_username(db, username=user.username)
     if db_user_username:
-        logger.warning(f"Registration failed: Username {user.username} already taken.")
-        raise HTTPException(status_code=400, detail="Username already taken")
+        logger.warning(f"Înregistrare eșuată: Numele de utilizator {user.username} este deja luat.")
+        raise HTTPException(status_code=400, detail="Numele de utilizator este deja luat")
     
     new_user = crud.create_user(db=db, user=user)
-    logger.info(f"User registered successfully: {new_user.email}")
+    logger.info(f"Utilizator înregistrat cu succes: {new_user.email}")
     return new_user
 
 @app.post("/api/token")
 async def login_for_access_token(request: Request, form_data: schemas.UserLogin, db: Session = Depends(get_db)):
-    logger.info(f"Attempting login for email: {form_data.email}")
+    logger.info(f"Se încearcă autentificarea pentru email: {form_data.email}")
     user = crud.get_user_by_email(db, email=form_data.email)
     if not user or not crud.verify_password(form_data.password, user.password_hash):
-        logger.warning(f"Login failed: Incorrect credentials for {form_data.email}")
+        logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {form_data.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Email sau parolă incorecte",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     # Set user ID in session
     request.session["user_id"] = user.id
-    logger.info(f"Login successful for {user.email}. Session set.")
-    return {"message": "Logged in successfully", "username": user.username} # Return username for client-side redirect
+    logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată.")
+    return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
 
 @app.get("/api/logout")
 async def logout_user(request: Request):
     request.session.clear() # Clear session
-    logger.info("User logged out. Session cleared.")
-    return {"message": "Logged out successfully"}
+    logger.info("Utilizator deconectat. Sesiune ștearsă.")
+    return {"message": "Deconectat cu succes"}
 
 # --- API Endpoints (Posts) ---
 
@@ -137,7 +137,7 @@ async def update_post_api(
 ):
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post or db_post.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Post not found or not owned by user")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
     return crud.update_post(db=db, post_id=post_id, post_update=post_update)
 
 @app.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -148,7 +148,7 @@ async def delete_post_api(
 ):
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post or db_post.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Post not found or not owned by user")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
     crud.delete_post(db=db, post_id=post_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -164,11 +164,11 @@ async def add_comment_to_post(
 ):
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post:
-        raise HTTPException(status_code=404, detail="Post not found")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     user_id = current_user.id if current_user else None
     if not user_id and (not comment.author_name or not comment.author_email):
-        raise HTTPException(status_code=400, detail="Author name and email are required for unlogged comments")
+        raise HTTPException(status_code=400, detail="Numele și emailul autorului sunt obligatorii pentru comentariile neautentificate")
 
     return crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
 
@@ -180,12 +180,12 @@ async def approve_comment_api(
 ):
     db_comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not db_comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise HTTPException(status_code=404, detail="Comentariul nu a fost găsit")
     
     # Ensure the current user owns the post associated with the comment
     db_post = crud.get_post(db, post_id=db_comment.post_id)
     if not db_post or db_post.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to approve this comment")
+        raise HTTPException(status_code=403, detail="Nu sunteți autorizat să aprobați acest comentariu")
     
     return crud.approve_comment(db=db, comment_id=comment_id)
 
@@ -197,12 +197,12 @@ async def delete_comment_api(
 ):
     db_comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if not db_comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
+        raise HTTPException(status_code=404, detail="Comentariul nu a fost găsit")
     
     # Ensure the current user owns the post associated with the comment
     db_post = crud.get_post(db, post_id=db_comment.post_id)
     if not db_post or db_post.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
+        raise HTTPException(status_code=403, detail="Nu sunteți autorizat să ștergeți acest comentariu")
     
     crud.delete_comment(db=db, comment_id=comment_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -218,14 +218,14 @@ async def add_like_to_post(
 ):
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post:
-        raise HTTPException(status_code=404, detail="Post not found")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     user_id = current_user.id if current_user else None
     ip_address = get_client_ip(request) if not user_id else None # Only use IP if user is not logged in
 
     db_like = crud.create_like(db=db, post_id=post_id, user_id=user_id, ip_address=ip_address)
     if not db_like:
-        raise HTTPException(status_code=409, detail="Already liked this post")
+        raise HTTPException(status_code=409, detail="Ați apreciat deja această postare")
     return db_like
 
 @app.get("/api/posts/{post_id}/likes/count")
@@ -241,7 +241,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         username = request.state.username
         user = crud.get_user_by_username(db, username=username)
         if not user:
-            raise HTTPException(status_code=404, detail="Blog not found")
+            raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
         
         posts = crud.get_latest_posts_for_user(db, user.id, limit=5) # Get latest 5 posts for the blog
         random_posts = crud.get_random_posts(db, limit=10)
@@ -314,7 +314,7 @@ async def create_post_page(request: Request, current_user: models.User = Depends
 async def edit_post_page(post_id: int, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     post = crud.get_post(db, post_id)
     if not post or post.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Post not found or not owned by user")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
     return templates.TemplateResponse(
         "edit_post.html",
         {
@@ -345,7 +345,7 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
         username = request.state.username
         user = crud.get_user_by_username(db, username=username)
         if not user:
-            raise HTTPException(status_code=404, detail="Blog not found")
+            raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
         
         posts = crud.get_latest_posts_for_user(db, user.id, limit=5)
         random_posts = crud.get_random_posts(db, limit=10)
@@ -369,4 +369,4 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
         )
     else:
         # If not a subdomain and no specific route matched, return 404 for main domain
-        raise HTTPException(status_code=404, detail="Page not found")
+        raise HTTPException(status_code=404, detail="Pagina nu a fost găsită")
