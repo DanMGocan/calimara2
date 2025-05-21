@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row">
     <div class="col-md-8">
-        <div class="p-4 mb-4 bg-white rounded-3 shadow-sm">
+        <div class="p-4 mb-4 rounded-3 shadow-sm"> {# Removed bg-white #}
             <h1 class="display-6 fw-bold">Călimara lui @{{ blog_owner.username }}</h1>
             {% if blog_owner.subtitle %}
             <p class="fs-5">{{ blog_owner.subtitle }}</p>
@@ -20,7 +20,7 @@
                 <h5 class="card-title">{{ post.title }}</h5>
                 <h6 class="card-subtitle mb-2 text-muted">Postat pe {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6>
                 {% if post.categories %}
-                <p class="card-text text-muted">Categorii: {{ post.categories }}</p>
+                <p class="card-text">Categorii: {{ post.categories }}</p> {# Removed text-muted #}
                 {% endif %}
                 <p class="card-text">{{ post.content }}</p>
                 <div class="d-flex justify-content-between align-items-center">
