@@ -12,7 +12,7 @@
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand" href="/">Calimara.ro</a>
+            <a class="navbar-brand" href="//{{ current_domain }}">{{ current_domain }}</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -24,8 +24,8 @@
                     <li class="nav-item" id="nav-admin-dashboard" style="display: none;">
                         <a class="nav-link" href="/dashboard">Admin Dashboard</a>
                     </li>
-                    <li class="nav-item" id="nav-main-domain" style="display: none;">
-                        <a class="nav-link" href="/">Main Domain</a>
+                    <li class="nav-item" id="nav-main-domain"> {# Always visible, not just for logged in #}
+                        <a class="nav-link" href="//calimara.ro">Main Domain</a>
                     </li>
                     <li class="nav-item" id="nav-login-register">
                         <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#loginModal">Login</a>

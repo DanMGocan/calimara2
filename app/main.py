@@ -229,7 +229,8 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
                 "posts": posts,
                 "random_posts": random_posts,
                 "random_users": random_users,
-                "current_user": None # Will be set by JS if logged in
+                "current_user": None, # Will be set by JS if logged in
+                "current_domain": request.url.hostname # Pass current domain
             }
         )
     else:
@@ -242,7 +243,8 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
                 "request": request,
                 "random_posts": random_posts,
                 "random_users": random_users,
-                "current_user": None # Will be set by JS if logged in
+                "current_user": None, # Will be set by JS if logged in
+                "current_domain": request.url.hostname # Pass current domain
             }
         )
 
@@ -261,7 +263,8 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
             "request": request,
             "current_user": current_user,
             "user_posts": user_posts,
-            "unapproved_comments": unapproved_comments
+            "unapproved_comments": unapproved_comments,
+            "current_domain": request.url.hostname # Pass current domain
         }
     )
 
@@ -271,7 +274,8 @@ async def create_post_page(request: Request, current_user: models.User = Depends
         "create_post.html",
         {
             "request": request,
-            "current_user": current_user
+            "current_user": current_user,
+            "current_domain": request.url.hostname # Pass current domain
         }
     )
 
@@ -285,13 +289,17 @@ async def edit_post_page(post_id: int, request: Request, db: Session = Depends(g
         {
             "request": request,
             "current_user": current_user,
-            "post": post
+            "post": post,
+            "current_domain": request.url.hostname # Pass current domain
         }
     )
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+    return templates.TemplateResponse("register.html", {
+        "request": request,
+        "current_domain": request.url.hostname # Pass current domain
+    })
 
 # Redirect /login to main page, as login is a modal
 @app.get("/login", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND)
@@ -325,7 +333,8 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db)):
                 "posts": posts,
                 "random_posts": random_posts,
                 "random_users": random_users,
-                "current_user": None # Will be set by JS if logged in
+                "current_user": None, # Will be set by JS if logged in
+                "current_domain": request.url.hostname # Pass current domain
             }
         )
     else:

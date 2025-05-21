@@ -147,11 +147,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Register API response data:', data);
 
                 if (response.ok) {
-                    registerSuccess.textContent = 'Registration successful! You can now log in.';
-                    registerSuccess.style.display = 'block';
-                    registerError.style.display = 'none';
-                    registerForm.reset();
-                    console.log('Registration successful.');
+                    console.log('Registration successful. Attempting to log in automatically...');
+                    // Attempt to auto-login the user
+                    const loginResponse = await fetch('/api/token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ email, password }),
+                    });
+
+                    const loginData = await loginResponse.json();
+
+                    if (loginResponse.ok) {
+                        localStorage.setItem('username', loginData.username); // Store username
+                        registerSuccess.textContent = 'Registration successful! Logging you in...';
+                        registerSuccess.style.display = 'block';
+                        registerError.style.display = 'none';
+                        registerForm.reset();
+                        checkLoginStatus();
+                        console.log('Auto-login successful, redirecting to dashboard.');
+                        window.location.href = `/dashboard`; // Redirect to dashboard, which will then redirect to blog
+                    } else {
+                        registerError.textContent = loginData.detail || 'Auto-login failed. Please try logging in manually.';
+                        registerError.style.display = 'block';
+                        registerSuccess.style.display = 'none';
+                        console.error('Auto-login failed:', loginData.detail);
+                    }
                 } else {
                     registerError.textContent = data.detail || 'Registration failed';
                     registerError.style.display = 'block';
@@ -159,8 +181,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('Registration failed:', data.detail);
                 }
             } catch (error) {
-                console.error('Error during registration fetch:', error);
-                registerError.textContent = 'An unexpected error occurred.';
+                console.error('Error during registration or auto-login fetch:', error);
+                registerError.textContent = 'An unexpected error occurred during registration or auto-login.';
                 registerError.style.display = 'block';
                 registerSuccess.style.display = 'none';
             }
