@@ -18,22 +18,27 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item" id="nav-create-post" style="display: none;">
+                    {% if current_user %}
+                    <li class="nav-item">
                         <a class="nav-link" href="/create-post">Creează Postare</a>
                     </li>
-                    <li class="nav-item" id="nav-admin-dashboard" style="display: none;">
+                    <li class="nav-item">
                         <a class="nav-link" href="/dashboard">Panou Admin</a>
                     </li>
-                    <li class="nav-item" id="nav-main-domain"> {# Always visible, not just for logged in #}
+                    {% endif %}
+                    <li class="nav-item"> {# Always visible #}
                         <a class="nav-link" href="//calimara.ro">Domeniul Principal</a>
                     </li>
-                    <li class="nav-item" id="nav-login-register">
+                    {% if not current_user %}
+                    <li class="nav-item">
                         <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#loginModal">Autentificare</a>
                         <a class="nav-link" href="/register">Înregistrare</a>
                     </li>
-                    <li class="nav-item" id="nav-logout" style="display: none;">
-                        <a class="nav-link" href="#" id="logoutButton">Deconectare (<span id="loggedInUsername"></span>)</a>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/api/logout">Deconectare ({{ current_user.username }})</a>
                     </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>

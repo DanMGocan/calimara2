@@ -10,59 +10,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const editPostForm = document.getElementById('editPostForm');
     const editPostError = document.getElementById('editPostError');
     const editPostSuccess = document.getElementById('editPostSuccess');
-    const logoutButton = document.getElementById('logoutButton');
-    const loggedInUsernameSpan = document.getElementById('loggedInUsername');
+    // Removed logoutButton and loggedInUsernameSpan as their visibility is now server-side controlled
 
-    // No longer need getCookie as login status is session-based (server-side)
-    // Function to get cookie by name
-    // function getCookie(name) {
-    //     const value = `; ${document.cookie}`;
-    //     const parts = value.split(`; ${name}=`);
-    //     if (parts.length === 2) return parts.pop().split(';').shift();
-    //     return null;
-    // }
+    // No longer need getCookie or checkLoginStatus as UI is server-side rendered
+    // function getCookie(name) { ... }
+    // function checkLoginStatus() { ... }
 
-    // Function to check login status and update UI based on server-rendered data
-    // This function will primarily hide/show elements based on initial page load
-    function checkLoginStatus() {
-        // We assume the server has rendered the correct UI state.
-        // For dynamic updates, we'll rely on redirects or re-fetching page content.
-        const navLoginRegister = document.getElementById('nav-login-register');
-        const navLogout = document.getElementById('nav-logout');
-        const navCreatePost = document.getElementById('nav-create-post');
-        const navAdminDashboard = document.getElementById('nav-admin-dashboard');
-        const navMainDomain = document.getElementById('nav-main-domain');
-
-        // Check if current_user is available in the global scope (set by Jinja2 in base.html)
-        // This is a simplified check. A more robust way would be to have a hidden input or data attribute.
-        // For now, we'll rely on the presence of the logout button as an indicator.
-        const isLoggedIn = logoutButton && logoutButton.style.display === 'block'; // If logout button is visible, user is logged in
-
-        if (isLoggedIn) {
-            navLoginRegister.style.display = 'none';
-            navLogout.style.display = 'block';
-            navCreatePost.style.display = 'block';
-            navAdminDashboard.style.display = 'block';
-            navMainDomain.style.display = 'block';
-
-            // Username is now passed via template context or fetched from a /me API
-            // For simplicity, we'll rely on the server to render the username in the logout button text
-            // or fetch it via a new API endpoint if needed for dynamic display.
-            // For now, the username will be set by the server in the logout button text.
-        } else {
-            navLoginRegister.style.display = 'block';
-            navLogout.style.display = 'none';
-            navCreatePost.style.display = 'none';
-            navAdminDashboard.style.display = 'none';
-            navMainDomain.style.display = 'block';
-        }
-    }
-
-    // Initial check on page load (this will be less dynamic now)
-    // The actual state will be determined by the server rendering the page.
-    // This function is mostly for ensuring initial display correctness.
-    // We will call it after login/logout/register to force a UI update.
-    checkLoginStatus();
+    // Initial check on page load is no longer needed here, as server renders initial state.
+    // checkLoginStatus();
 
 
     // Login Form Submission
@@ -91,8 +46,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
                     if (loginModal) loginModal.hide();
                     
-                    // Store username in localStorage for display in navbar (since session is httponly)
-                    localStorage.setItem('username', data.username); 
+                    // No longer storing username in localStorage
+                    // localStorage.setItem('username', data.username); 
                     
                     console.log('Autentificare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     // Reload page to get server-rendered logged-in state
@@ -110,29 +65,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Logout Button
-    if (logoutButton) {
-        logoutButton.addEventListener('click', async (e) => {
-            e.preventDefault();
-            console.log('Se încearcă deconectarea.');
-            try {
-                const response = await fetch('/api/logout', {
-                    method: 'GET',
-                });
-                console.log('Status răspuns API deconectare:', response.status);
-                if (response.ok) {
-                    localStorage.removeItem('username'); // Clear stored username
-                    console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
-                    window.location.reload(); // Reload page to get server-rendered logged-out state
-                } else {
-                    const data = await response.json();
-                    console.error('Deconectare eșuată:', data.detail);
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de deconectare:', error);
-            }
-        });
-    }
+    // Logout Button (now a direct link to /api/logout, handled by server-side redirect)
+    // The logout button is now a simple <a> tag in base.html, so this JS is no longer needed for it.
+    // if (logoutButton) {
+    //     logoutButton.addEventListener('click', async (e) => {
+    //         e.preventDefault();
+    //         console.log('Se încearcă deconectarea.');
+    //         try {
+    //             const response = await fetch('/api/logout', {
+    //                 method: 'GET',
+    //             });
+    //             console.log('Status răspuns API deconectare:', response.status);
+    //             if (response.ok) {
+    //                 localStorage.removeItem('username'); // Clear stored username
+    //                 console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
+    //                 window.location.reload(); // Reload page to get server-rendered logged-out state
+    //             } else {
+    //                 const data = await response.json();
+    //                 console.error('Deconectare eșuată:', data.detail);
+    //             }
+    //         } catch (error) {
+    //             console.error('Eroare la solicitarea de deconectare:', error);
+    //         }
+    //     });
+    // }
 
     // Register Form Submission
     if (registerForm) {
@@ -170,7 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginData = await loginResponse.json();
 
                     if (loginResponse.ok) {
-                        localStorage.setItem('username', loginData.username); // Store username
+                        // No longer storing username in localStorage
+                        // localStorage.setItem('username', loginData.username); 
                         registerSuccess.textContent = 'Înregistrare reușită! Te autentificăm...';
                         registerSuccess.style.display = 'block';
                         registerError.style.display = 'none';
