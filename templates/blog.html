@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="p-4 mb-4 bg-white rounded-3 shadow-sm">
+            <h1 class="display-6 fw-bold">{{ blog_owner.username }}'s Blog</h1>
+            <p class="fs-5 text-muted">Welcome to my microblog!</p>
+            <a class="btn btn-primary" href="/register">Deschide-ți și tu o calimara!</a>
+        </div>
+
+        <h2 class="mb-3">Latest Posts</h2>
+        {% for post in posts %}
+        <div class="card mb-4 shadow-sm" id="post-{{ post.id }}">
+            <div class="card-body">
+                <h5 class="card-title">{{ post.title }}</h5>
+                <h6 class="card-subtitle mb-2 text-muted">Posted on {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6>
+                <p class="card-text">{{ post.content }}</p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary like-button" data-post-id="{{ post.id }}">
+                            Like (<span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>)
+                        </button>
+                        <!-- Social Media Share Buttons (placeholders) -->
+                        <a href="#" class="btn btn-sm btn-outline-secondary ms-2">Share on X</a>
+                        <a href="#" class="btn btn-sm btn-outline-secondary">Share on Facebook</a>
+                    </div>
+                </div>
+
+                <hr>
+                <h6>Comments ({{ post.comments|length }})</h6>
+                <div class="comments-section">
+                    {% for comment in post.comments %}
+                    <div class="card card-body bg-light mb-2">
+                        <p class="mb-1"><strong>{{ comment.author_name if comment.author_name else comment.commenter.username }}</strong> on {{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                        <p class="mb-0">{{ comment.content }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <form class="comment-form mt-3" data-post-id="{{ post.id }}">
+                    <h6 class="mb-2">Add a Comment</h6>
+                    <div class="mb-2">
+                        <textarea class="form-control" rows="3" placeholder="Your comment..." name="content" required></textarea>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-md-6">
+                            <input type="text" class="form-control" placeholder="Your Name (optional)" name="author_name">
+                        </div>
+                        <div class="col-md-6">
+                            <input type="email" class="form-control" placeholder="Your Email (optional)" name="author_email">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Submit Comment</button>
+                    <div class="comment-error alert alert-danger mt-2" style="display: none;"></div>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                Random Posts
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for post in random_posts %}
+                <li class="list-group-item">
+                    <a href="http://{{ post.owner.username }}.calimara.ro#post-{{ post.id }}">{{ post.title }} by {{ post.owner.username }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                Random Blogs
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for user in random_users %}
+                <li class="list-group-item">
+                    <a href="http://{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

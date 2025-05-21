@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1 class="mb-4">Admin Dashboard for {{ current_user.username }}</h1>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Your Posts</h5>
+                <a href="/create-post" class="btn btn-primary btn-sm">Create New Post</a>
+            </div>
+            <div class="card-body">
+                {% if user_posts %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Created At</th>
+                                <th>Likes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for post in user_posts %}
+                            <tr>
+                                <td>{{ post.title }}</td>
+                                <td>{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ post.likes_count }}</td>
+                                <td>
+                                    <a href="/edit-post/{{ post.id }}" class="btn btn-sm btn-warning me-2">Edit</a>
+                                    <button class="btn btn-sm btn-danger delete-post-button" data-post-id="{{ post.id }}">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>You haven't created any posts yet. <a href="/create-post">Create your first post!</a></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Unapproved Comments</h5>
+            </div>
+            <div class="card-body">
+                {% if unapproved_comments %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Post</th>
+                                <th>Author</th>
+                                <th>Comment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for comment in unapproved_comments %}
+                            <tr>
+                                <td><a href="http://{{ current_user.username }}.calimara.ro#post-{{ comment.post_id }}">{{ comment.post.title }}</a></td>
+                                <td>{{ comment.author_name if comment.author_name else comment.commenter.username }}</td>
+                                <td>{{ comment.content }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-success approve-comment-button me-2" data-comment-id="{{ comment.id }}">Approve</button>
+                                    <button class="btn btn-sm btn-danger delete-comment-button" data-comment-id="{{ comment.id }}">Delete</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p>No unapproved comments.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

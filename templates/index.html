@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="p-5 mb-4 bg-white rounded-3 shadow-sm">
+            <div class="container-fluid py-5">
+                <h1 class="display-5 fw-bold">Welcome to Calimara.ro</h1>
+                <p class="col-md-8 fs-4">Your personal microblogging platform for Romanian writers and poets. Express yourself, share your thoughts, and connect with readers.</p>
+                <a class="btn btn-primary btn-lg" href="/register" role="button">Deschide-ți și tu o calimara!</a>
+            </div>
+        </div>
+
+        <h2 class="mb-3">Random Posts</h2>
+        <div class="row row-cols-1 g-4">
+            {% for post in random_posts %}
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ post.title }}</h5>
+                        <h6 class="card-subtitle mb-2 text-muted">By <a href="http://{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6>
+                        <p class="card-text">{{ post.content[:200] }}...</p>
+                        <a href="http://{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="btn btn-sm btn-outline-primary">Read More</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header">
+                Random Blogs
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for user in random_users %}
+                <li class="list-group-item">
+                    <a href="http://{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
