@@ -13,49 +13,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const logoutButton = document.getElementById('logoutButton');
     const loggedInUsernameSpan = document.getElementById('loggedInUsername');
 
+    // No longer need getCookie as login status is session-based (server-side)
     // Function to get cookie by name
-    function getCookie(name) {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-        return null;
-    }
+    // function getCookie(name) {
+    //     const value = `; ${document.cookie}`;
+    //     const parts = value.split(`; ${name}=`);
+    //     if (parts.length === 2) return parts.pop().split(';').shift();
+    //     return null;
+    // }
 
-    // Function to check login status and update UI
+    // Function to check login status and update UI based on server-rendered data
+    // This function will primarily hide/show elements based on initial page load
     function checkLoginStatus() {
-        const accessToken = getCookie('access_token');
+        // We assume the server has rendered the correct UI state.
+        // For dynamic updates, we'll rely on redirects or re-fetching page content.
         const navLoginRegister = document.getElementById('nav-login-register');
         const navLogout = document.getElementById('nav-logout');
         const navCreatePost = document.getElementById('nav-create-post');
         const navAdminDashboard = document.getElementById('nav-admin-dashboard');
         const navMainDomain = document.getElementById('nav-main-domain');
 
-        if (accessToken) {
-            // User is logged in
+        // Check if current_user is available in the global scope (set by Jinja2 in base.html)
+        // This is a simplified check. A more robust way would be to have a hidden input or data attribute.
+        // For now, we'll rely on the presence of the logout button as an indicator.
+        const isLoggedIn = logoutButton && logoutButton.style.display === 'block'; // If logout button is visible, user is logged in
+
+        if (isLoggedIn) {
             navLoginRegister.style.display = 'none';
             navLogout.style.display = 'block';
             navCreatePost.style.display = 'block';
             navAdminDashboard.style.display = 'block';
-            navMainDomain.style.display = 'block'; // Always show main domain link
+            navMainDomain.style.display = 'block';
 
-            // Decode JWT to get username (or store username in another cookie)
-            // For simplicity, let's assume username is also stored in a cookie or returned by login API
-            const username = localStorage.getItem('username'); // Assuming username is stored in localStorage on login
-            if (loggedInUsernameSpan && username) {
-                loggedInUsernameSpan.textContent = username;
-            }
+            // Username is now passed via template context or fetched from a /me API
+            // For simplicity, we'll rely on the server to render the username in the logout button text
+            // or fetch it via a new API endpoint if needed for dynamic display.
+            // For now, the username will be set by the server in the logout button text.
         } else {
-            // User is not logged in
             navLoginRegister.style.display = 'block';
             navLogout.style.display = 'none';
             navCreatePost.style.display = 'none';
             navAdminDashboard.style.display = 'none';
-            navMainDomain.style.display = 'block'; // Always show main domain link
+            navMainDomain.style.display = 'block';
         }
     }
 
-    // Initial check on page load
+    // Initial check on page load (this will be less dynamic now)
+    // The actual state will be determined by the server rendering the page.
+    // This function is mostly for ensuring initial display correctness.
+    // We will call it after login/logout/register to force a UI update.
     checkLoginStatus();
+
 
     // Login Form Submission
     if (loginForm) {
@@ -75,17 +83,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 console.log('Login API response status:', response.status);
-                const data = await response.json();
+                const data = await response.json(); // Expecting {"message": "Logged in successfully", "username": "..."}
                 console.log('Login API response data:', data);
 
                 if (response.ok) {
-                    localStorage.setItem('username', data.username); // Store username
                     loginError.style.display = 'none';
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
                     if (loginModal) loginModal.hide();
-                    checkLoginStatus();
-                    console.log('Login successful, redirecting to dashboard.');
-                    window.location.href = `/dashboard`; // Or `http://${data.username}.calimara.ro`
+                    
+                    // Store username in localStorage for display in navbar (since session is httponly)
+                    localStorage.setItem('username', data.username); 
+                    
+                    console.log('Login successful, reloading page to update UI.');
+                    // Reload page to get server-rendered logged-in state
+                    window.location.reload(); 
                 } else {
                     loginError.textContent = data.detail || 'Login failed';
                     loginError.style.display = 'block';
@@ -111,9 +122,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Logout API response status:', response.status);
                 if (response.ok) {
                     localStorage.removeItem('username'); // Clear stored username
-                    checkLoginStatus();
-                    console.log('Logout successful, redirecting to main page.');
-                    window.location.href = '/'; // Redirect to main page
+                    console.log('Logout successful, reloading page to update UI.');
+                    window.location.reload(); // Reload page to get server-rendered logged-out state
                 } else {
                     const data = await response.json();
                     console.error('Logout failed:', data.detail);
@@ -165,9 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         registerSuccess.style.display = 'block';
                         registerError.style.display = 'none';
                         registerForm.reset();
-                        checkLoginStatus();
-                        console.log('Auto-login successful, redirecting to user\'s blog.');
-                        window.location.href = `//${loginData.username}.calimara.ro`; // Redirect to user's subdomain
+                        console.log('Auto-login successful, reloading page to update UI and redirect.');
+                        // Redirect to user's subdomain after successful auto-login
+                        window.location.href = `//${loginData.username}.calimara.ro`; 
                     } else {
                         registerError.textContent = loginData.detail || 'Auto-login failed. Please try logging in manually.';
                         registerError.style.display = 'block';
@@ -195,7 +205,8 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
-            const accessToken = getCookie('access_token');
+            // No longer getting token from cookie, rely on browser sending session cookie
+            // const accessToken = getCookie('access_token'); 
             console.log('Attempting to create post with title:', title);
 
             try {
@@ -203,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': accessToken,
+                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({ title, content }),
                 });
@@ -241,14 +252,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const postId = editPostForm.dataset.postId;
             const title = document.getElementById('postTitle').value;
             const content = document.getElementById('postContent').value;
-            const accessToken = getCookie('access_token');
+            // No longer getting token from cookie, rely on browser sending session cookie
+            // const accessToken = getCookie('access_token'); 
 
             try {
                 const response = await fetch(`/api/posts/${postId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': accessToken,
+                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({ title, content }),
                 });
@@ -279,12 +291,13 @@ document.addEventListener('DOMContentLoaded', () => {
         button.addEventListener('click', async (e) => {
             const postId = e.target.dataset.postId;
             if (confirm('Are you sure you want to delete this post?')) {
-                const accessToken = getCookie('access_token');
+                // No longer getting token from cookie, rely on browser sending session cookie
+                // const accessToken = getCookie('access_token'); 
                 try {
                     const response = await fetch(`/api/posts/${postId}`, {
                         method: 'DELETE',
                         headers: {
-                            'Authorization': accessToken,
+                            // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                         },
                     });
                     if (response.status === 204) {
@@ -306,14 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.like-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const postId = e.target.dataset.postId;
-            const accessToken = getCookie('access_token'); // May be null if unlogged
+            // No longer getting token from cookie, rely on browser sending session cookie
+            // const accessToken = getCookie('access_token'); // May be null if unlogged
 
             try {
                 const response = await fetch(`/api/posts/${postId}/likes`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': accessToken || '', // Send empty if not logged in
+                        // 'Authorization': accessToken || '', // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify({}),
                 });
@@ -347,11 +361,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = form.querySelector('textarea[name="content"]').value;
             const author_name = form.querySelector('input[name="author_name"]').value;
             const author_email = form.querySelector('input[name="author_email"]').value;
-            const accessToken = getCookie('access_token'); // May be null if unlogged
+            // No longer getting token from cookie, rely on browser sending session cookie
+            // const accessToken = getCookie('access_token'); // May be null if unlogged
             const commentErrorDiv = form.querySelector('.comment-error');
 
             const commentData = { content };
-            if (!accessToken) { // Only include if unlogged
+            // If not logged in, include author details
+            // We can't check accessToken directly anymore, so we'll assume if username is not in localStorage, they are unlogged
+            if (!localStorage.getItem('username')) { 
                 commentData.author_name = author_name;
                 commentData.author_email = author_email;
             }
@@ -361,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': accessToken || '',
+                        // 'Authorization': accessToken || '', // No longer sending Authorization header for session auth
                     },
                     body: JSON.stringify(commentData),
                 });
@@ -388,12 +405,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.approve-comment-button').forEach(button => {
         button.addEventListener('click', async (e) => {
             const commentId = e.target.dataset.commentId;
-            const accessToken = getCookie('access_token');
+            // No longer getting token from cookie, rely on browser sending session cookie
+            // const accessToken = getCookie('access_token'); 
             try {
                 const response = await fetch(`/api/comments/${commentId}/approve`, {
                     method: 'PUT',
                     headers: {
-                        'Authorization': accessToken,
+                        // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                     },
                 });
                 if (response.ok) {
@@ -415,12 +433,13 @@ document.addEventListener('DOMContentLoaded', () => {
         button.addEventListener('click', async (e) => {
             const commentId = e.target.dataset.commentId;
             if (confirm('Are you sure you want to delete this comment?')) {
-                const accessToken = getCookie('access_token');
+                // No longer getting token from cookie, rely on browser sending session cookie
+                // const accessToken = getCookie('access_token'); 
                 try {
                     const response = await fetch(`/api/comments/${commentId}`, {
                         method: 'DELETE',
                         headers: {
-                            'Authorization': accessToken,
+                            // 'Authorization': accessToken, // No longer sending Authorization header for session auth
                         },
                     });
                     if (response.status === 204) {

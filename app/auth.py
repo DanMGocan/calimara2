@@ -2,82 +2,39 @@ import os
 from dotenv import load_dotenv
 load_dotenv() # Load environment variables from .env
 
-from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status, Request # Import Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from . import crud, models, schemas
 from .database import get_db
 
-# Configuration for JWT
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-fallback") # Use environment variable
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token") # Updated tokenUrl
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES) # Use ACCESS_TOKEN_EXPIRE_MINUTES
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def verify_token(token: str, credentials_exception):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-        # No need for username="temp" if not used, just email
-        token_data = {"email": email}
-    except JWTError:
-        raise credentials_exception
-    return token_data
+# No JWT configuration needed for session-based auth
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
-    print("get_current_user called.")
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    print("get_current_user called (session-based).")
+    user_id = request.session.get("user_id")
     
-    token = request.cookies.get("access_token") # Try to get token from cookie
-    if token and token.startswith("Bearer "):
-        token = token.split(" ")[1] # Strip "Bearer " prefix
-        print(f"Token found in cookie (stripped Bearer): {token[:10]}...") # Log first 10 chars of token
-    elif token:
-        print(f"Token found in cookie (no Bearer): {token[:10]}...")
-    else:
-        # Fallback to Authorization header if not in cookie (e.g., for API calls from other clients)
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-            print(f"Token found in Authorization header: {token[:10]}...")
-    
-    if not token:
-        print("No token found in cookie or Authorization header.")
-        raise credentials_exception
+    if user_id is None:
+        print("No user_id found in session.")
+        # For HTML routes, we don't raise HTTPException 401, just return None
+        # For API routes that require auth, they will handle None or raise their own 401
+        return None 
 
-    try:
-        token_data = verify_token(token, credentials_exception)
-        print(f"Token verified for email: {token_data['email']}")
-    except HTTPException as e:
-        print(f"Token verification failed: {e.detail}")
-        raise e
-    except Exception as e:
-        print(f"Unexpected error during token verification: {e}")
-        raise credentials_exception
-
-    user = crud.get_user_by_email(db, email=token_data["email"])
+    user = crud.get_user_by_id(db, user_id=user_id)
     if user is None:
-        print(f"User not found for email: {token_data['email']}")
-        raise credentials_exception
-    print(f"Current user retrieved: {user.username}")
+        print(f"User not found in DB for session user_id: {user_id}. Clearing session.")
+        request.session.clear() # Clear invalid session
+        return None
+    
+    print(f"Current user retrieved from session: {user.username}")
     return user
+
+# This dependency is for API routes that *require* a logged-in user
+async def get_required_user(current_user: models.User = Depends(get_current_user)):
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"}, # Still use Bearer for consistency, though not strictly JWT
+        )
+    return current_user
