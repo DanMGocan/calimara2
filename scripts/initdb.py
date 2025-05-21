@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 
 # Database connection details from environment variables or default
-DB_USER = os.getenv("MYSQL_USER", "root")
+DB_USER = os.getenv("MYSQL_USER", "admin")
 DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "QuietUptown1801__")
 DB_HOST = os.getenv("MYSQL_HOST", "localhost")
 DB_PORT = os.getenv("MYSQL_PORT", "3306")
