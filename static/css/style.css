@@ -1,32 +1,181 @@
+/* Custom CSS for Calimara */
+
+/* Color Palette */
+:root {
+    --color-dark-gray: #222831;
+    --color-medium-dark-gray: #393E46;
+    --color-taupe: #948979;
+    --color-light-beige: #DFD0B8;
+    --color-white: #ffffff;
+}
+
+/* General Body and Background */
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f8f9fa; /* Light grey background */
+    background-color: var(--color-light-beige); /* Light background */
+    color: var(--color-dark-gray); /* Default text color */
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
+/* Navbar */
 .navbar {
-    border-bottom: 1px solid #e0e0e0;
+    background-color: var(--color-dark-gray) !important; /* Dark navbar background */
+    border-bottom: 1px solid var(--color-medium-dark-gray);
 }
 
+.navbar-brand,
+.navbar-nav .nav-link {
+    color: var(--color-light-beige) !important; /* Light text for navbar */
+}
+
+.navbar-nav .nav-link:hover {
+    color: var(--color-taupe) !important; /* Accent color on hover */
+}
+
+/* Cards */
 .card {
-    border: none;
-    border-radius: 0.5rem;
+    background-color: var(--color-white); /* White card background */
+    border: 1px solid var(--color-taupe); /* Subtle border */
+    border-radius: 0.5rem; /* Slightly rounded corners */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Soft shadow */
 }
 
+.card-header {
+    background-color: var(--color-medium-dark-gray); /* Darker header for cards */
+    color: var(--color-light-beige); /* Light text for card headers */
+    font-weight: bold;
+    border-bottom: 1px solid var(--color-taupe);
+}
+
+/* Buttons */
 .btn-primary {
-    background-color: #007bff;
-    border-color: #007bff;
+    background-color: var(--color-taupe); /* Accent color for primary buttons */
+    border-color: var(--color-taupe);
+    color: var(--color-white); /* White text on primary buttons */
 }
 
 .btn-primary:hover {
-    background-color: #0056b3;
-    border-color: #0056b3;
+    background-color: #7a7064; /* Slightly darker taupe on hover */
+    border-color: #7a7064;
 }
 
-.alert {
-    margin-top: 1rem;
+.btn-outline-primary {
+    color: var(--color-taupe);
+    border-color: var(--color-taupe);
 }
 
-/* Specific styles for layout or components if needed */
-.sidebar {
-    padding-left: 15px;
+.btn-outline-primary:hover {
+    background-color: var(--color-taupe);
+    color: var(--color-white);
+}
+
+.btn-secondary {
+    background-color: var(--color-medium-dark-gray);
+    border-color: var(--color-medium-dark-gray);
+    color: var(--color-white);
+}
+
+.btn-secondary:hover {
+    background-color: #2a2e34;
+    border-color: #2a2e34;
+}
+
+.btn-info { /* Edit button */
+    background-color: var(--color-taupe); /* Using taupe for info/edit */
+    border-color: var(--color-taupe);
+    color: var(--color-white);
+}
+
+.btn-info:hover {
+    background-color: #7a7064;
+    border-color: #7a7064;
+}
+
+.btn-danger {
+    background-color: #dc3545; /* Keep standard red for danger */
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    border-color: #bd2130;
+}
+
+.btn-success {
+    background-color: #28a745; /* Keep standard green for success */
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+/* Forms */
+.form-control {
+    border-color: var(--color-taupe);
+}
+
+.form-control:focus {
+    border-color: var(--color-taupe);
+    box-shadow: 0 0 0 0.25rem rgba(148, 137, 121, 0.25); /* Light shadow with accent color */
+}
+
+/* Alerts */
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+/* Specific elements */
+.jumbotron { /* For index.html welcome section */
+    background-color: var(--color-white);
+    border: 1px solid var(--color-taupe);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.text-muted {
+    color: var(--color-taupe) !important; /* Use taupe for muted text */
+}
+
+/* Links */
+a {
+    color: var(--color-taupe);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--color-dark-gray);
+    text-decoration: underline;
+}
+
+/* Specific adjustments for blog page */
+.comments-section .card {
+    background-color: var(--color-light-beige); /* Lighter background for comments */
+    border-color: var(--color-taupe);
+}
+
+/* Ensure consistent spacing */
+.mb-4 {
+    margin-bottom: 1.5rem !important;
+}
+.mt-4 {
+    margin-top: 1.5rem !important;
+}
+.py-5 {
+    padding-top: 3rem !important;
+    padding-bottom: 3rem !important;
+}
+.p-5 {
+    padding: 3rem !important;
+}
+.p-4 {
+    padding: 1.5rem !important;
 }

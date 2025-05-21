@@ -11,12 +11,14 @@
                 Motto Blog
             </div>
             <div class="card-body">
-                <form action="/api/users/me" method="post">
+                <form id="subtitleForm"> {# Changed back to JS-driven form #}
                     <div class="mb-3">
                         <label for="subtitle" class="form-label">Motto:</label>
                         <input type="text" class="form-control" id="subtitle" name="subtitle" value="{{ current_user.subtitle if current_user.subtitle else '' }}">
                         <small class="form-text text-muted">Subtitlu, motto, strigăt de luptă, frază de înțelepciune, aceasta este subtitlul micii tale călimare. Poate fi modificat oricând.</small>
                     </div>
+                    <div id="subtitleError" class="alert alert-danger" style="display: none;"></div> {# Re-added JS error div #}
+                    <div id="subtitleSuccess" class="alert alert-success" style="display: none;"></div> {# Re-added JS success div #}
                     <button type="submit" class="btn btn-primary">Salvează Motto</button>
                 </form>
             </div>
@@ -35,6 +37,7 @@
                             <tr>
                                 <th>Titlu</th>
                                 <th>Creat la</th>
+                                <th>Aprecieri</th> {# Re-added likes count #}
                                 <th>Acțiuni</th>
                             </tr>
                         </thead>
@@ -43,11 +46,10 @@
                             <tr>
                                 <td>{{ post.title }}</td>
                                 <td>{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ post.likes_count }}</td> {# Re-added likes count #}
                                 <td>
                                     <a href="/edit-post/{{ post.id }}" class="btn btn-sm btn-warning me-2">Editează</a>
-                                    <form action="/api/posts/{{ post.id }}/delete" method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Ești sigur că vrei să ștergi această postare?');">Șterge</button>
-                                    </form>
+                                    <button class="btn btn-sm btn-danger delete-post-button" data-post-id="{{ post.id }}">Șterge</button> {# Reverted to JS-driven button #}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -83,12 +85,8 @@
                                 <td>{{ comment.author_name if comment.author_name else comment.commenter.username }}</td>
                                 <td>{{ comment.content }}</td>
                                 <td>
-                                    <form action="/api/comments/{{ comment.id }}/approve" method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-sm btn-success me-2">Aprobă</button>
-                                    </form>
-                                    <form action="/api/comments/{{ comment.id }}/delete" method="post" class="d-inline">
-                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Ești sigur că vrei să ștergi acest comentariu?');">Șterge</button>
-                                    </form>
+                                    <button class="btn btn-sm btn-success approve-comment-button me-2" data-comment-id="{{ comment.id }}">Aprobă</button> {# Reverted to JS-driven button #}
+                                    <button class="btn btn-sm btn-danger delete-comment-button" data-comment-id="{{ comment.id }}">Șterge</button> {# Reverted to JS-driven button #}
                                 </td>
                             </tr>
                             {% endfor %}

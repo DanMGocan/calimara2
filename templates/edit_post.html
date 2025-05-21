@@ -8,7 +8,7 @@
                 <h2 class="mb-0">Editează Postare</h2>
             </div>
             <div class="card-body">
-                <form action="/api/posts/{{ post.id }}/update" method="post"> {# Form submits directly to API endpoint #}
+                <form id="editPostForm" data-post-id="{{ post.id }}"> {# Changed back to JS-driven form #}
                     <div class="mb-3">
                         <label for="postTitle" class="form-label">Titlu</label>
                         <input type="text" class="form-control" id="postTitle" name="title" value="{{ post.title }}" required>
@@ -21,9 +21,8 @@
                         <label for="postCategories" class="form-label">Categorii (separate prin virgulă, ex: poezii, proză)</label>
                         <input type="text" class="form-control" id="postCategories" name="categories" value="{{ post.categories if post.categories else '' }}">
                     </div>
-                    {% if error_message %}
-                    <div class="alert alert-danger">{{ error_message }}</div>
-                    {% endif %}
+                    <div id="editPostError" class="alert alert-danger" style="display: none;"></div> {# Re-added JS error div #}
+                    <div id="editPostSuccess" class="alert alert-success" style="display: none;"></div> {# Re-added JS success div #}
                     <button type="submit" class="btn btn-primary">Actualizează Postare</button>
                     <a href="/dashboard" class="btn btn-secondary ms-2">Anulează</a>
                 </form>

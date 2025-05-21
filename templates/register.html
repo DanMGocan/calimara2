@@ -8,7 +8,7 @@
                 <h2 class="mb-0">Înregistrează-ți Blogul Calimara</h2>
             </div>
             <div class="card-body">
-                <form action="/api/register" method="post"> {# Form submits directly to API endpoint #}
+                <form id="registerForm"> {# Changed back to JS-driven form #}
                     <div class="mb-3">
                         <label for="username" class="form-label">Nume de utilizator:</label>
                         <input type="text" class="form-control" id="username" name="username" required>
@@ -29,9 +29,8 @@
                         <input type="password" class="form-control" id="password" name="password" required>
                     </div>
                     <hr>
-                    {% if error_message %}
-                    <div class="alert alert-danger">{{ error_message }}</div>
-                    {% endif %}
+                    <div id="registerError" class="alert alert-danger" style="display: none;"></div> {# Re-added JS error div #}
+                    <div id="registerSuccess" class="alert alert-success" style="display: none;"></div> {# Re-added JS success div #}
                     <button type="submit" class="btn btn-primary">Înregistrează-te</button>
                 </form>
             </div>
