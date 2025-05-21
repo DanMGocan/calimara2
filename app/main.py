@@ -48,8 +48,6 @@ app.add_middleware(
     secret_key=SESSION_SECRET_KEY,
     session_cookie="session", # Default name, but explicit
     max_age=14 * 24 * 60 * 60, # 14 days, default is 2 weeks
-    httponly=True, # Default
-    samesite="lax", # Default
     domain=".calimara.ro" # Crucial for subdomains
 )
 
