@@ -37,6 +37,11 @@ class Post(Base):
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
 
+    @property
+    def likes_count(self) -> int:
+        """Return the number of likes for this post"""
+        return len(self.likes)
+
 class Comment(Base):
     __tablename__ = "comments"
 
