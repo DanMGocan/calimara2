@@ -7,7 +7,7 @@
             <div class="py-8"> {# Padding #}
                 <h1 class="text-5xl font-bold text-[#222831] mb-4">Bun venit pe Calimara.ro</h1> {# Title styling #}
                 <p class="text-lg text-[#393E46] mb-6">Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</p> {# Paragraph styling #}
-                <a class="inline-block px-8 py-3 text-lg font-semibold text-white bg-[#948979] rounded-md hover:bg-[#7a7064] transition duration-300" href="//calimara.ro/register" role="button">Deschide-ți și tu o calimara!</a> {# Button styling #}
+                <a class="inline-block px-8 py-3 text-lg font-semibold text-white bg-[#948979] rounded-md hover:bg-[#7a7064] transition duration-300" href="//calimara.ro/register" role="button"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
             </div>
         </div>
     </div>
@@ -20,7 +20,7 @@
                 <h5 class="text-xl font-semibold text-[#222831] mb-2">{{ post.title }}</h5> {# Card title #}
                 <h6 class="text-sm text-[#948979] mb-2">De <a class="hover:underline" href="//{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6> {# Subtitle #}
                 <p class="text-[#393E46] mb-4">{{ post.content[:200] }}...</p> {# Card text #}
-                <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="inline-block px-4 py-2 text-sm font-medium text-[#948979] border border-[#948979] rounded-md hover:bg-[#948979] hover:text-white transition duration-300">Citește mai mult</a> {# Button #}
+                <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="inline-block px-4 py-2 text-sm font-medium text-[#948979] border border-[#948979] rounded-md hover:bg-[#948979] hover:text-white transition duration-300"><i class="bi bi-book mr-1"></i>Citește mai mult</a> {# Button #}
             </div>
             {% endfor %}
         </div>
