@@ -102,7 +102,7 @@
                     <p class="mb-0">Platforma ta personală de microblogging pentru scriitori și poeți români.</p>
                 </div>
                 <div class="col-md-6 text-md-end">
-                    <p class="mb-0">&copy; 2024 Calimara.ro. Toate drepturile rezervate.</p>
+                    <p class="mb-0">&copy; <span id="currentYear"></span> Calimara.ro. Toate drepturile rezervate.</p>
                     <small class="text-muted">Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</small>
                 </div>
             </div>
@@ -166,5 +166,10 @@
     
     <!-- Custom JS -->
     <script src="/static/js/script.js"></script>
+    
+    <!-- Set current year -->
+    <script>
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+    </script>
 </body>
 </html>
