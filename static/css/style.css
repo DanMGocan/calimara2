@@ -2,34 +2,133 @@
 
 /* Color Palette */
 :root {
-    --color-dark-gray: #222831;
-    --color-medium-dark-gray: #393E46;
-    --color-taupe: #948979;
-    --color-light-beige: #DFD0B8;
+    --color-primary-text: #2C2C2C;
+    --color-accent: #A11D33;
+    --color-secondary-text: #5C5C5C;
+    --color-background-overlay: #FFFFFFE6; /* white with 90% opacity */
+    --color-primary-button: #3C4F76;
+    --color-primary-button-hover: #2B3A57;
+    --color-highlight: #F2C84B;
     --color-white: #ffffff;
 }
 
 /* General Body and Background */
 body {
-    /* Tailwind will handle background-color and default text color */
-    /* background-color: var(--color-light-beige); */
-    /* color: var(--color-dark-gray); */
+    background-image: url('/static/img/Background.svg');
+    background-size: cover;
+    background-attachment: fixed; /* Keeps background fixed when scrolling */
+    background-position: center;
     font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    color: var(--color-primary-text); /* Default text color */
 }
 
-/* Custom styles that Tailwind might not easily cover with utilities alone */
-/* For example, if you need specific custom animations or complex gradients */
+/* Custom styles for elements that need specific colors not easily done with Tailwind arbitrary values or for consistency */
 
-/* You can define custom classes here if needed, and then use them in HTML alongside Tailwind classes */
-/* Example:
-.custom-shadow {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+/* Navbar */
+.navbar {
+    background-color: var(--color-primary-text); /* Dark background for navbar */
 }
-*/
 
-/* Ensure consistent spacing (Tailwind handles this with utility classes like m-4, p-5) */
-/* .mb-4 { margin-bottom: 1.5rem !important; } */
-/* .mt-4 { margin-top: 1.5rem !important; } */
-/* .py-5 { padding-top: 3rem !important; padding-bottom: 3rem !important; } */
-/* .p-5 { padding: 3rem !important; } */
-/* .p-4 { padding: 1.5rem !important; } */
+.navbar-brand,
+.navbar-nav .nav-link {
+    color: var(--color-background-overlay) !important; /* Light text for navbar */
+}
+
+.navbar-nav .nav-link:hover {
+    color: var(--color-accent) !important; /* Accent color on hover */
+}
+
+/* Cards and Overlays */
+.bg-white-overlay { /* Custom class for cards/modals with opacity */
+    background-color: var(--color-background-overlay);
+}
+
+/* Buttons */
+.btn-primary-custom {
+    background-color: var(--color-primary-button);
+    border-color: var(--color-primary-button);
+    color: var(--color-white);
+}
+
+.btn-primary-custom:hover {
+    background-color: var(--color-primary-button-hover);
+    border-color: var(--color-primary-button-hover);
+}
+
+.btn-accent-custom {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-white);
+}
+
+.btn-accent-custom:hover {
+    background-color: #8a1a2e; /* Slightly darker accent */
+    border-color: #8a1a2e;
+}
+
+.btn-outline-accent-custom {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.btn-outline-accent-custom:hover {
+    background-color: var(--color-accent);
+    color: var(--color-white);
+}
+
+/* Text Colors */
+.text-primary-custom {
+    color: var(--color-primary-text);
+}
+
+.text-secondary-custom {
+    color: var(--color-secondary-text);
+}
+
+.text-accent-custom {
+    color: var(--color-accent);
+}
+
+.text-highlight-custom {
+    color: var(--color-highlight);
+}
+
+/* Links */
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--color-primary-text);
+    text-decoration: underline;
+}
+
+/* Form Controls */
+.form-input-custom {
+    border-color: var(--color-secondary-text);
+}
+
+.form-input-custom:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 0.25rem rgba(161, 29, 51, 0.25); /* Accent color shadow */
+}
+
+/* Alerts */
+.alert-danger {
+    background-color: #f8d7da;
+    color: #721c24;
+    border-color: #f5c6cb;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    color: #155724;
+    border-color: #c3e6cb;
+}
+
+/* Specific adjustments for blog page comments */
+.comments-section .comment-card { /* Custom class for comment cards */
+    background-color: #F5F5DC; /* A light, slightly off-white for comments */
+    border-color: var(--color-secondary-text);
+}

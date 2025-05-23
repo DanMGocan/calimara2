@@ -3,100 +3,100 @@
 {% block content %}
 <div class="flex flex-col lg:flex-row gap-4"> {# Flex container for columns #}
     <div class="w-full lg:w-2/3"> {# Main content column #}
-        <div class="bg-white p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
-            <h1 class="text-3xl font-bold text-[#222831] mb-2">Călimara lui @{{ blog_owner.username }}</h1> {# Title styling #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
+            <h1 class="text-3xl font-bold text-primary-custom mb-2">Călimara lui @{{ blog_owner.username }}</h1> {# Title styling #}
             {% if blog_owner.subtitle %}
-            <p class="text-lg text-[#393E46]">{{ blog_owner.subtitle }}</p> {# Subtitle styling #}
+            <p class="text-lg text-secondary-custom">{{ blog_owner.subtitle }}</p> {# Subtitle styling #}
             {% else %}
-            <p class="text-lg text-[#948979]">Bun venit pe microblogul meu!</p> {# Muted text for default #}
+            <p class="text-lg text-secondary-custom">Bun venit pe microblogul meu!</p> {# Muted text for default #}
             {% endif %}
         </div>
 
-        <h2 class="text-2xl font-semibold text-[#222831] mb-3">Ultima postare</h2> {# Section title #}
+        <h2 class="text-2xl font-semibold text-primary-custom mb-3">Ultima postare</h2> {# Section title #}
         {% if posts %}
         {% set post = posts[0] %} {# Only show the first (latest) post #}
-        <div class="bg-white p-6 rounded-lg shadow-md mb-4" id="post-{{ post.id }}"> {# Card styling #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md mb-4" id="post-{{ post.id }}"> {# Card styling #}
             <div class="card-body"> {# No direct card-body in Tailwind, use padding #}
-                <h5 class="text-xl font-semibold text-[#222831] mb-2">{{ post.title }}</h5> {# Post title #}
-                <h6 class="text-sm text-[#948979] mb-2">Postat pe {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6> {# Muted text #}
+                <h5 class="text-xl font-semibold text-primary-custom mb-2">{{ post.title }}</h5> {# Post title #}
+                <h6 class="text-sm text-secondary-custom mb-2">Postat pe {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6> {# Muted text #}
                 {% if post.categories %}
-                <p class="text-sm text-[#393E46] mb-2">Categorii: {{ post.categories }}</p> {# Categories styling #}
+                <p class="text-sm text-secondary-custom mb-2">Categorii: {{ post.categories }}</p> {# Categories styling #}
                 {% endif %}
-                <p class="text-[#393E46] mb-4">{{ post.content }}</p> {# Post content #}
+                <p class="text-primary-custom mb-4">{{ post.content }}</p> {# Post content #}
                 <div class="flex justify-between items-center mb-4"> {# Flex for buttons #}
                     <div>
-                        <button class="px-4 py-2 text-sm font-medium text-[#948979] border border-[#948979] rounded-md hover:bg-[#948979] hover:text-white transition duration-300 like-button" data-post-id="{{ post.id }}"> {# Button styling #}
+                        <button class="px-4 py-2 text-sm font-medium text-white btn-accent-custom rounded-md hover:bg-accent-custom transition duration-300 like-button" data-post-id="{{ post.id }}"> {# Button styling #}
                             <i class="bi bi-heart mr-1"></i>Apreciază (<span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>)
                         </button>
                         <!-- Social Media Share Buttons (placeholders) -->
-                        <a href="#" class="ml-2 px-4 py-2 text-sm font-medium text-[#393E46] border border-[#393E46] rounded-md hover:bg-[#393E46] hover:text-white transition duration-300"><i class="bi bi-twitter-x mr-1"></i>Distribuie pe X</a> {# Button styling #}
-                        <a href="#" class="ml-2 px-4 py-2 text-sm font-medium text-[#393E46] border border-[#393E46] rounded-md hover:bg-[#393E46] hover:text-white transition duration-300"><i class="bi bi-facebook mr-1"></i>Distribuie pe Facebook</a> {# Button styling #}
+                        <a href="#" class="ml-2 px-4 py-2 text-sm font-medium text-white btn-secondary-custom rounded-md hover:bg-primary-text transition duration-300"><i class="bi bi-twitter-x mr-1"></i>Distribuie pe X</a> {# Button styling #}
+                        <a href="#" class="ml-2 px-4 py-2 text-sm font-medium text-white btn-secondary-custom rounded-md hover:bg-primary-text transition duration-300"><i class="bi bi-facebook mr-1"></i>Distribuie pe Facebook</a> {# Button styling #}
                     </div>
                 </div>
 
                 <hr class="my-4 border-t border-gray-300"> {# Horizontal rule #}
-                <h6 class="text-lg font-semibold text-[#222831] mb-3">Comentarii ({{ post.comments|length }})</h6> {# Comments title #}
+                <h6 class="text-lg font-semibold text-primary-custom mb-3">Comentarii ({{ post.comments|length }})</h6> {# Comments title #}
                 <div class="space-y-3"> {# Spacing for comments #}
                     {% for comment in post.comments %}
-                    <div class="bg-[#F5F5DC] p-4 rounded-lg shadow-sm"> {# Lighter background for comments #}
-                        <p class="text-sm font-semibold text-[#222831] mb-1"><strong>{{ comment.author_name if comment.author_name else comment.commenter.username }}</strong> pe {{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
-                        <p class="text-[#393E46]">{{ comment.content }}</p>
+                    <div class="comment-card p-4 rounded-lg shadow-sm"> {# Lighter background for comments #}
+                        <p class="text-sm font-semibold text-primary-custom mb-1"><strong>{{ comment.author_name if comment.author_name else comment.commenter.username }}</strong> pe {{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                        <p class="text-primary-custom">{{ comment.content }}</p>
                     </div>
                     {% endfor %}
                 </div>
 
                 <form class="comment-form mt-6" data-post-id="{{ post.id }}"> {# Form styling #}
-                    <h6 class="text-lg font-semibold text-[#222831] mb-3">Adaugă un Comentariu</h6>
+                    <h6 class="text-lg font-semibold text-primary-custom mb-3">Adaugă un Comentariu</h6>
                     <div class="mb-4"> {# Margin bottom #}
-                        <textarea class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#948979] focus:border-[#948979] sm:text-sm" rows="3" placeholder="Comentariul tău..." name="content" required></textarea>
+                        <textarea class="form-input-custom w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" rows="3" placeholder="Comentariul tău..." name="content" required></textarea>
                     </div>
                     <div class="flex flex-wrap -mx-2 mb-4"> {# Flex for author fields #}
                         <div class="w-full md:w-1/2 px-2 mb-4 md:mb-0"> {# Half width on medium screens #}
-                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#948979] focus:border-[#948979] sm:text-sm" placeholder="Numele tău (opțional)" name="author_name">
+                            <input type="text" class="form-input-custom w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" placeholder="Numele tău (opțional)" name="author_name">
                         </div>
                         <div class="w-full md:w-1/2 px-2"> {# Half width on medium screens #}
-                            <input type="email" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-[#948979] focus:border-[#948979] sm:text-sm" placeholder="Emailul tău (opțional)" name="author_email">
+                            <input type="email" class="form-input-custom w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" placeholder="Emailul tău (opțional)" name="author_email">
                         </div>
                     </div>
-                    <button type="submit" class="px-6 py-2 text-sm font-medium text-white bg-[#948979] rounded-md hover:bg-[#7a7064] transition duration-300"><i class="bi bi-chat-dots mr-1"></i>Trimite Comentariu</button> {# Button styling #}
-                    <div class="comment-error bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mt-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
+                    <button type="submit" class="px-6 py-2 text-sm font-medium text-white btn-primary-custom rounded-md hover:bg-primary-button-hover transition duration-300"><i class="bi bi-chat-dots mr-1"></i>Trimite Comentariu</button> {# Button styling #}
+                    <div class="comment-error alert alert-danger px-4 py-3 rounded relative mt-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
                 </form>
             </div>
         </div>
         {% else %}
-        <p class="text-[#393E46]">Acest blog nu are încă postări.</p> {# Text styling #}
+        <p class="text-primary-custom">Acest blog nu are încă postări.</p> {# Text styling #}
         {% endif %}
     </div>
 
     <div class="w-full lg:w-1/3"> {# Sidebar column #}
-        <div class="bg-white p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
-            <div class="text-lg font-semibold text-[#222831] mb-3">
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
+            <div class="text-lg font-semibold text-primary-custom mb-3">
                 Postări Aleatorii
             </div>
             <ul> {# List group #}
                 {% for post in random_posts %}
                 <li class="py-2 border-b border-gray-200 last:border-b-0"> {# List item #}
-                    <a class="text-[#948979] hover:underline" href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}">{{ post.title }} de {{ post.owner.username }}</a>
+                    <a class="text-accent-custom hover:underline" href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}">{{ post.title }} de {{ post.owner.username }}</a>
                 </li>
                 {% endfor %}
             </ul>
         </div>
 
-        <div class="bg-white p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
-            <div class="text-lg font-semibold text-[#222831] mb-3">
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md mb-4"> {# Card styling #}
+            <div class="text-lg font-semibold text-primary-custom mb-3">
                 Bloguri Aleatorii
             </div>
             <ul> {# List group #}
                 {% for user in random_users %}
                 <li class="py-2 border-b border-gray-200 last:border-b-0"> {# List item #}
-                    <a class="text-[#948979] hover:underline" href="//{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
+                    <a class="text-accent-custom hover:underline" href="//{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
                 </li>
                 {% endfor %}
             </ul>
         </div>
         {# Move "Deschide-ți și tu o calimara!" button here #}
         <div class="text-center"> {# Center button #}
-            <a class="inline-block px-8 py-3 text-lg font-semibold text-white bg-[#948979] rounded-md hover:bg-[#7a7064] transition duration-300 mt-4" href="//calimara.ro/register"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
+            <a class="inline-block px-8 py-3 text-lg font-semibold text-white btn-accent-custom rounded-md hover:bg-accent-custom transition duration-300 mt-4" href="//calimara.ro/register"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
         </div>
     </div>
 </div>
