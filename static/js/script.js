@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const editPostError = document.getElementById('editPostError');
     const editPostSuccess = document.getElementById('editPostSuccess');
     const logoutButton = document.getElementById('logoutButton');
-    // Removed loggedInUsernameSpan as it's now populated by Jinja2
+    // Removed loggedInUsernameSpan as it's populated by Jinja2
 
     // Removed checkLoginStatus function as UI visibility is now controlled by Jinja2
     // Removed localStorage usage for login status
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
                     if (loginModal) loginModal.hide();
                     
-                    // localStorage.setItem('username', data.username); // Removed localStorage usage
+                    // No localStorage usage for username
                     
                     console.log('Autentificare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     window.location.reload(); // Reload page to get server-rendered logged-in state
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 console.log('Status răspuns API deconectare:', response.status);
                 if (response.ok) {
-                    // localStorage.removeItem('username'); // Removed localStorage usage
+                    // No localStorage usage for username
                     console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
                     window.location.reload(); // Reload page to get server-rendered logged-out state
                 } else {
@@ -107,32 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Date răspuns API înregistrare:', data);
 
                 if (response.ok) {
-                    console.log('Înregistrare reușită. Se încearcă autentificarea automată...');
-                    // Attempt to auto-login the user
-                    const loginResponse = await fetch('/api/token', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ email, password }),
-                    });
-
-                    const loginData = await loginResponse.json();
-
-                    if (loginResponse.ok) {
-                        // localStorage.setItem('username', loginData.username); // Removed localStorage usage
-                        registerSuccess.textContent = 'Înregistrare reușită! Te autentificăm...';
-                        registerSuccess.style.display = 'block';
-                        registerError.style.display = 'none';
-                        registerForm.reset();
-                        console.log('Auto-login successful, reloading page to update UI and redirect.');
-                        window.location.href = `//${loginData.username}.calimara.ro`; 
-                    } else {
-                        registerError.textContent = data.detail || 'Autentificare automată eșuată. Te rugăm să încerci să te autentifici manual.';
-                        registerError.style.display = 'block';
-                        registerSuccess.style.display = 'none';
-                        console.error('Auto-login failed:', loginData.detail);
-                    }
+                    console.log('Înregistrare reușită. Se reîncarcă pagina pentru a actualiza interfața și a redirecționa.');
+                    // No auto-login via JS, rely on server redirect after successful registration
+                    window.location.href = `//${username.toLowerCase()}.calimara.ro/dashboard`; // Redirect to dashboard
                 } else {
                     registerError.textContent = data.detail || 'Înregistrare eșuată';
                     registerError.style.display = 'block';
@@ -140,8 +117,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error('Înregistrare eșuată:', data.detail);
                 }
             } catch (error) {
-                console.error('Eroare la solicitarea de înregistrare sau autentificare automată:', error);
-                registerError.textContent = 'A apărut o eroare neașteptată în timpul înregistrării sau autentificării automate.';
+                console.error('Eroare la solicitarea de înregistrare:', error);
+                registerError.textContent = 'A apărut o eroare neașteptată în timpul înregistrării.';
                 registerError.style.display = 'block';
                 registerSuccess.style.display = 'none';
             }
@@ -303,10 +280,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const commentData = { content };
             // If not logged in, include author details
-            if (!localStorage.getItem('username')) { // Rely on localStorage for client-side check
-                commentData.author_name = author_name;
-                commentData.author_email = author_email;
-            }
+            // No localStorage check needed here, server will validate
+            commentData.author_name = author_name;
+            commentData.author_email = author_email;
 
             try {
                 const response = await fetch(`/api/posts/${postId}/comments`, {
@@ -409,7 +385,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     subtitleSuccess.textContent = 'Motto actualizat cu succes!';
                     subtitleSuccess.style.display = 'block';
                     subtitleError.style.display = 'none';
-                    // Optionally update the displayed subtitle in the navbar or on the blog page if it's visible
                     // For now, a page reload will reflect the change
                     setTimeout(() => { window.location.reload(); }, 1500);
                 } else {
@@ -423,6 +398,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 subtitleError.style.display = 'block';
                 subtitleSuccess.style.display = 'none';
             }
+        });
+    }
+
+    // Mobile Navbar Toggler (Tailwind specific)
+    const navbarToggler = document.getElementById('navbar-toggler');
+    const navbarNav = document.getElementById('navbarNav');
+
+    if (navbarToggler && navbarNav) {
+        navbarToggler.addEventListener('click', () => {
+            navbarNav.classList.toggle('hidden');
         });
     }
 });

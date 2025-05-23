@@ -83,10 +83,11 @@ def get_client_ip(request: Request):
 async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
     
-    # Validate username: must be one word (no spaces)
-    if " " in user.username:
-        logger.warning(f"Înregistrare eșuată: Numele de utilizator '{user.username}' conține spații.")
-        raise HTTPException(status_code=400, detail="Numele de utilizator nu poate conține spații. Vă rugăm să folosiți un singur cuvânt.")
+    # Validate username: must be one word (no spaces) and alphanumeric
+    import re
+    if not re.fullmatch(r"^[a-zA-Z0-9]+$", user.username):
+        logger.warning(f"Înregistrare eșuată: Numele de utilizator '{user.username}' conține caractere nepermise sau spații.")
+        raise HTTPException(status_code=400, detail="Numele de utilizator poate conține doar litere și cifre, fără spații sau simboluri speciale.")
 
     db_user_email = crud.get_user_by_email(db, email=user.email.lower()) # Ensure email is lowercased for uniqueness
     if db_user_email:
