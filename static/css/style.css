@@ -14,7 +14,7 @@
 
 /* General Body and Background */
 body {
-    background-image: url('/static/img/Background.svg');
+    background-image: url('/static/img/background.svg'); /* Corrected filename to lowercase 'b' */
     background-size: cover;
     background-attachment: fixed; /* Keeps background fixed when scrolling */
     background-position: center;
