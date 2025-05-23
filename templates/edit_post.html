@@ -1,33 +1,534 @@
 {% extends "base.html" %}
 
+{% block title %}Editează Postarea - {{ post.title }} - Calimara{% endblock %}
+{% block description %}Editează postarea "{{ post.title }}" pe blogul tău Calimara{% endblock %}
+
 {% block content %}
-<div class="flex justify-center"> {# Centering container #}
-    <div class="w-full max-w-2xl"> {# Column width #}
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border"> {# Card styling, custom overlay background, solid border #}
-            <div class="text-xl font-semibold text-primary-custom mb-4">
-                <h2 class="mb-0">Editează Postare</h2>
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <!-- Header -->
+        <div class="text-center mb-5 animate__animated animate__fadeIn">
+            <div class="bg-secondary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style="width: 80px; height: 80px;">
+                <i class="bi bi-pencil display-6"></i>
             </div>
-            <div class="card-body"> {# No direct card-body in Tailwind, use padding #}
-                <form id="editPostForm" data-post-id="{{ post.id }}">
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="postTitle" class="block text-sm font-medium text-primary-custom">Titlu</label>
-                        <input type="text" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="postTitle" name="title" value="{{ post.title }}" required>
+            <h1 class="display-5 fw-bold mb-3">Editează Postarea</h1>
+            <p class="lead text-muted">
+                Modifică și îmbunătățește conținutul postării tale
+            </p>
+        </div>
+
+        <!-- Edit Post Form -->
+        <div class="card border-0 shadow-lg animate__animated animate__fadeInUp">
+            <div class="card-header bg-secondary text-white py-4">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">
+                        <i class="bi bi-pencil me-2"></i>Editează: "{{ post.title }}"
+                    </h3>
+                    <div class="d-flex gap-2">
+                        <a href="//{{ current_user.username }}.calimara.ro#post-{{ post.id }}" 
+                           class="btn btn-light btn-sm" target="_blank">
+                            <i class="bi bi-eye me-1"></i>Vezi Postarea
+                        </a>
+                        <a href="/dashboard" class="btn btn-outline-light btn-sm">
+                            <i class="bi bi-arrow-left me-1"></i>Înapoi la Dashboard
+                        </a>
                     </div>
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="postContent" class="block text-sm font-medium text-primary-custom">Conținut</label>
-                        <textarea class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="postContent" name="content" rows="10" required>{{ post.content }}</textarea>
+                </div>
+            </div>
+            <div class="card-body p-5">
+                <!-- Post Info -->
+                <div class="alert alert-info d-flex align-items-center mb-4">
+                    <i class="bi bi-info-circle me-3 fs-4"></i>
+                    <div>
+                        <strong>Informații postare:</strong><br>
+                        <small class="text-muted">
+                            Creată pe {{ post.created_at.strftime('%d %B %Y la %H:%M') }}
+                            {% if post.likes_count > 0 %}
+                                • {{ post.likes_count }} aprecieri
+                            {% endif %}
+                        </small>
                     </div>
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="postCategories" class="block text-sm font-medium text-primary-custom">Categorii (separate prin virgulă, ex: poezii, proză)</label>
-                        <input type="text" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="postCategories" name="categories" value="{{ post.categories if post.categories else '' }}">
+                </div>
+
+                <form id="editPostForm" data-post-id="{{ post.id }}" novalidate>
+                    <div class="row g-4">
+                        <!-- Title Field -->
+                        <div class="col-12">
+                            <label for="postTitle" class="form-label">
+                                <i class="bi bi-type me-1"></i>Titlul Postării *
+                            </label>
+                            <input type="text" class="form-control form-control-lg" id="postTitle" name="title" 
+                                   required maxlength="200" value="{{ post.title }}"
+                                   placeholder="Introdu un titlu captivant pentru postarea ta...">
+                            <div class="form-text">
+                                <i class="bi bi-lightbulb me-1"></i>
+                                Un titlu bun atrage cititorii. Încearcă să fii descriptiv și interesant.
+                            </div>
+                            <div class="invalid-feedback">
+                                Te rugăm să introduci un titlu pentru postarea ta.
+                            </div>
+                        </div>
+
+                        <!-- Categories Field -->
+                        <div class="col-md-6">
+                            <label for="postCategories" class="form-label">
+                                <i class="bi bi-tags me-1"></i>Categorii
+                            </label>
+                            <input type="text" class="form-control" id="postCategories" name="categories" 
+                                   value="{{ post.categories or '' }}"
+                                   placeholder="poezie, proză, gânduri, jurnal...">
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Separă categoriile cu virgule. Ajută cititorii să găsească conținutul relevant.
+                            </div>
+                        </div>
+
+                        <!-- Post Status -->
+                        <div class="col-md-6">
+                            <label class="form-label">
+                                <i class="bi bi-info-circle me-1"></i>Status Postare
+                            </label>
+                            <div class="d-flex gap-3 mt-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="status" id="statusPublished" value="published" checked>
+                                    <label class="form-check-label" for="statusPublished">
+                                        <i class="bi bi-check-circle me-1 text-success"></i>Publicată
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="status" id="statusDraft" value="draft">
+                                    <label class="form-check-label" for="statusDraft">
+                                        <i class="bi bi-save me-1 text-warning"></i>Draft
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Content Field -->
+                        <div class="col-12">
+                            <label for="postContent" class="form-label">
+                                <i class="bi bi-file-text me-1"></i>Conținutul Postării *
+                            </label>
+                            <div class="position-relative">
+                                <textarea class="form-control" id="postContent" name="content" rows="15" 
+                                          required placeholder="Scrie-ți aici gândurile, poemele, povestirile...">{{ post.content }}</textarea>
+                                <div class="position-absolute top-0 end-0 p-2">
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="formatBold" title="Îngroșat (Ctrl+B)">
+                                            <i class="bi bi-type-bold"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="formatItalic" title="Cursiv (Ctrl+I)">
+                                            <i class="bi bi-type-italic"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="insertLink" title="Link (Ctrl+K)">
+                                            <i class="bi bi-link-45deg"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-info" id="undoChanges" title="Anulează modificările">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text">
+                                <i class="bi bi-markdown me-1"></i>
+                                Suportă formatare Markdown simplă. Modificările sunt salvate automat.
+                            </div>
+                            <div class="invalid-feedback">
+                                Te rugăm să adaugi conținut pentru postarea ta.
+                            </div>
+                        </div>
                     </div>
-                    <div id="editPostError" class="alert alert-danger px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                    <div id="editPostSuccess" class="alert alert-success px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                    <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white btn-primary-custom transition duration-300"><i class="bi bi-arrow-repeat mr-2"></i>Actualizează Postare</button> {# Tailwind button #}
-                    <a href="/dashboard" class="ml-2 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-primary-custom bg-white-overlay hover:bg-gray-100 transition duration-300"><i class="bi bi-x-lg mr-1"></i>Anulează</a> {# Tailwind button #}
+
+                    <!-- Auto-save and change tracking -->
+                    <div class="mt-3 d-flex justify-content-between align-items-center">
+                        <small class="text-muted" id="autoSaveStatus">
+                            <i class="bi bi-cloud me-1"></i>Salvare automată activă
+                        </small>
+                        <small class="text-muted" id="changeStatus">
+                            <i class="bi bi-check-circle me-1 text-success"></i>Toate modificările sunt salvate
+                        </small>
+                    </div>
+
+                    <!-- Error/Success Messages -->
+                    <div id="editPostError" class="alert alert-danger d-none mt-4" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span class="error-message"></span>
+                    </div>
+
+                    <div id="editPostSuccess" class="alert alert-success d-none mt-4" role="alert">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <span class="success-message"></span>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-flex justify-content-between align-items-center mt-5 pt-4 border-top">
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary" id="previewPost">
+                                <i class="bi bi-eye me-2"></i>Previzualizare
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" id="revertChanges">
+                                <i class="bi bi-arrow-counterclockwise me-2"></i>Revenire la Original
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="deletePost">
+                                <i class="bi bi-trash me-2"></i>Șterge Postarea
+                            </button>
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <a href="/dashboard" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-2"></i>Anulează
+                            </a>
+                            <button type="submit" class="btn btn-primary-custom btn-lg">
+                                <i class="bi bi-save me-2"></i>Salvează Modificările
+                            </button>
+                        </div>
+                    </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Revision History (Future Feature) -->
+        <div class="card border-0 bg-light mt-4">
+            <div class="card-body text-center py-4">
+                <i class="bi bi-clock-history display-4 text-muted mb-3"></i>
+                <h5 class="fw-bold text-muted">Istoric Revizii</h5>
+                <p class="text-muted mb-0">
+                    Funcționalitatea de istoric a modificărilor va fi disponibilă în curând.
+                </p>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title" id="previewModalLabel">
+                    <i class="bi bi-eye me-2"></i>Previzualizare Postare
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent">
+                    <h3 id="previewTitle" class="fw-bold mb-3"></h3>
+                    <div class="d-flex align-items-center text-muted small mb-3">
+                        <i class="bi bi-person me-1"></i>
+                        <span>{{ current_user.username }}</span>
+                        <span class="mx-2">•</span>
+                        <i class="bi bi-calendar3 me-1"></i>
+                        <span id="previewDate">{{ post.created_at.strftime('%d %B %Y') }}</span>
+                        <span class="mx-2" id="previewCategoriesContainer" style="display: none;">•</span>
+                        <i class="bi bi-tags me-1" id="previewCategoriesIcon" style="display: none;"></i>
+                        <span id="previewCategories"></span>
+                    </div>
+                    <div id="previewBody" class="lh-lg"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Închide</button>
+                <button type="button" class="btn btn-primary-custom" data-bs-dismiss="modal">Continuă Editarea</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Confirmare Ștergere
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Ești sigur că vrei să ștergi această postare?</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Atenție:</strong> Această acțiune nu poate fi anulată. Postarea va fi ștearsă permanent, 
+                    împreună cu toate comentariile și aprecierile asociate.
+                </div>
+                <p class="fw-bold">Postarea: "{{ post.title }}"</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulează</button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">
+                    <i class="bi bi-trash me-2"></i>Șterge Definitiv
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const titleInput = document.getElementById('postTitle');
+    const contentInput = document.getElementById('postContent');
+    const categoriesInput = document.getElementById('postCategories');
+    const previewButton = document.getElementById('previewPost');
+    const deleteButton = document.getElementById('deletePost');
+    const revertButton = document.getElementById('revertChanges');
+    const undoButton = document.getElementById('undoChanges');
+    const autoSaveStatus = document.getElementById('autoSaveStatus');
+    const changeStatus = document.getElementById('changeStatus');
+    
+    // Store original values
+    const originalValues = {
+        title: titleInput.value,
+        content: contentInput.value,
+        categories: categoriesInput.value
+    };
+    
+    let hasUnsavedChanges = false;
+    let lastSavedValues = { ...originalValues };
+
+    // Character counters
+    const titleMaxLength = titleInput.getAttribute('maxlength');
+    if (titleMaxLength) {
+        const titleCounter = document.createElement('small');
+        titleCounter.className = 'text-muted character-counter float-end';
+        titleCounter.textContent = `${titleInput.value.length}/${titleMaxLength}`;
+        titleInput.parentNode.appendChild(titleCounter);
+        
+        titleInput.addEventListener('input', function() {
+            const currentLength = this.value.length;
+            titleCounter.textContent = `${currentLength}/${titleMaxLength}`;
+            titleCounter.className = currentLength > titleMaxLength * 0.9 ? 'text-warning character-counter float-end' : 'text-muted character-counter float-end';
+        });
+    }
+
+    // Content word counter
+    const contentCounter = document.createElement('small');
+    contentCounter.className = 'text-muted character-counter float-end';
+    const initialWordCount = contentInput.value.trim().split(/\s+/).filter(word => word.length > 0).length;
+    contentCounter.textContent = `${initialWordCount} cuvinte`;
+    contentInput.parentNode.appendChild(contentCounter);
+    
+    contentInput.addEventListener('input', function() {
+        const wordCount = this.value.trim().split(/\s+/).filter(word => word.length > 0).length;
+        contentCounter.textContent = `${wordCount} cuvinte`;
+    });
+
+    // Track changes
+    function checkForChanges() {
+        const currentValues = {
+            title: titleInput.value,
+            content: contentInput.value,
+            categories: categoriesInput.value
+        };
+        
+        hasUnsavedChanges = JSON.stringify(currentValues) !== JSON.stringify(lastSavedValues);
+        
+        if (hasUnsavedChanges) {
+            changeStatus.innerHTML = '<i class="bi bi-exclamation-circle me-1 text-warning"></i>Modificări nesalvate';
+        } else {
+            changeStatus.innerHTML = '<i class="bi bi-check-circle me-1 text-success"></i>Toate modificările sunt salvate';
+        }
+        
+        return hasUnsavedChanges;
+    }
+
+    // Formatting buttons
+    document.getElementById('formatBold').addEventListener('click', function() {
+        insertFormatting('**', '**', 'text îngroșat');
+    });
+    
+    document.getElementById('formatItalic').addEventListener('click', function() {
+        insertFormatting('*', '*', 'text cursiv');
+    });
+    
+    document.getElementById('insertLink').addEventListener('click', function() {
+        const url = prompt('Introdu URL-ul:');
+        if (url) {
+            insertFormatting('[', `](${url})`, 'text link');
+        }
+    });
+
+    function insertFormatting(before, after, placeholder) {
+        const start = contentInput.selectionStart;
+        const end = contentInput.selectionEnd;
+        const selectedText = contentInput.value.substring(start, end);
+        const replacement = selectedText || placeholder;
+        
+        contentInput.value = contentInput.value.substring(0, start) + 
+                           before + replacement + after + 
+                           contentInput.value.substring(end);
+        
+        contentInput.focus();
+        contentInput.setSelectionRange(start + before.length, start + before.length + replacement.length);
+        checkForChanges();
+    }
+
+    // Undo changes
+    undoButton.addEventListener('click', function() {
+        if (confirm('Anulezi ultima modificare?')) {
+            // Simple undo - could be enhanced with proper history
+            document.execCommand('undo');
+            checkForChanges();
+        }
+    });
+
+    // Revert to original
+    revertButton.addEventListener('click', function() {
+        if (confirm('Revii la versiunea originală? Toate modificările se vor pierde.')) {
+            titleInput.value = originalValues.title;
+            contentInput.value = originalValues.content;
+            categoriesInput.value = originalValues.categories;
+            checkForChanges();
+            showToast('Postarea a fost revenită la versiunea originală', 'info');
+        }
+    });
+
+    // Preview functionality
+    previewButton.addEventListener('click', function() {
+        const title = titleInput.value || 'Fără titlu';
+        const content = contentInput.value || 'Fără conținut';
+        const categories = categoriesInput.value;
+        
+        document.getElementById('previewTitle').textContent = title;
+        
+        if (categories) {
+            document.getElementById('previewCategories').textContent = categories;
+            document.getElementById('previewCategoriesContainer').style.display = 'inline';
+            document.getElementById('previewCategoriesIcon').style.display = 'inline';
+        } else {
+            document.getElementById('previewCategoriesContainer').style.display = 'none';
+            document.getElementById('previewCategoriesIcon').style.display = 'none';
+        }
+        
+        // Simple markdown-like formatting
+        let formattedContent = content
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            .replace(/\n/g, '<br>');
+        
+        document.getElementById('previewBody').innerHTML = formattedContent;
+        
+        const modal = new bootstrap.Modal(document.getElementById('previewModal'));
+        modal.show();
+    });
+
+    // Delete functionality
+    deleteButton.addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        modal.show();
+    });
+
+    document.getElementById('confirmDelete').addEventListener('click', async function() {
+        const postId = document.getElementById('editPostForm').dataset.postId;
+        
+        try {
+            const response = await fetch(`/api/posts/${postId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.status === 204) {
+                showToast('Postarea a fost ștearsă cu succes!', 'success');
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 1500);
+            } else {
+                const data = await response.json();
+                showToast(data.detail || 'Ștergerea postării a eșuat', 'error');
+            }
+        } catch (error) {
+            console.error('Delete error:', error);
+            showToast('A apărut o eroare neașteptată.', 'error');
+        }
+        
+        const modal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'));
+        modal.hide();
+    });
+
+    // Auto-save functionality
+    let autoSaveTimeout;
+    function autoSave() {
+        if (!checkForChanges()) return;
+        
+        clearTimeout(autoSaveTimeout);
+        autoSaveTimeout = setTimeout(() => {
+            const formData = {
+                title: titleInput.value,
+                content: contentInput.value,
+                categories: categoriesInput.value
+            };
+            localStorage.setItem(`calimara_editPost_${document.getElementById('editPostForm').dataset.postId}`, JSON.stringify(formData));
+            autoSaveStatus.innerHTML = '<i class="bi bi-check-circle me-1 text-success"></i>Salvat automat local';
+            
+            setTimeout(() => {
+                autoSaveStatus.innerHTML = '<i class="bi bi-cloud me-1"></i>Salvare automată activă';
+            }, 2000);
+        }, 1000);
+    }
+
+    // Attach change tracking and auto-save to inputs
+    [titleInput, contentInput, categoriesInput].forEach(input => {
+        input.addEventListener('input', () => {
+            checkForChanges();
+            autoSave();
+        });
+    });
+
+    // Warn before leaving with unsaved changes
+    window.addEventListener('beforeunload', function(e) {
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    // Clear saved data on successful submission
+    document.getElementById('editPostForm').addEventListener('submit', function() {
+        localStorage.removeItem(`calimara_editPost_${this.dataset.postId}`);
+        hasUnsavedChanges = false;
+    });
+
+    // Real-time validation
+    const form = document.getElementById('editPostForm');
+    const inputs = form.querySelectorAll('input[required], textarea[required]');
+    
+    inputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.checkValidity()) {
+                this.classList.remove('is-invalid');
+                this.classList.add('is-valid');
+            } else {
+                this.classList.remove('is-valid');
+                this.classList.add('is-invalid');
+            }
+        });
+    });
+
+    // Keyboard shortcuts
+    contentInput.addEventListener('keydown', function(e) {
+        if (e.ctrlKey || e.metaKey) {
+            switch(e.key) {
+                case 'b':
+                    e.preventDefault();
+                    document.getElementById('formatBold').click();
+                    break;
+                case 'i':
+                    e.preventDefault();
+                    document.getElementById('formatItalic').click();
+                    break;
+                case 'k':
+                    e.preventDefault();
+                    document.getElementById('insertLink').click();
+                    break;
+                case 's':
+                    e.preventDefault();
+                    document.getElementById('editPostForm').dispatchEvent(new Event('submit'));
+                    break;
+            }
+        }
+    });
+
+    // Initial change check
+    checkForChanges();
+});
+</script>
 {% endblock %}

@@ -1,40 +1,355 @@
 {% extends "base.html" %}
 
+{% block title %}Înregistrare - Calimara{% endblock %}
+{% block description %}Creează-ți contul gratuit pe Calimara.ro și începe să scrii propriul tău microblog{% endblock %}
+
 {% block content %}
-<div class="flex justify-center"> {# Centering container #}
-    <div class="w-full max-w-md"> {# Column width #}
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border"> {# Card styling, custom overlay background, solid border #}
-            <div class="text-xl font-semibold text-primary-custom mb-4">
-                <h2 class="mb-0">Înregistrează-ți Blogul Calimara</h2>
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <!-- Registration Header -->
+        <div class="text-center mb-5 animate__animated animate__fadeIn">
+            <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style="width: 80px; height: 80px;">
+                <i class="bi bi-journal-plus display-6"></i>
             </div>
-            <div class="card-body"> {# No direct card-body in Tailwind, use padding #}
-                <form id="registerForm">
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="username" class="block text-sm font-medium text-primary-custom">Nume de utilizator:</label>
-                        <input type="text" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="username" name="username" required>
-                        <small class="text-xs text-secondary-custom">Micul tău blog se va găsi la subdomeniu ({{ "numeutilizator" if not current_domain or current_domain == "calimara.ro" else current_domain.split('.')[0] }}).calimara.ro. Numele de utilizator trebuie să fie un singur cuvânt, fără spații. Nu poți modifica această opțiune mai târziu!</small>
+            <h1 class="display-5 fw-bold mb-3">Deschide-ți Călimara</h1>
+            <p class="lead text-muted">
+                Alătură-te comunității de scriitori și poeți români. 
+                Creează-ți propriul microblog în doar câteva minute.
+            </p>
+        </div>
+
+        <!-- Registration Form -->
+        <div class="card border-0 shadow-lg animate__animated animate__fadeInUp">
+            <div class="card-header bg-primary-custom text-white text-center py-4">
+                <h3 class="mb-0">
+                    <i class="bi bi-person-plus me-2"></i>Creează Cont Nou
+                </h3>
+            </div>
+            <div class="card-body p-5">
+                <form id="registerForm" novalidate>
+                    <div class="row g-4">
+                        <!-- Username Field -->
+                        <div class="col-md-6">
+                            <label for="username" class="form-label">
+                                <i class="bi bi-person me-1"></i>Nume de utilizator *
+                            </label>
+                            <div class="input-group">
+                                <input type="text" class="form-control form-control-lg" id="username" name="username" 
+                                       required pattern="^[a-zA-Z0-9]+$" minlength="3" maxlength="20"
+                                       placeholder="ex: ionpopescu">
+                                <span class="input-group-text">.calimara.ro</span>
+                            </div>
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Doar litere și cifre, fără spații. Acesta va fi subdomeniul tău.
+                            </div>
+                            <div class="invalid-feedback">
+                                Numele de utilizator trebuie să conțină doar litere și cifre (3-20 caractere).
+                            </div>
+                        </div>
+
+                        <!-- Email Field -->
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">
+                                <i class="bi bi-envelope me-1"></i>Adresă de email *
+                            </label>
+                            <input type="email" class="form-control form-control-lg" id="email" name="email" 
+                                   required placeholder="exemplu@email.com">
+                            <div class="form-text">
+                                <i class="bi bi-shield-check me-1"></i>
+                                Nu vom împărtăși emailul tău cu nimeni.
+                            </div>
+                            <div class="invalid-feedback">
+                                Te rugăm să introduci o adresă de email validă.
+                            </div>
+                        </div>
+
+                        <!-- Password Field -->
+                        <div class="col-md-6">
+                            <label for="password" class="form-label">
+                                <i class="bi bi-lock me-1"></i>Parolă *
+                            </label>
+                            <div class="input-group">
+                                <input type="password" class="form-control form-control-lg" id="password" name="password" 
+                                       required minlength="6" placeholder="Minim 6 caractere">
+                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <div class="password-strength mt-2">
+                                <div class="progress" style="height: 4px;">
+                                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <small class="text-muted strength-text">Introdu o parolă</small>
+                            </div>
+                            <div class="invalid-feedback">
+                                Parola trebuie să aibă cel puțin 6 caractere.
+                            </div>
+                        </div>
+
+                        <!-- Subtitle Field -->
+                        <div class="col-md-6">
+                            <label for="subtitle" class="form-label">
+                                <i class="bi bi-quote me-1"></i>Motto / Subtitlu
+                            </label>
+                            <input type="text" class="form-control form-control-lg" id="subtitle" name="subtitle" 
+                                   maxlength="100" placeholder="Descrie-ți blogul în câteva cuvinte...">
+                            <div class="form-text">
+                                <i class="bi bi-lightbulb me-1"></i>
+                                Opțional - poți adăuga sau modifica mai târziu.
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="subtitle" class="block text-sm font-medium text-primary-custom">Motto:</label>
-                        <input type="text" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="subtitle" name="subtitle">
-                        <small class="text-xs text-secondary-custom">Subtitlu, motto, strigăt de luptă, frază de înțelepciune, aceasta este subtitlul micii tale călimare. Poate fi modificat oricând.</small>
+
+                    <!-- Terms and Conditions -->
+                    <div class="mt-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="terms" required>
+                            <label class="form-check-label" for="terms">
+                                Sunt de acord cu <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#termsModal">Termenii și Condițiile</a> 
+                                și <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#privacyModal">Politica de Confidențialitate</a> *
+                            </label>
+                            <div class="invalid-feedback">
+                                Trebuie să accepți termenii și condițiile pentru a continua.
+                            </div>
+                        </div>
                     </div>
-                    <hr class="my-4 border-t border-gray-300"> {# Horizontal rule #}
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="email" class="block text-sm font-medium text-primary-custom">Email:</label>
-                        <input type="email" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="email" name="email" required>
+
+                    <!-- Error/Success Messages -->
+                    <div id="registerError" class="alert alert-danger d-none mt-4" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span class="error-message"></span>
                     </div>
-                    <div class="mb-4"> {# Margin bottom #}
-                        <label for="password" class="block text-sm font-medium text-primary-custom">Parolă:</label>
-                        <input type="password" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="password" name="password" required>
+
+                    <div id="registerSuccess" class="alert alert-success d-none mt-4" role="alert">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <span class="success-message"></span>
                     </div>
-                    <hr class="my-4 border-t border-gray-300"> {# Horizontal rule #}
-                    <div id="registerError" class="alert alert-danger px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                    <div id="registerSuccess" class="alert alert-success px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                    <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white btn-primary-custom transition duration-300"><i class="bi bi-person-plus mr-2"></i>Înregistrează-te</button> {# Tailwind button #}
+
+                    <!-- Submit Button -->
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary-custom btn-lg py-3">
+                            <i class="bi bi-journal-plus me-2"></i>Creează Călimara Mea
+                        </button>
+                    </div>
                 </form>
+
+                <!-- Login Link -->
+                <div class="text-center mt-4">
+                    <p class="text-muted mb-0">
+                        Ai deja cont? 
+                        <a href="#" class="text-decoration-none fw-medium" data-bs-toggle="modal" data-bs-target="#loginModal">
+                            Autentifică-te aici
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Preview -->
+        <div class="row g-4 mt-5">
+            <div class="col-md-4">
+                <div class="text-center">
+                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                        <i class="bi bi-globe text-primary fs-4"></i>
+                    </div>
+                    <h5 class="fw-bold">Subdomeniu Personal</h5>
+                    <p class="text-muted small">Primești propriul tău subdomeniu pentru o prezență online profesională.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center">
+                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                        <i class="bi bi-pencil-square text-primary fs-4"></i>
+                    </div>
+                    <h5 class="fw-bold">Editor Simplu</h5>
+                    <p class="text-muted small">Scrie și publică conținut fără distrageri, concentrându-te pe creativitate.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="text-center">
+                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                        <i class="bi bi-people text-primary fs-4"></i>
+                    </div>
+                    <h5 class="fw-bold">Comunitate</h5>
+                    <p class="text-muted small">Conectează-te cu alți scriitori și poeți din România.</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Terms Modal -->
+<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary-custom text-white">
+                <h5 class="modal-title" id="termsModalLabel">
+                    <i class="bi bi-file-text me-2"></i>Termeni și Condiții
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>1. Acceptarea Termenilor</h6>
+                <p>Prin utilizarea platformei Calimara.ro, accepți acești termeni și condiții în totalitate.</p>
+                
+                <h6>2. Utilizarea Serviciului</h6>
+                <p>Calimara.ro este o platformă gratuită de microblogging destinată scriitorilor și poeților români. Te angajezi să folosești serviciul în mod responsabil.</p>
+                
+                <h6>3. Conținutul Utilizatorilor</h6>
+                <p>Ești responsabil pentru conținutul pe care îl publici. Nu sunt permise conținuturi ilegale, ofensatoare sau care încalcă drepturile altor persoane.</p>
+                
+                <h6>4. Confidențialitatea</h6>
+                <p>Respectăm confidențialitatea datelor tale personale conform Politicii de Confidențialitate.</p>
+                
+                <h6>5. Modificări</h6>
+                <p>Ne rezervăm dreptul de a modifica acești termeni. Modificările vor fi comunicate prin platformă.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Închide</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Privacy Modal -->
+<div class="modal fade" id="privacyModal" tabindex="-1" aria-labelledby="privacyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary-custom text-white">
+                <h5 class="modal-title" id="privacyModalLabel">
+                    <i class="bi bi-shield-check me-2"></i>Politica de Confidențialitate
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Colectarea Datelor</h6>
+                <p>Colectăm doar datele necesare pentru funcționarea serviciului: email, nume de utilizator și conținutul pe care îl publici.</p>
+                
+                <h6>Utilizarea Datelor</h6>
+                <p>Datele tale sunt folosite exclusiv pentru:</p>
+                <ul>
+                    <li>Furnizarea serviciului de microblogging</li>
+                    <li>Comunicarea cu tine despre contul tău</li>
+                    <li>Îmbunătățirea platformei</li>
+                </ul>
+                
+                <h6>Partajarea Datelor</h6>
+                <p>Nu partajăm datele tale personale cu terțe părți, cu excepția cazurilor prevăzute de lege.</p>
+                
+                <h6>Securitatea</h6>
+                <p>Implementăm măsuri de securitate pentru protejarea datelor tale.</p>
+                
+                <h6>Drepturile Tale</h6>
+                <p>Ai dreptul să accesezi, modifici sau ștergi datele tale personale contactându-ne.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Închide</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const passwordInput = document.getElementById('password');
+    const togglePassword = document.getElementById('togglePassword');
+    const strengthBar = document.querySelector('.progress-bar');
+    const strengthText = document.querySelector('.strength-text');
+    const usernameInput = document.getElementById('username');
+
+    // Password visibility toggle
+    togglePassword.addEventListener('click', function() {
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+        this.querySelector('i').classList.toggle('bi-eye');
+        this.querySelector('i').classList.toggle('bi-eye-slash');
+    });
+
+    // Password strength indicator
+    passwordInput.addEventListener('input', function() {
+        const password = this.value;
+        let strength = 0;
+        let strengthLabel = '';
+        let strengthClass = '';
+
+        if (password.length >= 6) strength += 25;
+        if (password.match(/[a-z]/)) strength += 25;
+        if (password.match(/[A-Z]/)) strength += 25;
+        if (password.match(/[0-9]/)) strength += 25;
+
+        if (strength === 0) {
+            strengthLabel = 'Introdu o parolă';
+            strengthClass = '';
+        } else if (strength <= 25) {
+            strengthLabel = 'Parolă slabă';
+            strengthClass = 'bg-danger';
+        } else if (strength <= 50) {
+            strengthLabel = 'Parolă medie';
+            strengthClass = 'bg-warning';
+        } else if (strength <= 75) {
+            strengthLabel = 'Parolă bună';
+            strengthClass = 'bg-info';
+        } else {
+            strengthLabel = 'Parolă puternică';
+            strengthClass = 'bg-success';
+        }
+
+        strengthBar.style.width = strength + '%';
+        strengthBar.className = 'progress-bar ' + strengthClass;
+        strengthText.textContent = strengthLabel;
+    });
+
+    // Username validation and preview
+    usernameInput.addEventListener('input', function() {
+        const username = this.value.toLowerCase();
+        const preview = document.querySelector('.input-group-text');
+        
+        if (username && /^[a-zA-Z0-9]+$/.test(username)) {
+            preview.textContent = '.calimara.ro';
+            preview.classList.remove('text-danger');
+            preview.classList.add('text-success');
+        } else {
+            preview.textContent = '.calimara.ro';
+            preview.classList.remove('text-success');
+            if (username) {
+                preview.classList.add('text-danger');
+            }
+        }
+    });
+
+    // Real-time validation
+    const form = document.getElementById('registerForm');
+    const inputs = form.querySelectorAll('input[required]');
+    
+    inputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            if (this.checkValidity()) {
+                this.classList.remove('is-invalid');
+                this.classList.add('is-valid');
+            } else {
+                this.classList.remove('is-valid');
+                this.classList.add('is-invalid');
+            }
+        });
+    });
+
+    // Character counter for subtitle
+    const subtitleInput = document.getElementById('subtitle');
+    const maxLength = subtitleInput.getAttribute('maxlength');
+    
+    if (maxLength) {
+        const counter = document.createElement('small');
+        counter.className = 'text-muted character-counter';
+        counter.textContent = `0/${maxLength}`;
+        subtitleInput.parentNode.appendChild(counter);
+        
+        subtitleInput.addEventListener('input', function() {
+            const currentLength = this.value.length;
+            counter.textContent = `${currentLength}/${maxLength}`;
+            counter.className = currentLength > maxLength * 0.9 ? 'text-warning character-counter' : 'text-muted character-counter';
+        });
+    }
+});
+</script>
 {% endblock %}

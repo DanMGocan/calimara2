@@ -1,101 +1,363 @@
 {% extends "base.html" %}
 
+{% block title %}Panou de Administrare - {{ current_user.username }} - Calimara{% endblock %}
+{% block description %}Gestionează postările și setările blogului tău pe Calimara.ro{% endblock %}
+
 {% block content %}
-<div class="container mx-auto p-4"> {# Centered container with padding #}
-    <h1 class="text-3xl font-bold text-primary-custom mb-6">Panou de Administrare pentru {{ current_user.username }}</h1>
-
-    <h2 class="text-2xl font-semibold text-primary-custom mb-4">Setări Blog</h2>
-    <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-6"> {# Card styling, custom overlay background, solid border #}
-        <div class="text-lg font-semibold text-primary-custom mb-4">
-            Motto Blog
-        </div>
-        <div> {# No direct card-body in Tailwind, use padding #}
-            <form id="subtitleForm">
-                <div class="mb-4"> {# Margin bottom #}
-                    <label for="subtitle" class="block text-sm font-medium text-primary-custom">Motto:</label>
-                    <input type="text" class="form-input-custom mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none sm:text-sm" id="subtitle" name="subtitle" value="{{ current_user.subtitle if current_user.subtitle else '' }}">
-                    <small class="text-xs text-secondary-custom">Subtitlu, motto, strigăt de luptă, frază de înțelepciune, aceasta este subtitlul micii tale călimare. Poate fi modificat oricând.</small>
+<!-- Dashboard Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="blog-card animate__animated animate__fadeIn">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-primary-custom text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 60px; height: 60px;">
+                            <i class="bi bi-speedometer2 fs-3"></i>
+                        </div>
+                        <div>
+                            <h1 class="h2 fw-bold mb-1">Panou de Administrare</h1>
+                            <p class="text-muted mb-0">
+                                <i class="bi bi-person me-1"></i>{{ current_user.username }}
+                                <span class="mx-2">•</span>
+                                <i class="bi bi-globe me-1"></i>{{ current_user.username }}.calimara.ro
+                            </p>
+                        </div>
+                    </div>
                 </div>
-                <div id="subtitleError" class="alert alert-danger px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                <div id="subtitleSuccess" class="alert alert-success px-4 py-3 rounded relative mb-4" role="alert" style="display: none;"></div> {# Tailwind alert #}
-                <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white btn-primary-custom transition duration-300"><i class="bi bi-save mr-2"></i>Salvează Motto</button> {# Tailwind button #}
-            </form>
-        </div>
-    </div>
-
-    <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-6"> {# Card styling, custom overlay background, solid border #}
-        <div class="flex justify-between items-center mb-4"> {# Flex for header #}
-            <h5 class="text-lg font-semibold text-primary-custom">Postările Tale</h5>
-            <a href="/create-post" class="px-4 py-2 text-sm font-medium text-white btn-primary-custom rounded-md hover:bg-primary-button-hover transition duration-300"><i class="bi bi-plus-circle mr-2"></i>Creează Postare Nouă</a> {# Button styling #}
-        </div>
-        <div> {# No direct card-body in Tailwind, use padding #}
-            {% if user_posts %}
-            <div class="overflow-x-auto"> {# Responsive table #}
-                <table class="min-w-full divide-y divide-gray-200"> {# Table styling #}
-                    <thead class="bg-gray-50"> {# Table header background #}
-                        <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Titlu</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Creat la</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Aprecieri</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Acțiuni</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white-overlay divide-y divide-gray-200"> {# Custom overlay background #}
-                        {% for post in user_posts %}
-                        <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-custom">{{ post.title }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-primary-custom">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-primary-custom">{{ post.likes_count }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <a href="/edit-post/{{ post.id }}" class="text-accent-custom hover:text-primary-custom mr-4"><i class="bi bi-pencil mr-1"></i>Editează</a> {# Edit link #}
-                                <button class="text-red-600 hover:text-red-900 delete-post-button"><i class="bi bi-trash mr-1" data-post-id="{{ post.id }}"></i>Șterge</button> {# Delete button #}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="col-md-4 text-md-end">
+                    <div class="d-grid gap-2 d-md-block">
+                        <a href="/create-post" class="btn btn-primary-custom hover-lift">
+                            <i class="bi bi-plus-circle me-2"></i>Postare Nouă
+                        </a>
+                        <a href="//{{ current_user.username }}.calimara.ro" class="btn btn-outline-primary-custom hover-lift" target="_blank">
+                            <i class="bi bi-eye me-2"></i>Vezi Blogul
+                        </a>
+                    </div>
+                </div>
             </div>
-            {% else %}
-            <p class="text-primary-custom">Nu ai creat încă nicio postare. <a class="text-accent-custom hover:underline" href="/create-post">Creează prima ta postare!</a></p> {# Text styling #}
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-6"> {# Card styling, custom overlay background, solid border #}
-        <div class="text-lg font-semibold text-primary-custom mb-4">
-            <h5 class="mb-0">Comentarii Neaprobate</h5>
-        </div>
-        <div> {# No direct card-body in Tailwind, use padding #}
-            {% if unapproved_comments %}
-            <div class="overflow-x-auto"> {# Responsive table #}
-                <table class="min-w-full divide-y divide-gray-200"> {# Table styling #}
-                    <thead class="bg-gray-50"> {# Table header background #}
-                        <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Postare</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Autor</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Comentariu</th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-secondary-custom uppercase tracking-wider">Acțiuni</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white-overlay divide-y divide-gray-200"> {# Custom overlay background #}
-                        {% for comment in unapproved_comments %}
-                        <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-custom"><a class="text-accent-custom hover:underline" href="//{{ current_user.username }}.calimara.ro#post-{{ comment.post_id }}">{{ comment.post.title }}</a></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-primary-custom">{{ comment.author_name if comment.author_name else comment.commenter.username }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-primary-custom">{{ comment.content }}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                <button class="text-green-600 hover:text-green-900 mr-4 approve-comment-button" data-comment-id="{{ comment.id }}"><i class="bi bi-check-circle mr-1"></i>Aprobă</button> {# Approve button #}
-                                <button class="text-red-600 hover:text-red-900 delete-comment-button" data-comment-id="{{ comment.id }}"><i class="bi bi-trash mr-1"></i>Șterge</button> {# Delete button #}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <p class="text-primary-custom">Nu există comentarii neaprobate.</p> {# Text styling #}
-            {% endif %}
         </div>
     </div>
 </div>
+
+<!-- Statistics Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 bg-primary text-white hover-lift">
+            <div class="card-body text-center">
+                <i class="bi bi-file-text display-4 mb-3"></i>
+                <h3 class="fw-bold">{{ user_posts|length }}</h3>
+                <p class="mb-0">Postări Totale</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-success text-white hover-lift">
+            <div class="card-body text-center">
+                <i class="bi bi-heart display-4 mb-3"></i>
+                <h3 class="fw-bold">{{ user_posts|sum(attribute='likes_count') or 0 }}</h3>
+                <p class="mb-0">Aprecieri Totale</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-warning text-white hover-lift">
+            <div class="card-body text-center">
+                <i class="bi bi-chat-dots display-4 mb-3"></i>
+                <h3 class="fw-bold">{{ unapproved_comments|length }}</h3>
+                <p class="mb-0">Comentarii de Aprobat</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-info text-white hover-lift">
+            <div class="card-body text-center">
+                <i class="bi bi-eye display-4 mb-3"></i>
+                <h3 class="fw-bold">-</h3>
+                <p class="mb-0">Vizualizări (În Curând)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Main Content -->
+    <div class="col-lg-8">
+        <!-- Blog Settings -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear me-2"></i>Setări Blog
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="subtitleForm">
+                    <div class="mb-3">
+                        <label for="subtitle" class="form-label">
+                            <i class="bi bi-quote me-1"></i>Motto / Subtitlu
+                        </label>
+                        <input type="text" class="form-control form-control-lg" id="subtitle" name="subtitle" 
+                               value="{{ current_user.subtitle if current_user.subtitle else '' }}"
+                               placeholder="Subtitlu, motto, strigăt de luptă...">
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Aceasta este descrierea scurtă a blogului tău care va apărea în header.
+                        </div>
+                    </div>
+                    
+                    <div id="subtitleError" class="alert alert-danger d-none" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span class="error-message"></span>
+                    </div>
+                    
+                    <div id="subtitleSuccess" class="alert alert-success d-none" role="alert">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <span class="success-message"></span>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-save me-2"></i>Salvează Motto
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Posts Management -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-file-text me-2"></i>Postările Tale
+                </h5>
+                <a href="/create-post" class="btn btn-light btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i>Postare Nouă
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% if user_posts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3">
+                                        <i class="bi bi-file-text me-1"></i>Titlu
+                                    </th>
+                                    <th scope="col" class="px-4 py-3">
+                                        <i class="bi bi-calendar3 me-1"></i>Data Creării
+                                    </th>
+                                    <th scope="col" class="px-4 py-3 text-center">
+                                        <i class="bi bi-heart me-1"></i>Aprecieri
+                                    </th>
+                                    <th scope="col" class="px-4 py-3 text-center">Acțiuni</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for post in user_posts %}
+                                <tr class="align-middle">
+                                    <td class="px-4 py-3">
+                                        <div>
+                                            <h6 class="fw-medium mb-1">{{ post.title }}</h6>
+                                            <small class="text-muted">
+                                                {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
+                                            </small>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <small class="text-muted">{{ post.created_at.strftime('%d %B %Y') }}</small><br>
+                                        <small class="text-muted">{{ post.created_at.strftime('%H:%M') }}</small>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="badge bg-danger rounded-pill">
+                                            <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <div class="btn-group" role="group">
+                                            <a href="//{{ current_user.username }}.calimara.ro#post-{{ post.id }}" 
+                                               class="btn btn-outline-primary btn-sm" target="_blank" 
+                                               data-bs-toggle="tooltip" title="Vezi Postarea">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="/edit-post/{{ post.id }}" 
+                                               class="btn btn-outline-secondary btn-sm"
+                                               data-bs-toggle="tooltip" title="Editează">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button class="btn btn-outline-danger btn-sm delete-post-button" 
+                                                    data-post-id="{{ post.id }}"
+                                                    data-bs-toggle="tooltip" title="Șterge">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-file-text display-1 text-muted mb-4"></i>
+                        <h4 class="fw-bold mb-3">Nu ai creat încă nicio postare</h4>
+                        <p class="text-muted mb-4">Începe să scrii prima ta postare și împărtășește-ți gândurile cu lumea!</p>
+                        <a href="/create-post" class="btn btn-primary-custom btn-lg">
+                            <i class="bi bi-pencil-square me-2"></i>Creează Prima Postare
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-lg-4">
+        <!-- Quick Actions -->
+        <div class="sidebar-card mb-4">
+            <h5 class="fw-bold mb-3">
+                <i class="bi bi-lightning me-2 text-accent"></i>Acțiuni Rapide
+            </h5>
+            
+            <div class="d-grid gap-2">
+                <a href="/create-post" class="btn btn-primary-custom">
+                    <i class="bi bi-plus-circle me-2"></i>Creează Postare
+                </a>
+                <a href="//{{ current_user.username }}.calimara.ro" class="btn btn-outline-primary-custom" target="_blank">
+                    <i class="bi bi-eye me-2"></i>Vezi Blogul Meu
+                </a>
+                <button class="btn btn-outline-secondary" onclick="copyBlogUrl()">
+                    <i class="bi bi-link-45deg me-2"></i>Copiază Link Blog
+                </button>
+            </div>
+        </div>
+
+        <!-- Unapproved Comments -->
+        {% if unapproved_comments %}
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="bi bi-chat-dots me-2"></i>Comentarii de Aprobat
+                    <span class="badge bg-dark ms-2">{{ unapproved_comments|length }}</span>
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <tbody>
+                            {% for comment in unapproved_comments %}
+                            <tr class="align-middle">
+                                <td class="px-3 py-3">
+                                    <div class="d-flex align-items-start">
+                                        <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px;">
+                                            <i class="bi bi-person fs-6"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <h6 class="fw-medium mb-1">
+                                                {{ comment.author_name if comment.author_name else comment.commenter.username }}
+                                            </h6>
+                                            <p class="small text-muted mb-1">
+                                                Pe: <a href="//{{ current_user.username }}.calimara.ro#post-{{ comment.post_id }}" 
+                                                       class="text-decoration-none">{{ comment.post.title }}</a>
+                                            </p>
+                                            <p class="small mb-2">{{ comment.content[:80] }}{% if comment.content|length > 80 %}...{% endif %}</p>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-success approve-comment-button" 
+                                                        data-comment-id="{{ comment.id }}"
+                                                        data-bs-toggle="tooltip" title="Aprobă">
+                                                    <i class="bi bi-check"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger delete-comment-button" 
+                                                        data-comment-id="{{ comment.id }}"
+                                                        data-bs-toggle="tooltip" title="Șterge">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Blog Statistics -->
+        <div class="sidebar-card mb-4">
+            <h5 class="fw-bold mb-3">
+                <i class="bi bi-graph-up text-accent me-2"></i>Statistici Blog
+            </h5>
+            
+            <div class="row g-3">
+                <div class="col-6">
+                    <div class="text-center p-3 bg-light rounded">
+                        <div class="h4 fw-bold text-primary mb-1">{{ user_posts|length }}</div>
+                        <small class="text-muted">Postări</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="text-center p-3 bg-light rounded">
+                        <div class="h4 fw-bold text-danger mb-1">{{ user_posts|sum(attribute='likes_count') or 0 }}</div>
+                        <small class="text-muted">Aprecieri</small>
+                    </div>
+                </div>
+            </div>
+            
+            <hr>
+            
+            <div class="small text-muted">
+                <div class="d-flex justify-content-between mb-2">
+                    <span><i class="bi bi-calendar3 me-1"></i>Membru din:</span>
+                    <span>{{ current_user.created_at.strftime('%B %Y') if current_user.created_at else 'N/A' }}</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span><i class="bi bi-clock me-1"></i>Ultima activitate:</span>
+                    <span>Astăzi</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tips & Help -->
+        <div class="sidebar-card bg-light">
+            <h5 class="fw-bold mb-3">
+                <i class="bi bi-lightbulb text-warning me-2"></i>Sfaturi Utile
+            </h5>
+            
+            <div class="small">
+                <div class="mb-3">
+                    <strong><i class="bi bi-pencil me-1"></i>Scrie regulat</strong>
+                    <p class="mb-0 text-muted">Postează conținut nou în mod constant pentru a-ți menține audiența angajată.</p>
+                </div>
+                
+                <div class="mb-3">
+                    <strong><i class="bi bi-tags me-1"></i>Folosește categorii</strong>
+                    <p class="mb-0 text-muted">Organizează-ți postările cu categorii pentru o navigare mai ușoară.</p>
+                </div>
+                
+                <div class="mb-0">
+                    <strong><i class="bi bi-chat-dots me-1"></i>Interacționează</strong>
+                    <p class="mb-0 text-muted">Răspunde la comentarii și vizitează alte bloguri din comunitate.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyBlogUrl() {
+    const url = `https://${window.location.hostname.replace('calimara.ro', '{{ current_user.username }}.calimara.ro')}`;
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Link-ul blogului a fost copiat în clipboard!', 'success');
+    }).catch(() => {
+        showToast('Nu s-a putut copia link-ul', 'error');
+    });
+}
+
+// Initialize tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+</script>
 {% endblock %}

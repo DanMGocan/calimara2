@@ -1,413 +1,751 @@
+// ===================================
+// CALIMARA - ENHANCED JAVASCRIPT
+// ===================================
+
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize all components
+    initializeComponents();
+    initializeAnimations();
+    initializeFormHandlers();
+    initializeInteractiveFeatures();
+});
+
+// ===================================
+// COMPONENT INITIALIZATION
+// ===================================
+
+function initializeComponents() {
+    // Initialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Initialize popovers
+    const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+    popoverTriggerList.map(function (popoverTriggerEl) {
+        return new bootstrap.Popover(popoverTriggerEl);
+    });
+
+    // Initialize loading overlay functionality
+    initializeLoadingOverlay();
+}
+
+// ===================================
+// ANIMATION SYSTEM
+// ===================================
+
+function initializeAnimations() {
+    // Intersection Observer for scroll animations
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate__animated', 'animate__fadeInUp');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, observerOptions);
+
+    // Observe elements for animation
+    document.querySelectorAll('.card, .post-card, .sidebar-card, .blog-card').forEach(el => {
+        observer.observe(el);
+    });
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+}
+
+// ===================================
+// FORM HANDLERS
+// ===================================
+
+function initializeFormHandlers() {
+    // Login Form
     const loginForm = document.getElementById('loginForm');
-    const loginError = document.getElementById('loginError');
-    const registerForm = document.getElementById('registerForm');
-    const registerError = document.getElementById('registerError');
-    const registerSuccess = document.getElementById('registerSuccess');
-    const createPostForm = document.getElementById('createPostForm');
-    const postError = document.getElementById('postError');
-    const postSuccess = document.getElementById('postSuccess');
-    const editPostForm = document.getElementById('editPostForm');
-    const editPostError = document.getElementById('editPostError');
-    const editPostSuccess = document.getElementById('editPostSuccess');
-    const logoutButton = document.getElementById('logoutButton');
-    // Removed loggedInUsernameSpan as it's populated by Jinja2
-
-    // Removed checkLoginStatus function as UI visibility is now controlled by Jinja2
-    // Removed localStorage usage for login status
-
-    // Login Form Submission
     if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-            console.log('Se încearcă autentificarea cu email:', email);
-
-            try {
-                const response = await fetch('/api/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ email, password }),
-                });
-
-                console.log('Status răspuns API autentificare:', response.status);
-                const data = await response.json();
-                console.log('Date răspuns API autentificare:', data);
-
-                if (response.ok) {
-                    loginError.style.display = 'none';
-                    const loginModal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
-                    if (loginModal) loginModal.hide();
-                    
-                    // No localStorage usage for username
-                    
-                    console.log('Autentificare reușită, se reîncarcă pagina pentru a actualiza interfața.');
-                    window.location.reload(); // Reload page to get server-rendered logged-in state
-                } else {
-                    loginError.textContent = data.detail || 'Autentificare eșuată';
-                    loginError.style.display = 'block';
-                    console.error('Autentificare eșuată:', data.detail);
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de autentificare:', error);
-                loginError.textContent = 'A apărut o eroare neașteptată.';
-                loginError.style.display = 'block';
-            }
-        });
+        loginForm.addEventListener('submit', handleLogin);
     }
 
-    // Logout Button
-    if (logoutButton) {
-        logoutButton.addEventListener('click', async (e) => {
-            e.preventDefault();
-            console.log('Se încearcă deconectarea.');
-            try {
-                const response = await fetch('/api/logout', {
-                    method: 'GET',
-                });
-                console.log('Status răspuns API deconectare:', response.status);
-                if (response.ok) {
-                    // No localStorage usage for username
-                    console.log('Deconectare reușită, se reîncarcă pagina pentru a actualiza interfața.');
-                    window.location.reload(); // Reload page to get server-rendered logged-out state
-                } else {
-                    const data = await response.json();
-                    console.error('Deconectare eșuată:', data.detail);
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de deconectare:', error);
-            }
-        });
-    }
-
-    // Register Form Submission
+    // Register Form
+    const registerForm = document.getElementById('registerForm');
     if (registerForm) {
-        registerForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const subtitle = document.getElementById('subtitle').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            console.log('Se încearcă înregistrarea cu nume de utilizator:', username, 'email:', email, 'motto:', subtitle);
-
-            try {
-                const response = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ username, subtitle, email, password }),
-                });
-
-                console.log('Status răspuns API înregistrare:', response.status);
-                const data = await response.json();
-                console.log('Date răspuns API înregistrare:', data);
-
-                if (response.ok) {
-                    console.log('Înregistrare reușită. Se reîncarcă pagina pentru a actualiza interfața și a redirecționa.');
-                    // No auto-login via JS, rely on server redirect after successful registration
-                    window.location.href = `//${username.toLowerCase()}.calimara.ro/dashboard`; // Redirect to dashboard
-                } else {
-                    registerError.textContent = data.detail || 'Înregistrare eșuată';
-                    registerError.style.display = 'block';
-                    registerSuccess.style.display = 'none';
-                    console.error('Înregistrare eșuată:', data.detail);
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de înregistrare:', error);
-                registerError.textContent = 'A apărut o eroare neașteptată în timpul înregistrării.';
-                registerError.style.display = 'block';
-                registerSuccess.style.display = 'none';
-            }
-        });
+        registerForm.addEventListener('submit', handleRegister);
     }
 
-    // Create Post Form Submission
+    // Create Post Form
+    const createPostForm = document.getElementById('createPostForm');
     if (createPostForm) {
-        createPostForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const title = document.getElementById('postTitle').value;
-            const content = document.getElementById('postContent').value;
-            const categories = document.getElementById('postCategories').value;
-            console.log('Se încearcă crearea postării cu titlul:', title, 'categorii:', categories);
-
-            try {
-                const response = await fetch('/api/posts/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ title, content, categories }),
-                });
-
-                console.log('Status răspuns API creare postare:', response.status);
-                const data = await response.json();
-                console.log('Date răspuns API creare postare:', data);
-
-                if (response.ok) {
-                    postSuccess.textContent = 'Postare creată cu succes!';
-                    postSuccess.style.display = 'block';
-                    postError.style.display = 'none';
-                    createPostForm.reset();
-                    console.log('Postare creată cu succes, se redirecționează către panoul de administrare.');
-                    setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
-                } else {
-                    postError.textContent = data.detail || 'Crearea postării a eșuat';
-                    postError.style.display = 'block';
-                    postSuccess.style.display = 'none';
-                    console.error('Crearea postării a eșuat:', data.detail);
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de creare postare:', error);
-                postError.textContent = 'A apărut o eroare neașteptată.';
-                postError.style.display = 'block';
-                postSuccess.style.display = 'none';
-            }
-        });
+        createPostForm.addEventListener('submit', handleCreatePost);
     }
 
-    // Edit Post Form Submission
+    // Edit Post Form
+    const editPostForm = document.getElementById('editPostForm');
     if (editPostForm) {
-        editPostForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const postId = editPostForm.dataset.postId;
-            const title = document.getElementById('postTitle').value;
-            const content = document.getElementById('postContent').value;
-            const categories = document.getElementById('postCategories').value;
-
-            try {
-                const response = await fetch(`/api/posts/${postId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ title, content, categories }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    editPostSuccess.textContent = 'Postare actualizată cu succes!';
-                    editPostSuccess.style.display = 'block';
-                    editPostError.style.display = 'none';
-                    setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
-                } else {
-                    editPostError.textContent = data.detail || 'Actualizarea postării a eșuat';
-                    editPostError.style.display = 'block';
-                    editPostSuccess.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de actualizare postare:', error);
-                editPostError.textContent = 'A apărut o eroare neașteptată.';
-                editPostError.style.display = 'block';
-                editPostSuccess.style.display = 'none';
-            }
-        });
+        editPostForm.addEventListener('submit', handleEditPost);
     }
 
-    // Delete Post Button (on Admin Dashboard)
-    document.querySelectorAll('.delete-post-button').forEach(button => {
-        button.addEventListener('click', async (e) => {
-            const postId = e.target.dataset.postId;
-            if (confirm('Ești sigur că vrei să ștergi această postare?')) {
-                try {
-                    const response = await fetch(`/api/posts/${postId}`, {
-                        method: 'DELETE',
-                        headers: {},
-                    });
-                    if (response.status === 204) {
-                        e.target.closest('tr').remove(); // Remove row from table
-                        alert('Postare ștearsă cu succes!');
-                    } else {
-                        const data = await response.json();
-                        alert(data.detail || 'Ștergerea postării a eșuat');
-                    }
-                } catch (error) {
-                    console.error('Eroare la solicitarea de ștergere postare:', error);
-                    alert('A apărut o eroare neașteptată.');
-                }
-            }
-        });
-    });
-
-    // Like Button
-    document.querySelectorAll('.like-button').forEach(button => {
-        button.addEventListener('click', async (e) => {
-            const postId = e.target.dataset.postId;
-
-            try {
-                const response = await fetch(`/api/posts/${postId}/likes`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({}),
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    // Update like count on the UI
-                    const likesCountSpan = document.getElementById(`likes-count-${postId}`);
-                    if (likesCountSpan) {
-                        const currentCount = parseInt(likesCountSpan.textContent);
-                        likesCountSpan.textContent = currentCount + 1;
-                    }
-                } else if (response.status === 409) {
-                    alert('Ai apreciat deja această postare!');
-                } else {
-                    const data = await response.json();
-                    alert(data.detail || 'Aprecierea postării a eșuat');
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de apreciere postare:', error);
-                alert('A apărut o eroare neașteptată.');
-            }
-        });
-    });
-
-    // Comment Form Submission
-    document.querySelectorAll('.comment-form').forEach(form => {
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const postId = form.dataset.postId;
-            const content = form.querySelector('textarea[name="content"]').value;
-            const author_name = form.querySelector('input[name="author_name"]').value;
-            const author_email = form.querySelector('input[name="author_email"]').value;
-            const commentErrorDiv = form.querySelector('.comment-error');
-
-            const commentData = { content };
-            // If not logged in, include author details
-            // No localStorage check needed here, server will validate
-            commentData.author_name = author_name;
-            commentData.author_email = author_email;
-
-            try {
-                const response = await fetch(`/api/posts/${postId}/comments`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(commentData),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    alert('Comentariu trimis cu succes! Va apărea după aprobare.');
-                    form.reset();
-                    commentErrorDiv.style.display = 'none';
-                } else {
-                    commentErrorDiv.textContent = data.detail || 'Trimiterea comentariului a eșuat';
-                    commentErrorDiv.style.display = 'block';
-                }
-            } catch (error) {
-                console.error('Eroare la solicitarea de trimitere comentariu:', error);
-                commentErrorDiv.textContent = 'A apărut o eroare neașteptată.';
-                commentErrorDiv.style.display = 'block';
-            }
-        });
-    });
-
-    // Approve Comment Button (on Admin Dashboard)
-    document.querySelectorAll('.approve-comment-button').forEach(button => {
-        button.addEventListener('click', async (e) => {
-            const commentId = e.target.dataset.commentId;
-            if (confirm('Are you sure you want to approve this comment?')) {
-                try {
-                    const response = await fetch(`/api/comments/${commentId}/approve`, {
-                        method: 'PUT',
-                        headers: {},
-                    });
-                    if (response.ok) {
-                        e.target.closest('tr').remove(); // Remove row from table
-                        alert('Comentariu aprobat cu succes!');
-                    } else {
-                        const data = await response.json();
-                        alert(data.detail || 'Aprobarea comentariului a eșuat');
-                    }
-                } catch (error) {
-                    console.error('Eroare la solicitarea de aprobare comentariu:', error);
-                    alert('A apărut o eroare neașteptată.');
-                }
-            }
-        });
-    });
-
-    // Delete Comment Button (on Admin Dashboard)
-    document.querySelectorAll('.delete-comment-button').forEach(button => {
-        button.addEventListener('click', async (e) => {
-            const commentId = e.target.dataset.commentId;
-            if (confirm('Ești sigur că vrei să ștergi acest comentariu?')) {
-                try {
-                    const response = await fetch(`/api/comments/${commentId}`, {
-                        method: 'DELETE',
-                        headers: {},
-                    });
-                    if (response.status === 204) {
-                        e.target.closest('tr').remove(); // Remove row from table
-                        alert('Comentariu șters cu succes!');
-                    } else {
-                        const data = await response.json();
-                        alert(data.detail || 'Ștergerea comentariului a eșuat');
-                    }
-                } catch (error) {
-                    console.error('Eroare la solicitarea de ștergere comentariu:', error);
-                    alert('A apărut o eroare neașteptată.');
-                }
-            }
-        });
-    });
-
-    // Subtitle Update Form (on Admin Dashboard)
+    // Subtitle Update Form
     const subtitleForm = document.getElementById('subtitleForm');
     if (subtitleForm) {
-        subtitleForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const subtitle = document.getElementById('subtitle').value;
-            const subtitleError = document.getElementById('subtitleError');
-            const subtitleSuccess = document.getElementById('subtitleSuccess');
+        subtitleForm.addEventListener('submit', handleSubtitleUpdate);
+    }
 
-            try {
-                const response = await fetch('/api/users/me', {
-                    method: 'PUT', // Use PUT for update
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ subtitle }),
-                });
+    // Comment Forms
+    document.querySelectorAll('.comment-form').forEach(form => {
+        form.addEventListener('submit', handleCommentSubmission);
+    });
 
-                const data = await response.json();
+    // Logout Button
+    const logoutButton = document.getElementById('logoutButton');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', handleLogout);
+    }
+}
 
-                if (response.ok) {
-                    subtitleSuccess.textContent = 'Motto actualizat cu succes!';
-                    subtitleSuccess.style.display = 'block';
-                    subtitleError.style.display = 'none';
-                    // For now, a page reload will reflect the change
-                    setTimeout(() => { window.location.reload(); }, 1500);
-                } else {
-                    subtitleError.textContent = data.detail || 'Actualizarea motto-ului a eșuat';
-                    subtitleError.style.display = 'block';
-                    subtitleSuccess.style.display = 'none';
-                }
-            } catch (error) {
-                console.error('Error updating subtitle:', error);
-                subtitleError.textContent = 'A apărut o eroare neașteptată la actualizarea motto-ului.';
-                subtitleError.style.display = 'block';
-                subtitleSuccess.style.display = 'none';
+// ===================================
+// INTERACTIVE FEATURES
+// ===================================
+
+function initializeInteractiveFeatures() {
+    // Like buttons
+    document.querySelectorAll('.like-button').forEach(button => {
+        button.addEventListener('click', handleLike);
+    });
+
+    // Delete post buttons
+    document.querySelectorAll('.delete-post-button').forEach(button => {
+        button.addEventListener('click', handleDeletePost);
+    });
+
+    // Comment management buttons
+    document.querySelectorAll('.approve-comment-button').forEach(button => {
+        button.addEventListener('click', handleApproveComment);
+    });
+
+    document.querySelectorAll('.delete-comment-button').forEach(button => {
+        button.addEventListener('click', handleDeleteComment);
+    });
+
+    // Auto-save functionality for forms
+    initializeAutoSave();
+
+    // Real-time character counters
+    initializeCharacterCounters();
+
+    // Enhanced form validation
+    initializeFormValidation();
+}
+
+// ===================================
+// API HANDLERS
+// ===================================
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const form = e.target;
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+
+    showLoadingState(form);
+
+    try {
+        const response = await fetch('/api/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            hideError(errorDiv);
+            showToast('Autentificare reușită!', 'success');
+            
+            // Close modal and reload page
+            const modal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
+            if (modal) modal.hide();
+            
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showError(errorDiv, data.detail || 'Autentificare eșuată');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată.');
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleRegister(e) {
+    e.preventDefault();
+    const form = e.target;
+    const username = document.getElementById('username').value;
+    const subtitle = document.getElementById('subtitle').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const errorDiv = document.getElementById('registerError');
+
+    showLoadingState(form);
+
+    try {
+        const response = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, subtitle, email, password }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast('Înregistrare reușită! Te redirecționăm...', 'success');
+            setTimeout(() => {
+                window.location.href = `//${username.toLowerCase()}.calimara.ro/dashboard`;
+            }, 1500);
+        } else {
+            showError(errorDiv, data.detail || 'Înregistrare eșuată');
+        }
+    } catch (error) {
+        console.error('Register error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată în timpul înregistrării.');
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleCreatePost(e) {
+    e.preventDefault();
+    const form = e.target;
+    const title = document.getElementById('postTitle').value;
+    const content = document.getElementById('postContent').value;
+    const categories = document.getElementById('postCategories').value;
+    const errorDiv = document.getElementById('postError');
+    const successDiv = document.getElementById('postSuccess');
+
+    showLoadingState(form);
+
+    try {
+        const response = await fetch('/api/posts/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, categories }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showSuccess(successDiv, 'Postare creată cu succes!');
+            hideError(errorDiv);
+            form.reset();
+            setTimeout(() => window.location.href = '/dashboard', 1500);
+        } else {
+            showError(errorDiv, data.detail || 'Crearea postării a eșuat');
+            hideSuccess(successDiv);
+        }
+    } catch (error) {
+        console.error('Create post error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată.');
+        hideSuccess(successDiv);
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleEditPost(e) {
+    e.preventDefault();
+    const form = e.target;
+    const postId = form.dataset.postId;
+    const title = document.getElementById('postTitle').value;
+    const content = document.getElementById('postContent').value;
+    const categories = document.getElementById('postCategories').value;
+    const errorDiv = document.getElementById('editPostError');
+    const successDiv = document.getElementById('editPostSuccess');
+
+    showLoadingState(form);
+
+    try {
+        const response = await fetch(`/api/posts/${postId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, categories }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showSuccess(successDiv, 'Postare actualizată cu succes!');
+            hideError(errorDiv);
+            setTimeout(() => window.location.href = '/dashboard', 1500);
+        } else {
+            showError(errorDiv, data.detail || 'Actualizarea postării a eșuat');
+            hideSuccess(successDiv);
+        }
+    } catch (error) {
+        console.error('Edit post error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată.');
+        hideSuccess(successDiv);
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleSubtitleUpdate(e) {
+    e.preventDefault();
+    const form = e.target;
+    const subtitle = document.getElementById('subtitle').value;
+    const errorDiv = document.getElementById('subtitleError');
+    const successDiv = document.getElementById('subtitleSuccess');
+
+    showLoadingState(form);
+
+    try {
+        const response = await fetch('/api/users/me', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subtitle }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showSuccess(successDiv, 'Motto actualizat cu succes!');
+            hideError(errorDiv);
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showError(errorDiv, data.detail || 'Actualizarea motto-ului a eșuat');
+            hideSuccess(successDiv);
+        }
+    } catch (error) {
+        console.error('Subtitle update error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată la actualizarea motto-ului.');
+        hideSuccess(successDiv);
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleCommentSubmission(e) {
+    e.preventDefault();
+    const form = e.target;
+    const postId = form.dataset.postId;
+    const content = form.querySelector('textarea[name="content"]').value;
+    const authorName = form.querySelector('input[name="author_name"]')?.value || '';
+    const authorEmail = form.querySelector('input[name="author_email"]')?.value || '';
+    const errorDiv = form.querySelector('.comment-error');
+
+    showLoadingState(form);
+
+    const commentData = { content };
+    if (authorName) commentData.author_name = authorName;
+    if (authorEmail) commentData.author_email = authorEmail;
+
+    try {
+        const response = await fetch(`/api/posts/${postId}/comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(commentData),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast('Comentariu trimis cu succes! Va apărea după aprobare.', 'success');
+            form.reset();
+            hideError(errorDiv);
+        } else {
+            showError(errorDiv, data.detail || 'Trimiterea comentariului a eșuat');
+        }
+    } catch (error) {
+        console.error('Comment submission error:', error);
+        showError(errorDiv, 'A apărut o eroare neașteptată.');
+    } finally {
+        hideLoadingState(form);
+    }
+}
+
+async function handleLike(e) {
+    const button = e.target.closest('.like-button');
+    const postId = button.dataset.postId;
+    const likesCountSpan = document.getElementById(`likes-count-${postId}`);
+
+    // Add visual feedback
+    button.classList.add('liked');
+    button.disabled = true;
+
+    try {
+        const response = await fetch(`/api/posts/${postId}/likes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+
+        if (response.ok) {
+            if (likesCountSpan) {
+                const currentCount = parseInt(likesCountSpan.textContent);
+                likesCountSpan.textContent = currentCount + 1;
+                
+                // Animate the counter
+                likesCountSpan.classList.add('animate__animated', 'animate__pulse');
+            }
+            showToast('Postare apreciată!', 'success');
+        } else if (response.status === 409) {
+            showToast('Ai apreciat deja această postare!', 'warning');
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Aprecierea postării a eșuat', 'error');
+        }
+    } catch (error) {
+        console.error('Like error:', error);
+        showToast('A apărut o eroare neașteptată.', 'error');
+    } finally {
+        setTimeout(() => {
+            button.classList.remove('liked');
+            button.disabled = false;
+        }, 1000);
+    }
+}
+
+async function handleLogout(e) {
+    e.preventDefault();
+    
+    try {
+        const response = await fetch('/api/logout', { method: 'GET' });
+        
+        if (response.ok) {
+            showToast('Deconectare reușită!', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Deconectare eșuată', 'error');
+        }
+    } catch (error) {
+        console.error('Logout error:', error);
+        showToast('A apărut o eroare neașteptată.', 'error');
+    }
+}
+
+async function handleDeletePost(e) {
+    const postId = e.target.dataset.postId;
+    
+    if (!confirm('Ești sigur că vrei să ștergi această postare?')) return;
+
+    try {
+        const response = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+        
+        if (response.status === 204) {
+            e.target.closest('tr').remove();
+            showToast('Postare ștearsă cu succes!', 'success');
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Ștergerea postării a eșuat', 'error');
+        }
+    } catch (error) {
+        console.error('Delete post error:', error);
+        showToast('A apărut o eroare neașteptată.', 'error');
+    }
+}
+
+async function handleApproveComment(e) {
+    const commentId = e.target.dataset.commentId;
+    
+    if (!confirm('Ești sigur că vrei să aprobi acest comentariu?')) return;
+
+    try {
+        const response = await fetch(`/api/comments/${commentId}/approve`, { method: 'PUT' });
+        
+        if (response.ok) {
+            e.target.closest('tr').remove();
+            showToast('Comentariu aprobat cu succes!', 'success');
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Aprobarea comentariului a eșuat', 'error');
+        }
+    } catch (error) {
+        console.error('Approve comment error:', error);
+        showToast('A apărut o eroare neașteptată.', 'error');
+    }
+}
+
+async function handleDeleteComment(e) {
+    const commentId = e.target.dataset.commentId;
+    
+    if (!confirm('Ești sigur că vrei să ștergi acest comentariu?')) return;
+
+    try {
+        const response = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+        
+        if (response.status === 204) {
+            e.target.closest('tr').remove();
+            showToast('Comentariu șters cu succes!', 'success');
+        } else {
+            const data = await response.json();
+            showToast(data.detail || 'Ștergerea comentariului a eșuat', 'error');
+        }
+    } catch (error) {
+        console.error('Delete comment error:', error);
+        showToast('A apărut o eroare neașteptată.', 'error');
+    }
+}
+
+// ===================================
+// UTILITY FUNCTIONS
+// ===================================
+
+function showToast(message, type = 'info') {
+    const toastContainer = document.getElementById('toastContainer');
+    if (!toastContainer) return;
+
+    const toastId = 'toast-' + Date.now();
+    const bgClass = type === 'success' ? 'bg-success' : 
+                   type === 'warning' ? 'bg-warning' : 
+                   type === 'error' ? 'bg-danger' : 'bg-primary';
+    
+    const iconClass = type === 'success' ? 'bi-check-circle' : 
+                     type === 'warning' ? 'bi-exclamation-triangle' : 
+                     type === 'error' ? 'bi-x-circle' : 'bi-info-circle';
+
+    const toast = document.createElement('div');
+    toast.id = toastId;
+    toast.className = `toast align-items-center text-white ${bgClass} border-0`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="bi ${iconClass} me-2"></i>
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+
+    toastContainer.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, { delay: 4000 });
+    bsToast.show();
+
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+function showError(errorDiv, message) {
+    if (!errorDiv) return;
+    const messageSpan = errorDiv.querySelector('.error-message');
+    if (messageSpan) {
+        messageSpan.textContent = message;
+    } else {
+        errorDiv.textContent = message;
+    }
+    errorDiv.classList.remove('d-none');
+    errorDiv.style.display = 'block';
+}
+
+function hideError(errorDiv) {
+    if (!errorDiv) return;
+    errorDiv.classList.add('d-none');
+    errorDiv.style.display = 'none';
+}
+
+function showSuccess(successDiv, message) {
+    if (!successDiv) return;
+    successDiv.textContent = message;
+    successDiv.classList.remove('d-none');
+    successDiv.style.display = 'block';
+}
+
+function hideSuccess(successDiv) {
+    if (!successDiv) return;
+    successDiv.classList.add('d-none');
+    successDiv.style.display = 'none';
+}
+
+function showLoadingState(form) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Se încarcă...';
+    }
+}
+
+function hideLoadingState(form) {
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) {
+        submitButton.disabled = false;
+        // Restore original button text based on form type
+        const originalTexts = {
+            'loginForm': '<i class="bi bi-box-arrow-in-right me-2"></i>Autentificare',
+            'registerForm': '<i class="bi bi-person-plus me-2"></i>Înregistrează-te',
+            'createPostForm': '<i class="bi bi-plus-circle me-2"></i>Creează Postare',
+            'editPostForm': '<i class="bi bi-save me-2"></i>Actualizează Postare',
+            'subtitleForm': '<i class="bi bi-save me-2"></i>Salvează Motto'
+        };
+        
+        const formId = form.id;
+        submitButton.innerHTML = originalTexts[formId] || 'Trimite';
+    }
+}
+
+function initializeLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (!overlay) return;
+
+    // Show loading overlay for page transitions
+    window.addEventListener('beforeunload', () => {
+        overlay.classList.remove('d-none');
+    });
+}
+
+function initializeAutoSave() {
+    // Auto-save for post creation/editing
+    const postForms = document.querySelectorAll('#createPostForm, #editPostForm');
+    
+    postForms.forEach(form => {
+        const inputs = form.querySelectorAll('input, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', debounce(() => {
+                saveFormData(form);
+            }, 1000));
+        });
+        
+        // Load saved data on page load
+        loadFormData(form);
+    });
+}
+
+function saveFormData(form) {
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    localStorage.setItem(`calimara_${form.id}`, JSON.stringify(data));
+}
+
+function loadFormData(form) {
+    const savedData = localStorage.getItem(`calimara_${form.id}`);
+    if (savedData) {
+        const data = JSON.parse(savedData);
+        Object.keys(data).forEach(key => {
+            const input = form.querySelector(`[name="${key}"]`);
+            if (input && !input.value) {
+                input.value = data[key];
             }
         });
     }
+}
 
-    // Mobile Navbar Toggler (Tailwind specific)
-    const navbarToggler = document.getElementById('navbar-toggler');
-    const navbarNav = document.getElementById('navbarNav');
+function clearFormData(form) {
+    localStorage.removeItem(`calimara_${form.id}`);
+}
 
-    if (navbarToggler && navbarNav) {
-        navbarToggler.addEventListener('click', () => {
-            navbarNav.classList.toggle('hidden');
+function initializeCharacterCounters() {
+    // Add character counters to textareas
+    document.querySelectorAll('textarea').forEach(textarea => {
+        const maxLength = textarea.getAttribute('maxlength');
+        if (maxLength) {
+            const counter = document.createElement('small');
+            counter.className = 'text-muted character-counter';
+            counter.textContent = `0/${maxLength}`;
+            textarea.parentNode.appendChild(counter);
+            
+            textarea.addEventListener('input', () => {
+                const currentLength = textarea.value.length;
+                counter.textContent = `${currentLength}/${maxLength}`;
+                counter.className = currentLength > maxLength * 0.9 ? 'text-warning character-counter' : 'text-muted character-counter';
+            });
+        }
+    });
+}
+
+function initializeFormValidation() {
+    // Enhanced form validation
+    document.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', (e) => {
+            if (!form.checkValidity()) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            form.classList.add('was-validated');
         });
+    });
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// ===================================
+// KEYBOARD SHORTCUTS
+// ===================================
+
+document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + Enter to submit forms
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        const activeElement = document.activeElement;
+        if (activeElement.tagName === 'TEXTAREA') {
+            const form = activeElement.closest('form');
+            if (form) {
+                form.dispatchEvent(new Event('submit'));
+            }
+        }
+    }
+    
+    // Escape to close modals
+    if (e.key === 'Escape') {
+        const openModal = document.querySelector('.modal.show');
+        if (openModal) {
+            const modal = bootstrap.Modal.getInstance(openModal);
+            if (modal) modal.hide();
+        }
     }
 });
+
+// ===================================
+// PERFORMANCE OPTIMIZATIONS
+// ===================================
+
+// Lazy loading for images
+if ('IntersectionObserver' in window) {
+    const imageObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                img.src = img.dataset.src;
+                img.classList.remove('lazy');
+                imageObserver.unobserve(img);
+            }
+        });
+    });
+
+    document.querySelectorAll('img[data-src]').forEach(img => {
+        imageObserver.observe(img);
+    });
+}
+
+// Service Worker registration for PWA capabilities
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(registration => console.log('SW registered'))
+            .catch(registrationError => console.log('SW registration failed'));
+    });
+}

@@ -1,42 +1,265 @@
 {% extends "base.html" %}
 
+{% block title %}Calimara - Platforma ta de Microblogging{% endblock %}
+{% block description %}Calimara - Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.{% endblock %}
+
 {% block content %}
-<div class="flex flex-col lg:flex-row gap-4"> {# Flex container for columns #}
-    <div class="w-full lg:w-2/3"> {# Main content column #}
-        <div class="bg-white-overlay p-8 rounded-lg shadow-md solid-border mb-4"> {# Jumbotron styling, custom overlay background, solid border #}
-            <div class="py-8"> {# Padding #}
-                <h1 class="text-5xl font-bold text-primary-custom mb-4">Bun venit pe Calimara.ro</h1> {# Title styling #}
-                <p class="text-lg text-primary-custom mb-6">Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</p> {# Paragraph styling #}
-                <a class="inline-block px-8 py-3 text-lg font-semibold text-white btn-accent-custom rounded-md hover:bg-primary-button transition duration-300" href="//calimara.ro/register" role="button"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
+<!-- Hero Section -->
+<div class="hero-section animate__animated animate__fadeIn">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8 mx-auto text-center">
+                <h1 class="display-3 fw-bold mb-4 animate__animated animate__fadeInUp">
+                    <i class="bi bi-journal-text me-3"></i>Bun venit pe Calimara.ro
+                </h1>
+                <p class="lead mb-5 animate__animated animate__fadeInUp animate__delay-1s">
+                    Platforma ta personală de microblogging pentru scriitori și poeți români. 
+                    Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.
+                </p>
+                <div class="d-grid gap-3 d-md-flex justify-content-md-center animate__animated animate__fadeInUp animate__delay-2s">
+                    <a href="/register" class="btn btn-primary-custom btn-lg px-5 py-3 hover-lift">
+                        <i class="bi bi-journal-plus me-2"></i>Deschide-ți și tu o calimara!
+                    </a>
+                    <a href="#features" class="btn btn-outline-light btn-lg px-5 py-3 hover-lift">
+                        <i class="bi bi-info-circle me-2"></i>Află mai multe
+                    </a>
+                </div>
             </div>
-        </div>
-    </div>
-
-    <div class="w-full lg:w-1/3"> {# Sidebar column #}
-        <h2 class="text-2xl font-semibold text-primary-custom mb-3">Postări Aleatorii</h2> {# Section title #}
-        <div class="grid grid-cols-1 gap-4 mb-4"> {# Grid for posts, spacing #}
-            {% for post in random_posts %}
-            <div class="bg-white-overlay p-4 rounded-lg shadow-md solid-border"> {# Card styling, custom overlay background, solid border #}
-                <h5 class="text-xl font-semibold text-primary-custom mb-2">{{ post.title }}</h5> {# Card title #}
-                <h6 class="text-sm text-secondary-custom mb-2">De <a class="text-accent-custom hover:text-primary-button" href="//{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6> {# Subtitle #}
-                <p class="text-primary-custom mb-4">{{ post.content[:200] }}...</p> {# Card text #}
-                <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="inline-block px-4 py-2 text-sm font-medium text-accent-custom border border-accent-custom rounded-md hover:bg-accent-custom hover:text-white transition duration-300"><i class="bi bi-book mr-1"></i>Citește mai mult</a> {# Button #}
-            </div>
-            {% endfor %}
-        </div>
-
-        <div class="bg-white-overlay p-4 rounded-lg shadow-md solid-border mb-4"> {# Card styling, custom overlay background, solid border #}
-            <div class="text-lg font-semibold text-primary-custom mb-3">
-                Bloguri Aleatorii
-            </div>
-            <ul> {# List group #}
-                {% for user in random_users %}
-                <li class="py-2 border-b border-gray-200 last:border-b-0"> {# List item #}
-                    <a class="text-accent-custom hover:text-primary-button" href="//{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
-                </li>
-                {% endfor %}
-            </ul>
         </div>
     </div>
 </div>
+
+<!-- Features Section -->
+<section id="features" class="py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center mb-5">
+                <h2 class="display-5 fw-bold text-primary mb-3">De ce să alegi Calimara?</h2>
+                <p class="lead text-muted">Descoperă toate avantajele platformei noastre de microblogging</p>
+            </div>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card h-100 hover-lift fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                            <i class="bi bi-pencil-square fs-4"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">Scrie cu Ușurință</h5>
+                        <p class="card-text text-muted">
+                            Editor simplu și intuitiv pentru a-ți exprima gândurile și creativitatea fără distrageri.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 hover-lift fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                            <i class="bi bi-globe fs-4"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">Subdomeniu Personal</h5>
+                        <p class="card-text text-muted">
+                            Primești propriul tău subdomeniu (nume.calimara.ro) pentru o prezență online profesională.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card h-100 hover-lift fade-in">
+                    <div class="card-body text-center p-4">
+                        <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px;">
+                            <i class="bi bi-people fs-4"></i>
+                        </div>
+                        <h5 class="card-title fw-bold">Comunitate Activă</h5>
+                        <p class="card-text text-muted">
+                            Conectează-te cu alți scriitori și poeți români, comentează și apreciază conținutul.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Main Content -->
+<div class="container my-5">
+    <div class="row g-4">
+        <!-- Main Content Column -->
+        <div class="col-lg-8">
+            <!-- Random Posts Section -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="h3 fw-bold text-primary mb-0">
+                    <i class="bi bi-stars me-2"></i>Postări în Evidență
+                </h2>
+                <a href="#" class="btn btn-outline-primary-custom btn-sm">
+                    <i class="bi bi-arrow-right me-1"></i>Vezi toate
+                </a>
+            </div>
+            
+            <div class="row g-4">
+                {% for post in random_posts %}
+                <div class="col-md-6">
+                    <div class="post-card hover-lift slide-up">
+                        <div class="d-flex align-items-start mb-3">
+                            <div class="bg-primary-custom text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                <i class="bi bi-person fs-6"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5 class="card-title fw-bold mb-1">{{ post.title }}</h5>
+                                <p class="text-muted small mb-0">
+                                    De <a href="//{{ post.owner.username }}.calimara.ro" class="text-accent text-decoration-none fw-medium">{{ post.owner.username }}</a>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <p class="card-text text-muted mb-3">
+                            {{ post.content[:150] }}{% if post.content|length > 150 %}...{% endif %}
+                        </p>
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="btn btn-outline-primary-custom btn-sm">
+                                <i class="bi bi-book me-1"></i>Citește mai mult
+                            </a>
+                            <small class="text-muted">
+                                <i class="bi bi-heart me-1"></i>{{ post.likes_count or 0 }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Random Blogs -->
+            <div class="sidebar-card">
+                <div class="d-flex align-items-center mb-3">
+                    <i class="bi bi-journal-text text-accent me-2 fs-5"></i>
+                    <h5 class="fw-bold mb-0">Bloguri Aleatorii</h5>
+                </div>
+                
+                <div class="list-group list-group-flush">
+                    {% for user in random_users %}
+                    <a href="//{{ user.username }}.calimara.ro" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                        <div class="bg-primary-custom text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 32px; height: 32px;">
+                            <i class="bi bi-person fs-6"></i>
+                        </div>
+                        <div>
+                            <div class="fw-medium">{{ user.username }}</div>
+                            <small class="text-muted">{{ user.username }}.calimara.ro</small>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <!-- Call to Action -->
+            <div class="sidebar-card bg-gradient text-white" style="background: var(--gradient-accent);">
+                <div class="text-center">
+                    <i class="bi bi-journal-plus display-4 mb-3"></i>
+                    <h5 class="fw-bold mb-3">Începe să scrii astăzi!</h5>
+                    <p class="mb-4">
+                        Alătură-te comunității noastre de scriitori și poeți români. 
+                        Creează-ți propriul blog în doar câteva minute.
+                    </p>
+                    <a href="/register" class="btn btn-light btn-lg hover-lift">
+                        <i class="bi bi-arrow-right me-2"></i>Înregistrează-te Gratuit
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Statistics -->
+            <div class="sidebar-card">
+                <h5 class="fw-bold mb-3">
+                    <i class="bi bi-graph-up text-accent me-2"></i>Statistici Platformă
+                </h5>
+                
+                <div class="row g-3 text-center">
+                    <div class="col-6">
+                        <div class="bg-light rounded p-3">
+                            <div class="h4 fw-bold text-primary mb-1">{{ random_users|length }}+</div>
+                            <small class="text-muted">Scriitori Activi</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="bg-light rounded p-3">
+                            <div class="h4 fw-bold text-accent mb-1">{{ random_posts|length }}+</div>
+                            <small class="text-muted">Postări Publicate</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Newsletter Section -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-8 mx-auto text-center">
+                <h3 class="fw-bold mb-3">Rămâi la curent cu noutățile</h3>
+                <p class="text-muted mb-4">
+                    Abonează-te pentru a primi cele mai noi postări și actualizări de la comunitatea Calimara.
+                </p>
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="input-group input-group-lg">
+                            <input type="email" class="form-control" placeholder="Adresa ta de email">
+                            <button class="btn btn-primary-custom" type="button">
+                                <i class="bi bi-envelope me-1"></i>Abonează-te
+                            </button>
+                        </div>
+                        <small class="text-muted mt-2 d-block">
+                            Nu spam, doar conținut de calitate. Poți să te dezabonezi oricând.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+// Add scroll animations
+document.addEventListener('DOMContentLoaded', function() {
+    // Intersection Observer for animations
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+    
+    const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('animate__animated', 'animate__fadeInUp');
+            }
+        });
+    }, observerOptions);
+    
+    // Observe all cards
+    document.querySelectorAll('.post-card, .sidebar-card, .card').forEach(card => {
+        observer.observe(card);
+    });
+    
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        });
+    });
+});
+</script>
 {% endblock %}
