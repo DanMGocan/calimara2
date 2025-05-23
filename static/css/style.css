@@ -9,10 +9,10 @@
     --color-primary-light: #404040;
     --color-primary-dark: #1a1a1a;
     
-    /* Accent Colors */
-    --color-accent: #A11D33;
-    --color-accent-light: #c23850;
-    --color-accent-dark: #7a1626;
+    /* Accent Colors - Changed to Dark Green */
+    --color-accent: #1B5E20;
+    --color-accent-light: #2E7D32;
+    --color-accent-dark: #0D4E14;
     
     /* Secondary Colors */
     --color-secondary: #3C4F76;
@@ -36,7 +36,7 @@
     --color-bg-overlay-dark: rgba(0, 0, 0, 0.7);
     --color-glass: rgba(255, 255, 255, 0.1);
     
-    /* Gradients */
+    /* Gradients - Updated with Dark Green */
     --gradient-primary: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
     --gradient-accent: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
     --gradient-hero: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 50%, var(--color-accent) 100%);
@@ -81,11 +81,25 @@ html {
 
 body {
     font-family: var(--font-family-base);
-    background: url('/static/img/background.svg') center/cover fixed;
+    background: url('/static/img/bear.jpg') center/cover fixed;
     background-attachment: fixed;
     color: var(--color-primary);
     line-height: 1.6;
     overflow-x: hidden;
+    position: relative;
+}
+
+/* Background overlay for the bear image */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.8);
+    z-index: -1;
+    pointer-events: none;
 }
 
 /* Backdrop blur effect for modern browsers */
@@ -178,7 +192,7 @@ body {
 
 .form-control:focus {
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 0.25rem rgba(161, 29, 51, 0.15);
+    box-shadow: 0 0 0 0.25rem rgba(27, 94, 32, 0.15);
     background: white;
 }
 
@@ -470,7 +484,7 @@ body {
 }
 
 .hover-glow:hover {
-    box-shadow: 0 0 20px rgba(161, 29, 51, 0.3);
+    box-shadow: 0 0 20px rgba(27, 94, 32, 0.3);
 }
 
 /* ===================================
@@ -501,6 +515,75 @@ footer {
 }
 
 /* ===================================
+   SOCIAL MEDIA BUTTONS
+   ================================== */
+
+.social-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--border-radius) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    transition: all var(--transition-normal);
+    border: 2px solid;
+}
+
+.social-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+.social-btn.facebook {
+    background: #1877F2;
+    border-color: #1877F2;
+    color: white;
+}
+
+.social-btn.facebook:hover {
+    background: #166FE5;
+    border-color: #166FE5;
+    color: white;
+}
+
+.social-btn.twitter {
+    background: #000000;
+    border-color: #000000;
+    color: white;
+}
+
+.social-btn.twitter:hover {
+    background: #333333;
+    border-color: #333333;
+    color: white;
+}
+
+.social-btn.bluesky {
+    background: #00A8E8;
+    border-color: #00A8E8;
+    color: white;
+}
+
+.social-btn.bluesky:hover {
+    background: #0096D1;
+    border-color: #0096D1;
+    color: white;
+}
+
+.social-btn.instagram {
+    background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4);
+    border-color: #DD2A7B;
+    color: white;
+}
+
+.social-btn.instagram:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+    filter: brightness(1.1);
+}
+
+/* ===================================
    RESPONSIVE DESIGN
    ================================== */
 
@@ -521,6 +604,12 @@ footer {
     .btn-primary-custom {
         padding: 0.5rem 1rem;
     }
+    
+    .social-btn {
+        width: 60px;
+        height: 60px;
+        font-size: 1.5rem;
+    }
 }
 
 @media (max-width: 576px) {
@@ -534,6 +623,12 @@ footer {
     .sidebar-card {
         margin-bottom: 1rem;
         padding: 0.75rem;
+    }
+    
+    .social-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 1.25rem;
     }
 }
 
