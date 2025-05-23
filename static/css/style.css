@@ -4,8 +4,8 @@
 :root {
     --color-primary-text: #2C2C2C;
     --color-accent: #A11D33;
-    --color-secondary-text: #5C5C5C;
-    --color-background-overlay: #FFFFFFE6; /* white with 90% opacity */
+    --color-secondary-text: #DFD0B8; /* Changed to light beige for better visibility */
+    --color-background-overlay: rgba(255, 255, 255, 0.6); /* white with 60% opacity */
     --color-primary-button: #3C4F76;
     --color-primary-button-hover: #2B3A57;
     --color-highlight: #F2C84B;
@@ -41,6 +41,10 @@ body {
 /* Cards and Overlays */
 .bg-white-overlay { /* Custom class for cards/modals with opacity */
     background-color: var(--color-background-overlay);
+}
+
+.dashed-border { /* Custom class for dashed border */
+    border: 2px dashed var(--color-secondary-text); /* 2px dashed border with secondary text color */
 }
 
 /* Buttons */
