@@ -5,7 +5,7 @@
     --color-primary-text: #2C2C2C;
     --color-accent: #A11D33;
     --color-secondary-text: #DFD0B8; /* Changed to light beige for better visibility */
-    --color-background-overlay: rgba(255, 255, 255, 0.6); /* white with 60% opacity */
+    --color-background-overlay: rgba(255, 255, 255, 0.3); /* white with 30% opacity - more transparent */
     --color-primary-button: #3C4F76;
     --color-primary-button-hover: #2B3A57;
     --color-highlight: #F2C84B;
@@ -43,8 +43,8 @@ body {
     background-color: var(--color-background-overlay);
 }
 
-.dashed-border { /* Custom class for dashed border */
-    border: 2px dashed var(--color-secondary-text); /* 2px dashed border with secondary text color */
+.solid-border { /* Custom class for solid border */
+    border: 2px solid var(--color-primary-button); /* 2px solid border with primary button color (dark blue/purple) */
 }
 
 /* Buttons */

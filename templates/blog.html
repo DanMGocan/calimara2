@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex flex-col lg:flex-row gap-4"> {# Flex container for columns #}
     <div class="w-full lg:w-2/3"> {# Main content column #}
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md dashed-border mb-4"> {# Card styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-4"> {# Card styling, custom overlay background, solid border #}
             <h1 class="text-3xl font-bold text-primary-custom mb-2">Călimara lui @{{ blog_owner.username }}</h1> {# Title styling #}
             {% if blog_owner.subtitle %}
             <p class="text-lg text-secondary-custom">{{ blog_owner.subtitle }}</p> {# Subtitle styling #}
@@ -15,7 +15,7 @@
         <h2 class="text-2xl font-semibold text-primary-custom mb-3">Ultima postare</h2> {# Section title #}
         {% if posts %}
         {% set post = posts[0] %} {# Only show the first (latest) post #}
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md dashed-border mb-4" id="post-{{ post.id }}"> {# Card styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-4" id="post-{{ post.id }}"> {# Card styling, custom overlay background, solid border #}
             <div class="card-body"> {# No direct card-body in Tailwind, use padding #}
                 <h5 class="text-xl font-semibold text-primary-custom mb-2">{{ post.title }}</h5> {# Post title #}
                 <h6 class="text-sm text-secondary-custom mb-2">Postat pe {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</h6> {# Muted text #}
@@ -38,7 +38,7 @@
                 <h6 class="text-lg font-semibold text-primary-custom mb-3">Comentarii ({{ post.comments|length }})</h6> {# Comments title #}
                 <div class="space-y-3"> {# Spacing for comments #}
                     {% for comment in post.comments %}
-                    <div class="comment-card p-4 rounded-lg shadow-sm dashed-border"> {# Lighter background for comments, dashed border #}
+                    <div class="comment-card p-4 rounded-lg shadow-sm solid-border"> {# Lighter background for comments, solid border #}
                         <p class="text-sm font-semibold text-primary-custom mb-1"><strong>{{ comment.author_name if comment.author_name else comment.commenter.username }}</strong> pe {{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
                         <p class="text-primary-custom">{{ comment.content }}</p>
                     </div>
@@ -69,7 +69,7 @@
     </div>
 
     <div class="w-full lg:w-1/3"> {# Sidebar column #}
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md dashed-border mb-4"> {# Card styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-4"> {# Card styling, custom overlay background, solid border #}
             <div class="text-lg font-semibold text-primary-custom mb-3">
                 Postări Aleatorii
             </div>
@@ -82,7 +82,7 @@
             </ul>
         </div>
 
-        <div class="bg-white-overlay p-6 rounded-lg shadow-md dashed-border mb-4"> {# Card styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-6 rounded-lg shadow-md solid-border mb-4"> {# Card styling, custom overlay background, solid border #}
             <div class="text-lg font-semibold text-primary-custom mb-3">
                 Bloguri Aleatorii
             </div>

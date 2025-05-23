@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex flex-col lg:flex-row gap-4"> {# Flex container for columns #}
     <div class="w-full lg:w-2/3"> {# Main content column #}
-        <div class="bg-white-overlay p-8 rounded-lg shadow-md dashed-border mb-4"> {# Jumbotron styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-8 rounded-lg shadow-md solid-border mb-4"> {# Jumbotron styling, custom overlay background, solid border #}
             <div class="py-8"> {# Padding #}
                 <h1 class="text-5xl font-bold text-primary-custom mb-4">Bun venit pe Calimara.ro</h1> {# Title styling #}
                 <p class="text-lg text-primary-custom mb-6">Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</p> {# Paragraph styling #}
@@ -16,7 +16,7 @@
         <h2 class="text-2xl font-semibold text-primary-custom mb-3">Postări Aleatorii</h2> {# Section title #}
         <div class="grid grid-cols-1 gap-4 mb-4"> {# Grid for posts, spacing #}
             {% for post in random_posts %}
-            <div class="bg-white-overlay p-4 rounded-lg shadow-md dashed-border"> {# Card styling, custom overlay background, dashed border #}
+            <div class="bg-white-overlay p-4 rounded-lg shadow-md solid-border"> {# Card styling, custom overlay background, solid border #}
                 <h5 class="text-xl font-semibold text-primary-custom mb-2">{{ post.title }}</h5> {# Card title #}
                 <h6 class="text-sm text-secondary-custom mb-2">De <a class="text-accent-custom hover:underline" href="//{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6> {# Subtitle #}
                 <p class="text-primary-custom mb-4">{{ post.content[:200] }}...</p> {# Card text #}
@@ -25,7 +25,7 @@
             {% endfor %}
         </div>
 
-        <div class="bg-white-overlay p-4 rounded-lg shadow-md dashed-border mb-4"> {# Card styling, custom overlay background, dashed border #}
+        <div class="bg-white-overlay p-4 rounded-lg shadow-md solid-border mb-4"> {# Card styling, custom overlay background, solid border #}
             <div class="text-lg font-semibold text-primary-custom mb-3">
                 Bloguri Aleatorii
             </div>
