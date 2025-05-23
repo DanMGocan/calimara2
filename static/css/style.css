@@ -2,10 +2,10 @@
 
 /* Color Palette */
 :root {
-    --color-primary-text: #ffffff; /* Changed to white */
+    --color-primary-text: #2C2C2C; /* Reverted to soft black */
     --color-accent: #A11D33;
-    --color-secondary-text: #ffffff; /* Changed to white */
-    --color-background-overlay: #ffffff; /* Changed to full opaque white */
+    --color-secondary-text: #5C5C5C; /* Reverted to muted gray */
+    --color-background-overlay: rgba(255, 255, 255, 0.1); /* white with 10% opacity - very transparent */
     --color-primary-button: #3C4F76;
     --color-primary-button-hover: #2B3A57;
     --color-highlight: #F2C84B;
@@ -26,16 +26,16 @@ body {
 
 /* Navbar */
 .navbar {
-    background-color: var(--color-primary-text); /* Dark background for navbar (now white) */
+    background-color: var(--color-primary-text); /* Dark background for navbar (soft black) */
 }
 
 .navbar-brand,
 .navbar-nav .nav-link {
-    color: var(--color-accent) !important; /* Changed to accent for visibility against white navbar */
+    color: var(--color-white) !important; /* White text for navbar links */
 }
 
 .navbar-nav .nav-link:hover {
-    color: var(--color-primary-button) !important; /* Changed hover to primary button color */
+    color: var(--color-accent) !important; /* Accent color on hover */
 }
 
 /* Cards and Overlays */
@@ -104,7 +104,7 @@ a {
 }
 
 a:hover {
-    color: var(--color-primary-button); /* Changed hover to primary button color */
+    color: var(--color-primary-text); /* Changed hover to primary text color (soft black) */
     text-decoration: underline;
 }
 
@@ -133,6 +133,6 @@ a:hover {
 
 /* Specific adjustments for blog page comments */
 .comments-section .comment-card { /* Custom class for comment cards */
-    background-color: #F5F5DC; /* A light, slightly off-white for comments */
+    background-color: rgba(255, 255, 255, 0.15); /* Transparent white for comments */
     border-color: var(--color-secondary-text);
 }
