@@ -14,33 +14,33 @@
 <body class="text-primary-custom"> {# Applied custom text color #}
     <nav class="navbar shadow-md py-4"> {# Custom navbar class for background #}
         <div class="container mx-auto flex justify-between items-center"> {# Centered container, flexbox for alignment #}
-            <a class="navbar-brand text-2xl font-bold hover:text-accent-custom" href="//{{ current_domain }}">{{ current_domain }}</a> {# Brand styling #}
-            <button class="block lg:hidden text-background-overlay focus:outline-none" id="navbar-toggler"> {# Mobile toggler #}
+            <a class="navbar-brand text-2xl font-bold hover:text-primary-button" href="//{{ current_domain }}">{{ current_domain }}</a> {# Brand styling, hover color changed #}
+            <button class="block lg:hidden text-white focus:outline-none" id="navbar-toggler"> {# Mobile toggler, text white #}
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
             <div class="hidden lg:flex lg:items-center lg:w-auto w-full" id="navbarNav"> {# Navbar collapse #}
-                <ul class="lg:flex items-center justify-between text-base text-background-overlay pt-4 lg:pt-0"> {# Navbar links #}
+                <ul class="lg:flex items-center justify-between text-base text-white pt-4 lg:pt-0"> {# Navbar links, text white #}
                     {% if current_user %}
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="/create-post" id="nav-create-post"><i class="bi bi-pencil-square mr-1"></i>Creează Postare</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="/create-post" id="nav-create-post"><i class="bi bi-pencil-square mr-1"></i>Creează Postare</a>
                     </li>
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="/dashboard" id="nav-admin-dashboard"><i class="bi bi-speedometer2 mr-1"></i>Panou Admin</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="/dashboard" id="nav-admin-dashboard"><i class="bi bi-speedometer2 mr-1"></i>Panou Admin</a>
                     </li>
                     {% endif %}
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="//calimara.ro" id="nav-main-domain"><i class="bi bi-house-door mr-1"></i>Domeniul Principal</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="//calimara.ro" id="nav-main-domain"><i class="bi bi-house-door mr-1"></i>Domeniul Principal</a>
                     </li>
                     {% if not current_user %}
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="#" data-bs-toggle="modal" data-bs-target="#loginModal" id="nav-login-register"><i class="bi bi-box-arrow-in-right mr-1"></i>Autentificare</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="#" data-bs-toggle="modal" data-bs-target="#loginModal" id="nav-login-register"><i class="bi bi-box-arrow-in-right mr-1"></i>Autentificare</a>
                     </li>
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="/register"><i class="bi bi-person-plus mr-1"></i>Înregistrare</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="/register"><i class="bi bi-person-plus mr-1"></i>Înregistrare</a>
                     </li>
                     {% else %}
                     <li>
-                        <a class="lg:p-4 py-3 px-0 block hover:text-accent-custom" href="#" id="logoutButton"><i class="bi bi-box-arrow-right mr-1"></i>Deconectare (<span id="loggedInUsername"></span>)</a>
+                        <a class="lg:p-4 py-3 px-0 block hover:text-primary-button" href="#" id="logoutButton"><i class="bi bi-box-arrow-right mr-1"></i>Deconectare (<span id="loggedInUsername"></span>)</a>
                     </li>
                     {% endif %}
                 </ul>
@@ -57,7 +57,7 @@
         <div class="relative top-20 mx-auto p-5 border-2 solid-border w-96 shadow-lg rounded-md bg-white-overlay"> {# Tailwind modal dialog, custom overlay background, solid border #}
             <div class="flex justify-between items-center pb-3"> {# Modal header #}
                 <h5 class="text-xl font-semibold text-primary-custom" id="loginModalLabel">Autentifică-te la Blogul tău Calimara</h5>
-                <button type="button" class="text-secondary-custom hover:text-primary-custom" data-bs-dismiss="modal" aria-label="Close"> {# Close button #}
+                <button type="button" class="text-primary-custom hover:text-accent-custom" data-bs-dismiss="modal" aria-label="Close"> {# Close button, text primary-custom #}
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>

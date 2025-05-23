@@ -7,7 +7,7 @@
             <div class="py-8"> {# Padding #}
                 <h1 class="text-5xl font-bold text-primary-custom mb-4">Bun venit pe Calimara.ro</h1> {# Title styling #}
                 <p class="text-lg text-primary-custom mb-6">Platforma ta personală de microblogging pentru scriitori și poeți români. Exprimă-te, împărtășește-ți gândurile și conectează-te cu cititorii.</p> {# Paragraph styling #}
-                <a class="inline-block px-8 py-3 text-lg font-semibold text-white btn-accent-custom rounded-md hover:bg-accent-custom transition duration-300" href="//calimara.ro/register" role="button"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
+                <a class="inline-block px-8 py-3 text-lg font-semibold text-white btn-accent-custom rounded-md hover:bg-primary-button transition duration-300" href="//calimara.ro/register" role="button"><i class="bi bi-journal-plus mr-2"></i>Deschide-ți și tu o calimara!</a> {# Button styling #}
             </div>
         </div>
     </div>
@@ -18,7 +18,7 @@
             {% for post in random_posts %}
             <div class="bg-white-overlay p-4 rounded-lg shadow-md solid-border"> {# Card styling, custom overlay background, solid border #}
                 <h5 class="text-xl font-semibold text-primary-custom mb-2">{{ post.title }}</h5> {# Card title #}
-                <h6 class="text-sm text-secondary-custom mb-2">De <a class="text-accent-custom hover:underline" href="//{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6> {# Subtitle #}
+                <h6 class="text-sm text-secondary-custom mb-2">De <a class="text-accent-custom hover:text-primary-button" href="//{{ post.owner.username }}.calimara.ro">{{ post.owner.username }}</a></h6> {# Subtitle #}
                 <p class="text-primary-custom mb-4">{{ post.content[:200] }}...</p> {# Card text #}
                 <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" class="inline-block px-4 py-2 text-sm font-medium text-accent-custom border border-accent-custom rounded-md hover:bg-accent-custom hover:text-white transition duration-300"><i class="bi bi-book mr-1"></i>Citește mai mult</a> {# Button #}
             </div>
@@ -32,7 +32,7 @@
             <ul> {# List group #}
                 {% for user in random_users %}
                 <li class="py-2 border-b border-gray-200 last:border-b-0"> {# List item #}
-                    <a class="text-accent-custom hover:underline" href="//{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
+                    <a class="text-accent-custom hover:text-primary-button" href="//{{ user.username }}.calimara.ro">{{ user.username }}.calimara.ro</a>
                 </li>
                 {% endfor %}
             </ul>
