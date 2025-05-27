@@ -65,7 +65,8 @@ def init_db():
                     user_id INT NOT NULL,
                     title VARCHAR(255) NOT NULL,
                     content TEXT NOT NULL,
-                    categories VARCHAR(255), -- New field for comma-separated categories
+                    category VARCHAR(100), -- Category key from predefined categories
+                    genre VARCHAR(100), -- Genre key from predefined genres
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -131,26 +132,29 @@ def init_db():
                     "user_id": test_user_id,
                     "title": "Primul meu gând",
                     "content": "Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.",
-                    "categories": "gânduri, filozofie"
+                    "category": "proza",
+                    "genre": "proza_scurta"
                 },
                 {
                     "user_id": test_user_id,
                     "title": "Limbrici și poezie",
                     "content": "Chiar și limbricii au o frumusețe aparte, o mișcare lentă, dar hotărâtă. Așa și poezia, se strecoară în suflet și lasă urme adânci.",
-                    "categories": "poezii, natură"
+                    "category": "poezie",
+                    "genre": "poezie_lirica"
                 },
                 {
                     "user_id": test_user_id,
                     "title": "O zi obișnuită",
                     "content": "O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie. Să fim recunoscători pentru fiecare clipă.",
-                    "categories": "proză, viață"
+                    "category": "proza",
+                    "genre": "proza_scurta"
                 }
             ]
 
             for post in test_posts:
                 connection.execute(text("""
-                    INSERT INTO posts (user_id, title, content, categories)
-                    VALUES (:user_id, :title, :content, :categories);
+                    INSERT INTO posts (user_id, title, content, category, genre)
+                    VALUES (:user_id, :title, :content, :category, :genre);
                 """), post)
             connection.commit()
             print(f"3 test posts added for user ID {test_user_id}.")
