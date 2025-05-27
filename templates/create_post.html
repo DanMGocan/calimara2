@@ -383,8 +383,18 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('input', autoSave);
     });
 
-    // Clear saved data on successful submission
-    document.getElementById('createPostForm').addEventListener('submit', function() {
+    // Clear saved data on successful submission and trigger animation
+    document.getElementById('createPostForm').addEventListener('submit', function(e) {
+        const submitButton = this.querySelector('button[type="submit"]');
+        
+        // Add animation class
+        submitButton.classList.add('create-animation');
+        
+        // Remove animation class after animation completes
+        setTimeout(() => {
+            submitButton.classList.remove('create-animation');
+        }, 600);
+        
         localStorage.removeItem('calimara_createPostForm');
     });
 

@@ -143,6 +143,32 @@ body::before {
     box-shadow: var(--shadow);
 }
 
+/* Animated Create Button */
+.btn-primary-custom.create-animation {
+    background: white !important;
+    color: var(--color-accent) !important;
+    border: 2px solid var(--color-accent) !important;
+    transform: scale(1.05);
+    animation: createButtonPulse 0.6s ease-in-out;
+}
+
+@keyframes createButtonPulse {
+    0% {
+        background: var(--gradient-accent);
+        color: white;
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+        box-shadow: 0 0 20px rgba(27, 94, 32, 0.5);
+    }
+    100% {
+        background: white;
+        color: var(--color-accent);
+        transform: scale(1.05);
+    }
+}
+
 .btn-outline-primary-custom {
     border: 2px solid var(--color-accent);
     color: var(--color-accent);
@@ -781,6 +807,43 @@ footer {
     text-decoration: none;
 }
 
+/* Social Contact Cards */
+.social-contact-card {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: var(--border-radius-lg);
+    padding: 2.5rem 2rem;
+    box-shadow: var(--shadow);
+    transition: all var(--transition-normal);
+    backdrop-filter: blur(10px);
+    border: 3px solid var(--color-accent);
+    position: relative;
+    overflow: hidden;
+}
+
+.social-contact-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-accent);
+}
+
+.social-contact-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--color-accent-light);
+}
+
+.social-media-section {
+    margin-right: 1rem;
+}
+
+.contact-section {
+    margin-left: 1rem;
+}
+
 .social-btn:hover,
 .social-btn-small:hover {
     transform: translateY(-5px);
@@ -817,22 +880,22 @@ footer {
 
 .social-btn.bluesky,
 .social-btn-small.bluesky {
-    background: #00A8E8;
-    border-color: #00A8E8;
+    background: #1DA1F2;
+    border-color: #1DA1F2;
     color: white;
 }
 
 .social-btn.bluesky:hover,
 .social-btn-small.bluesky:hover {
-    background: #0096D1;
-    border-color: #0096D1;
+    background: #1A91DA;
+    border-color: #1A91DA;
     color: white;
 }
 
 .social-btn.instagram,
 .social-btn-small.instagram {
     background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4);
-    border-color: #DD2A7B;
+    border: none !important;
     color: white;
 }
 
@@ -841,6 +904,7 @@ footer {
     transform: translateY(-5px);
     box-shadow: var(--shadow-lg);
     filter: brightness(1.1);
+    border: none !important;
 }
 
 /* ===================================
@@ -876,6 +940,13 @@ footer {
         height: 40px;
         font-size: 1.25rem;
     }
+    
+    .social-media-section,
+    .contact-section {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        margin-bottom: 1rem;
+    }
 }
 
 @media (max-width: 576px) {
@@ -901,6 +972,11 @@ footer {
         width: 35px;
         height: 35px;
         font-size: 1rem;
+    }
+    
+    .social-contact-card {
+        padding: 1.5rem 1rem;
+        margin-bottom: 1rem;
     }
 }
 
