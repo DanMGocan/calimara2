@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from .models import Base # Import Base from models.py
 
 # Database connection details from environment variables or default
-DB_USER = os.getenv("MYSQL_USER", "root")
-DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "password")
+DB_USER = os.getenv("MYSQL_USER", "admin")
+DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "QuietUptown1801__")
 DB_HOST = os.getenv("MYSQL_HOST", "localhost")
 DB_PORT = os.getenv("MYSQL_PORT", "3306")
 DB_NAME = os.getenv("MYSQL_DATABASE", "calimara_db")
