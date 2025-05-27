@@ -103,9 +103,9 @@ body::before {
 }
 
 /* Backdrop blur effect for modern browsers */
-@supports (backdrop-filter: blur(10px)) {
+@supports (backdrop-filter: blur(0.625rem)) {
     .glass-effect {
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(0.625rem);
         background: var(--color-glass);
     }
 }
@@ -119,15 +119,15 @@ body::before {
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease, box-shadow 0.3s ease;
-    border-width: 2px;
+    border-width: 0.125rem;
     border-style: solid;
     box-shadow: inset 0 0 0 0 transparent;
 }
 
 /* Create the sliding background effect using box-shadow instead of pseudo-elements */
 .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: inset 500px 0 0 0 white !important;
+    transform: translateY(-0.125rem);
+    box-shadow: inset 31.25rem 0 0 0 white !important;
 }
 
 /* Primary Buttons - Green to White background, White to Green text */
@@ -252,7 +252,7 @@ body::before {
 }
 
 .btn-outline-primary:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-primary) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-primary) !important;
     border-color: var(--color-primary) !important;
     color: white !important;
 }
@@ -265,7 +265,7 @@ body::before {
 }
 
 .btn-outline-secondary:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-muted) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-muted) !important;
     border-color: var(--color-muted) !important;
     color: white !important;
 }
@@ -278,7 +278,7 @@ body::before {
 }
 
 .btn-outline-success:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-success) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-success) !important;
     border-color: var(--color-success) !important;
     color: white !important;
 }
@@ -291,7 +291,7 @@ body::before {
 }
 
 .btn-outline-danger:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-danger) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-danger) !important;
     border-color: var(--color-danger) !important;
     color: white !important;
 }
@@ -304,7 +304,7 @@ body::before {
 }
 
 .btn-outline-warning:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-warning) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-warning) !important;
     border-color: var(--color-warning) !important;
     color: var(--color-dark) !important;
 }
@@ -317,7 +317,7 @@ body::before {
 }
 
 .btn-outline-info:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-info) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-info) !important;
     border-color: var(--color-info) !important;
     color: white !important;
 }
@@ -330,7 +330,7 @@ body::before {
 }
 
 .btn-outline-light:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-light) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-light) !important;
     border-color: var(--color-light) !important;
     color: var(--color-dark) !important;
 }
@@ -343,7 +343,7 @@ body::before {
 }
 
 .btn-outline-dark:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-dark) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-dark) !important;
     border-color: var(--color-dark) !important;
     color: white !important;
 }
@@ -357,7 +357,7 @@ body::before {
 }
 
 .like-button:hover {
-    box-shadow: inset 500px 0 0 0 var(--color-danger) !important;
+    box-shadow: inset 31.25rem 0 0 0 var(--color-danger) !important;
     border-color: var(--color-danger) !important;
     color: white !important;
 }
@@ -371,7 +371,7 @@ body::before {
 
 .social-btn:hover,
 .social-btn-small:hover {
-    transform: translateY(-3px);
+    transform: translateY(-0.1875rem);
     text-decoration: none;
 }
 
@@ -385,7 +385,7 @@ body::before {
 
 .social-btn.facebook:hover,
 .social-btn-small.facebook:hover {
-    box-shadow: inset 500px 0 0 0 white !important;
+    box-shadow: inset 31.25rem 0 0 0 white !important;
     border-color: #1877F2 !important;
     color: #1877F2 !important;
 }
@@ -399,7 +399,7 @@ body::before {
 
 .social-btn.twitter:hover,
 .social-btn-small.twitter:hover {
-    box-shadow: inset 500px 0 0 0 white !important;
+    box-shadow: inset 31.25rem 0 0 0 white !important;
     border-color: #000000 !important;
     color: #000000 !important;
 }
@@ -413,7 +413,7 @@ body::before {
 
 .social-btn.bluesky:hover,
 .social-btn-small.bluesky:hover {
-    box-shadow: inset 500px 0 0 0 white !important;
+    box-shadow: inset 31.25rem 0 0 0 white !important;
     border-color: #1DA1F2 !important;
     color: #1DA1F2 !important;
 }
@@ -421,13 +421,13 @@ body::before {
 .social-btn.instagram,
 .social-btn-small.instagram {
     background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4) !important;
-    border: 2px solid #DD2A7B !important;
+    border: 0.125rem solid #DD2A7B !important;
     color: white !important;
 }
 
 .social-btn.instagram:hover,
 .social-btn-small.instagram:hover {
-    box-shadow: inset 500px 0 0 0 white !important;
+    box-shadow: inset 31.25rem 0 0 0 white !important;
     border-color: #DD2A7B !important;
     color: #DD2A7B !important;
 }
@@ -453,7 +453,7 @@ body::before {
 .btn-primary-custom.create-animation {
     background: white !important;
     color: var(--color-accent) !important;
-    border: 2px solid var(--color-accent) !important;
+    border: 0.125rem solid var(--color-accent) !important;
     transform: scale(1.05);
     animation: createButtonPulse 0.6s ease-in-out;
 }
@@ -466,7 +466,7 @@ body::before {
     }
     50% {
         transform: scale(1.1);
-        box-shadow: 0 0 20px rgba(27, 94, 32, 0.5);
+        box-shadow: 0 0 1.25rem rgba(27, 94, 32, 0.5);
     }
     100% {
         background: white;
@@ -487,11 +487,11 @@ body::before {
     transition: all var(--transition-normal);
     overflow: hidden;
     background: var(--color-bg-overlay);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
 }
 
 .card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-0.3125rem);
     box-shadow: var(--shadow-xl);
 }
 
@@ -504,7 +504,7 @@ body::before {
 
 /* Form Enhancements */
 .form-control {
-    border: 2px solid #e9ecef;
+    border: 0.125rem solid #e9ecef;
     border-radius: var(--border-radius);
     padding: 0.75rem 1rem;
     transition: all var(--transition-normal);
@@ -528,7 +528,7 @@ body::before {
    ================================== */
 
 .navbar {
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     transition: all var(--transition-normal);
 }
 
@@ -550,7 +550,7 @@ body::before {
 
 .nav-link.hover-accent:hover {
     color: var(--color-highlight) !important;
-    transform: translateY(-2px);
+    transform: translateY(-0.125rem);
 }
 
 .nav-link.hover-accent::after {
@@ -559,7 +559,7 @@ body::before {
     bottom: 0;
     left: 50%;
     width: 0;
-    height: 2px;
+    height: 0.125rem;
     background: var(--color-highlight);
     transition: all var(--transition-normal);
     transform: translateX(-50%);
@@ -574,7 +574,7 @@ body::before {
     border: none;
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-lg);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     background: var(--color-bg-overlay);
 }
 
@@ -587,7 +587,7 @@ body::before {
 .dropdown-item:hover {
     background: var(--color-accent);
     color: white;
-    transform: translateX(5px);
+    transform: translateX(0.3125rem);
 }
 
 /* ===================================
@@ -628,12 +628,12 @@ body::before {
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
-    border-left: 4px solid var(--color-accent);
-    backdrop-filter: blur(10px);
+    border-left: 0.25rem solid var(--color-accent);
+    backdrop-filter: blur(0.625rem);
 }
 
 .blog-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-0.3125rem);
     box-shadow: var(--shadow-xl);
     border-left-color: var(--color-highlight);
 }
@@ -645,10 +645,10 @@ body::before {
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     position: relative;
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 0.0625rem solid rgba(255, 255, 255, 0.2);
 }
 
 .post-card::before {
@@ -657,7 +657,7 @@ body::before {
     top: 0;
     left: 0;
     width: 100%;
-    height: 4px;
+    height: 0.25rem;
     background: var(--gradient-accent);
 }
 
@@ -673,7 +673,7 @@ body::before {
 }
 
 .post-card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-0.3125rem);
     box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175);
 }
 
@@ -683,7 +683,7 @@ body::before {
 
 /* Enhanced Post Header */
 .post-header {
-    border-bottom: 2px solid var(--color-accent);
+    border-bottom: 0.125rem solid var(--color-accent);
     padding-bottom: 1rem;
     margin-bottom: 1.5rem;
     position: relative;
@@ -703,9 +703,9 @@ body::before {
     bottom: -0.5rem;
     left: 0;
     width: 3rem;
-    height: 3px;
+    height: 0.1875rem;
     background: var(--gradient-accent);
-    border-radius: 2px;
+    border-radius: 0.125rem;
 }
 
 .post-meta {
@@ -728,7 +728,7 @@ body::before {
 
 .post-meta-item:hover {
     background: rgba(27, 94, 32, 0.2);
-    transform: translateY(-1px);
+    transform: translateY(-0.0625rem);
 }
 
 .post-meta-item i {
@@ -766,8 +766,8 @@ body::before {
     border-radius: var(--border-radius);
     padding: 1rem;
     margin: 1.5rem 0;
-    backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(0.3125rem);
+    border: 0.0625rem solid rgba(255, 255, 255, 0.3);
 }
 
 .post-actions .btn {
@@ -798,7 +798,7 @@ body::before {
 
 .category-tag:hover {
     color: white;
-    transform: translateY(-1px);
+    transform: translateY(-0.0625rem);
     box-shadow: var(--shadow);
 }
 
@@ -808,7 +808,7 @@ body::before {
     padding: 1.5rem;
     margin-bottom: 1.5rem;
     box-shadow: var(--shadow);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     transition: all var(--transition-normal);
 }
 
@@ -847,7 +847,7 @@ body::before {
     border-radius: var(--border-radius);
     padding: 1.25rem;
     margin-bottom: 1rem;
-    border-left: 4px solid var(--color-accent);
+    border-left: 0.25rem solid var(--color-accent);
     transition: all var(--transition-normal);
     box-shadow: var(--shadow-sm);
     position: relative;
@@ -859,7 +859,7 @@ body::before {
     position: absolute;
     top: 0;
     left: 0;
-    width: 4px;
+    width: 0.25rem;
     height: 100%;
     background: var(--gradient-accent);
     transition: width var(--transition-normal);
@@ -867,12 +867,12 @@ body::before {
 
 .comment-card:hover {
     background: rgba(255, 255, 255, 1);
-    transform: translateX(8px);
+    transform: translateX(0.5rem);
     box-shadow: var(--shadow);
 }
 
 .comment-card:hover::before {
-    width: 8px;
+    width: 0.5rem;
 }
 
 .comment-author {
@@ -883,8 +883,8 @@ body::before {
 }
 
 .comment-avatar {
-    width: 40px;
-    height: 40px;
+    width: 2.5rem;
+    height: 2.5rem;
     background: var(--gradient-accent);
     border-radius: 50%;
     display: flex;
@@ -925,7 +925,7 @@ body::before {
     position: absolute;
     left: -2rem;
     top: 0.5rem;
-    width: 1px;
+    width: 0.0625rem;
     height: calc(100% - 1rem);
     background: var(--color-accent);
     opacity: 0.3;
@@ -937,7 +937,7 @@ body::before {
 
 .modal-content {
     border-radius: var(--border-radius-lg);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     background: var(--color-bg-overlay);
 }
 
@@ -946,7 +946,7 @@ body::before {
 }
 
 .modal-backdrop {
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(0.3125rem);
 }
 
 /* ===================================
@@ -964,7 +964,7 @@ body::before {
     justify-content: center;
     align-items: center;
     z-index: 9999;
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(0.3125rem);
 }
 
 .fade-in {
@@ -983,7 +983,7 @@ body::before {
 @keyframes slideUp {
     from {
         opacity: 0;
-        transform: translateY(30px);
+        transform: translateY(1.875rem);
     }
     to {
         opacity: 1;
@@ -997,7 +997,7 @@ body::before {
 }
 
 .hover-lift:hover {
-    transform: translateY(-5px);
+    transform: translateY(-0.3125rem);
     box-shadow: var(--shadow-lg);
 }
 
@@ -1006,7 +1006,7 @@ body::before {
 }
 
 .hover-glow:hover {
-    box-shadow: 0 0 20px rgba(27, 94, 32, 0.3);
+    box-shadow: 0 0 1.25rem rgba(27, 94, 32, 0.3);
 }
 
 /* ===================================
@@ -1015,7 +1015,7 @@ body::before {
 
 .toast {
     background: var(--color-bg-overlay);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
     border: none;
     border-radius: var(--border-radius);
     box-shadow: var(--shadow-lg);
@@ -1033,7 +1033,7 @@ body::before {
 
 footer {
     background: var(--gradient-primary);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
 }
 
 /* ===================================
@@ -1041,27 +1041,27 @@ footer {
    ================================== */
 
 .social-btn {
-    width: 80px;
-    height: 80px;
+    width: 5rem;
+    height: 5rem;
     border-radius: var(--border-radius) !important;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 2rem;
     transition: all var(--transition-normal);
-    border: 2px solid;
+    border: 0.125rem solid;
 }
 
 .social-btn-small {
-    width: 50px;
-    height: 50px;
+    width: 3.125rem;
+    height: 3.125rem;
     border-radius: var(--border-radius) !important;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.5rem;
     transition: all var(--transition-normal);
-    border: 2px solid;
+    border: 0.125rem solid;
     text-decoration: none;
 }
 
@@ -1072,8 +1072,8 @@ footer {
     padding: 2.5rem 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
-    backdrop-filter: blur(10px);
-    border: 3px solid var(--color-accent);
+    backdrop-filter: blur(0.625rem);
+    border: 0.1875rem solid var(--color-accent);
     position: relative;
     overflow: hidden;
 }
@@ -1084,12 +1084,12 @@ footer {
     top: 0;
     left: 0;
     right: 0;
-    height: 4px;
+    height: 0.25rem;
     background: var(--gradient-accent);
 }
 
 .social-contact-card:hover {
-    transform: translateY(-3px);
+    transform: translateY(-0.1875rem);
     box-shadow: var(--shadow-lg);
     border-color: var(--color-accent-light);
 }
@@ -1135,7 +1135,7 @@ footer {
    RESPONSIVE DESIGN
    ================================== */
 
-@media (max-width: 768px) {
+@media (max-width: 48em) {
     .hero-section {
         padding: 2rem 0;
     }
@@ -1154,14 +1154,14 @@ footer {
     }
     
     .social-btn {
-        width: 60px;
-        height: 60px;
+        width: 3.75rem;
+        height: 3.75rem;
         font-size: 1.5rem;
     }
     
     .social-btn-small {
-        width: 40px;
-        height: 40px;
+        width: 2.5rem;
+        height: 2.5rem;
         font-size: 1.25rem;
     }
     
@@ -1173,7 +1173,7 @@ footer {
     }
 }
 
-@media (max-width: 576px) {
+@media (max-width: 36em) {
     .hero-section {
         padding: 1.5rem 0;
         margin-bottom: 1rem;
@@ -1187,14 +1187,14 @@ footer {
     }
     
     .social-btn {
-        width: 50px;
-        height: 50px;
+        width: 3.125rem;
+        height: 3.125rem;
         font-size: 1.25rem;
     }
     
     .social-btn-small {
-        width: 35px;
-        height: 35px;
+        width: 2.1875rem;
+        height: 2.1875rem;
         font-size: 1rem;
     }
     
@@ -1232,12 +1232,12 @@ footer {
 
 .list-group-item:hover {
     background: rgba(255, 255, 255, 1);
-    transform: translateX(8px);
+    transform: translateX(0.5rem);
     box-shadow: var(--shadow);
 }
 
 .list-group-item:hover::before {
-    width: 4px;
+    width: 0.25rem;
 }
 
 .list-group-item > * {
@@ -1274,7 +1274,7 @@ footer {
 
 .bg-glass {
     background: var(--color-glass);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(0.625rem);
 }
 
 .border-accent {
@@ -1303,10 +1303,10 @@ footer {
 
 .sr-only {
     position: absolute;
-    width: 1px;
-    height: 1px;
+    width: 0.0625rem;
+    height: 0.0625rem;
     padding: 0;
-    margin: -1px;
+    margin: -0.0625rem;
     overflow: hidden;
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
@@ -1317,8 +1317,8 @@ footer {
 .btn:focus,
 .form-control:focus,
 .nav-link:focus {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline: 0.125rem solid var(--color-accent);
+    outline-offset: 0.125rem;
 }
 
 /* Reduced motion for accessibility */
@@ -1349,7 +1349,7 @@ footer {
     .blog-card,
     .post-card {
         box-shadow: none !important;
-        border: 1px solid #ddd !important;
+        border: 0.0625rem solid #ddd !important;
     }
     
     body {
