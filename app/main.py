@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware # Import SessionMidd
 
 from . import models, schemas, crud, auth
 from .database import SessionLocal, engine, get_db
+from .categories import CATEGORIES_AND_GENRES, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
 
 # Configure logging
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
@@ -303,7 +304,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         random_users = crud.get_random_users(db, limit=10)
         
         # Get distinct categories for this user's blog
-        blog_categories = crud.get_distinct_categories(db, user_id=user.id)
+        blog_categories = crud.get_distinct_categories_used(db, user_id=user.id)
 
         # Get approved comments for each post
         for post in posts:
@@ -334,9 +335,77 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
                 "random_posts": random_posts,
                 "random_users": random_users,
                 "current_user": current_user, # Pass actual current_user
-                "current_domain": request.url.hostname # Pass current domain
+                "current_domain": request.url.hostname, # Pass current domain
+                "categories": CATEGORIES_AND_GENRES # Pass predefined categories for navigation
             }
         )
+
+# Category and Genre Routes
+@app.get("/category/{category_key}", response_class=HTMLResponse)
+async def category_page(category_key: str, request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user), sort_by: str = "newest"):
+    # Validate category
+    if not is_valid_category(category_key):
+        raise HTTPException(status_code=404, detail="Categoria nu a fost găsită")
+    
+    # Get posts for this category
+    posts = crud.get_posts_by_category_sorted(db, category_key, sort_by=sort_by, limit=6)
+    
+    # Get approved comments and likes count for each post
+    for post in posts:
+        post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+    
+    return templates.TemplateResponse(
+        "category.html",
+        {
+            "request": request,
+            "category_key": category_key,
+            "category_name": get_category_name(category_key),
+            "genres": get_genres_for_category(category_key),
+            "posts": posts,
+            "sort_by": sort_by,
+            "current_user": current_user,
+            "current_domain": request.url.hostname,
+            "categories": CATEGORIES_AND_GENRES
+        }
+    )
+
+@app.get("/category/{category_key}/{genre_key}", response_class=HTMLResponse)
+async def genre_page(category_key: str, genre_key: str, request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user), sort_by: str = "newest"):
+    # Validate category and genre
+    if not is_valid_category(category_key) or not is_valid_genre(category_key, genre_key):
+        raise HTTPException(status_code=404, detail="Categoria sau genul nu a fost găsit")
+    
+    # Get posts for this category and genre
+    posts = crud.get_posts_by_category_sorted(db, category_key, genre_key, sort_by=sort_by, limit=6)
+    
+    # Get approved comments and likes count for each post
+    for post in posts:
+        post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+    
+    return templates.TemplateResponse(
+        "genre.html",
+        {
+            "request": request,
+            "category_key": category_key,
+            "category_name": get_category_name(category_key),
+            "genre_key": genre_key,
+            "genre_name": get_genre_name(category_key, genre_key),
+            "posts": posts,
+            "sort_by": sort_by,
+            "current_user": current_user,
+            "current_domain": request.url.hostname,
+            "categories": CATEGORIES_AND_GENRES
+        }
+    )
+
+# API endpoint to get genres for a category (for dynamic form updates)
+@app.get("/api/genres/{category_key}")
+async def get_genres_api(category_key: str):
+    if not is_valid_category(category_key):
+        raise HTTPException(status_code=404, detail="Category not found")
+    return {"genres": get_genres_for_category(category_key)}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
@@ -373,7 +442,8 @@ async def create_post_page(request: Request, current_user: models.User = Depends
         {
             "request": request,
             "current_user": current_user,
-            "current_domain": request.url.hostname # Pass current domain
+            "current_domain": request.url.hostname, # Pass current domain
+            "categories": get_all_categories() # Pass categories for form
         }
     )
 

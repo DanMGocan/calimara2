@@ -25,7 +25,8 @@ class UserInDB(UserBase):
 class PostBase(BaseModel):
     title: str
     content: str
-    categories: Optional[str] = None # New field
+    category: Optional[str] = None # Category key
+    genre: Optional[str] = None # Genre key
 
 class PostCreate(PostBase):
     pass

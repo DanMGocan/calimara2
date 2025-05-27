@@ -27,6 +27,48 @@
     </div>
 </div>
 
+<!-- Category Navigation Section -->
+<div class="container mb-5">
+    <div class="category-navigation animate__animated animate__fadeIn">
+        <div class="text-center mb-4">
+            <h2 class="h3 fw-bold">Explorează după categorii</h2>
+            <p class="text-muted">Descoperă literatura românească organizată pe genuri</p>
+        </div>
+        
+        <div class="row g-3">
+            {% for category_key, category_data in categories.items() %}
+            <div class="col-lg-2 col-md-3 col-sm-4 col-6">
+                <div class="category-item position-relative">
+                    <a href="/category/{{ category_key }}" class="category-link text-decoration-none d-block">
+                        <div class="category-card text-center p-3 h-100 border rounded-3 hover-lift">
+                            <div class="category-icon mb-2">
+                                <i class="bi bi-bookmark-fill text-primary fs-4"></i>
+                            </div>
+                            <h6 class="fw-semibold mb-0 text-dark">{{ category_data.name }}</h6>
+                        </div>
+                    </a>
+                    
+                    <!-- Genre Dropdown on Hover -->
+                    <div class="genre-dropdown position-absolute w-100 mt-1 d-none">
+                        <div class="card border shadow-lg">
+                            <div class="card-body p-2">
+                                <div class="small fw-semibold text-muted mb-2 px-2">Genuri:</div>
+                                {% for genre_key, genre_name in category_data.genres.items() %}
+                                <a href="/category/{{ category_key }}?genre={{ genre_key }}" 
+                                   class="dropdown-item small py-1 px-2 rounded text-decoration-none hover-bg-light">
+                                    {{ genre_name }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
 <!-- Random Content Section -->
 <div class="container mb-5">
     <div class="row g-4">
@@ -113,11 +155,12 @@
                                                 <i class="bi bi-clock me-1"></i>
                                                 <span>{{ post.created_at.strftime('%d %b') }}</span>
                                             </div>
-                                            {% if post.categories %}
+                                            {% if post.category %}
                                                 <div class="d-flex gap-1">
-                                                    {% for category in post.categories.split(',')[:2] %}
-                                                        <span class="badge bg-accent rounded-pill text-white small">{{ category.strip() }}</span>
-                                                    {% endfor %}
+                                                    <span class="badge bg-accent rounded-pill text-white small">
+                                                        {{ categories[post.category].name if post.category in categories else post.category }}
+                                                        {% if post.genre %} - {{ categories[post.category].genres[post.genre] if post.category in categories and post.genre in categories[post.category].genres else post.genre }}{% endif %}
+                                                    </span>
                                                 </div>
                                             {% endif %}
                                         </div>
@@ -349,6 +392,23 @@ const observer = new IntersectionObserver((entries) => {
 // Observe cards for animation
 document.querySelectorAll('.blog-card').forEach(card => {
     observer.observe(card);
+});
+
+// Category hover functionality
+document.querySelectorAll('.category-item').forEach(categoryItem => {
+    const genreDropdown = categoryItem.querySelector('.genre-dropdown');
+    let hoverTimeout;
+
+    categoryItem.addEventListener('mouseenter', () => {
+        clearTimeout(hoverTimeout);
+        genreDropdown.classList.remove('d-none');
+    });
+
+    categoryItem.addEventListener('mouseleave', () => {
+        hoverTimeout = setTimeout(() => {
+            genreDropdown.classList.add('d-none');
+        }, 150); // Small delay to allow moving cursor to dropdown
+    });
 });
 </script>
 {% endblock %}

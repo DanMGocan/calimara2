@@ -29,7 +29,8 @@ class Post(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    categories: Mapped[Optional[str]] = mapped_column(String(255), nullable=True) # New field for comma-separated categories
+    category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Category key
+    genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Genre key
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

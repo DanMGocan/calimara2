@@ -34,7 +34,7 @@ def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100
     return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
-    db_post = models.Post(title=post.title, content=post.content, categories=post.categories, user_id=user_id)
+    db_post = models.Post(title=post.title, content=post.content, category=post.category, genre=post.genre, user_id=user_id)
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
@@ -50,28 +50,46 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
         db.refresh(db_post)
     return db_post
 
-def get_distinct_categories(db: Session, user_id: Optional[int] = None):
+def get_posts_by_category(db: Session, category: str, genre: Optional[str] = None, skip: int = 0, limit: int = 6):
     """
-    Retrieves distinct categories for a specific user's posts, or all posts if user_id is None.
-    Returns a list of strings.
+    Get posts by category and optionally by genre
     """
-    query = db.query(models.Post.categories)
+    query = db.query(models.Post).filter(models.Post.category == category)
+    if genre:
+        query = query.filter(models.Post.genre == genre)
+    return query.order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_posts_by_category_sorted(db: Session, category: str, genre: Optional[str] = None, sort_by: str = "newest", skip: int = 0, limit: int = 6):
+    """
+    Get posts by category with sorting options: newest, most_liked, random
+    """
+    query = db.query(models.Post).filter(models.Post.category == category)
+    if genre:
+        query = query.filter(models.Post.genre == genre)
+    
+    if sort_by == "newest":
+        query = query.order_by(models.Post.created_at.desc())
+    elif sort_by == "most_liked":
+        # Order by number of likes (count of likes relationship)
+        query = query.outerjoin(models.Like).group_by(models.Post.id).order_by(func.count(models.Like.id).desc())
+    elif sort_by == "random":
+        query = query.order_by(func.random())
+    else:
+        # Default to newest
+        query = query.order_by(models.Post.created_at.desc())
+    
+    return query.offset(skip).limit(limit).all()
+
+def get_distinct_categories_used(db: Session, user_id: Optional[int] = None):
+    """
+    Get distinct categories that are actually used in posts
+    """
+    query = db.query(models.Post.category).distinct()
     if user_id:
         query = query.filter(models.Post.user_id == user_id)
     
-    # Filter out None or empty strings, then split and flatten
-    categories_raw = query.filter(models.Post.categories != None, models.Post.categories != '').all()
-    
-    all_categories = set()
-    for row in categories_raw:
-        if row.categories:
-            # Split by comma, strip whitespace, convert to lowercase, and add to set
-            for cat in row.categories.split(','):
-                stripped_cat = cat.strip().lower()
-                if stripped_cat: # Ensure no empty strings after stripping
-                    all_categories.add(stripped_cat)
-    
-    return sorted(list(all_categories))
+    categories = query.filter(models.Post.category != None, models.Post.category != '').all()
+    return [cat.category for cat in categories if cat.category]
 
 def delete_post(db: Session, post_id: int):
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
