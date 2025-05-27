@@ -116,28 +116,77 @@ body::before {
 
 /* Global button color reverse animation */
 .btn {
-    position: relative;
-    overflow: hidden;
-    transition: all var(--transition-normal);
-    border: 2px solid transparent;
+    position: relative !important;
+    overflow: hidden !important;
+    transition: all var(--transition-normal) !important;
+    border: 2px solid transparent !important;
 }
 
 .btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    transition: left var(--transition-normal);
-    z-index: 1;
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    transition: left var(--transition-normal) !important;
+    z-index: 1 !important;
 }
 
 .btn *,
 .btn {
-    position: relative;
-    z-index: 2;
-    transition: color var(--transition-normal);
+    position: relative !important;
+    z-index: 2 !important;
+    transition: color var(--transition-normal) !important;
+}
+
+/* Force override Bootstrap hover states */
+.btn:hover {
+    background-color: transparent !important;
+}
+
+/* High specificity overrides for Bootstrap buttons */
+.btn.btn-primary:hover,
+.btn.btn-primary-custom:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: var(--color-accent) !important;
+}
+
+.btn.btn-secondary:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: var(--color-muted) !important;
+}
+
+.btn.btn-success:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: var(--color-success) !important;
+}
+
+.btn.btn-danger:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: var(--color-danger) !important;
+}
+
+.btn.btn-outline-primary:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: white !important;
+}
+
+.btn.btn-outline-secondary:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: white !important;
+}
+
+.btn.btn-outline-danger:hover {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: white !important;
 }
 
 /* Primary buttons color reverse */
@@ -156,19 +205,25 @@ body::before {
 .btn-primary:hover,
 .btn-primary-custom:hover {
     color: var(--color-accent) !important;
-    border-color: var(--color-accent);
-    transform: translateY(-2px);
+    background-color: transparent !important;
+    background: transparent !important;
+    border-color: var(--color-accent) !important;
+    transform: translateY(-2px) !important;
 }
 
 .btn-primary:hover::before,
 .btn-primary-custom:hover::before {
-    left: 0;
+    left: 0 !important;
 }
 
 .btn-primary:hover,
 .btn-primary:hover *,
+.btn-primary:hover i,
+.btn-primary:hover span,
 .btn-primary-custom:hover,
-.btn-primary-custom:hover * {
+.btn-primary-custom:hover *,
+.btn-primary-custom:hover i,
+.btn-primary-custom:hover span {
     color: var(--color-accent) !important;
 }
 
@@ -185,16 +240,20 @@ body::before {
 
 .btn-secondary:hover {
     color: var(--color-muted) !important;
-    border-color: var(--color-muted);
-    transform: translateY(-2px);
+    background-color: transparent !important;
+    background: transparent !important;
+    border-color: var(--color-muted) !important;
+    transform: translateY(-2px) !important;
 }
 
 .btn-secondary:hover::before {
-    left: 0;
+    left: 0 !important;
 }
 
 .btn-secondary:hover,
-.btn-secondary:hover * {
+.btn-secondary:hover *,
+.btn-secondary:hover i,
+.btn-secondary:hover span {
     color: var(--color-muted) !important;
 }
 
@@ -367,16 +426,20 @@ body::before {
 
 .btn-outline-primary:hover {
     color: white !important;
-    border-color: var(--color-primary);
-    transform: translateY(-2px);
+    background-color: transparent !important;
+    background: transparent !important;
+    border-color: var(--color-primary) !important;
+    transform: translateY(-2px) !important;
 }
 
 .btn-outline-primary:hover::before {
-    left: 0;
+    left: 0 !important;
 }
 
 .btn-outline-primary:hover,
-.btn-outline-primary:hover * {
+.btn-outline-primary:hover *,
+.btn-outline-primary:hover i,
+.btn-outline-primary:hover span {
     color: white !important;
 }
 
