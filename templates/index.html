@@ -4,181 +4,248 @@
 {% block description %}Platforma românească de microblogging pentru scriitori și poeți. Creează-ți propriul blog și conectează-te cu comunitatea literară.{% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<div class="hero-section animate__animated animate__fadeIn">
-    <div class="container text-center">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <h1 class="display-3 fw-bold mb-4">Calimara.ro</h1>
-                <p class="lead mb-5">
-                    Platforma românească de microblogging pentru scriitori și poeți. 
-                    Creează-ți propriul spațiu literar și conectează-te cu comunitatea.
-                </p>
-                <div class="d-grid gap-3 d-md-flex justify-content-md-center">
-                    <a href="/register" class="btn btn-primary-custom btn-lg px-5 py-3 hover-lift">
-                        <i class="bi bi-journal-plus me-2"></i>Deschide-ți Călimara
-                    </a>
-                    <button class="btn btn-outline-light btn-lg px-5 py-3 hover-lift" data-bs-toggle="modal" data-bs-target="#loginModal">
-                        <i class="bi bi-box-arrow-in-right me-2"></i>Autentificare
-                    </button>
-                </div>
-            </div>
+<!-- Modern Hero Section -->
+<section class="hero-modern">
+    <div class="hero-content animate-fade-in-up">
+        <h1 class="hero-title text-balance">
+            <span class="text-gradient">Calimara.ro</span>
+        </h1>
+        <p class="hero-subtitle text-balance">
+            Platforma românească de microblogging pentru scriitori și poeți. 
+            Creează-ți propriul spațiu literar și conectează-te cu comunitatea.
+        </p>
+        <div class="d-flex flex-column flex-sm-row gap-3 justify-content-center align-items-center animate-fade-in-up animate-delay-200">
+            <a href="/register" class="btn btn-primary-custom btn-modern btn-lg hover-lift focus-ring" role="button" aria-label="Creează cont nou">
+                <i class="bi bi-journal-plus me-2" aria-hidden="true"></i>
+                <span>Deschide-ți Călimara</span>
+            </a>
+            <button class="btn btn-outline-light btn-modern btn-lg hover-lift focus-ring" 
+                    data-bs-toggle="modal" 
+                    data-bs-target="#loginModal"
+                    aria-label="Autentificare utilizatori existenți">
+                <i class="bi bi-box-arrow-in-right me-2" aria-hidden="true"></i>
+                <span>Autentificare</span>
+            </button>
         </div>
     </div>
-</div>
+</section>
 
-<!-- Random Content Section -->
-<div class="container mb-5">
-    <div class="row g-4">
-        <!-- Random Blogs -->
-        <div class="col-lg-6">
-            <div class="blog-card animate__animated animate__fadeInLeft">
-                <div class="d-flex align-items-center mb-4">
-                    <i class="bi bi-journal-text text-accent me-3 fs-2"></i>
-                    <h2 class="h3 fw-bold mb-0">Câteva călimare... la întâmplare</h2>
-                </div>
+<!-- Modern Content Section -->
+<section class="py-5">
+    <div class="container-modern">
+        <div class="row g-4 g-lg-5">
+            <!-- Modern Blog Cards -->
+            <div class="col-12 col-lg-6">
+                <div class="card-modern p-4 animate-fade-in-up animate-delay-300">
+                    <header class="d-flex align-items-center mb-4">
+                        <div class="rounded-circle bg-gradient d-flex align-items-center justify-content-center me-3" 
+                             style="width: 3rem; height: 3rem; background: var(--gradient-accent);">
+                            <i class="bi bi-journal-text text-white fs-5" aria-hidden="true"></i>
+                        </div>
+                        <h2 class="h4 fw-bold mb-0 text-balance">Câteva călimare... la întâmplare</h2>
+                    </header>
                 
                 {% if random_users %}
-                    <div class="list-group list-group-flush">
+                    <div class="space-y-sm">
                         {% for user in random_users[:10] %}
                             <a href="//{{ user.username }}.calimara.ro" 
-                               class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift">
+                               class="d-block p-3 rounded-3 text-decoration-none hover-lift hover-scale focus-ring"
+                               style="background: rgba(255, 255, 255, 0.6); border: 0.0625rem solid rgba(255, 255, 255, 0.3); transition: all var(--transition-normal);"
+                               role="button"
+                               aria-label="Vizitează blogul lui {{ user.username }}">
                                 <div class="d-flex align-items-center">
-                                    <div class="bg-primary-custom text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 3rem; height: 3rem;">
-                                        <i class="bi bi-person fs-5"></i>
+                                    <div class="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0" 
+                                         style="width: 2.5rem; height: 2.5rem; background: var(--gradient-accent);">
+                                        <i class="bi bi-person text-white fs-6" aria-hidden="true"></i>
                                     </div>
-                                    <div class="flex-grow-1">
-                                        <h5 class="fw-medium mb-1">@{{ user.username }}</h5>
-                                        <p class="text-muted small mb-0">
+                                    <div class="flex-grow-1 min-w-0">
+                                        <h3 class="h6 fw-semibold mb-1 text-truncate">@{{ user.username }}</h3>
+                                        <p class="text-muted small mb-1 text-truncate">
                                             {% if user.subtitle %}
                                                 {{ user.subtitle }}
                                             {% else %}
                                                 Călimara lui {{ user.username }}
                                             {% endif %}
                                         </p>
-                                        <small class="text-muted">
-                                            <i class="bi bi-globe me-1"></i>{{ user.username }}.calimara.ro
-                                        </small>
+                                        <div class="d-flex align-items-center text-muted" style="font-size: 0.75rem;">
+                                            <i class="bi bi-globe me-1" aria-hidden="true"></i>
+                                            <span class="text-truncate">{{ user.username }}.calimara.ro</span>
+                                        </div>
                                     </div>
-                                    <i class="bi bi-arrow-right text-muted"></i>
+                                    <div class="flex-shrink-0 ms-2">
+                                        <i class="bi bi-arrow-right text-muted fs-6" aria-hidden="true"></i>
+                                    </div>
                                 </div>
                             </a>
                         {% endfor %}
                     </div>
                 {% else %}
-                    <div class="text-center py-4">
-                        <i class="bi bi-journal-x display-4 text-muted mb-3"></i>
-                        <p class="text-muted">Încă nu există bloguri create. Fii primul!</p>
-                        <a href="/register" class="btn btn-primary-custom">
-                            <i class="bi bi-plus-circle me-2"></i>Creează primul blog
+                    <div class="text-center py-5">
+                        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-3" 
+                             style="width: 4rem; height: 4rem;">
+                            <i class="bi bi-journal-x fs-3 text-muted" aria-hidden="true"></i>
+                        </div>
+                        <h3 class="h5 fw-medium mb-2">Încă nu există bloguri</h3>
+                        <p class="text-muted mb-4">Fii primul care își deschide călimara pe această platformă!</p>
+                        <a href="/register" class="btn btn-primary-custom btn-modern hover-lift focus-ring">
+                            <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>
+                            <span>Creează primul blog</span>
                         </a>
                     </div>
                 {% endif %}
-            </div>
-        </div>
-
-        <!-- Random Posts -->
-        <div class="col-lg-6">
-            <div class="blog-card animate__animated animate__fadeInRight">
-                <div class="d-flex align-items-center mb-4">
-                    <i class="bi bi-file-text text-accent me-3 fs-2"></i>
-                    <h2 class="h3 fw-bold mb-0">Lucrări literare... tot la întâmplare</h2>
                 </div>
+            </div>
+
+            <!-- Modern Posts Section -->
+            <div class="col-12 col-lg-6">
+                <div class="card-modern p-4 animate-fade-in-up animate-delay-300">
+                    <header class="d-flex align-items-center mb-4">
+                        <div class="rounded-circle bg-gradient d-flex align-items-center justify-content-center me-3" 
+                             style="width: 3rem; height: 3rem; background: var(--gradient-secondary);">
+                            <i class="bi bi-file-text text-white fs-5" aria-hidden="true"></i>
+                        </div>
+                        <h2 class="h4 fw-bold mb-0 text-balance">Lucrări literare... tot la întâmplare</h2>
+                    </header>
                 
                 {% if random_posts %}
-                    <div class="list-group list-group-flush">
+                    <div class="space-y-sm">
                         {% for post in random_posts[:10] %}
-                            <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" 
-                               class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift text-decoration-none">
-                                <div class="d-flex align-items-start">
-                                    <div class="bg-accent text-white rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0" style="width: 2.8125rem; height: 2.8125rem;">
-                                        <i class="bi bi-journal-text fs-6"></i>
-                                    </div>
-                                    <div class="flex-grow-1">
-                                        <div class="d-flex justify-content-between align-items-start mb-2">
-                                            <h6 class="fw-semibold mb-0 text-primary">{{ post.title }}</h6>
-                                            {% if post.likes_count > 0 %}
-                                                <span class="badge bg-danger rounded-pill">
-                                                    <i class="bi bi-heart-fill me-1"></i>{{ post.likes_count }}
-                                                </span>
-                                            {% endif %}
+                            <article class="d-block p-3 rounded-3 text-decoration-none hover-lift focus-ring"
+                                    style="background: rgba(255, 255, 255, 0.6); border: 0.0625rem solid rgba(255, 255, 255, 0.3); transition: all var(--transition-normal);">
+                                <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" 
+                                   class="text-decoration-none"
+                                   aria-label="Citește {{ post.title }} de {{ post.owner.username }}">
+                                    <div class="d-flex align-items-start">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0" 
+                                             style="width: 2.5rem; height: 2.5rem; background: var(--gradient-secondary);">
+                                            <i class="bi bi-journal-text text-white fs-6" aria-hidden="true"></i>
                                         </div>
-                                        <p class="text-muted small mb-2 lh-sm">
-                                            {{ post.content[:120] }}{% if post.content|length > 120 %}...{% endif %}
-                                        </p>
-                                        <div class="d-flex align-items-center justify-content-between">
-                                            <div class="d-flex align-items-center text-muted small">
-                                                <i class="bi bi-person me-1"></i>
-                                                <span class="me-3 fw-medium">{{ post.owner.username }}</span>
-                                                <i class="bi bi-clock me-1"></i>
-                                                <span>{{ post.created_at.strftime('%d %b') }}</span>
+                                        <div class="flex-grow-1 min-w-0">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h3 class="h6 fw-semibold mb-0 text-primary text-truncate">{{ post.title }}</h3>
+                                                {% if post.likes_count > 0 %}
+                                                    <span class="badge bg-danger rounded-pill ms-2 flex-shrink-0"
+                                                          aria-label="{{ post.likes_count }} aprecieri">
+                                                        <i class="bi bi-heart-fill me-1" aria-hidden="true"></i>{{ post.likes_count }}
+                                                    </span>
+                                                {% endif %}
                                             </div>
-                                            {% if post.categories %}
-                                                <div class="d-flex gap-1">
-                                                    {% for category in post.categories.split(',')[:2] %}
-                                                        <span class="badge bg-accent rounded-pill text-white small">{{ category.strip() }}</span>
-                                                    {% endfor %}
+                                            <p class="text-muted small mb-2 lh-sm" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                                {{ post.content[:120] }}{% if post.content|length > 120 %}...{% endif %}
+                                            </p>
+                                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                                <div class="d-flex align-items-center text-muted" style="font-size: 0.75rem;">
+                                                    <i class="bi bi-person me-1" aria-hidden="true"></i>
+                                                    <span class="me-3 fw-medium">{{ post.owner.username }}</span>
+                                                    <i class="bi bi-clock me-1" aria-hidden="true"></i>
+                                                    <time datetime="{{ post.created_at.isoformat() }}">{{ post.created_at.strftime('%d %b') }}</time>
                                                 </div>
-                                            {% endif %}
+                                                {% if post.categories %}
+                                                    <div class="d-flex gap-1">
+                                                        {% for category in post.categories.split(',')[:2] %}
+                                                            <span class="badge rounded-pill text-white" 
+                                                                  style="font-size: 0.625rem; background: var(--color-accent);">{{ category.strip() }}</span>
+                                                        {% endfor %}
+                                                    </div>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </a>
+                                </a>
+                            </article>
                         {% endfor %}
                     </div>
                 {% else %}
-                    <div class="text-center py-4">
-                        <i class="bi bi-file-text-x display-4 text-muted mb-3"></i>
-                        <p class="text-muted">Încă nu există postări. Începe să scrii!</p>
-                        <a href="/register" class="btn btn-primary-custom">
-                            <i class="bi bi-pencil-square me-2"></i>Scrie prima postare
+                    <div class="text-center py-5">
+                        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-3" 
+                             style="width: 4rem; height: 4rem;">
+                            <i class="bi bi-file-text-x fs-3 text-muted" aria-hidden="true"></i>
+                        </div>
+                        <h3 class="h5 fw-medium mb-2">Încă nu există postări</h3>
+                        <p class="text-muted mb-4">Începe să scrii și inspiră comunitatea!</p>
+                        <a href="/register" class="btn btn-primary-custom btn-modern hover-lift focus-ring">
+                            <i class="bi bi-pencil-square me-2" aria-hidden="true"></i>
+                            <span>Scrie prima postare</span>
                         </a>
                     </div>
                 {% endif %}
+                </div>
             </div>
         </div>
     </div>
-</div>
+</section>
 
-<!-- Social Media & Contact Section -->
-<div class="container mb-5">
-    <div class="row g-4">
-        <!-- Social Media Half -->
-        <div class="col-lg-6">
-            <div class="social-contact-card social-media-section animate__animated animate__fadeInLeft">
-                <div class="text-center">
-                    <h4 class="fw-bold mb-4">Rămâi la curent cu noutățile</h4>
-                    <div class="d-flex justify-content-center gap-3 flex-wrap">
-                        <a href="https://facebook.com/calimara.ro" target="_blank" class="social-btn-small facebook hover-lift">
-                            <i class="bi bi-facebook"></i>
-                        </a>
-                        <a href="https://twitter.com/calimara_ro" target="_blank" class="social-btn-small twitter hover-lift">
-                            <i class="bi bi-twitter-x"></i>
-                        </a>
-                        <a href="https://bsky.app/profile/calimara.ro" target="_blank" class="social-btn-small bluesky hover-lift">
-                            <i class="bi bi-balloon"></i>
-                        </a>
-                        <a href="https://instagram.com/calimara.ro" target="_blank" class="social-btn-small instagram hover-lift">
-                            <i class="bi bi-instagram"></i>
-                        </a>
+<!-- Modern Social Media & Contact Section -->
+<section class="py-5 bg-light bg-opacity-50">
+    <div class="container-modern">
+        <div class="row g-4 g-lg-5">
+            <!-- Social Media Section -->
+            <div class="col-12 col-lg-6">
+                <div class="card-modern p-4 h-100 d-flex flex-column justify-content-center animate-fade-in-up">
+                    <div class="text-center">
+                        <div class="rounded-circle bg-gradient d-inline-flex align-items-center justify-content-center mb-3" 
+                             style="width: 3.5rem; height: 3.5rem; background: var(--gradient-accent);">
+                            <i class="bi bi-share text-white fs-5" aria-hidden="true"></i>
+                        </div>
+                        <h2 class="h4 fw-bold mb-3 text-balance">Rămâi la curent cu noutățile</h2>
+                        <p class="text-muted mb-4">Urmărește-ne pe rețelele sociale pentru actualizări despre platforma Calimara</p>
+                        <div class="d-flex justify-content-center gap-3 flex-wrap">
+                            <a href="https://facebook.com/calimara.ro" 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               class="social-btn-small facebook hover-lift focus-ring" 
+                               aria-label="Urmărește Calimara pe Facebook">
+                                <i class="bi bi-facebook" aria-hidden="true"></i>
+                            </a>
+                            <a href="https://twitter.com/calimara_ro" 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               class="social-btn-small twitter hover-lift focus-ring" 
+                               aria-label="Urmărește Calimara pe Twitter">
+                                <i class="bi bi-twitter-x" aria-hidden="true"></i>
+                            </a>
+                            <a href="https://bsky.app/profile/calimara.ro" 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               class="social-btn-small bluesky hover-lift focus-ring" 
+                               aria-label="Urmărește Calimara pe Bluesky">
+                                <i class="bi bi-balloon" aria-hidden="true"></i>
+                            </a>
+                            <a href="https://instagram.com/calimara.ro" 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               class="social-btn-small instagram hover-lift focus-ring" 
+                               aria-label="Urmărește Calimara pe Instagram">
+                                <i class="bi bi-instagram" aria-hidden="true"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Contact Section -->
+            <div class="col-12 col-lg-6">
+                <div class="card-modern p-4 h-100 d-flex flex-column justify-content-center animate-fade-in-up animate-delay-100">
+                    <div class="text-center">
+                        <div class="rounded-circle bg-gradient d-inline-flex align-items-center justify-content-center mb-3" 
+                             style="width: 3.5rem; height: 3.5rem; background: var(--gradient-secondary);">
+                            <i class="bi bi-envelope text-white fs-5" aria-hidden="true"></i>
+                        </div>
+                        <h2 class="h4 fw-bold mb-3 text-balance">Scrie-ne pe mail!</h2>
+                        <p class="text-muted mb-4">Ai întrebări sau sugestii? Suntem aici să te ajutăm cu orice ai nevoie</p>
+                        <button class="btn btn-primary-custom btn-modern btn-lg hover-lift focus-ring" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#contactModal"
+                                aria-label="Deschide formularul de contact">
+                            <i class="bi bi-envelope me-2" aria-hidden="true"></i>
+                            <span>Trimite-ne un mesaj</span>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <!-- Contact Form Half -->
-        <div class="col-lg-6">
-            <div class="social-contact-card contact-section animate__animated animate__fadeInRight">
-                <div class="text-center">
-                    <h4 class="fw-bold mb-4">Scrie-ne pe mail!</h4>
-                    <button class="btn btn-primary-custom btn-lg hover-lift" data-bs-toggle="modal" data-bs-target="#contactModal">
-                        <i class="bi bi-envelope me-2"></i>Trimite-ne un mesaj
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
-</div>
+</section>
 
 <!-- Contact Modal -->
 <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel" aria-hidden="true">
