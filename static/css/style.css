@@ -111,594 +111,308 @@ body::before {
 }
 
 /* ===================================
-   GLOBAL BUTTON HOVER EFFECTS
+   SIMPLE BUTTON COLOR REVERSE SYSTEM
    ================================== */
 
-/* Global button color reverse animation */
+/* Override Bootstrap's default button behaviors */
 .btn {
-    position: relative !important;
-    overflow: hidden !important;
-    transition: all var(--transition-normal) !important;
-    border: 2px solid transparent !important;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    border-width: 2px;
+    border-style: solid;
 }
 
-.btn::before {
-    content: '' !important;
-    position: absolute !important;
-    top: 0 !important;
-    left: -100% !important;
-    width: 100% !important;
-    height: 100% !important;
-    transition: left var(--transition-normal) !important;
-    z-index: 1 !important;
-}
-
-.btn *,
-.btn {
-    position: relative !important;
-    z-index: 2 !important;
-    transition: color var(--transition-normal) !important;
-}
-
-/* Force override Bootstrap hover states */
+/* Create the sliding background effect using box-shadow instead of pseudo-elements */
 .btn:hover {
-    background-color: transparent !important;
+    transform: translateY(-2px);
+    box-shadow: inset 500px 0 0 0 white !important;
 }
 
-/* High specificity overrides for Bootstrap buttons */
-.btn.btn-primary:hover,
-.btn.btn-primary-custom:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: var(--color-accent) !important;
-}
-
-.btn.btn-secondary:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: var(--color-muted) !important;
-}
-
-.btn.btn-success:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: var(--color-success) !important;
-}
-
-.btn.btn-danger:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: var(--color-danger) !important;
-}
-
-.btn.btn-outline-primary:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: white !important;
-}
-
-.btn.btn-outline-secondary:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: white !important;
-}
-
-.btn.btn-outline-danger:hover {
-    background-color: transparent !important;
-    background-image: none !important;
-    color: white !important;
-}
-
-/* Primary buttons color reverse */
+/* Primary Buttons - Green to White background, White to Green text */
 .btn-primary,
 .btn-primary-custom {
-    background: var(--gradient-accent);
-    color: white;
-    border-color: var(--color-accent);
-}
-
-.btn-primary::before,
-.btn-primary-custom::before {
-    background: white;
+    background-color: var(--color-accent) !important;
+    border-color: var(--color-accent) !important;
+    color: white !important;
 }
 
 .btn-primary:hover,
 .btn-primary-custom:hover {
-    color: var(--color-accent) !important;
-    background-color: transparent !important;
-    background: transparent !important;
+    background-color: var(--color-accent) !important;
     border-color: var(--color-accent) !important;
-    transform: translateY(-2px) !important;
-}
-
-.btn-primary:hover::before,
-.btn-primary-custom:hover::before {
-    left: 0 !important;
-}
-
-.btn-primary:hover,
-.btn-primary:hover *,
-.btn-primary:hover i,
-.btn-primary:hover span,
-.btn-primary-custom:hover,
-.btn-primary-custom:hover *,
-.btn-primary-custom:hover i,
-.btn-primary-custom:hover span {
     color: var(--color-accent) !important;
 }
 
-/* Secondary buttons color reverse */
+/* Secondary Buttons */
 .btn-secondary {
-    background: var(--color-muted);
-    color: white;
-    border-color: var(--color-muted);
-}
-
-.btn-secondary::before {
-    background: white;
+    background-color: var(--color-muted) !important;
+    border-color: var(--color-muted) !important;
+    color: white !important;
 }
 
 .btn-secondary:hover {
-    color: var(--color-muted) !important;
-    background-color: transparent !important;
-    background: transparent !important;
+    background-color: var(--color-muted) !important;
     border-color: var(--color-muted) !important;
-    transform: translateY(-2px) !important;
-}
-
-.btn-secondary:hover::before {
-    left: 0 !important;
-}
-
-.btn-secondary:hover,
-.btn-secondary:hover *,
-.btn-secondary:hover i,
-.btn-secondary:hover span {
     color: var(--color-muted) !important;
 }
 
-/* Success buttons color reverse */
+/* Success Buttons */
 .btn-success {
-    background: var(--color-success);
-    color: white;
-    border-color: var(--color-success);
-}
-
-.btn-success::before {
-    background: white;
+    background-color: var(--color-success) !important;
+    border-color: var(--color-success) !important;
+    color: white !important;
 }
 
 .btn-success:hover {
-    color: var(--color-success) !important;
-    border-color: var(--color-success);
-    transform: translateY(-2px);
-}
-
-.btn-success:hover::before {
-    left: 0;
-}
-
-.btn-success:hover,
-.btn-success:hover * {
+    background-color: var(--color-success) !important;
+    border-color: var(--color-success) !important;
     color: var(--color-success) !important;
 }
 
-/* Danger buttons color reverse */
+/* Danger Buttons */
 .btn-danger {
-    background: var(--color-danger);
-    color: white;
-    border-color: var(--color-danger);
-}
-
-.btn-danger::before {
-    background: white;
+    background-color: var(--color-danger) !important;
+    border-color: var(--color-danger) !important;
+    color: white !important;
 }
 
 .btn-danger:hover {
-    color: var(--color-danger) !important;
-    border-color: var(--color-danger);
-    transform: translateY(-2px);
-}
-
-.btn-danger:hover::before {
-    left: 0;
-}
-
-.btn-danger:hover,
-.btn-danger:hover * {
+    background-color: var(--color-danger) !important;
+    border-color: var(--color-danger) !important;
     color: var(--color-danger) !important;
 }
 
-/* Warning buttons color reverse */
+/* Warning Buttons */
 .btn-warning {
-    background: var(--color-warning);
-    color: var(--color-dark);
-    border-color: var(--color-warning);
-}
-
-.btn-warning::before {
-    background: var(--color-dark);
+    background-color: var(--color-warning) !important;
+    border-color: var(--color-warning) !important;
+    color: var(--color-dark) !important;
 }
 
 .btn-warning:hover {
-    color: var(--color-warning) !important;
-    border-color: var(--color-warning);
-    transform: translateY(-2px);
-}
-
-.btn-warning:hover::before {
-    left: 0;
-}
-
-.btn-warning:hover,
-.btn-warning:hover * {
+    background-color: var(--color-warning) !important;
+    border-color: var(--color-warning) !important;
     color: var(--color-warning) !important;
 }
 
-/* Info buttons color reverse */
+/* Info Buttons */
 .btn-info {
-    background: var(--color-info);
-    color: white;
-    border-color: var(--color-info);
-}
-
-.btn-info::before {
-    background: white;
+    background-color: var(--color-info) !important;
+    border-color: var(--color-info) !important;
+    color: white !important;
 }
 
 .btn-info:hover {
-    color: var(--color-info) !important;
-    border-color: var(--color-info);
-    transform: translateY(-2px);
-}
-
-.btn-info:hover::before {
-    left: 0;
-}
-
-.btn-info:hover,
-.btn-info:hover * {
+    background-color: var(--color-info) !important;
+    border-color: var(--color-info) !important;
     color: var(--color-info) !important;
 }
 
-/* Light buttons color reverse */
+/* Light Buttons */
 .btn-light {
-    background: var(--color-light);
-    color: var(--color-dark);
-    border-color: var(--color-light);
-}
-
-.btn-light::before {
-    background: var(--color-dark);
+    background-color: var(--color-light) !important;
+    border-color: var(--color-light) !important;
+    color: var(--color-dark) !important;
 }
 
 .btn-light:hover {
-    color: var(--color-light) !important;
-    border-color: var(--color-light);
-    transform: translateY(-2px);
-}
-
-.btn-light:hover::before {
-    left: 0;
-}
-
-.btn-light:hover,
-.btn-light:hover * {
+    background-color: var(--color-light) !important;
+    border-color: var(--color-light) !important;
     color: var(--color-light) !important;
 }
 
-/* Dark buttons color reverse */
+/* Dark Buttons */
 .btn-dark {
-    background: var(--color-dark);
-    color: white;
-    border-color: var(--color-dark);
-}
-
-.btn-dark::before {
-    background: white;
+    background-color: var(--color-dark) !important;
+    border-color: var(--color-dark) !important;
+    color: white !important;
 }
 
 .btn-dark:hover {
-    color: var(--color-dark) !important;
-    border-color: var(--color-dark);
-    transform: translateY(-2px);
-}
-
-.btn-dark:hover::before {
-    left: 0;
-}
-
-.btn-dark:hover,
-.btn-dark:hover * {
+    background-color: var(--color-dark) !important;
+    border-color: var(--color-dark) !important;
     color: var(--color-dark) !important;
 }
 
-/* Outline buttons color reverse */
+/* Outline Buttons - Transparent to Colored background, Colored to White text */
 .btn-outline-primary {
-    background: transparent;
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-}
-
-.btn-outline-primary::before {
-    background: var(--color-primary);
+    background-color: transparent !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
 }
 
 .btn-outline-primary:hover {
-    color: white !important;
-    background-color: transparent !important;
-    background: transparent !important;
+    box-shadow: inset 500px 0 0 0 var(--color-primary) !important;
     border-color: var(--color-primary) !important;
-    transform: translateY(-2px) !important;
-}
-
-.btn-outline-primary:hover::before {
-    left: 0 !important;
-}
-
-.btn-outline-primary:hover,
-.btn-outline-primary:hover *,
-.btn-outline-primary:hover i,
-.btn-outline-primary:hover span {
     color: white !important;
 }
 
 .btn-outline-secondary {
-    background: transparent;
-    color: var(--color-muted);
-    border-color: var(--color-muted);
-}
-
-.btn-outline-secondary::before {
-    background: var(--color-muted);
+    background-color: transparent !important;
+    border-color: var(--color-muted) !important;
+    color: var(--color-muted) !important;
 }
 
 .btn-outline-secondary:hover {
-    color: white !important;
-    border-color: var(--color-muted);
-    transform: translateY(-2px);
-}
-
-.btn-outline-secondary:hover::before {
-    left: 0;
-}
-
-.btn-outline-secondary:hover,
-.btn-outline-secondary:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-muted) !important;
+    border-color: var(--color-muted) !important;
     color: white !important;
 }
 
 .btn-outline-success {
-    background: transparent;
-    color: var(--color-success);
-    border-color: var(--color-success);
-}
-
-.btn-outline-success::before {
-    background: var(--color-success);
+    background-color: transparent !important;
+    border-color: var(--color-success) !important;
+    color: var(--color-success) !important;
 }
 
 .btn-outline-success:hover {
-    color: white !important;
-    border-color: var(--color-success);
-    transform: translateY(-2px);
-}
-
-.btn-outline-success:hover::before {
-    left: 0;
-}
-
-.btn-outline-success:hover,
-.btn-outline-success:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-success) !important;
+    border-color: var(--color-success) !important;
     color: white !important;
 }
 
 .btn-outline-danger {
-    background: transparent;
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-}
-
-.btn-outline-danger::before {
-    background: var(--color-danger);
+    background-color: transparent !important;
+    border-color: var(--color-danger) !important;
+    color: var(--color-danger) !important;
 }
 
 .btn-outline-danger:hover {
-    color: white !important;
-    border-color: var(--color-danger);
-    transform: translateY(-2px);
-}
-
-.btn-outline-danger:hover::before {
-    left: 0;
-}
-
-.btn-outline-danger:hover,
-.btn-outline-danger:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-danger) !important;
+    border-color: var(--color-danger) !important;
     color: white !important;
 }
 
 .btn-outline-warning {
-    background: transparent;
-    color: var(--color-warning);
-    border-color: var(--color-warning);
-}
-
-.btn-outline-warning::before {
-    background: var(--color-warning);
+    background-color: transparent !important;
+    border-color: var(--color-warning) !important;
+    color: var(--color-warning) !important;
 }
 
 .btn-outline-warning:hover {
-    color: var(--color-dark) !important;
-    border-color: var(--color-warning);
-    transform: translateY(-2px);
-}
-
-.btn-outline-warning:hover::before {
-    left: 0;
-}
-
-.btn-outline-warning:hover,
-.btn-outline-warning:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-warning) !important;
+    border-color: var(--color-warning) !important;
     color: var(--color-dark) !important;
 }
 
 .btn-outline-info {
-    background: transparent;
-    color: var(--color-info);
-    border-color: var(--color-info);
-}
-
-.btn-outline-info::before {
-    background: var(--color-info);
+    background-color: transparent !important;
+    border-color: var(--color-info) !important;
+    color: var(--color-info) !important;
 }
 
 .btn-outline-info:hover {
-    color: white !important;
-    border-color: var(--color-info);
-    transform: translateY(-2px);
-}
-
-.btn-outline-info:hover::before {
-    left: 0;
-}
-
-.btn-outline-info:hover,
-.btn-outline-info:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-info) !important;
+    border-color: var(--color-info) !important;
     color: white !important;
 }
 
 .btn-outline-light {
-    background: transparent;
-    color: var(--color-light);
-    border-color: var(--color-light);
-}
-
-.btn-outline-light::before {
-    background: var(--color-light);
+    background-color: transparent !important;
+    border-color: var(--color-light) !important;
+    color: var(--color-light) !important;
 }
 
 .btn-outline-light:hover {
-    color: var(--color-dark) !important;
-    border-color: var(--color-light);
-    transform: translateY(-2px);
-}
-
-.btn-outline-light:hover::before {
-    left: 0;
-}
-
-.btn-outline-light:hover,
-.btn-outline-light:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-light) !important;
+    border-color: var(--color-light) !important;
     color: var(--color-dark) !important;
 }
 
 .btn-outline-dark {
-    background: transparent;
-    color: var(--color-dark);
-    border-color: var(--color-dark);
-}
-
-.btn-outline-dark::before {
-    background: var(--color-dark);
+    background-color: transparent !important;
+    border-color: var(--color-dark) !important;
+    color: var(--color-dark) !important;
 }
 
 .btn-outline-dark:hover {
-    color: white !important;
-    border-color: var(--color-dark);
-    transform: translateY(-2px);
-}
-
-.btn-outline-dark:hover::before {
-    left: 0;
-}
-
-.btn-outline-dark:hover,
-.btn-outline-dark:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-dark) !important;
+    border-color: var(--color-dark) !important;
     color: white !important;
 }
 
-/* Special buttons */
+/* Special Buttons */
 .like-button {
-    background: transparent;
-    color: var(--color-danger);
-    border-color: var(--color-danger);
-}
-
-.like-button::before {
-    background: var(--color-danger);
+    background-color: transparent !important;
+    border-color: var(--color-danger) !important;
+    color: var(--color-danger) !important;
 }
 
 .like-button:hover {
-    color: white !important;
-    border-color: var(--color-danger);
-    transform: translateY(-2px);
-}
-
-.like-button:hover::before {
-    left: 0;
-}
-
-.like-button:hover,
-.like-button:hover * {
+    box-shadow: inset 500px 0 0 0 var(--color-danger) !important;
+    border-color: var(--color-danger) !important;
     color: white !important;
 }
 
-/* Social buttons */
+/* Social Media Buttons */
 .social-btn,
 .social-btn-small {
-    position: relative;
-    overflow: hidden;
+    transition: all 0.3s ease;
+    text-decoration: none;
 }
 
-.social-btn::before,
-.social-btn-small::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    transition: left var(--transition-normal);
-    z-index: 1;
+.social-btn:hover,
+.social-btn-small:hover {
+    transform: translateY(-3px);
+    text-decoration: none;
 }
 
-.social-btn i,
-.social-btn-small i,
-.social-btn *,
-.social-btn-small * {
-    position: relative;
-    z-index: 2;
-    transition: color var(--transition-normal);
+/* Individual social button hover effects */
+.social-btn.facebook,
+.social-btn-small.facebook {
+    background-color: #1877F2 !important;
+    border-color: #1877F2 !important;
+    color: white !important;
 }
 
-/* Social button specific hover effects */
 .social-btn.facebook:hover,
 .social-btn-small.facebook:hover {
-    background: white !important;
+    box-shadow: inset 500px 0 0 0 white !important;
+    border-color: #1877F2 !important;
     color: #1877F2 !important;
-    border-color: #1877F2;
+}
+
+.social-btn.twitter,
+.social-btn-small.twitter {
+    background-color: #000000 !important;
+    border-color: #000000 !important;
+    color: white !important;
 }
 
 .social-btn.twitter:hover,
 .social-btn-small.twitter:hover {
-    background: white !important;
+    box-shadow: inset 500px 0 0 0 white !important;
+    border-color: #000000 !important;
     color: #000000 !important;
-    border-color: #000000;
+}
+
+.social-btn.bluesky,
+.social-btn-small.bluesky {
+    background-color: #1DA1F2 !important;
+    border-color: #1DA1F2 !important;
+    color: white !important;
 }
 
 .social-btn.bluesky:hover,
 .social-btn-small.bluesky:hover {
-    background: white !important;
+    box-shadow: inset 500px 0 0 0 white !important;
+    border-color: #1DA1F2 !important;
     color: #1DA1F2 !important;
-    border-color: #1DA1F2;
+}
+
+.social-btn.instagram,
+.social-btn-small.instagram {
+    background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4) !important;
+    border: 2px solid #DD2A7B !important;
+    color: white !important;
 }
 
 .social-btn.instagram:hover,
 .social-btn-small.instagram:hover {
-    background: white !important;
-    color: #E4405F !important;
-    border: 2px solid #E4405F !important;
+    box-shadow: inset 500px 0 0 0 white !important;
+    border-color: #DD2A7B !important;
+    color: #DD2A7B !important;
 }
 
 /* ===================================
