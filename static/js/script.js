@@ -216,8 +216,28 @@ async function handleRegister(e) {
 
         if (response.ok) {
             showToast('Înregistrare reușită! Te redirecționăm...', 'success');
-            setTimeout(() => {
-                window.location.href = `//${username.toLowerCase()}.calimara.ro/dashboard`;
+            
+            // Verify authentication before redirecting
+            setTimeout(async () => {
+                try {
+                    const authCheck = await fetch('/api/user/me');
+                    const authData = await authCheck.json();
+                    
+                    if (authData.authenticated) {
+                        // User is authenticated, redirect to dashboard
+                        window.location.replace(`//${username.toLowerCase()}.calimara.ro/dashboard`);
+                    } else {
+                        // Authentication failed, show error
+                        showError(errorDiv, 'Autentificare automată eșuată. Te rugăm să te conectezi manual.');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    }
+                } catch (error) {
+                    console.error('Auth verification error:', error);
+                    // Fallback: try to redirect anyway
+                    window.location.replace(`//${username.toLowerCase()}.calimara.ro/dashboard`);
+                }
             }, 1500);
         } else {
             showError(errorDiv, data.detail || 'Înregistrare eșuată');

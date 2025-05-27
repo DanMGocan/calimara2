@@ -80,7 +80,7 @@ def get_client_ip(request: Request):
 # --- API Endpoints (Authentication & User Management) ---
 
 @app.post("/api/register", response_model=schemas.UserInDB) # Re-added response_model
-async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+async def register_user(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
     
     # Validate username: must be one word (no spaces) and alphanumeric
@@ -103,7 +103,12 @@ async def register_user(user: schemas.UserCreate, db: Session = Depends(get_db))
     user.email = user.email.lower()
 
     new_user = crud.create_user(db=db, user=user)
-    logger.info(f"Utilizator înregistrat cu succes: {new_user.email}")
+    
+    # Automatically log in the user by setting session
+    request.session["user_id"] = new_user.id
+    logger.info(f"Sesiune setată pentru utilizatorul nou înregistrat: user_id={new_user.id}")
+    
+    logger.info(f"Utilizator înregistrat și autentificat cu succes: {new_user.email}")
     return new_user
 
 @app.get("/login", response_class=HTMLResponse)
@@ -128,6 +133,22 @@ async def login_for_access_token(request: Request, form_data: schemas.UserLogin,
     request.session["user_id"] = user.id
     logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată.")
     return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
+
+@app.get("/api/user/me")
+async def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
+    """Endpoint to check current user authentication status"""
+    if current_user:
+        return {
+            "authenticated": True,
+            "user": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "email": current_user.email,
+                "subtitle": current_user.subtitle
+            }
+        }
+    else:
+        return {"authenticated": False, "user": None}
 
 @app.get("/api/logout")
 async def logout_user(request: Request):
