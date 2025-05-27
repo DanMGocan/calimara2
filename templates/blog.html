@@ -65,57 +65,80 @@
             </div>
             
             <article class="post-card hover-lift slide-up" id="post-{{ post.id }}">
-                <!-- Post Header -->
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <h3 class="h4 fw-bold mb-2">{{ post.title }}</h3>
-                        <div class="d-flex align-items-center text-muted small">
-                            <i class="bi bi-calendar3 me-1"></i>
-                            <span class="me-3">{{ post.created_at.strftime('%d %B %Y, %H:%M') }}</span>
+                <!-- Enhanced Post Header -->
+                <header class="post-header">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h3 class="post-title h4">{{ post.title }}</h3>
+                            <div class="post-meta">
+                                <div class="post-meta-item">
+                                    <i class="bi bi-calendar3"></i>
+                                    <span>{{ post.created_at.strftime('%d %B %Y, %H:%M') }}</span>
+                                </div>
+                                {% if post.categories %}
+                                <div class="post-meta-item">
+                                    <i class="bi bi-tags"></i>
+                                    <span>{{ post.categories }}</span>
+                                </div>
+                                {% endif %}
+                                <div class="post-meta-item">
+                                    <i class="bi bi-person"></i>
+                                    <span>{{ blog_owner.username }}</span>
+                                </div>
+                            </div>
                             {% if post.categories %}
-                                <i class="bi bi-tags me-1"></i>
-                                <span>{{ post.categories }}</span>
+                            <div class="post-categories">
+                                {% for category in post.categories.split(',') %}
+                                <span class="category-tag">{{ category.strip() }}</span>
+                                {% endfor %}
+                            </div>
                             {% endif %}
                         </div>
+                        
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle border-0" type="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" onclick="sharePost('{{ post.id }}')"><i class="bi bi-share me-2"></i>Distribuie</a></li>
+                                <li><a class="dropdown-item" href="#comments-{{ post.id }}"><i class="bi bi-chat-dots me-2"></i>Comentarii</a></li>
+                            </ul>
+                        </div>
                     </div>
-                    
-                    <div class="dropdown">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-three-dots"></i>
-                        </button>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" onclick="sharePost('{{ post.id }}')"><i class="bi bi-share me-2"></i>Distribuie</a></li>
-                            <li><a class="dropdown-item" href="#comments-{{ post.id }}"><i class="bi bi-chat-dots me-2"></i>Comentarii</a></li>
-                        </ul>
-                    </div>
-                </div>
+                </header>
                 
                 <!-- Post Content -->
                 <div class="post-content mb-4">
                     <p class="lh-lg">{{ post.content }}</p>
                 </div>
                 
-                <!-- Post Actions -->
-                <div class="d-flex justify-content-between align-items-center mb-4 py-3 border-top border-bottom">
-                    <div class="d-flex gap-3">
-                        <button class="btn btn-outline-danger like-button hover-glow" data-post-id="{{ post.id }}">
-                            <i class="bi bi-heart me-1"></i>
-                            <span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>
-                        </button>
+                <!-- Enhanced Post Actions -->
+                <div class="post-actions">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex gap-3">
+                            <button class="btn btn-outline-danger like-button hover-glow" data-post-id="{{ post.id }}">
+                                <i class="bi bi-heart me-2"></i>
+                                <span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>
+                                <span class="ms-1">aprecieri</span>
+                            </button>
+                            
+                            <a href="#comments-{{ post.id }}" class="btn btn-outline-primary">
+                                <i class="bi bi-chat-dots me-2"></i>
+                                {{ post.comments|length }} comentarii
+                            </a>
+                        </div>
                         
-                        <a href="#comments-{{ post.id }}" class="btn btn-outline-primary">
-                            <i class="bi bi-chat-dots me-1"></i>
-                            {{ post.comments|length }} comentarii
-                        </a>
-                    </div>
-                    
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-outline-secondary btn-sm" onclick="shareOnTwitter('{{ post.id }}')">
-                            <i class="bi bi-twitter"></i>
-                        </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="shareOnFacebook('{{ post.id }}')">
-                            <i class="bi bi-facebook"></i>
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="shareOnTwitter('{{ post.id }}')" title="Distribuie pe Twitter">
+                                <i class="bi bi-twitter-x"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="shareOnFacebook('{{ post.id }}')" title="Distribuie pe Facebook">
+                                <i class="bi bi-facebook"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="copyPostLink('{{ post.id }}')" title="Copiază link-ul">
+                                <i class="bi bi-link-45deg"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
@@ -130,19 +153,27 @@
                         <div class="comments-list mb-4">
                             {% for comment in post.comments %}
                                 <div class="comment-card slide-up">
-                                    <div class="d-flex align-items-start">
-                                        <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 36px; height: 36px;">
-                                            <i class="bi bi-person fs-6"></i>
+                                    <div class="comment-author">
+                                        <div class="comment-avatar">
+                                            {% if comment.author_name %}
+                                                {{ comment.author_name[0].upper() }}
+                                            {% elif comment.commenter %}
+                                                {{ comment.commenter.username[0].upper() }}
+                                            {% else %}
+                                                <i class="bi bi-person"></i>
+                                            {% endif %}
                                         </div>
-                                        <div class="flex-grow-1">
-                                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <div>
-                                                    <strong class="fw-medium">{{ comment.author_name if comment.author_name else comment.commenter.username }}</strong>
-                                                    <small class="text-muted ms-2">{{ comment.created_at.strftime('%d %B %Y, %H:%M') }}</small>
-                                                </div>
+                                        <div class="comment-meta">
+                                            <div class="comment-author-name">
+                                                {{ comment.author_name if comment.author_name else comment.commenter.username }}
                                             </div>
-                                            <p class="mb-0">{{ comment.content }}</p>
+                                            <div class="comment-date">
+                                                {{ comment.created_at.strftime('%d %B %Y, %H:%M') }}
+                                            </div>
                                         </div>
+                                    </div>
+                                    <div class="comment-content">
+                                        {{ comment.content }}
                                     </div>
                                 </div>
                             {% endfor %}
