@@ -165,7 +165,9 @@ body::before {
     left: 0;
 }
 
+.btn-primary:hover,
 .btn-primary:hover *,
+.btn-primary-custom:hover,
 .btn-primary-custom:hover * {
     color: var(--color-accent) !important;
 }
@@ -191,6 +193,7 @@ body::before {
     left: 0;
 }
 
+.btn-secondary:hover,
 .btn-secondary:hover * {
     color: var(--color-muted) !important;
 }
@@ -216,6 +219,7 @@ body::before {
     left: 0;
 }
 
+.btn-success:hover,
 .btn-success:hover * {
     color: var(--color-success) !important;
 }
@@ -241,6 +245,7 @@ body::before {
     left: 0;
 }
 
+.btn-danger:hover,
 .btn-danger:hover * {
     color: var(--color-danger) !important;
 }
@@ -266,6 +271,7 @@ body::before {
     left: 0;
 }
 
+.btn-warning:hover,
 .btn-warning:hover * {
     color: var(--color-warning) !important;
 }
@@ -291,6 +297,7 @@ body::before {
     left: 0;
 }
 
+.btn-info:hover,
 .btn-info:hover * {
     color: var(--color-info) !important;
 }
@@ -316,6 +323,7 @@ body::before {
     left: 0;
 }
 
+.btn-light:hover,
 .btn-light:hover * {
     color: var(--color-light) !important;
 }
@@ -341,6 +349,7 @@ body::before {
     left: 0;
 }
 
+.btn-dark:hover,
 .btn-dark:hover * {
     color: var(--color-dark) !important;
 }
@@ -366,6 +375,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-primary:hover,
 .btn-outline-primary:hover * {
     color: white !important;
 }
@@ -390,6 +400,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-secondary:hover,
 .btn-outline-secondary:hover * {
     color: white !important;
 }
@@ -414,6 +425,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-success:hover,
 .btn-outline-success:hover * {
     color: white !important;
 }
@@ -438,6 +450,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-danger:hover,
 .btn-outline-danger:hover * {
     color: white !important;
 }
@@ -462,6 +475,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-warning:hover,
 .btn-outline-warning:hover * {
     color: var(--color-dark) !important;
 }
@@ -486,6 +500,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-info:hover,
 .btn-outline-info:hover * {
     color: white !important;
 }
@@ -510,6 +525,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-light:hover,
 .btn-outline-light:hover * {
     color: var(--color-dark) !important;
 }
@@ -534,6 +550,7 @@ body::before {
     left: 0;
 }
 
+.btn-outline-dark:hover,
 .btn-outline-dark:hover * {
     color: white !important;
 }
@@ -559,6 +576,7 @@ body::before {
     left: 0;
 }
 
+.like-button:hover,
 .like-button:hover * {
     color: white !important;
 }
