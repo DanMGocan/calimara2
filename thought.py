@@ -8,3 +8,4 @@
 # Profile badges and titles 
 # #1 poster per previous week gets a spotlight 
 # Lupta cu globalismul scriind o poezie. 
+# testing testing testing
