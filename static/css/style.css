@@ -530,54 +530,76 @@ footer {
     border: 2px solid;
 }
 
-.social-btn:hover {
+.social-btn-small {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--border-radius) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    transition: all var(--transition-normal);
+    border: 2px solid;
+    text-decoration: none;
+}
+
+.social-btn:hover,
+.social-btn-small:hover {
     transform: translateY(-5px);
     box-shadow: var(--shadow-lg);
 }
 
-.social-btn.facebook {
+.social-btn.facebook,
+.social-btn-small.facebook {
     background: #1877F2;
     border-color: #1877F2;
     color: white;
 }
 
-.social-btn.facebook:hover {
+.social-btn.facebook:hover,
+.social-btn-small.facebook:hover {
     background: #166FE5;
     border-color: #166FE5;
     color: white;
 }
 
-.social-btn.twitter {
+.social-btn.twitter,
+.social-btn-small.twitter {
     background: #000000;
     border-color: #000000;
     color: white;
 }
 
-.social-btn.twitter:hover {
+.social-btn.twitter:hover,
+.social-btn-small.twitter:hover {
     background: #333333;
     border-color: #333333;
     color: white;
 }
 
-.social-btn.bluesky {
+.social-btn.bluesky,
+.social-btn-small.bluesky {
     background: #00A8E8;
     border-color: #00A8E8;
     color: white;
 }
 
-.social-btn.bluesky:hover {
+.social-btn.bluesky:hover,
+.social-btn-small.bluesky:hover {
     background: #0096D1;
     border-color: #0096D1;
     color: white;
 }
 
-.social-btn.instagram {
+.social-btn.instagram,
+.social-btn-small.instagram {
     background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4);
     border-color: #DD2A7B;
     color: white;
 }
 
-.social-btn.instagram:hover {
+.social-btn.instagram:hover,
+.social-btn-small.instagram:hover {
     transform: translateY(-5px);
     box-shadow: var(--shadow-lg);
     filter: brightness(1.1);
@@ -610,6 +632,12 @@ footer {
         height: 60px;
         font-size: 1.5rem;
     }
+    
+    .social-btn-small {
+        width: 40px;
+        height: 40px;
+        font-size: 1.25rem;
+    }
 }
 
 @media (max-width: 576px) {
@@ -629,6 +657,12 @@ footer {
         width: 50px;
         height: 50px;
         font-size: 1.25rem;
+    }
+    
+    .social-btn-small {
+        width: 35px;
+        height: 35px;
+        font-size: 1rem;
     }
 }
 
