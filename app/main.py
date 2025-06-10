@@ -465,10 +465,6 @@ async def get_filtered_random_posts(category: str = "toate", db: Session = Depen
         else:
             posts = []
     
-    # Add likes count and format the response
-    for post in posts:
-        # likes_count is automatically calculated by the @property in the model
-    
     # Convert posts to a format suitable for JSON response
     posts_data = []
     for post in posts:
