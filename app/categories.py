@@ -1,5 +1,77 @@
 # Predefined categories and genres for Calimara posts
 
+# Main categories structure with subcategories
+MAIN_CATEGORIES = {
+    "poezie": {
+        "name": "Poezie",
+        "genres": {
+            "poezie_lirica": "Poezie lirică",
+            "poezie_epica": "Poezie epică", 
+            "poezie_satirica": "Poezie satirică",
+            "poezie_experimentala": "Poezie experimentală"
+        }
+    },
+    "proza": {
+        "name": "Proză",
+        "genres": {
+            "povestiri_scurte": "Povestiri scurte",
+            "nuvele": "Nuvele",
+            "romane": "Romane",
+            "flash_fiction": "Flash fiction"
+        }
+    },
+    "altele": {
+        "name": "Altele",
+        "subcategories": {
+            "teatru": {
+                "name": "Teatru",
+                "genres": {
+                    "teatru_clasic": "Teatru clasic",
+                    "monologuri": "Monologuri",
+                    "drama_contemporana": "Dramă contemporană"
+                }
+            },
+            "eseu": {
+                "name": "Eseu",
+                "genres": {
+                    "eseuri_personale": "Eseuri personale",
+                    "eseuri_filosofice": "Eseuri filosofice"
+                }
+            },
+            "critica_literara": {
+                "name": "Critică Literară",
+                "genres": {
+                    "critica_literara": "Critică literară",
+                    "recenzii_carte": "Recenzii de carte"
+                }
+            },
+            "scrisoare": {
+                "name": "Scrisoare",
+                "genres": {
+                    "scrisori_personale": "Scrisori personale",
+                    "scrisori_deschise": "Scrisori deschise"
+                }
+            },
+            "jurnal": {
+                "name": "Jurnal",
+                "genres": {
+                    "jurnale_personale": "Jurnale personale",
+                    "confesiuni": "Confesiuni"
+                }
+            },
+            "literatura_experimentala": {
+                "name": "Literatură Experimentală",
+                "genres": {
+                    "proza_poetica": "Proză poetică",
+                    "literatura_digitala": "Literatură digitală",
+                    "forme_hibride": "Forme hibride"
+                }
+            }
+        }
+    }
+}
+
+# Legacy categories structure for backward compatibility
 CATEGORIES_AND_GENRES = {
     "poezie": {
         "name": "Poezie",
@@ -19,72 +91,55 @@ CATEGORIES_AND_GENRES = {
             "flash_fiction": "Flash fiction"
         }
     },
-    "dramaturgie": {
-        "name": "Dramaturgie",
+    "teatru": {
+        "name": "Teatru",
         "genres": {
             "teatru_clasic": "Teatru clasic",
             "monologuri": "Monologuri",
             "drama_contemporana": "Dramă contemporană"
         }
     },
-    "eseu_critica": {
-        "name": "Eseu și critică literară",
+    "eseu": {
+        "name": "Eseu",
         "genres": {
             "eseuri_personale": "Eseuri personale",
+            "eseuri_filosofice": "Eseuri filosofice"
+        }
+    },
+    "critica_literara": {
+        "name": "Critică Literară",
+        "genres": {
             "critica_literara": "Critică literară",
             "recenzii_carte": "Recenzii de carte"
         }
     },
-    "literatura_copii": {
-        "name": "Literatură pentru copii și adolescenți",
+    "scrisoare": {
+        "name": "Scrisoare",
         "genres": {
-            "povesti_copii": "Povești pentru copii",
-            "literatura_young_adult": "Literatură Young Adult",
-            "basme_fabule": "Basme și fabule"
+            "scrisori_personale": "Scrisori personale",
+            "scrisori_deschise": "Scrisori deschise"
         }
     },
-    "literatura_fantastica": {
-        "name": "Literatură fantastică și speculativă",
+    "jurnal": {
+        "name": "Jurnal",
         "genres": {
-            "fantasy": "Fantasy",
-            "science_fiction": "Science fiction",
-            "distopie": "Distopie",
-            "magie_realista": "Magie realistă"
-        }
-    },
-    "literatura_realista": {
-        "name": "Literatură realistă",
-        "genres": {
-            "realism_social": "Realism social",
-            "fictiune_psihologica": "Ficțiune psihologică",
-            "fictiune_istorica": "Ficțiune istorică"
+            "jurnale_personale": "Jurnale personale",
+            "confesiuni": "Confesiuni"
         }
     },
     "literatura_experimentala": {
-        "name": "Literatură experimentală",
+        "name": "Literatură Experimentală",
         "genres": {
             "proza_poetica": "Proză poetică",
             "literatura_digitala": "Literatură digitală",
             "forme_hibride": "Forme hibride"
         }
-    },
-    "memorii_jurnal": {
-        "name": "Memorii și jurnal personal",
-        "genres": {
-            "jurnale": "Jurnale",
-            "scrisori": "Scrisori",
-            "confesiuni": "Confesiuni"
-        }
-    },
-    "literatura_populara": {
-        "name": "Literatură populară și folclor",
-        "genres": {
-            "poezie_populara": "Poezie populară",
-            "legende": "Legende",
-            "mituri": "Mituri"
-        }
     }
 }
+
+def get_main_categories():
+    """Get the three main categories for navigation"""
+    return MAIN_CATEGORIES
 
 def get_all_categories():
     """Get all categories with their display names"""

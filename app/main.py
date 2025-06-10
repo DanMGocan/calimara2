@@ -17,7 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware # Import SessionMidd
 
 from . import models, schemas, crud, auth
 from .database import SessionLocal, engine, get_db
-from .categories import CATEGORIES_AND_GENRES, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
+from .categories import CATEGORIES_AND_GENRES, get_main_categories, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
 
 # Configure logging
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
@@ -336,7 +336,8 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
                 "random_users": random_users,
                 "current_user": current_user, # Pass actual current_user
                 "current_domain": request.url.hostname, # Pass current domain
-                "categories": CATEGORIES_AND_GENRES # Pass predefined categories for navigation
+                "categories": CATEGORIES_AND_GENRES, # Pass predefined categories for navigation
+                "main_categories": get_main_categories() # Pass main categories for navigation
             }
         )
 
