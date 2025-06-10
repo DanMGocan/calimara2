@@ -37,6 +37,7 @@ class Post(Base):
     owner: Mapped["User"] = relationship("User", back_populates="posts")
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
+    tags: Mapped[List["Tag"]] = relationship("Tag", back_populates="post")
 
     @property
     def likes_count(self) -> int:
@@ -69,3 +70,13 @@ class Like(Base):
 
     post: Mapped["Post"] = relationship("Post", back_populates="likes")
     liker: Mapped[Optional["User"]] = relationship("User", back_populates="likes")
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    tag_name: Mapped[str] = mapped_column(String(12), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    post: Mapped["Post"] = relationship("Post", back_populates="tags")

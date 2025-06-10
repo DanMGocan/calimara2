@@ -94,6 +94,21 @@ CREATE TABLE likes (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
+-- TAGS TABLE
+-- ===================================
+CREATE TABLE tags (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    post_id INT NOT NULL COMMENT 'Reference to tagged post',
+    tag_name VARCHAR(12) NOT NULL COMMENT 'Tag name (max 12 characters)',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    INDEX idx_post_id (post_id),
+    INDEX idx_tag_name (tag_name),
+    INDEX idx_tag_search (tag_name, post_id)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
 -- SAMPLE DATA
 -- ===================================
 
@@ -130,3 +145,18 @@ INSERT INTO comments (post_id, author_name, author_email, content, approved) VAL
 
 INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 
 (1, 'Ana Blandiana', 'ana@example.com', 'Primul gând este adesea cel mai autentic. Continuă să scrii!', TRUE);
+
+-- Sample tags
+INSERT INTO tags (post_id, tag_name) VALUES 
+(1, 'gânduri'),
+(1, 'debut'),
+(1, 'pasiune'),
+(2, 'natură'),
+(2, 'poezie'),
+(2, 'limbrici'),
+(3, 'cotidian'),
+(3, 'reflecții'),
+(4, 'timp'),
+(4, 'filozofie'),
+(5, 'scrisoare'),
+(5, 'viitor');

@@ -34,10 +34,19 @@ def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100
     return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
-    db_post = models.Post(title=post.title, content=post.content, category=post.category, genre=post.genre, user_id=user_id)
+    db_post = models.Post(title=post.title, content=post.content, category=post.category, user_id=user_id)
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
+    
+    # Create tags if provided
+    if post.tags:
+        for tag_name in post.tags:
+            db_tag = models.Tag(post_id=db_post.id, tag_name=tag_name.strip())
+            db.add(db_tag)
+        db.commit()
+        db.refresh(db_post)
+    
     return db_post
 
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
@@ -184,3 +193,33 @@ def get_post_with_owner(db: Session, post_id: int):
 
 def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
+
+# Tag CRUD functions
+def create_tag(db: Session, post_id: int, tag_name: str):
+    """Create a new tag for a post"""
+    db_tag = models.Tag(post_id=post_id, tag_name=tag_name.strip())
+    db.add(db_tag)
+    db.commit()
+    db.refresh(db_tag)
+    return db_tag
+
+def get_tags_for_post(db: Session, post_id: int):
+    """Get all tags for a specific post"""
+    return db.query(models.Tag).filter(models.Tag.post_id == post_id).all()
+
+def get_tag_suggestions(db: Session, query: str, limit: int = 10):
+    """Get tag suggestions based on partial query"""
+    return db.query(models.Tag.tag_name).distinct().filter(
+        models.Tag.tag_name.like(f"%{query}%")
+    ).limit(limit).all()
+
+def get_posts_by_tag(db: Session, tag_name: str, skip: int = 0, limit: int = 20):
+    """Get posts that have a specific tag"""
+    return db.query(models.Post).join(models.Tag).filter(
+        models.Tag.tag_name == tag_name
+    ).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
+
+def delete_tags_for_post(db: Session, post_id: int):
+    """Delete all tags for a specific post"""
+    db.query(models.Tag).filter(models.Tag.post_id == post_id).delete()
+    db.commit()

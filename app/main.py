@@ -239,6 +239,13 @@ async def update_post_api(
     db_post = crud.get_post(db, post_id=post_id)
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
+    
+    # Delete existing tags and create new ones if tags are provided
+    if post_update.tags is not None:
+        crud.delete_tags_for_post(db, post_id)
+        for tag_name in post_update.tags:
+            crud.create_tag(db, post_id, tag_name.strip())
+    
     return crud.update_post(db=db, post_id=post_id, post_update=post_update)
 
 @app.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT) # Changed back to DELETE
@@ -448,6 +455,21 @@ async def get_genres_api(category_key: str):
     if not is_valid_category(category_key):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
+
+# --- API Endpoints (Tags) ---
+
+@app.get("/api/tags/suggestions")
+async def get_tag_suggestions_api(
+    query: str,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Get tag suggestions for autocomplete based on partial query"""
+    if not query or len(query.strip()) < 2:
+        return {"suggestions": []}
+    
+    suggestions = crud.get_tag_suggestions(db, query.strip(), limit)
+    return {"suggestions": [tag[0] for tag in suggestions]}
 
 @app.get("/debug/login-form")
 async def debug_login_form(request: Request):

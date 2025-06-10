@@ -73,21 +73,21 @@
                             </div>
                         </div>
 
-                        <!-- Genre Field -->
+                        <!-- Tags Field -->
                         <div class="col-md-6">
-                            <label for="postGenre" class="form-label">
-                                <i class="bi bi-tags me-1"></i>Gen *
+                            <label for="postTags" class="form-label">
+                                <i class="bi bi-tags me-1"></i>Etichete
                             </label>
-                            <select class="form-select" id="postGenre" name="genre" required disabled>
-                                <option value="">Selectează mai întâi o categorie...</option>
-                            </select>
+                            <input type="text" class="form-control" id="postTags" name="tags" 
+                                   placeholder="Introdu etichete separate de spații...">
                             <div class="form-text">
                                 <i class="bi bi-info-circle me-1"></i>
-                                Genul specific din categoria selectată care se potrivește cel mai bine.
+                                Etichetele pot fi orice cuvânt crezi că îți descrie postarea, precum "istoric", sau "science-fiction". Poți adăuga maximum 6 etichete, despărțite de un spațiu.
                             </div>
                             <div class="invalid-feedback">
-                                Te rugăm să selectezi un gen pentru postarea ta.
+                                Poți adăuga maximum 6 etichete, fiecare cu maximum 12 caractere.
                             </div>
+                            <div id="tagsList" class="mt-2"></div>
                         </div>
 
                         <!-- Publishing Options -->
@@ -270,7 +270,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const titleInput = document.getElementById('postTitle');
     const contentInput = document.getElementById('postContent');
     const categorySelect = document.getElementById('postCategory');
-    const genreSelect = document.getElementById('postGenre');
     const previewButton = document.getElementById('previewPost');
     const clearButton = document.getElementById('clearForm');
     const autoSaveStatus = document.getElementById('autoSaveStatus');
@@ -281,39 +280,69 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log(`${type.toUpperCase()}: ${message}`);
     }
     
-    // Category/Genre functionality
-    categorySelect.addEventListener('change', function() {
-        const selectedCategory = this.value;
-        genreSelect.innerHTML = '<option value="">Selectează un gen...</option>';
-        
-        if (selectedCategory) {
-            genreSelect.disabled = true;
-            genreSelect.innerHTML = '<option value="">Se încarcă genurile...</option>';
-            
-            // Fetch genres for selected category
-            fetch(`/api/genres/${selectedCategory}`)
-                .then(response => response.json())
-                .then(genres => {
-                    genreSelect.innerHTML = '<option value="">Selectează un gen...</option>';
-                    
-                    Object.entries(genres).forEach(([genreKey, genreName]) => {
-                        const option = document.createElement('option');
-                        option.value = genreKey;
-                        option.textContent = genreName;
-                        genreSelect.appendChild(option);
-                    });
-                    
-                    genreSelect.disabled = false;
-                })
-                .catch(error => {
-                    console.error('Error loading genres:', error);
-                    genreSelect.innerHTML = '<option value="">Eroare la încărcarea genurilor</option>';
-                    genreSelect.disabled = false;
-                });
-        } else {
-            genreSelect.disabled = true;
-            genreSelect.innerHTML = '<option value="">Selectează mai întâi o categorie...</option>';
+    // Tags functionality
+    const tagsInput = document.getElementById('postTags');
+    const tagsList = document.getElementById('tagsList');
+    let currentTags = [];
+    
+    function renderTags() {
+        tagsList.innerHTML = '';
+        currentTags.forEach((tag, index) => {
+            const tagElement = document.createElement('span');
+            tagElement.className = 'badge bg-primary me-1 mb-1';
+            tagElement.innerHTML = `${tag} <button type="button" class="btn-close btn-close-white ms-1" onclick="removeTag(${index})" style="font-size: 0.6em;"></button>`;
+            tagsList.appendChild(tagElement);
+        });
+    }
+    
+    window.removeTag = function(index) {
+        currentTags.splice(index, 1);
+        renderTags();
+        updateTagsInput();
+    };
+    
+    function updateTagsInput() {
+        tagsInput.value = currentTags.join(' ');
+    }
+    
+    function addTag(tagText) {
+        const tag = tagText.trim();
+        if (tag && tag.length <= 12 && currentTags.length < 6 && !currentTags.includes(tag)) {
+            currentTags.push(tag);
+            renderTags();
+            updateTagsInput();
+            return true;
         }
+        return false;
+    }
+    
+    tagsInput.addEventListener('keydown', function(e) {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            const words = this.value.trim().split(/\s+/);
+            const newTag = words[words.length - 1];
+            
+            if (newTag) {
+                if (addTag(newTag)) {
+                    this.value = '';
+                } else {
+                    // Show validation error
+                    if (newTag.length > 12) {
+                        this.setCustomValidity('Eticheta poate avea maximum 12 caractere');
+                    } else if (currentTags.length >= 6) {
+                        this.setCustomValidity('Poți adăuga maximum 6 etichete');
+                    } else if (currentTags.includes(newTag)) {
+                        this.setCustomValidity('Această etichetă există deja');
+                    }
+                    this.reportValidity();
+                    setTimeout(() => this.setCustomValidity(''), 3000);
+                }
+            }
+        }
+    });
+    
+    tagsInput.addEventListener('input', function() {
+        this.setCustomValidity('');
     });
     
     // Character counters
@@ -377,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const title = titleInput.value || 'Fără titlu';
         const content = contentInput.value || 'Fără conținut';
         const category = categorySelect.options[categorySelect.selectedIndex]?.text || '';
-        const genre = genreSelect.options[genreSelect.selectedIndex]?.text || '';
+        const tags = currentTags.join(', ');
         
         document.getElementById('previewTitle').textContent = title;
         document.getElementById('previewDate').textContent = new Date().toLocaleDateString('ro-RO');
@@ -385,9 +414,11 @@ document.addEventListener('DOMContentLoaded', function() {
         let categoryText = '';
         if (category && category !== 'Selectează o categorie...') {
             categoryText = category;
-            if (genre && genre !== 'Selectează un gen...') {
-                categoryText += ` - ${genre}`;
+            if (tags) {
+                categoryText += ` • ${tags}`;
             }
+        } else if (tags) {
+            categoryText = tags;
         }
         
         if (categoryText) {
@@ -430,7 +461,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 title: titleInput.value,
                 content: contentInput.value,
                 category: categorySelect.value,
-                genre: genreSelect.value
+                tags: currentTags
             };
             localStorage.setItem('calimara_createPostForm', JSON.stringify(formData));
             autoSaveStatus.innerHTML = '<i class="bi bi-check-circle me-1 text-success"></i>Salvat automat';
@@ -450,15 +481,12 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (data.category) {
             categorySelect.value = data.category;
-            // Trigger category change to load genres
-            categorySelect.dispatchEvent(new Event('change'));
-            
-            // Set genre after a brief delay to allow genres to load
-            setTimeout(() => {
-                if (data.genre) {
-                    genreSelect.value = data.genre;
-                }
-            }, 500);
+        }
+        
+        if (data.tags && Array.isArray(data.tags)) {
+            currentTags = data.tags;
+            renderTags();
+            updateTagsInput();
         }
         
         if (data.title || data.content || data.category) {
@@ -467,7 +495,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Attach auto-save to inputs
-    [titleInput, contentInput, categorySelect, genreSelect].forEach(input => {
+    [titleInput, contentInput, categorySelect, tagsInput].forEach(input => {
         input.addEventListener('input', autoSave);
         input.addEventListener('change', autoSave);
     });

@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 class UserBase(BaseModel):
     username: str
@@ -22,14 +22,29 @@ class UserInDB(UserBase):
     class Config:
         from_attributes = True
 
+class TagBase(BaseModel):
+    tag_name: str = Field(..., max_length=12, description="Tag name (max 12 characters)")
+
+class Tag(TagBase):
+    id: int
+    post_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class PostBase(BaseModel):
     title: str
     content: str
     category: Optional[str] = None # Category key
-    genre: Optional[str] = None # Genre key
+    tags: Optional[List[str]] = Field(default=[], max_items=6, description="List of tags (max 6)")
 
 class PostCreate(PostBase):
-    pass
+    @validator('tags', pre=True, each_item=True)
+    def validate_tag_length(cls, v):
+        if len(v) > 12:
+            raise ValueError('Tag must be at most 12 characters long')
+        return v
 
 class PostUpdate(PostBase):
     pass
@@ -39,6 +54,7 @@ class Post(PostBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
+    tags: List[Tag] = []
 
     class Config:
         from_attributes = True
