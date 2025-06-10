@@ -50,7 +50,10 @@ app.add_middleware(
     secret_key=SESSION_SECRET_KEY,
     session_cookie="session", # Default name, but explicit
     max_age=14 * 24 * 60 * 60, # 14 days, default is 2 weeks
-    domain=".calimara.ro" # Crucial for subdomains
+    domain=".calimara.ro", # Crucial for subdomains
+    secure=False, # Set to False for HTTP (True for HTTPS only)
+    httponly=True, # Prevent XSS attacks
+    samesite="lax" # Allow cross-site requests for subdomain navigation
 )
 
 # Mount static files
@@ -133,7 +136,9 @@ async def login_for_access_token(request: Request, form_data: schemas.UserLogin,
     
     # Set user ID in session
     request.session["user_id"] = user.id
-    logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată.")
+    logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată cu user_id={user.id}")
+    logger.info(f"Session după setare: {dict(request.session)}")
+    logger.info(f"Host header: {request.headers.get('host', 'N/A')}")
     return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
 
 @app.get("/api/user/me")
@@ -408,6 +413,28 @@ async def get_genres_api(category_key: str):
     if not is_valid_category(category_key):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
+
+@app.get("/api/debug/session")
+async def debug_session(request: Request, db: Session = Depends(get_db)):
+    """Debug endpoint to check session status"""
+    try:
+        session_data = dict(request.session)
+        user_id = request.session.get("user_id")
+        
+        user = None
+        if user_id:
+            user = crud.get_user_by_id(db, user_id)
+        
+        return {
+            "session_data": session_data,
+            "user_id": user_id,
+            "user_found": user is not None,
+            "user_details": {"id": user.id, "username": user.username, "email": user.email} if user else None,
+            "host": request.headers.get("host", ""),
+            "cookies": dict(request.cookies)
+        }
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
 
 @app.get("/api/debug")
 async def debug_info(request: Request, db: Session = Depends(get_db)):

@@ -170,6 +170,7 @@ async function handleLogin(e) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
+            credentials: 'include' // Ensure cookies are included
         });
 
         const data = await response.json();
@@ -178,13 +179,34 @@ async function handleLogin(e) {
             hideError(errorDiv);
             showToast('Autentificare reușită! Te redirecționăm...', 'success');
             
-            // Close modal and redirect to user's subdomain
+            // Close modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
             if (modal) modal.hide();
             
-            setTimeout(() => {
-                // Redirect to user's subdomain dashboard
-                window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+            // Debug: Check session before redirect
+            console.log('Login successful, checking session...');
+            
+            // Verify session is set before redirect
+            setTimeout(async () => {
+                try {
+                    const sessionCheck = await fetch('/api/debug/session', {
+                        credentials: 'include'
+                    });
+                    const sessionData = await sessionCheck.json();
+                    console.log('Session data after login:', sessionData);
+                    
+                    if (sessionData.user_found) {
+                        // Session is valid, redirect
+                        window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+                    } else {
+                        console.error('Session not found after login');
+                        showError(errorDiv, 'Sesiune invalidă după autentificare. Te rugăm să încerci din nou.');
+                    }
+                } catch (e) {
+                    console.error('Session check failed:', e);
+                    // Fallback: try redirect anyway
+                    window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+                }
             }, 1000);
         } else {
             showError(errorDiv, data.detail || 'Autentificare eșuată');
