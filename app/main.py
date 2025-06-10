@@ -310,7 +310,7 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         # Get approved comments for each post
         for post in posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            post.likes_count = crud.get_likes_count_for_post(db, post.id) # Re-added likes count
+            # likes_count is automatically calculated by the @property in the model
 
         return templates.TemplateResponse(
             "blog.html",
@@ -355,7 +355,7 @@ async def category_page(category_key: str, request: Request, db: Session = Depen
     # Get approved comments and likes count for each post
     for post in posts:
         post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+        # likes_count is automatically calculated by the @property in the model
     
     return templates.TemplateResponse(
         "category.html",
@@ -384,7 +384,7 @@ async def genre_page(category_key: str, genre_key: str, request: Request, db: Se
     # Get approved comments and likes count for each post
     for post in posts:
         post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+        # likes_count is automatically calculated by the @property in the model
     
     return templates.TemplateResponse(
         "genre.html",
@@ -467,7 +467,7 @@ async def get_filtered_random_posts(category: str = "toate", db: Session = Depen
     
     # Add likes count and format the response
     for post in posts:
-        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+        # likes_count is automatically calculated by the @property in the model
     
     # Convert posts to a format suitable for JSON response
     posts_data = []
@@ -501,7 +501,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
     
     # Add likes count to posts
     for post in user_posts:
-        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+        # likes_count is automatically calculated by the @property in the model
 
     return templates.TemplateResponse(
         "admin_dashboard.html",
@@ -581,7 +581,7 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
 
         for post in posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            post.likes_count = crud.get_likes_count_for_post(db, post.id) # Re-added likes count
+            # likes_count is automatically calculated by the @property in the model # Re-added likes count
 
         return templates.TemplateResponse(
             "blog.html",
