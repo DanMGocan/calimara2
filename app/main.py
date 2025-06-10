@@ -50,10 +50,7 @@ app.add_middleware(
     secret_key=SESSION_SECRET_KEY,
     session_cookie="session", # Default name, but explicit
     max_age=14 * 24 * 60 * 60, # 14 days, default is 2 weeks
-    domain=".calimara.ro", # Crucial for subdomains
-    secure=False, # Set to False for HTTP (True for HTTPS only)
-    httponly=True, # Prevent XSS attacks
-    samesite="lax" # Allow cross-site requests for subdomain navigation
+    domain=".calimara.ro" # Crucial for subdomains
 )
 
 # Mount static files
