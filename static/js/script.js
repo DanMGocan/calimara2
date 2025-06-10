@@ -176,13 +176,16 @@ async function handleLogin(e) {
 
         if (response.ok) {
             hideError(errorDiv);
-            showToast('Autentificare reușită!', 'success');
+            showToast('Autentificare reușită! Te redirecționăm...', 'success');
             
-            // Close modal and reload page
+            // Close modal and redirect to user's subdomain
             const modal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
             if (modal) modal.hide();
             
-            setTimeout(() => window.location.reload(), 1000);
+            setTimeout(() => {
+                // Redirect to user's subdomain dashboard
+                window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+            }, 1000);
         } else {
             showError(errorDiv, data.detail || 'Autentificare eșuată');
         }
