@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
     logger.info("Apelare get_current_user (bazat pe sesiune).")
+    logger.info(f"Session keys: {list(request.session.keys())}")
+    logger.info(f"Session data: {dict(request.session)}")
+    logger.info(f"Request host: {request.headers.get('host', 'N/A')}")
+    logger.info(f"Request cookies: {dict(request.cookies)}")
+    
     user_id = request.session.get("user_id")
     
     if user_id is None:

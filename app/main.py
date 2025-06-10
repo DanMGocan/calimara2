@@ -3,7 +3,7 @@ import logging # Import logging
 from dotenv import load_dotenv
 load_dotenv() # Load environment variables from .env
 
-from datetime import timedelta # Import timedelta
+from datetime import timedelta, datetime # Import timedelta and datetime
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Response # Removed Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -411,6 +411,41 @@ async def get_genres_api(category_key: str):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
 
+@app.get("/api/debug/user/test")
+async def debug_user_test(db: Session = Depends(get_db)):
+    """Debug endpoint to test user lookup and password verification"""
+    try:
+        user = crud.get_user_by_email(db, "sad@sad.sad")
+        if not user:
+            return {"error": "User not found"}
+        
+        # Test password verification
+        password_valid = crud.verify_password("123", user.password_hash)
+        
+        return {
+            "user_found": True,
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "password_valid": password_valid,
+            "password_hash": user.password_hash[:20] + "..." # Only show first part for security
+        }
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
+
+@app.get("/api/debug/session/set")
+async def debug_session_set(request: Request):
+    """Debug endpoint to manually set a test session"""
+    try:
+        request.session["test_key"] = "test_value"
+        request.session["timestamp"] = str(datetime.now())
+        return {
+            "message": "Test session set",
+            "session_data": dict(request.session)
+        }
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
+
 @app.get("/api/debug/session")
 async def debug_session(request: Request, db: Session = Depends(get_db)):
     """Debug endpoint to check session status"""
@@ -422,13 +457,19 @@ async def debug_session(request: Request, db: Session = Depends(get_db)):
         if user_id:
             user = crud.get_user_by_id(db, user_id)
         
+        # Also check if a user with sad@sad.sad exists
+        test_user = crud.get_user_by_email(db, "sad@sad.sad")
+        
         return {
             "session_data": session_data,
+            "session_keys": list(request.session.keys()),
             "user_id": user_id,
             "user_found": user is not None,
             "user_details": {"id": user.id, "username": user.username, "email": user.email} if user else None,
             "host": request.headers.get("host", ""),
-            "cookies": dict(request.cookies)
+            "cookies": dict(request.cookies),
+            "test_user_exists": test_user is not None,
+            "test_user_details": {"id": test_user.id, "username": test_user.username} if test_user else None
         }
     except Exception as e:
         return {"error": str(e), "type": type(e).__name__}
