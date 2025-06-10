@@ -116,33 +116,11 @@
                             <label for="postContent" class="form-label">
                                 <i class="bi bi-file-text me-1"></i>Conținutul Postării *
                             </label>
-                            <div class="position-relative">
-                                <textarea class="form-control" id="postContent" name="content" rows="12" 
-                                          required placeholder="Scrie-ți aici gândurile, poemele, povestirile...
-
-Poți folosi formatare simplă:
-- **text îngroșat**
-- *text cursiv*
-- [link](https://example.com)
-
-Lasă-ți creativitatea să curgă liber!"></textarea>
-                                <div class="position-absolute top-0 end-0 p-2">
-                                    <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="formatBold" title="Îngroșat">
-                                            <i class="bi bi-type-bold"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="formatItalic" title="Cursiv">
-                                            <i class="bi bi-type-italic"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="insertLink" title="Link">
-                                            <i class="bi bi-link-45deg"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <div id="quillEditor" style="height: 300px;"></div>
+                            <textarea id="postContent" name="content" style="display: none;" required></textarea>
                             <div class="form-text">
-                                <i class="bi bi-markdown me-1"></i>
-                                Suportă formatare Markdown simplă. Scrie natural și lasă-ți creativitatea să se exprime.
+                                <i class="bi bi-pencil me-1"></i>
+                                Editor avansat pentru formatarea textului. Folosește bara de instrumente pentru stilizarea conținutului.
                             </div>
                             <div class="invalid-feedback">
                                 Te rugăm să adaugi conținut pentru postarea ta.
@@ -274,6 +252,38 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearButton = document.getElementById('clearForm');
     const autoSaveStatus = document.getElementById('autoSaveStatus');
     
+    // Initialize QuillJS Editor
+    const quill = new Quill('#quillEditor', {
+        theme: 'snow',
+        placeholder: 'Scrie-ți aici gândurile, poemele, povestirile...\n\nLasă-ți creativitatea să curgă liber!',
+        modules: {
+            toolbar: [
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'indent': '-1'}, { 'indent': '+1' }],
+                [{ 'align': [] }],
+                ['blockquote', 'code-block'],
+                ['link'],
+                ['clean']
+            ]
+        }
+    });
+    
+    // Sync QuillJS content with hidden textarea
+    quill.on('text-change', function() {
+        const html = quill.root.innerHTML;
+        contentInput.value = html;
+        
+        // Trigger validation check
+        if (quill.getText().trim().length > 0) {
+            contentInput.setCustomValidity('');
+        } else {
+            contentInput.setCustomValidity('Te rugăm să adaugi conținut pentru postarea ta.');
+        }
+    });
+    
     // Toast notification function
     function showToast(message, type = 'info') {
         // Simple alert fallback - could be enhanced with proper toast UI later
@@ -360,51 +370,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Content word counter
+    // Content word counter for QuillJS
     const contentCounter = document.createElement('small');
-    contentCounter.className = 'text-muted character-counter float-end';
+    contentCounter.className = 'text-muted character-counter float-end mt-2';
     contentCounter.textContent = '0 cuvinte';
-    contentInput.parentNode.appendChild(contentCounter);
+    document.getElementById('quillEditor').parentNode.appendChild(contentCounter);
     
-    contentInput.addEventListener('input', function() {
-        const wordCount = this.value.trim().split(/\s+/).filter(word => word.length > 0).length;
+    // Update word count when QuillJS content changes
+    quill.on('text-change', function() {
+        const text = quill.getText().trim();
+        const wordCount = text ? text.split(/\s+/).filter(word => word.length > 0).length : 0;
         contentCounter.textContent = `${wordCount} cuvinte`;
     });
 
-    // Formatting buttons
-    document.getElementById('formatBold').addEventListener('click', function() {
-        insertFormatting('**', '**', 'text îngroșat');
-    });
-    
-    document.getElementById('formatItalic').addEventListener('click', function() {
-        insertFormatting('*', '*', 'text cursiv');
-    });
-    
-    document.getElementById('insertLink').addEventListener('click', function() {
-        const url = prompt('Introdu URL-ul:');
-        if (url) {
-            insertFormatting('[', `](${url})`, 'text link');
-        }
-    });
-
-    function insertFormatting(before, after, placeholder) {
-        const start = contentInput.selectionStart;
-        const end = contentInput.selectionEnd;
-        const selectedText = contentInput.value.substring(start, end);
-        const replacement = selectedText || placeholder;
-        
-        contentInput.value = contentInput.value.substring(0, start) + 
-                           before + replacement + after + 
-                           contentInput.value.substring(end);
-        
-        contentInput.focus();
-        contentInput.setSelectionRange(start + before.length, start + before.length + replacement.length);
-    }
+    // Note: Formatting is now handled by QuillJS toolbar, so removing old formatting buttons
 
     // Preview functionality
     previewButton.addEventListener('click', function() {
         const title = titleInput.value || 'Fără titlu';
-        const content = contentInput.value || 'Fără conținut';
+        const content = quill.root.innerHTML || '<p>Fără conținut</p>';
         const category = categorySelect.options[categorySelect.selectedIndex]?.text || '';
         const tags = currentTags.join(', ');
         
@@ -430,14 +414,8 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('previewCategoriesIcon').style.display = 'none';
         }
         
-        // Simple markdown-like formatting
-        let formattedContent = content
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-            .replace(/\n/g, '<br>');
-        
-        document.getElementById('previewBody').innerHTML = formattedContent;
+        // QuillJS already provides HTML content, so use it directly
+        document.getElementById('previewBody').innerHTML = content;
         
         const modal = new bootstrap.Modal(document.getElementById('previewModal'));
         modal.show();
@@ -447,6 +425,10 @@ document.addEventListener('DOMContentLoaded', function() {
     clearButton.addEventListener('click', function() {
         if (confirm('Ești sigur că vrei să resetezi formularul? Toate modificările nesalvate se vor pierde.')) {
             document.getElementById('createPostForm').reset();
+            quill.setContents([]);
+            currentTags = [];
+            renderTags();
+            updateTagsInput();
             localStorage.removeItem('calimara_createPostForm');
             showToast('Formularul a fost resetat', 'info');
         }
@@ -459,7 +441,7 @@ document.addEventListener('DOMContentLoaded', function() {
         autoSaveTimeout = setTimeout(() => {
             const formData = {
                 title: titleInput.value,
-                content: contentInput.value,
+                content: quill.root.innerHTML,
                 category: categorySelect.value,
                 tags: currentTags
             };
@@ -477,7 +459,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (savedData) {
         const data = JSON.parse(savedData);
         titleInput.value = data.title || '';
-        contentInput.value = data.content || '';
+        
+        if (data.content) {
+            try {
+                quill.root.innerHTML = data.content;
+                contentInput.value = data.content;
+            } catch (e) {
+                console.error('Error loading saved content:', e);
+            }
+        }
         
         if (data.category) {
             categorySelect.value = data.category;
@@ -495,10 +485,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Attach auto-save to inputs
-    [titleInput, contentInput, categorySelect, tagsInput].forEach(input => {
+    [titleInput, categorySelect, tagsInput].forEach(input => {
         input.addEventListener('input', autoSave);
         input.addEventListener('change', autoSave);
     });
+    
+    // Add auto-save to QuillJS editor
+    quill.on('text-change', autoSave);
 
     // Clear saved data on successful submission and trigger animation
     document.getElementById('createPostForm').addEventListener('submit', function(e) {
@@ -517,7 +510,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Real-time validation
     const form = document.getElementById('createPostForm');
-    const inputs = form.querySelectorAll('input[required], textarea[required], select[required]');
+    const inputs = form.querySelectorAll('input[required], select[required]');
     
     inputs.forEach(input => {
         input.addEventListener('blur', function() {
@@ -530,26 +523,22 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-
-    // Keyboard shortcuts
-    contentInput.addEventListener('keydown', function(e) {
-        if (e.ctrlKey || e.metaKey) {
-            switch(e.key) {
-                case 'b':
-                    e.preventDefault();
-                    document.getElementById('formatBold').click();
-                    break;
-                case 'i':
-                    e.preventDefault();
-                    document.getElementById('formatItalic').click();
-                    break;
-                case 'k':
-                    e.preventDefault();
-                    document.getElementById('insertLink').click();
-                    break;
-            }
+    
+    // Custom validation for QuillJS editor
+    form.addEventListener('submit', function(e) {
+        const text = quill.getText().trim();
+        if (!text || text.length === 0) {
+            e.preventDefault();
+            document.getElementById('quillEditor').style.border = '1px solid #dc3545';
+            contentInput.setCustomValidity('Te rugăm să adaugi conținut pentru postarea ta.');
+            return false;
+        } else {
+            document.getElementById('quillEditor').style.border = '';
+            contentInput.setCustomValidity('');
         }
     });
+
+    // Note: QuillJS handles keyboard shortcuts automatically (Ctrl+B for bold, Ctrl+I for italic, etc.)
 });
 </script>
 {% endblock %}
