@@ -120,23 +120,49 @@ async def login_page(request: Request, current_user: Optional[models.User] = Dep
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/api/token")
-async def login_for_access_token(request: Request, form_data: schemas.UserLogin, db: Session = Depends(get_db)): # Changed back to schemas.UserLogin
-    logger.info(f"Se încearcă autentificarea pentru email: {form_data.email}")
-    user = crud.get_user_by_email(db, email=form_data.email)
-    if not user or not crud.verify_password(form_data.password, user.password_hash):
-        logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {form_data.email}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email sau parolă incorecte",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+async def login_for_access_token(request: Request, db: Session = Depends(get_db)):
+    logger.info("=== LOGIN ENDPOINT CALLED ===")
+    logger.info(f"Content-Type: {request.headers.get('content-type', 'N/A')}")
     
-    # Set user ID in session
-    request.session["user_id"] = user.id
-    logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată cu user_id={user.id}")
-    logger.info(f"Session după setare: {dict(request.session)}")
-    logger.info(f"Host header: {request.headers.get('host', 'N/A')}")
-    return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
+    try:
+        # Handle both JSON and form data
+        content_type = request.headers.get('content-type', '')
+        
+        if 'application/json' in content_type:
+            body = await request.json()
+            email = body.get('email')
+            password = body.get('password')
+        else:
+            # Handle form data
+            form = await request.form()
+            email = form.get('email')
+            password = form.get('password')
+        
+        logger.info(f"Se încearcă autentificarea pentru email: {email}")
+        logger.info(f"Password length: {len(password) if password else 0}")
+        
+        user = crud.get_user_by_email(db, email=email)
+        if not user or not crud.verify_password(password, user.password_hash):
+            logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {email}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email sau parolă incorecte",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Set user ID in session
+        request.session["user_id"] = user.id
+        logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată cu user_id={user.id}")
+        logger.info(f"Session după setare: {dict(request.session)}")
+        logger.info(f"Host header: {request.headers.get('host', 'N/A')}")
+        return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
+    
+    except Exception as e:
+        logger.error(f"Login endpoint error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Eroare internă de server",
+        )
 
 @app.get("/api/user/me")
 async def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
@@ -410,6 +436,75 @@ async def get_genres_api(category_key: str):
     if not is_valid_category(category_key):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
+
+@app.get("/debug/login-form")
+async def debug_login_form(request: Request):
+    """Simple HTML form to test login without JavaScript"""
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Debug Login Form</title>
+    </head>
+    <body>
+        <h1>Debug Login Test</h1>
+        <form method="post" action="/api/token" enctype="application/x-www-form-urlencoded">
+            <div>
+                <label>Email:</label>
+                <input type="email" name="email" value="sad@sad.sad" required>
+            </div>
+            <div>
+                <label>Password:</label>
+                <input type="password" name="password" value="123" required>
+            </div>
+            <div>
+                <button type="submit">Login</button>
+            </div>
+        </form>
+        
+        <hr>
+        
+        <h2>Test Links:</h2>
+        <ul>
+            <li><a href="/api/debug/session">Check Session</a></li>
+            <li><a href="/api/debug/user/test">Test User</a></li>
+            <li><a href="/api/debug/session/set">Set Test Session</a></li>
+        </ul>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+@app.post("/api/debug/login/test")
+async def debug_login_test(request: Request, db: Session = Depends(get_db)):
+    """Debug endpoint to test login process manually"""
+    try:
+        logger.info("Debug login test called")
+        
+        # Try to get the test user
+        user = crud.get_user_by_email(db, "sad@sad.sad")
+        if not user:
+            return {"error": "User not found"}
+        
+        # Verify password
+        password_valid = crud.verify_password("123", user.password_hash)
+        if not password_valid:
+            return {"error": "Invalid password"}
+        
+        # Set session
+        request.session["user_id"] = user.id
+        logger.info(f"Debug login: Session set with user_id={user.id}")
+        logger.info(f"Debug login: Session data after set: {dict(request.session)}")
+        
+        return {
+            "success": True,
+            "user_id": user.id,
+            "username": user.username,
+            "session_data": dict(request.session)
+        }
+    except Exception as e:
+        logger.error(f"Debug login test error: {e}")
+        return {"error": str(e), "type": type(e).__name__}
 
 @app.get("/api/debug/user/test")
 async def debug_user_test(db: Session = Depends(get_db)):

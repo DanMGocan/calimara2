@@ -39,7 +39,7 @@ function initializeAnimations() {
     // Intersection Observer for scroll animations
     const observerOptions = {
         threshold: 0.1,
-        rootMargin: '0rem 0rem -3.125rem 0rem'
+        rootMargin: '0px 0px -50px 0px'
     };
 
     const observer = new IntersectionObserver((entries) => {
