@@ -165,6 +165,14 @@ def get_likes_count_for_post(db: Session, post_id: int):
 def get_random_posts(db: Session, limit: int = 10):
     return db.query(models.Post).order_by(func.rand()).limit(limit).all()
 
+def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
+    """Get random posts filtered by a specific category"""
+    return db.query(models.Post).filter(models.Post.category == category).order_by(func.rand()).limit(limit).all()
+
+def get_random_posts_by_categories(db: Session, categories: List[str], limit: int = 10):
+    """Get random posts filtered by multiple categories (for 'altele')"""
+    return db.query(models.Post).filter(models.Post.category.in_(categories)).order_by(func.rand()).limit(limit).all()
+
 def get_random_users(db: Session, limit: int = 10):
     return db.query(models.User).order_by(func.rand()).limit(limit).all()
 

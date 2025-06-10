@@ -408,6 +408,58 @@ async def get_genres_api(category_key: str):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
 
+@app.get("/api/random-posts")
+async def get_filtered_random_posts(category: str = "toate", db: Session = Depends(get_db)):
+    """Get random posts filtered by category"""
+    if category == "toate":
+        posts = crud.get_random_posts(db, limit=10)
+    else:
+        # Map category filter names to actual category keys
+        category_mapping = {
+            "poezie": "poezie",
+            "proza": "proza", 
+            "teatru": "teatru",
+            "eseu": "eseu",
+            "critica_literara": "critica_literara",
+            "jurnal": "jurnal",
+            "altele": ["literatura_experimentala", "scrisoare"]  # Multiple categories for "altele"
+        }
+        
+        if category in category_mapping:
+            mapped_category = category_mapping[category]
+            if isinstance(mapped_category, list):
+                # Handle multiple categories for "altele"
+                posts = crud.get_random_posts_by_categories(db, mapped_category, limit=10)
+            else:
+                posts = crud.get_random_posts_by_category(db, mapped_category, limit=10)
+        else:
+            posts = []
+    
+    # Add likes count and format the response
+    for post in posts:
+        post.likes_count = crud.get_likes_count_for_post(db, post.id)
+    
+    # Convert posts to a format suitable for JSON response
+    posts_data = []
+    for post in posts:
+        category_name = ""
+        if post.category and post.category in CATEGORIES_AND_GENRES:
+            category_name = CATEGORIES_AND_GENRES[post.category]["name"]
+            if post.genre and post.genre in CATEGORIES_AND_GENRES[post.category]["genres"]:
+                category_name += f" - {CATEGORIES_AND_GENRES[post.category]['genres'][post.genre]}"
+        
+        posts_data.append({
+            "id": post.id,
+            "title": post.title,
+            "content": post.content[:120] + ("..." if len(post.content) > 120 else ""),
+            "username": post.owner.username,
+            "created_at": post.created_at.strftime('%d %b'),
+            "likes_count": post.likes_count,
+            "category_display": category_name
+        })
+    
+    return {"posts": posts_data}
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     # If logged in and on main domain, redirect to subdomain dashboard

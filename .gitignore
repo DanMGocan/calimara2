@@ -48,3 +48,5 @@ Thumbs.db # Windows
 
 # Logs
 *.log
+
+.claude
