@@ -2,7 +2,7 @@
    CALIMARA - MODERN CSS FRAMEWORK
    ================================== */
 
-/* Arsenal SC Font (imported via HTML head in base.html) */
+/* Inter Font (imported via HTML head in base.html) */
 
 /* CSS Custom Properties (Variables) */
 :root {
@@ -60,8 +60,8 @@
     --transition-slow: 0.5s ease-in-out;
     
     /* Typography */
-    --font-family-base: 'Arsenal SC', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-    --font-family-heading: 'Arsenal SC', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    --font-family-base: 'Inter', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    --font-family-heading: 'Inter', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     --font-weight-light: 300;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
