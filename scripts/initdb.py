@@ -20,12 +20,20 @@ DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB
 
 def init_db():
     """
-    Initializes the database by creating tables and inserting sample data.
+    Initializes the database using the schema.sql file.
     This will drop existing tables and create new ones with sample data.
     """
     print("=" * 50)
     print("CALIMARA DATABASE INITIALIZATION")
     print("=" * 50)
+    
+    # Check if schema.sql exists
+    if not SCHEMA_FILE.exists():
+        print(f"✗ Error: Schema file not found at {SCHEMA_FILE}")
+        print("Please ensure schema.sql exists in the project root directory.")
+        return False
+    
+    print(f"Using schema file: {SCHEMA_FILE}")
     
     # Connect to MySQL server without specifying a database initially
     server_url = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/"
@@ -45,221 +53,111 @@ def init_db():
     engine = create_engine(DATABASE_URL)
 
     try:
+        # Read and process the schema file
+        with open(SCHEMA_FILE, 'r', encoding='utf-8') as f:
+            schema_content = f.read()
+        
+        print(f"✓ Schema file loaded ({len(schema_content)} characters)")
+        
+        # Generate actual password hash for test user
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        test_password_hash = pwd_context.hash("123")
+        
+        # Replace placeholder password hash with real one
+        schema_content = schema_content.replace(
+            '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+            test_password_hash
+        )
+
         with engine.connect() as connection:
-            print("Dropping existing tables...")
+            print("Executing database schema...")
             
-            # Drop tables safely with foreign key constraints
-            connection.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
-            connection.execute(text("DROP TABLE IF EXISTS likes"))
-            connection.execute(text("DROP TABLE IF EXISTS comments"))
-            connection.execute(text("DROP TABLE IF EXISTS posts"))
-            connection.execute(text("DROP TABLE IF EXISTS users"))
-            connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
-            print("✓ Existing tables dropped")
+            # Split schema into individual statements
+            statements = []
+            current_statement = []
             
-            print("Creating tables...")
+            for line in schema_content.split('\n'):
+                line = line.strip()
+                if not line or line.startswith('--'):
+                    continue
+                
+                current_statement.append(line)
+                
+                if line.endswith(';'):
+                    stmt = ' '.join(current_statement).strip()
+                    if stmt:
+                        statements.append(stmt)
+                    current_statement = []
             
-            # Create users table
-            connection.execute(text("""
-                CREATE TABLE users (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    username VARCHAR(255) UNIQUE NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    subtitle VARCHAR(500),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_username (username),
-                    INDEX idx_email (email),
-                    INDEX idx_created_at (created_at)
-                ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-            """))
-            print("✓ Table users created")
-            
-            # Create posts table
-            connection.execute(text("""
-                CREATE TABLE posts (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    title VARCHAR(255) NOT NULL,
-                    content TEXT NOT NULL,
-                    category VARCHAR(100),
-                    genre VARCHAR(100),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_category (category),
-                    INDEX idx_genre (genre),
-                    INDEX idx_created_at (created_at),
-                    INDEX idx_category_genre (category, genre),
-                    INDEX idx_user_created (user_id, created_at)
-                ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-            """))
-            print("✓ Table posts created")
-            
-            # Create comments table
-            connection.execute(text("""
-                CREATE TABLE comments (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    post_id INT NOT NULL,
-                    user_id INT,
-                    author_name VARCHAR(255),
-                    author_email VARCHAR(255),
-                    content TEXT NOT NULL,
-                    approved BOOLEAN DEFAULT FALSE,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_post_id (post_id),
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_approved (approved),
-                    INDEX idx_created_at (created_at),
-                    INDEX idx_post_approved (post_id, approved)
-                ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-            """))
-            print("✓ Table comments created")
-            
-            # Create likes table
-            connection.execute(text("""
-                CREATE TABLE likes (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    post_id INT NOT NULL,
-                    user_id INT,
-                    ip_address VARCHAR(45),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE KEY unique_user_like (post_id, user_id),
-                    UNIQUE KEY unique_ip_like (post_id, ip_address),
-                    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-                    INDEX idx_post_id (post_id),
-                    INDEX idx_user_id (user_id),
-                    INDEX idx_ip_address (ip_address),
-                    INDEX idx_created_at (created_at)
-                ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
-            """))
-            print("✓ Table likes created")
-            
-            print("Inserting sample data...")
-            
-            # Create test user
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            test_password_hash = pwd_context.hash("123")
-            
-            connection.execute(text("""
-                INSERT INTO users (username, email, password_hash, subtitle) VALUES 
-                (:username, :email, :password_hash, :subtitle)
-            """), {
-                "username": "gandurisilimbrici",
-                "email": "sad@sad.sad",
-                "password_hash": test_password_hash,
-                "subtitle": "Mi-am facut si io blog, sa nu mor prost lol"
-            })
-            print("✓ Test user created")
-            
-            # Get user ID
-            result = connection.execute(text("SELECT id FROM users WHERE username = 'gandurisilimbrici'"))
-            test_user_id = result.scalar()
-            
-            # Create sample posts
-            sample_posts = [
-                {
-                    "user_id": test_user_id,
-                    "title": "Primul meu gând",
-                    "content": "Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea. Este doar începutul unei aventuri literare care sper să ne ducă pe drumuri neexplorate ale creativității și expresiei artistice.",
-                    "category": "proza",
-                    "genre": "povestiri_scurte"
-                },
-                {
-                    "user_id": test_user_id,
-                    "title": "Limbrici și poezie",
-                    "content": "Chiar și limbricii au o frumusețe aparte,\nO mișcare lentă, dar hotărâtă prin pământ.\nAșa și poezia se strecoară în suflet\nȘi lasă urme adânci, veșnice în timp.\n\nÎn tăcerea pământului umed\nSe ascund taine și povești,\nCa versurile care iau naștere\nÎn adâncul inimii noastre.",
-                    "category": "poezie",
-                    "genre": "poezie_lirica"
-                },
-                {
-                    "user_id": test_user_id,
-                    "title": "O zi obișnuită",
-                    "content": "O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie. Să fim recunoscători pentru fiecare clipă ce ni se oferă și să prețuim frumusețea din lucrurile simple ale vieții cotidiene.",
-                    "category": "proza",
-                    "genre": "povestiri_scurte"
-                },
-                {
-                    "user_id": test_user_id,
-                    "title": "Reflecții despre timp",
-                    "content": "Timpul este un râu care curge mereu înainte, fără să se întoarcă vreodată. În aceste pagini de jurnal încerc să opresc câteva picături din acest râu, să le privesc îndeaproape și să înțeleg ce povești ascund în ele.",
-                    "category": "jurnal",
-                    "genre": "jurnale_personale"
-                },
-                {
-                    "user_id": test_user_id,
-                    "title": "Scrisoare către viitorul meu",
-                    "content": "Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum. Sper că ai reușit să găsești drumul tău în această lume complexă și că poezia încă îți umple sufletul de bucurie.\n\nCu drag,\nEu din trecut",
-                    "category": "scrisoare",
-                    "genre": "scrisori_personale"
-                }
-            ]
-            
-            for post in sample_posts:
-                connection.execute(text("""
-                    INSERT INTO posts (user_id, title, content, category, genre)
-                    VALUES (:user_id, :title, :content, :category, :genre)
-                """), post)
-            print("✓ Sample posts created")
-            
-            # Create sample comments
-            connection.execute(text("""
-                INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 
-                (1, 'Maria Popescu', 'maria@example.com', 'Ce frumos ai scris! Abia aștept să citesc mai multe din gândurile tale.', TRUE),
-                (2, 'Ion Creangă', 'ion@example.com', 'Poezia ta despre limbrici m-a emoționat. Comparația cu poezia este genială!', TRUE),
-                (1, 'Ana Blandiana', 'ana@example.com', 'Primul gând este adesea cel mai autentic. Continuă să scrii!', TRUE)
-            """))
-            print("✓ Sample comments created")
-            
-            # Create sample likes
-            connection.execute(text("""
-                INSERT INTO likes (post_id, ip_address) VALUES 
-                (1, '192.168.1.100'),
-                (1, '192.168.1.101'),
-                (2, '192.168.1.102'),
-                (2, '192.168.1.103'),
-                (2, '192.168.1.104'),
-                (3, '192.168.1.105')
-            """))
-            print("✓ Sample likes created")
+            # Execute each statement
+            executed_count = 0
+            for stmt in statements:
+                try:
+                    connection.execute(text(stmt))
+                    executed_count += 1
+                    
+                    # Show progress for key operations
+                    if stmt.upper().startswith('CREATE TABLE'):
+                        table_name = stmt.split()[2]
+                        print(f"✓ Table {table_name} created")
+                    elif stmt.upper().startswith('INSERT INTO USERS'):
+                        print("✓ Test user created")
+                    elif stmt.upper().startswith('INSERT INTO POSTS'):
+                        print("✓ Sample posts created")
+                    elif stmt.upper().startswith('INSERT INTO COMMENTS'):
+                        print("✓ Sample comments created")
+                    elif stmt.upper().startswith('INSERT INTO LIKES'):
+                        print("✓ Sample likes created")
+                        
+                except SQLAlchemyError as e:
+                    # Skip validation statements that might fail
+                    if any(cmd in stmt.upper() for cmd in ['SHOW', 'DESCRIBE', 'SELECT \'']):
+                        continue
+                    else:
+                        print(f"Warning: {e}")
+                        print(f"Statement: {stmt[:100]}...")
             
             connection.commit()
+            print(f"✓ Schema executed successfully ({executed_count} statements)")
 
             # Verify the initialization worked
-            result = connection.execute(text("SELECT COUNT(*) FROM users"))
-            user_count = result.scalar()
-            
-            result = connection.execute(text("SELECT COUNT(*) FROM posts"))
-            post_count = result.scalar()
-            
-            result = connection.execute(text("SELECT COUNT(*) FROM comments"))
-            comment_count = result.scalar()
-            
-            result = connection.execute(text("SELECT COUNT(*) FROM likes"))
-            like_count = result.scalar()
-            
-            print("\n" + "=" * 30)
-            print("DATABASE INITIALIZATION SUMMARY")
-            print("=" * 30)
-            print(f"Users created: {user_count}")
-            print(f"Posts created: {post_count}")
-            print(f"Comments created: {comment_count}")
-            print(f"Likes created: {like_count}")
-            print("=" * 30)
-            print("✓ Database initialization complete!")
-            print("\nTest user credentials:")
-            print("  Username: gandurisilimbrici")
-            print("  Email: sad@sad.sad")
-            print("  Password: 123")
-            print("  Blog URL: gandurisilimbrici.calimara.ro")
-            
-            return True
+            try:
+                result = connection.execute(text("SELECT COUNT(*) FROM users"))
+                user_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM posts"))
+                post_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM comments"))
+                comment_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM likes"))
+                like_count = result.scalar()
+                
+                print("\n" + "=" * 30)
+                print("DATABASE INITIALIZATION SUMMARY")
+                print("=" * 30)
+                print(f"Users created: {user_count}")
+                print(f"Posts created: {post_count}")
+                print(f"Comments created: {comment_count}")
+                print(f"Likes created: {like_count}")
+                print("=" * 30)
+                print("✓ Database initialization complete!")
+                print("\nTest user credentials:")
+                print("  Username: gandurisilimbrici")
+                print("  Email: sad@sad.sad")
+                print("  Password: 123")
+                print("  Blog URL: gandurisilimbrici.calimara.ro")
+                
+                return True
+                
+            except SQLAlchemyError as e:
+                print(f"✗ Error verifying database: {e}")
+                return False
 
+    except FileNotFoundError:
+        print(f"✗ Error: Could not read schema file at {SCHEMA_FILE}")
+        return False
     except SQLAlchemyError as e:
         print(f"✗ Error during database initialization: {e}")
         return False
