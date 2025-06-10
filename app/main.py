@@ -495,10 +495,6 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
     
-    # Add likes count to posts
-    for post in user_posts:
-        # likes_count is automatically calculated by the @property in the model
-
     return templates.TemplateResponse(
         "admin_dashboard.html",
         {
