@@ -408,6 +408,35 @@ async def get_genres_api(category_key: str):
         raise HTTPException(status_code=404, detail="Category not found")
     return {"genres": get_genres_for_category(category_key)}
 
+@app.get("/api/debug")
+async def debug_info(request: Request, db: Session = Depends(get_db)):
+    """Debug endpoint to check system status"""
+    try:
+        # Test database connection
+        user_count = db.execute(text("SELECT COUNT(*) FROM users")).scalar()
+        
+        # Test subdomain detection
+        host = request.headers.get("host", "")
+        is_subdomain = host.endswith(".calimara.ro") and not host.startswith("www.") and host != "calimara.ro"
+        username = host.replace(".calimara.ro", "") if is_subdomain else None
+        
+        # Test user lookup
+        user = None
+        if username:
+            user = crud.get_user_by_username(db, username=username)
+        
+        return {
+            "database_connection": "OK",
+            "user_count": user_count,
+            "host": host,
+            "is_subdomain": is_subdomain,
+            "username": username,
+            "user_found": user is not None,
+            "user_details": {"id": user.id, "username": user.username} if user else None
+        }
+    except Exception as e:
+        return {"error": str(e), "type": type(e).__name__}
+
 @app.get("/api/random-posts")
 async def get_filtered_random_posts(category: str = "toate", db: Session = Depends(get_db)):
     """Get random posts filtered by category"""
