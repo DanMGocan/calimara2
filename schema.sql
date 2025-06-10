@@ -24,6 +24,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL COMMENT 'User email for authentication',
     password_hash VARCHAR(255) NOT NULL COMMENT 'Bcrypt hashed password',
     subtitle VARCHAR(500) COMMENT 'Optional blog subtitle/description',
+    avatar_seed VARCHAR(100) COMMENT 'DiceBear avatar seed for generating avatars',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -113,11 +114,12 @@ CREATE TABLE tags (
 -- ===================================
 
 -- Test user (password will be replaced by initdb.py)
-INSERT INTO users (username, email, password_hash, subtitle) VALUES (
+INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
     'gandurisilimbrici',
     'sad@sad.sad',
     '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
-    'Mi-am facut si io blog, sa nu mor prost lol'
+    'Mi-am facut si io blog, sa nu mor prost lol',
+    'gandurisilimbrici-shapes'
 );
 
 -- Sample posts for the test user

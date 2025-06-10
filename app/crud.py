@@ -21,7 +21,15 @@ def get_user_by_username(db: Session, username: str):
 
 def create_user(db: Session, user: schemas.UserCreate):
     hashed_password = get_password_hash(user.password)
-    db_user = models.User(username=user.username, email=user.email, password_hash=hashed_password, subtitle=user.subtitle)
+    # Generate default avatar seed if not provided
+    avatar_seed = user.avatar_seed or f"{user.username}-shapes"
+    db_user = models.User(
+        username=user.username, 
+        email=user.email, 
+        password_hash=hashed_password, 
+        subtitle=user.subtitle,
+        avatar_seed=avatar_seed
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

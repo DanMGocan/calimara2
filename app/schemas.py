@@ -6,6 +6,7 @@ class UserBase(BaseModel):
     username: str
     email: EmailStr
     subtitle: Optional[str] = None # New field
+    avatar_seed: Optional[str] = None # DiceBear avatar seed
 
 class UserCreate(UserBase):
     password: str

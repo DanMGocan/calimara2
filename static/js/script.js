@@ -243,6 +243,7 @@ async function handleRegister(e) {
     const subtitle = document.getElementById('subtitle').value;
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
+    const avatar_seed = document.getElementById('avatarSeed').value;
     const errorDiv = document.getElementById('registerError');
 
     showLoadingState(form);
@@ -251,7 +252,7 @@ async function handleRegister(e) {
         const response = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, subtitle, email, password }),
+            body: JSON.stringify({ username, subtitle, email, password, avatar_seed }),
         });
 
         const data = await response.json();
@@ -296,18 +297,34 @@ async function handleCreatePost(e) {
     e.preventDefault();
     const form = e.target;
     const title = document.getElementById('postTitle').value;
-    const content = document.getElementById('postContent').value;
-    const categories = document.getElementById('postCategories').value;
+    const category = document.getElementById('postCategory').value;
+    const tags = document.getElementById('postTags').value;
     const errorDiv = document.getElementById('postError');
     const successDiv = document.getElementById('postSuccess');
+
+    // Get content from QuillJS editor if available, otherwise from textarea
+    let content;
+    if (window.quill) {
+        content = window.quill.root.innerHTML;
+    } else {
+        content = document.getElementById('postContent').value;
+    }
 
     showLoadingState(form);
 
     try {
+        // Parse tags from space-separated string to array
+        const tagsArray = tags ? tags.trim().split(/\s+/).filter(tag => tag.length > 0) : [];
+        
         const response = await fetch('/api/posts/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content, categories }),
+            body: JSON.stringify({ 
+                title, 
+                content, 
+                category: category || null,
+                tags: tagsArray
+            }),
         });
 
         const data = await response.json();
@@ -316,6 +333,11 @@ async function handleCreatePost(e) {
             showSuccess(successDiv, 'Postare creată cu succes!');
             hideError(errorDiv);
             form.reset();
+            if (window.quill) {
+                window.quill.setContents([]);
+            }
+            // Clear localStorage
+            localStorage.removeItem('calimara_createPostForm');
             setTimeout(() => window.location.href = '/dashboard', 1500);
         } else {
             showError(errorDiv, data.detail || 'Crearea postării a eșuat');
@@ -372,6 +394,7 @@ async function handleSubtitleUpdate(e) {
     e.preventDefault();
     const form = e.target;
     const subtitle = document.getElementById('subtitle').value;
+    const avatar_seed = document.getElementById('newAvatarSeed').value;
     const errorDiv = document.getElementById('subtitleError');
     const successDiv = document.getElementById('subtitleSuccess');
 
@@ -381,22 +404,22 @@ async function handleSubtitleUpdate(e) {
         const response = await fetch('/api/users/me', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subtitle }),
+            body: JSON.stringify({ subtitle, avatar_seed }),
         });
 
         const data = await response.json();
 
         if (response.ok) {
-            showSuccess(successDiv, 'Motto actualizat cu succes!');
+            showSuccess(successDiv, 'Setări actualizate cu succes!');
             hideError(errorDiv);
             setTimeout(() => window.location.reload(), 1500);
         } else {
-            showError(errorDiv, data.detail || 'Actualizarea motto-ului a eșuat');
+            showError(errorDiv, data.detail || 'Actualizarea setărilor a eșuat');
             hideSuccess(successDiv);
         }
     } catch (error) {
         console.error('Subtitle update error:', error);
-        showError(errorDiv, 'A apărut o eroare neașteptată la actualizarea motto-ului.');
+        showError(errorDiv, 'A apărut o eroare neașteptată la actualizarea setărilor.');
         hideSuccess(successDiv);
     } finally {
         hideLoadingState(form);

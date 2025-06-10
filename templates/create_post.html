@@ -253,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const autoSaveStatus = document.getElementById('autoSaveStatus');
     
     // Initialize QuillJS Editor
-    const quill = new Quill('#quillEditor', {
+    window.quill = new Quill('#quillEditor', {
         theme: 'snow',
         placeholder: 'Scrie-ți aici gândurile, poemele, povestirile...\n\nLasă-ți creativitatea să curgă liber!',
         modules: {
@@ -272,12 +272,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Sync QuillJS content with hidden textarea
-    quill.on('text-change', function() {
-        const html = quill.root.innerHTML;
+    window.quill.on('text-change', function() {
+        const html = window.quill.root.innerHTML;
         contentInput.value = html;
         
         // Trigger validation check
-        if (quill.getText().trim().length > 0) {
+        if (window.quill.getText().trim().length > 0) {
             contentInput.setCustomValidity('');
         } else {
             contentInput.setCustomValidity('Te rugăm să adaugi conținut pentru postarea ta.');
@@ -377,8 +377,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('quillEditor').parentNode.appendChild(contentCounter);
     
     // Update word count when QuillJS content changes
-    quill.on('text-change', function() {
-        const text = quill.getText().trim();
+    window.quill.on('text-change', function() {
+        const text = window.quill.getText().trim();
         const wordCount = text ? text.split(/\s+/).filter(word => word.length > 0).length : 0;
         contentCounter.textContent = `${wordCount} cuvinte`;
     });
@@ -388,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Preview functionality
     previewButton.addEventListener('click', function() {
         const title = titleInput.value || 'Fără titlu';
-        const content = quill.root.innerHTML || '<p>Fără conținut</p>';
+        const content = window.quill.root.innerHTML || '<p>Fără conținut</p>';
         const category = categorySelect.options[categorySelect.selectedIndex]?.text || '';
         const tags = currentTags.join(', ');
         
@@ -425,7 +425,7 @@ document.addEventListener('DOMContentLoaded', function() {
     clearButton.addEventListener('click', function() {
         if (confirm('Ești sigur că vrei să resetezi formularul? Toate modificările nesalvate se vor pierde.')) {
             document.getElementById('createPostForm').reset();
-            quill.setContents([]);
+            window.quill.setContents([]);
             currentTags = [];
             renderTags();
             updateTagsInput();
@@ -441,7 +441,7 @@ document.addEventListener('DOMContentLoaded', function() {
         autoSaveTimeout = setTimeout(() => {
             const formData = {
                 title: titleInput.value,
-                content: quill.root.innerHTML,
+                content: window.quill.root.innerHTML,
                 category: categorySelect.value,
                 tags: currentTags
             };
@@ -462,7 +462,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (data.content) {
             try {
-                quill.root.innerHTML = data.content;
+                window.quill.root.innerHTML = data.content;
                 contentInput.value = data.content;
             } catch (e) {
                 console.error('Error loading saved content:', e);
@@ -491,7 +491,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Add auto-save to QuillJS editor
-    quill.on('text-change', autoSave);
+    window.quill.on('text-change', autoSave);
 
     // Clear saved data on successful submission and trigger animation
     document.getElementById('createPostForm').addEventListener('submit', function(e) {
@@ -524,19 +524,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Custom validation for QuillJS editor
-    form.addEventListener('submit', function(e) {
-        const text = quill.getText().trim();
-        if (!text || text.length === 0) {
-            e.preventDefault();
-            document.getElementById('quillEditor').style.border = '1px solid #dc3545';
-            contentInput.setCustomValidity('Te rugăm să adaugi conținut pentru postarea ta.');
-            return false;
-        } else {
-            document.getElementById('quillEditor').style.border = '';
-            contentInput.setCustomValidity('');
-        }
-    });
+    // Note: Form submission is handled by script.js handleCreatePost function
 
     // Note: QuillJS handles keyboard shortcuts automatically (Ctrl+B for bold, Ctrl+I for italic, etc.)
 });

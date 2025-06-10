@@ -63,6 +63,20 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Configure Jinja2Templates
 templates = Jinja2Templates(directory="templates")
 
+# Add template global functions
+def get_avatar_url(user_or_seed, size=80):
+    """Generate DiceBear avatar URL for user or seed"""
+    if hasattr(user_or_seed, 'avatar_seed'):
+        seed = user_or_seed.avatar_seed or f"{user_or_seed.username}-shapes"
+    elif hasattr(user_or_seed, 'username'):
+        seed = f"{user_or_seed.username}-shapes"
+    else:
+        seed = str(user_or_seed)
+    
+    return f"https://api.dicebear.com/7.x/shapes/svg?seed={seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size={size}"
+
+templates.env.globals["get_avatar_url"] = get_avatar_url
+
 # Subdomain Middleware
 class SubdomainMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):

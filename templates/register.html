@@ -99,6 +99,38 @@
                                 Opțional - poți adăuga sau modifica mai târziu.
                             </div>
                         </div>
+
+                        <!-- Avatar Selection -->
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="bi bi-person-circle me-1"></i>Alege un Avatar
+                            </label>
+                            <div class="avatar-selection-container">
+                                <div class="row g-3">
+                                    <div class="col-auto">
+                                        <div class="avatar-preview text-center">
+                                            <img id="selectedAvatarPreview" src="" alt="Avatar selectat" class="rounded-circle border" width="80" height="80">
+                                            <small class="d-block text-muted mt-2">Previzualizare</small>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="avatar-options">
+                                            <div class="d-flex flex-wrap gap-2 mb-3" id="avatarOptions">
+                                                <!-- Avatar options will be populated by JavaScript -->
+                                            </div>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" id="generateNewAvatars">
+                                                <i class="bi bi-arrow-clockwise me-1"></i>Generează Avataruri Noi
+                                            </button>
+                                        </div>
+                                        <input type="hidden" id="avatarSeed" name="avatar_seed" value="">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-text">
+                                <i class="bi bi-palette me-1"></i>
+                                Selectează unul dintre avatarurile generate sau generează altele noi. Poți schimba avatarul oricând din profil.
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Terms and Conditions -->
@@ -350,6 +382,118 @@ document.addEventListener('DOMContentLoaded', function() {
             counter.className = currentLength > maxLength * 0.9 ? 'text-warning character-counter' : 'text-muted character-counter';
         });
     }
+
+    // Avatar Selection Logic
+    const avatarOptions = document.getElementById('avatarOptions');
+    const selectedAvatarPreview = document.getElementById('selectedAvatarPreview');
+    const avatarSeedInput = document.getElementById('avatarSeed');
+    const generateNewAvatarsBtn = document.getElementById('generateNewAvatars');
+    const usernameForAvatar = document.getElementById('username');
+    
+    function generateAvatarSeed() {
+        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < 10; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    }
+    
+    function getDiceBearUrl(seed) {
+        return `https://api.dicebear.com/7.x/shapes/svg?seed=${seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size=80`;
+    }
+    
+    function createAvatarOption(seed) {
+        const option = document.createElement('div');
+        option.className = 'avatar-option position-relative cursor-pointer';
+        option.style.cssText = 'cursor: pointer; transition: transform 0.2s;';
+        
+        const img = document.createElement('img');
+        img.src = getDiceBearUrl(seed);
+        img.alt = 'Avatar option';
+        img.className = 'rounded-circle border';
+        img.width = 50;
+        img.height = 50;
+        img.style.cssText = 'border: 2px solid transparent;';
+        
+        option.appendChild(img);
+        
+        option.addEventListener('click', function() {
+            // Remove selected state from all options
+            document.querySelectorAll('.avatar-option img').forEach(img => {
+                img.style.border = '2px solid transparent';
+            });
+            
+            // Add selected state to clicked option
+            img.style.border = '2px solid #0d6efd';
+            
+            // Update preview and hidden input
+            selectedAvatarPreview.src = getDiceBearUrl(seed);
+            avatarSeedInput.value = seed;
+        });
+        
+        option.addEventListener('mouseenter', function() {
+            this.style.transform = 'scale(1.1)';
+        });
+        
+        option.addEventListener('mouseleave', function() {
+            this.style.transform = 'scale(1)';
+        });
+        
+        return option;
+    }
+    
+    function generateAvatarOptions() {
+        avatarOptions.innerHTML = '';
+        const seeds = [];
+        
+        // Generate 8 different avatar options
+        for (let i = 0; i < 8; i++) {
+            const seed = generateAvatarSeed();
+            seeds.push(seed);
+            const option = createAvatarOption(seed);
+            avatarOptions.appendChild(option);
+        }
+        
+        // Auto-select the first avatar
+        if (seeds.length > 0) {
+            const firstOption = avatarOptions.firstChild.querySelector('img');
+            firstOption.style.border = '2px solid #0d6efd';
+            selectedAvatarPreview.src = getDiceBearUrl(seeds[0]);
+            avatarSeedInput.value = seeds[0];
+        }
+    }
+    
+    // Generate initial avatars when username changes
+    usernameForAvatar.addEventListener('input', function() {
+        if (this.value.length >= 3) {
+            // Use username as base for consistent avatars
+            const baseSeed = this.value.toLowerCase();
+            avatarOptions.innerHTML = '';
+            const seeds = [];
+            
+            for (let i = 0; i < 8; i++) {
+                const seed = `${baseSeed}-${i}`;
+                seeds.push(seed);
+                const option = createAvatarOption(seed);
+                avatarOptions.appendChild(option);
+            }
+            
+            // Auto-select the first avatar
+            if (seeds.length > 0) {
+                const firstOption = avatarOptions.firstChild.querySelector('img');
+                firstOption.style.border = '2px solid #0d6efd';
+                selectedAvatarPreview.src = getDiceBearUrl(seeds[0]);
+                avatarSeedInput.value = seeds[0];
+            }
+        }
+    });
+    
+    // Generate new random avatars button
+    generateNewAvatarsBtn.addEventListener('click', generateAvatarOptions);
+    
+    // Generate initial set of avatars
+    generateAvatarOptions();
 });
 </script>
 {% endblock %}
