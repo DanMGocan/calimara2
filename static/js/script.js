@@ -78,8 +78,12 @@ function initializeAnimations() {
 function initializeFormHandlers() {
     // Login Form
     const loginForm = document.getElementById('loginForm');
+    console.log('Login form found:', !!loginForm);
     if (loginForm) {
+        console.log('Adding login event listener');
         loginForm.addEventListener('submit', handleLogin);
+    } else {
+        console.error('Login form not found!');
     }
 
     // Register Form
@@ -113,8 +117,12 @@ function initializeFormHandlers() {
 
     // Logout Button
     const logoutButton = document.getElementById('logoutButton');
+    console.log('Logout button found:', !!logoutButton);
     if (logoutButton) {
+        console.log('Adding logout event listener');
         logoutButton.addEventListener('click', handleLogout);
+    } else {
+        console.log('Logout button not found (normal if not logged in)');
     }
 }
 
@@ -158,14 +166,19 @@ function initializeInteractiveFeatures() {
 
 async function handleLogin(e) {
     e.preventDefault();
+    console.log('=== JavaScript Login Started ===');
     const form = e.target;
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
 
+    console.log('Email:', email);
+    console.log('Password length:', password ? password.length : 0);
+
     showLoadingState(form);
 
     try {
+        console.log('Sending login request...');
         const response = await fetch('/api/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -173,7 +186,11 @@ async function handleLogin(e) {
             credentials: 'include' // Ensure cookies are included
         });
 
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        
         const data = await response.json();
+        console.log('Response data:', data);
 
         if (response.ok) {
             hideError(errorDiv);
@@ -469,15 +486,25 @@ async function handleLike(e) {
 
 async function handleLogout(e) {
     e.preventDefault();
+    console.log('=== JavaScript Logout Started ===');
     
     try {
-        const response = await fetch('/api/logout', { method: 'GET' });
+        console.log('Sending logout request...');
+        const response = await fetch('/api/logout', { 
+            method: 'GET',
+            credentials: 'include'
+        });
+        
+        console.log('Logout response status:', response.status);
         
         if (response.ok) {
+            const data = await response.json();
+            console.log('Logout response data:', data);
             showToast('Deconectare reușită!', 'success');
             setTimeout(() => window.location.reload(), 1000);
         } else {
             const data = await response.json();
+            console.log('Logout error data:', data);
             showToast(data.detail || 'Deconectare eșuată', 'error');
         }
     } catch (error) {
