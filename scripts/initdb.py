@@ -71,18 +71,55 @@ def init_db():
         )
 
         with engine.connect() as connection:
+            # Execute schema in sections to handle foreign key constraints properly
+            print("Executing database schema...")
+            
+            # First, disable foreign key checks and drop tables
+            connection.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+            connection.execute(text("DROP TABLE IF EXISTS likes"))
+            connection.execute(text("DROP TABLE IF EXISTS comments"))
+            connection.execute(text("DROP TABLE IF EXISTS posts"))
+            connection.execute(text("DROP TABLE IF EXISTS users"))
+            print("✓ Existing tables dropped")
+            
+            # Re-enable foreign key checks
+            connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+            
             # Split the schema into individual statements and execute them
             statements = [stmt.strip() for stmt in schema_content.split(';') if stmt.strip()]
             
             executed_count = 0
+            skipped_statements = {'SET NAMES utf8mb4', 'SET CHARACTER SET utf8mb4', 'SET FOREIGN_KEY_CHECKS', 'DROP TABLE IF EXISTS'}
+            
             for statement in statements:
                 if statement and not statement.startswith('--'):
+                    # Skip statements we already handled
+                    should_skip = any(skip in statement for skip in skipped_statements)
+                    if should_skip:
+                        continue
+                        
                     try:
                         connection.execute(text(statement))
                         executed_count += 1
+                        
+                        # Show progress for major operations
+                        if statement.startswith('CREATE TABLE'):
+                            table_name = statement.split()[2]
+                            print(f"✓ Table {table_name} created")
+                        elif statement.startswith('INSERT INTO users'):
+                            print("✓ Test user created")
+                        elif statement.startswith('INSERT INTO posts'):
+                            print("✓ Sample posts created")
+                        elif statement.startswith('INSERT INTO comments'):
+                            print("✓ Sample comments created")
+                        elif statement.startswith('INSERT INTO likes'):
+                            print("✓ Sample likes created")
+                            
                     except SQLAlchemyError as e:
                         # Skip certain errors that are expected (like SHOW TABLES, DESCRIBE)
-                        if "doesn't exist" not in str(e) and "Unknown column" not in str(e):
+                        if any(phrase in str(e).lower() for phrase in ["doesn't exist", "unknown column", "unknown table"]):
+                            continue
+                        else:
                             print(f"Warning executing statement: {e}")
                             print(f"Statement: {statement[:100]}...")
             
