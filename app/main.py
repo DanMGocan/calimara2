@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional # Import Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
