@@ -8,4 +8,4 @@
 # Profile badges and titles 
 # #1 poster per previous week gets a spotlight 
 # Lupta cu globalismul scriind o poezie. 
-# Testing 
+# Allow user to have 3 postari in evidenta 

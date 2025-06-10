@@ -214,7 +214,7 @@ async function handleLogin(e) {
                     
                     if (sessionData.user_found) {
                         // Session is valid, redirect
-                        window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+                        window.location.replace(`//${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
                     } else {
                         console.error('Session not found after login');
                         showError(errorDiv, 'Sesiune invalidă după autentificare. Te rugăm să încerci din nou.');
@@ -222,7 +222,7 @@ async function handleLogin(e) {
                 } catch (e) {
                     console.error('Session check failed:', e);
                     // Fallback: try redirect anyway
-                    window.location.replace(`//${data.username}.calimara.ro/dashboard`);
+                    window.location.replace(`//${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
                 }
             }, 1000);
         } else {
@@ -267,7 +267,7 @@ async function handleRegister(e) {
                     
                     if (authData.authenticated) {
                         // User is authenticated, redirect to dashboard
-                        window.location.replace(`//${username.toLowerCase()}.calimara.ro/dashboard`);
+                        window.location.replace(`//${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
                     } else {
                         // Authentication failed, show error
                         showError(errorDiv, 'Autentificare automată eșuată. Te rugăm să te conectezi manual.');
@@ -278,7 +278,7 @@ async function handleRegister(e) {
                 } catch (error) {
                     console.error('Auth verification error:', error);
                     // Fallback: try to redirect anyway
-                    window.location.replace(`//${username.toLowerCase()}.calimara.ro/dashboard`);
+                    window.location.replace(`//${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
                 }
             }, 1500);
         } else {
@@ -488,29 +488,11 @@ async function handleLogout(e) {
     e.preventDefault();
     console.log('=== JavaScript Logout Started ===');
     
-    try {
-        console.log('Sending logout request...');
-        const response = await fetch('/api/logout', { 
-            method: 'GET',
-            credentials: 'include'
-        });
-        
-        console.log('Logout response status:', response.status);
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log('Logout response data:', data);
-            showToast('Deconectare reușită!', 'success');
-            setTimeout(() => window.location.reload(), 1000);
-        } else {
-            const data = await response.json();
-            console.log('Logout error data:', data);
-            showToast(data.detail || 'Deconectare eșuată', 'error');
-        }
-    } catch (error) {
-        console.error('Logout error:', error);
-        showToast('A apărut o eroare neașteptată.', 'error');
-    }
+    // Since logout endpoint now redirects, we can simply navigate to it
+    showToast('Se deconectează...', 'info');
+    
+    // Navigate to logout endpoint which will clear session and redirect to main domain
+    window.location.href = '/api/logout';
 }
 
 async function handleDeletePost(e) {

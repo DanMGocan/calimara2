@@ -40,7 +40,11 @@ logger = logging.getLogger(__name__)
 # Ensure tables are created (this is for development, initdb.py is for explicit reset)
 # models.Base.metadata.create_all(bind=engine)
 
+# Configuration from environment variables
 SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "super-secret-session-key-fallback")
+MAIN_DOMAIN = os.getenv("MAIN_DOMAIN", "calimara.ro")
+SUBDOMAIN_SUFFIX = os.getenv("SUBDOMAIN_SUFFIX", ".calimara.ro")
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 app = FastAPI()
 
@@ -50,7 +54,7 @@ app.add_middleware(
     secret_key=SESSION_SECRET_KEY,
     session_cookie="session", # Default name, but explicit
     max_age=14 * 24 * 60 * 60, # 14 days, default is 2 weeks
-    domain=".calimara.ro" # Crucial for subdomains
+    domain=SUBDOMAIN_SUFFIX # Crucial for subdomains
 )
 
 # Mount static files
@@ -63,8 +67,8 @@ templates = Jinja2Templates(directory="templates")
 class SubdomainMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "").split(":")[0]
-        if host.endswith(".calimara.ro") and not host.startswith("www.") and host != "calimara.ro":
-            username = host.replace(".calimara.ro", "")
+        if host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
+            username = host.replace(SUBDOMAIN_SUFFIX, "")
             request.state.is_subdomain = True
             request.state.username = username
         else:
@@ -74,6 +78,16 @@ class SubdomainMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SubdomainMiddleware)
+
+# Helper function to get common template context
+def get_common_context(request: Request, current_user: Optional[models.User] = None):
+    return {
+        "request": request,
+        "current_user": current_user,
+        "current_domain": request.url.hostname,
+        "main_domain": MAIN_DOMAIN,
+        "subdomain_suffix": SUBDOMAIN_SUFFIX
+    }
 
 # Dependency to get client IP for anonymous likes
 def get_client_ip(request: Request):
@@ -116,8 +130,8 @@ async def register_user(request: Request, user: schemas.UserCreate, db: Session 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)):
     if current_user: # If already logged in, redirect to their blog
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse("login.html", {"request": request})
+        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
+    return templates.TemplateResponse("login.html", get_common_context(request))
 
 @app.post("/api/token")
 async def login_for_access_token(request: Request, db: Session = Depends(get_db)):
@@ -184,7 +198,9 @@ async def get_current_user_info(current_user: Optional[models.User] = Depends(au
 async def logout_user(request: Request):
     request.session.clear() # Clear session
     logger.info("Utilizator deconectat. Sesiune ștearsă.")
-    return {"message": "Deconectat cu succes"} # Changed back to message for JS handling
+    
+    # Redirect to main domain instead of returning JSON
+    return RedirectResponse(url=f"//{MAIN_DOMAIN}", status_code=status.HTTP_302_FOUND)
 
 @app.put("/api/users/me", response_model=schemas.UserInDB) # Changed back to PUT and response_model
 async def update_current_user(
@@ -357,18 +373,14 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         # If not a subdomain (i.e., calimara.ro), always render the main landing page
         random_posts = crud.get_random_posts(db, limit=10)
         random_users = crud.get_random_users(db, limit=10)
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "random_posts": random_posts,
-                "random_users": random_users,
-                "current_user": current_user, # Pass actual current_user
-                "current_domain": request.url.hostname, # Pass current domain
-                "categories": CATEGORIES_AND_GENRES, # Pass predefined categories for navigation
-                "main_categories": get_main_categories() # Pass main categories for navigation
-            }
-        )
+        context = get_common_context(request, current_user)
+        context.update({
+            "random_posts": random_posts,
+            "random_users": random_users,
+            "categories": CATEGORIES_AND_GENRES, # Pass predefined categories for navigation
+            "main_categories": get_main_categories() # Pass main categories for navigation
+        })
+        return templates.TemplateResponse("index.html", context)
 
 # Category and Genre Routes
 @app.get("/category/{category_key}", response_class=HTMLResponse)
@@ -578,8 +590,8 @@ async def debug_info(request: Request, db: Session = Depends(get_db)):
         
         # Test subdomain detection
         host = request.headers.get("host", "")
-        is_subdomain = host.endswith(".calimara.ro") and not host.startswith("www.") and host != "calimara.ro"
-        username = host.replace(".calimara.ro", "") if is_subdomain else None
+        is_subdomain = host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN
+        username = host.replace(SUBDOMAIN_SUFFIX, "") if is_subdomain else None
         
         # Test user lookup
         user = None
@@ -649,8 +661,8 @@ async def get_filtered_random_posts(category: str = "toate", db: Session = Depen
 @app.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     # If logged in and on main domain, redirect to subdomain dashboard
-    if request.url.hostname == "calimara.ro":
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/dashboard", status_code=status.HTTP_302_FOUND)
+    if request.url.hostname == MAIN_DOMAIN:
+        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}/dashboard", status_code=status.HTTP_302_FOUND)
 
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
@@ -669,8 +681,8 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
 @app.get("/create-post", response_class=HTMLResponse)
 async def create_post_page(request: Request, current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     # If logged in and on main domain, redirect to subdomain create-post
-    if request.url.hostname == "calimara.ro":
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/create-post", status_code=status.HTTP_302_FOUND)
+    if request.url.hostname == MAIN_DOMAIN:
+        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}/create-post", status_code=status.HTTP_302_FOUND)
 
     return templates.TemplateResponse(
         "create_post.html",
@@ -685,8 +697,8 @@ async def create_post_page(request: Request, current_user: models.User = Depends
 @app.get("/edit-post/{post_id}", response_class=HTMLResponse)
 async def edit_post_page(post_id: int, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     # If logged in and on main domain, redirect to subdomain edit-post
-    if request.url.hostname == "calimara.ro":
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro/edit-post/{post_id}", status_code=status.HTTP_302_FOUND)
+    if request.url.hostname == MAIN_DOMAIN:
+        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}/edit-post/{post_id}", status_code=status.HTTP_302_FOUND)
 
     post = crud.get_post(db, post_id)
     if not post or post.user_id != current_user.id:
@@ -704,8 +716,8 @@ async def edit_post_page(post_id: int, request: Request, db: Session = Depends(g
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
     # If logged in and on main domain, redirect to their subdomain
-    if request.url.hostname == "calimara.ro" and current_user:
-        return RedirectResponse(url=f"//{current_user.username}.calimara.ro", status_code=status.HTTP_302_FOUND)
+    if request.url.hostname == MAIN_DOMAIN and current_user:
+        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
 
     return templates.TemplateResponse("register.html", {
         "request": request,
