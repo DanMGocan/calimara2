@@ -2,8 +2,7 @@
    CALIMARA - MODERN CSS FRAMEWORK
    ================================== */
 
-/* Faculty Glyphic Font Import */
-@import url('https://fonts.googleapis.com/css2?family=Faculty+Glyphic&display=swap');
+/* Arsenal SC Font (imported via HTML head in base.html) */
 
 /* CSS Custom Properties (Variables) */
 :root {
@@ -61,8 +60,8 @@
     --transition-slow: 0.5s ease-in-out;
     
     /* Typography */
-    --font-family-base: 'Faculty Glyphic', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-    --font-family-heading: 'Faculty Glyphic', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    --font-family-base: 'Arsenal SC', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    --font-family-heading: 'Arsenal SC', 'Segoe UI', system-ui, -apple-system, 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     --font-weight-light: 300;
     --font-weight-normal: 400;
     --font-weight-medium: 500;
