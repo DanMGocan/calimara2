@@ -38,6 +38,13 @@
                         <i class="bi bi-box-arrow-right me-1"></i>Deconectare
                     </button>
                 </div>
+                {% elif not current_user %}
+                <!-- Register Button for Unregistered Users -->
+                <div class="d-flex gap-2 align-items-center">
+                    <a href="/register" class="btn btn-primary-custom btn-sm hover-lift">
+                        <i class="bi bi-journal-plus me-1"></i>Deschide-ți și tu o calimara!
+                    </a>
+                </div>
                 {% endif %}
             </div>
             
@@ -111,13 +118,6 @@
                 </div>
             </div>
             
-            {% if not current_user %}
-                <div class="text-center mt-3">
-                    <a href="/register" class="btn btn-primary-custom hover-lift">
-                        <i class="bi bi-journal-plus me-2"></i>Deschide-ți și tu o calimara!
-                    </a>
-                </div>
-            {% endif %}
         </div>
     </div>
 </div>
