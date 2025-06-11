@@ -542,6 +542,12 @@ body::before {
     transform: scale(1.05);
 }
 
+.navbar-motto {
+    margin-top: -0.25rem;
+    line-height: 1.2;
+    display: block;
+}
+
 .nav-link {
     font-weight: var(--font-weight-medium);
     transition: all var(--transition-normal);
@@ -1947,6 +1953,24 @@ button[aria-expanded="false"] .collapse-arrow {
     .blog-card h1.h2,
     .blog-card h1.h3 {
         font-size: 1.25rem;
+    }
+    
+    /* Navbar motto responsive */
+    .navbar-motto small {
+        font-size: 0.7rem;
+    }
+}
+
+/* Extra responsive adjustments for very small screens */
+@media (max-width: 480px) {
+    .navbar-motto small {
+        font-size: 0.65rem;
+        display: block;
+        margin-top: 0.125rem;
+    }
+    
+    .navbar-brand a {
+        font-size: 1.5rem !important;
     }
 }
 

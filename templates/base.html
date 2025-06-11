@@ -36,9 +36,16 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary-custom sticky-top shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold fs-3 text-white animate__animated animate__fadeInLeft" href="//{{ current_domain }}">
-                <i class="bi bi-journal-text me-2"></i>{{ current_domain }}
-            </a>
+            <div class="navbar-brand animate__animated animate__fadeInLeft">
+                <a class="fw-bold fs-3 text-white text-decoration-none" href="//{{ current_domain }}">
+                    <i class="bi bi-journal-text me-2"></i>{{ current_domain }}
+                </a>
+                {% if current_domain == 'calimara.ro' %}
+                <div class="navbar-motto">
+                    <small class="text-light fst-italic opacity-75">Vrei să fii cu adevărat suveran? Scrie o poezie!</small>
+                </div>
+                {% endif %}
+            </div>
             
             <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -46,28 +53,25 @@
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        {% if current_user %}
-                            {% if current_domain == 'calimara.ro' %}
-                                <!-- User is on main domain, show link to their microblog -->
+                    {% if current_user %}
+                        <!-- Logged in user navigation -->
+                        {% if current_domain == 'calimara.ro' %}
+                            <!-- User is on main domain, show link to their microblog -->
+                            <li class="nav-item">
                                 <a class="nav-link text-white hover-accent" href="//{{ current_user.username }}.calimara.ro">
                                     <i class="bi bi-journal me-1"></i>{{ current_user.username }}.calimara.ro
                                 </a>
-                            {% else %}
-                                <!-- User is on their microblog, show link to main domain -->
+                            </li>
+                        {% else %}
+                            <!-- User is on their microblog, show link to main domain -->
+                            <li class="nav-item">
                                 <a class="nav-link text-white hover-accent" href="//calimara.ro">
                                     <i class="bi bi-house-door me-1"></i>calimara.ro
                                 </a>
-                            {% endif %}
-                        {% else %}
-                            <!-- Not logged in, always show main domain -->
-                            <a class="nav-link text-white hover-accent" href="//calimara.ro">
-                                <i class="bi bi-house-door me-1"></i>calimara.ro
-                            </a>
+                            </li>
                         {% endif %}
-                    </li>
-                    
-                    {% if not current_user %}
+                    {% else %}
+                        <!-- Not logged in - show login and register options -->
                         <li class="nav-item">
                             <a class="nav-link text-white hover-accent" href="#" data-bs-toggle="modal" data-bs-target="#loginModal">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Autentificare
@@ -77,20 +81,6 @@
                             <a class="nav-link text-white hover-accent" href="/register">
                                 <i class="bi bi-person-plus me-1"></i>Înregistrare
                             </a>
-                        </li>
-                    {% else %}
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle text-white hover-accent d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <img src="{{ get_avatar_url(current_user, 32) }}" 
-                                     alt="Avatar {{ current_user.username }}" class="avatar avatar-sm me-2">
-                                {{ current_user.username }}
-                            </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="/dashboard"><i class="bi bi-speedometer2 me-2"></i>Panou Admin</a></li>
-                                <li><a class="dropdown-item" href="//{{ current_user.username }}.calimara.ro"><i class="bi bi-journal me-2"></i>Blogul Meu</a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="#" id="logoutButton"><i class="bi bi-box-arrow-right me-2"></i>Deconectare</a></li>
-                            </ul>
                         </li>
                     {% endif %}
                 </ul>
