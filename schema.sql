@@ -124,12 +124,18 @@ CREATE TABLE tags (
 -- ===================================
 
 -- Test user (password will be replaced by initdb.py)
-INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+INSERT INTO users (username, email, password_hash, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url) VALUES (
     'gandurisilimbrici',
     'sad@sad.sad',
     '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
     'Mi-am facut si io blog, sa nu mor prost lol',
-    'gandurisilimbrici-shapes'
+    'gandurisilimbrici-shapes',
+    'https://facebook.com/gandurisilimbrici',
+    'https://tiktok.com/@gandurisilimbrici',
+    'https://instagram.com/gandurisilimbrici',
+    'https://x.com/gandurisilimbrici',
+    'https://bsky.app/profile/gandurisilimbrici.bsky.social',
+    'https://buymeacoffee.com/gandurisilimbrici'
 );
 
 -- Sample posts for the test user

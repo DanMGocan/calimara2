@@ -214,7 +214,7 @@ async function handleLogin(e) {
                     
                     if (sessionData.user_found) {
                         // Session is valid, redirect
-                        window.location.replace(`//${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
+                        window.location.href = `https://${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
                     } else {
                         console.error('Session not found after login');
                         showError(errorDiv, 'Sesiune invalidă după autentificare. Te rugăm să încerci din nou.');
@@ -222,7 +222,7 @@ async function handleLogin(e) {
                 } catch (e) {
                     console.error('Session check failed:', e);
                     // Fallback: try redirect anyway
-                    window.location.replace(`//${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
+                    window.location.href = `https://${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
                 }
             }, 1000);
         } else {
@@ -268,7 +268,7 @@ async function handleRegister(e) {
                     
                     if (authData.authenticated) {
                         // User is authenticated, redirect to dashboard
-                        window.location.replace(`//${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
+                        window.location.href = `https://${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
                     } else {
                         // Authentication failed, show error
                         showError(errorDiv, 'Autentificare automată eșuată. Te rugăm să te conectezi manual.');
@@ -279,7 +279,7 @@ async function handleRegister(e) {
                 } catch (error) {
                     console.error('Auth verification error:', error);
                     // Fallback: try to redirect anyway
-                    window.location.replace(`//${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`);
+                    window.location.href = `https://${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
                 }
             }, 1500);
         } else {

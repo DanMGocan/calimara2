@@ -1640,14 +1640,18 @@ footer {
 }
 
 /* Social Media Button Colors */
-.social-btn.btn-primary {
-    background-color: #1877f2;
-    border-color: #1877f2;
+.social-btn.btn-primary,
+.social-icon-btn[style*="#1877F2"] {
+    background-color: #1877F2 !important;
+    border-color: #1877F2 !important;
+    color: white !important;
 }
 
-.social-btn.btn-primary:hover {
-    background-color: #166fe5;
-    border-color: #166fe5;
+.social-btn.btn-primary:hover,
+.social-icon-btn[style*="#1877F2"]:hover {
+    background-color: #166fe5 !important;
+    border-color: #166fe5 !important;
+    color: white !important;
 }
 
 .social-btn.btn-danger {

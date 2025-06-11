@@ -177,7 +177,7 @@ async def register_user(request: Request, user: schemas.UserCreate, db: Session 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)):
     if current_user: # If already logged in, redirect to their blog
-        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=f"https://{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
     return templates.TemplateResponse("login.html", get_common_context(request))
 
 @app.post("/api/token")
@@ -810,7 +810,7 @@ async def get_filtered_random_posts(category: str = "toate", db: Session = Depen
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
     # If logged in and on main domain, redirect to subdomain dashboard
     if request.url.hostname == MAIN_DOMAIN:
-        return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}/dashboard", status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=f"https://{current_user.username}{SUBDOMAIN_SUFFIX}/dashboard", status_code=status.HTTP_302_FOUND)
 
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
