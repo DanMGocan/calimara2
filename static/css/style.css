@@ -1734,6 +1734,12 @@ footer {
         font-size: 1.2rem;
     }
     
+    .coffee-btn {
+        height: 2.5rem;
+        font-size: 0.75rem;
+        padding: 0 0.75rem;
+    }
+    
     .social-donation-section h6 {
         font-size: 0.9rem;
     }
@@ -1811,11 +1817,46 @@ button[aria-expanded="false"] .collapse-arrow {
     border-color: #6c757d !important;
     color: #ffffff !important;
     opacity: 0.65;
-    cursor: help;
-    pointer-events: auto;
+    cursor: help !important;
+    pointer-events: auto !important;
 }
 
 .social-icon-btn.disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Coffee Button - Same height as social icons but with text */
+.coffee-btn {
+    height: 3rem;
+    border-radius: 1.5rem !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0 1rem;
+    transition: all var(--transition-normal);
+    border: 2px solid;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.coffee-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.coffee-btn.disabled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    color: #ffffff !important;
+    opacity: 0.65;
+    cursor: help !important;
+    pointer-events: auto !important;
+}
+
+.coffee-btn.disabled:hover {
     transform: none;
     box-shadow: none;
 }
