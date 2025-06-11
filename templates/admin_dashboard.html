@@ -252,7 +252,7 @@
             <div class="card-header bg-primary-custom text-white">
                 <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#donationLinksCollapse" aria-expanded="false" aria-controls="donationLinksCollapse">
                     <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-heart me-2"></i>Link-uri Donații</span>
+                        <span><i class="bi bi-heart me-2"></i>Link-uri Sprijin</span>
                         <i class="bi bi-chevron-down collapse-arrow"></i>
                     </h5>
                 </button>
@@ -261,29 +261,9 @@
                 <div class="card-body">
                     <form id="donationLinksForm">
                         <div class="row g-3">
-                            <div class="col-md-4">
-                                <label for="patreon_url" class="form-label">
-                                    <i class="bi bi-star me-1 text-warning"></i>Patreon
-                                </label>
-                                <input type="url" class="form-control" id="patreon_url" name="patreon_url" 
-                                       value="{{ current_user.patreon_url if current_user.patreon_url else '' }}"
-                                       placeholder="https://patreon.com/username">
-                                <div class="invalid-feedback" id="patreon_url_error"></div>
-                            </div>
-                            
-                            <div class="col-md-4">
-                                <label for="paypal_url" class="form-label">
-                                    <i class="bi bi-paypal me-1 text-primary"></i>PayPal
-                                </label>
-                                <input type="url" class="form-control" id="paypal_url" name="paypal_url" 
-                                       value="{{ current_user.paypal_url if current_user.paypal_url else '' }}"
-                                       placeholder="https://paypal.me/username">
-                                <div class="invalid-feedback" id="paypal_url_error"></div>
-                            </div>
-                            
-                            <div class="col-md-4">
+                            <div class="col-md-12">
                                 <label for="buymeacoffee_url" class="form-label">
-                                    <i class="bi bi-cup-hot me-1 text-warning"></i>Buy Me a Coffee
+                                    <i class="bi bi-cup-hot me-1 text-warning"></i>Cumpără-mi o cafea!
                                 </label>
                                 <input type="url" class="form-control" id="buymeacoffee_url" name="buymeacoffee_url" 
                                        value="{{ current_user.buymeacoffee_url if current_user.buymeacoffee_url else '' }}"
@@ -294,7 +274,7 @@
                         
                         <div class="form-text mt-3">
                             <i class="bi bi-info-circle me-1"></i>
-                            Link-urile de donații vor apărea ca butoane colorate pe blogul tău. Urmăritorii tăi te pot sprijini direct prin aceste platforme.
+                            Link-ul de sprijin va apărea ca buton colorat pe blogul tău. Urmăritorii tăi te pot sprijini direct prin această platformă.
                         </div>
                         
                         <div id="donationLinksError" class="alert alert-danger d-none mt-3" role="alert">
@@ -308,7 +288,7 @@
                         </div>
                         
                         <button type="submit" class="btn btn-success mt-3">
-                            <i class="bi bi-save me-2"></i>Salvează Link-urile de Donații
+                            <i class="bi bi-save me-2"></i>Salvează Link-ul de Sprijin
                         </button>
                     </form>
                 </div>
@@ -494,80 +474,44 @@
         </div>
         {% endif %}
 
-        <!-- Blog Statistics -->
+        <!-- Blog Statistics - Always Visible -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
-                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#blogStatisticsCollapse" aria-expanded="false" aria-controls="blogStatisticsCollapse">
-                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-graph-up me-2"></i>Statistici Blog</span>
-                        <i class="bi bi-chevron-down collapse-arrow"></i>
-                    </h5>
-                </button>
+                <h5 class="mb-0">
+                    <i class="bi bi-graph-up me-2"></i>Statistici Blog
+                </h5>
             </div>
-            <div class="collapse" id="blogStatisticsCollapse">
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <div class="text-center p-3 bg-light rounded">
-                                <div class="h4 fw-bold text-primary mb-1">{{ user_posts|length }}</div>
-                                <small class="text-muted">Postări</small>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="text-center p-3 bg-light rounded">
-                                <div class="h4 fw-bold text-danger mb-1">{{ user_posts|sum(attribute='likes_count') or 0 }}</div>
-                                <small class="text-muted">Aprecieri</small>
-                            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="h4 fw-bold text-primary mb-1">{{ user_posts|length }}</div>
+                            <small class="text-muted">Postări</small>
                         </div>
                     </div>
-                    
-                    <hr>
-                    
-                    <div class="small text-muted">
-                        <div class="d-flex justify-content-between mb-2">
-                            <span><i class="bi bi-calendar3 me-1"></i>Membru din:</span>
-                            <span>{{ current_user.created_at.strftime('%B %Y') if current_user.created_at else 'N/A' }}</span>
+                    <div class="col-6">
+                        <div class="text-center p-3 bg-light rounded">
+                            <div class="h4 fw-bold text-danger mb-1">{{ user_posts|sum(attribute='likes_count') or 0 }}</div>
+                            <small class="text-muted">Aprecieri</small>
                         </div>
-                        <div class="d-flex justify-content-between">
-                            <span><i class="bi bi-clock me-1"></i>Ultima activitate:</span>
-                            <span>Astăzi</span>
-                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="small text-muted">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span><i class="bi bi-calendar3 me-1"></i>Membru din:</span>
+                        <span>{{ current_user.created_at.strftime('%B %Y') if current_user.created_at else 'N/A' }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span><i class="bi bi-clock me-1"></i>Ultima activitate:</span>
+                        <span>Astăzi</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Tips & Help -->
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-primary-custom text-white">
-                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#tipsHelpCollapse" aria-expanded="false" aria-controls="tipsHelpCollapse">
-                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-lightbulb me-2"></i>Sfaturi Utile</span>
-                        <i class="bi bi-chevron-down collapse-arrow"></i>
-                    </h5>
-                </button>
-            </div>
-            <div class="collapse" id="tipsHelpCollapse">
-                <div class="card-body">
-                    <div class="small">
-                        <div class="mb-3">
-                            <strong><i class="bi bi-pencil me-1"></i>Scrie regulat</strong>
-                            <p class="mb-0 text-muted">Postează conținut nou în mod constant pentru a-ți menține audiența angajată.</p>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <strong><i class="bi bi-tags me-1"></i>Folosește categorii</strong>
-                            <p class="mb-0 text-muted">Organizează-ți postările cu categorii pentru o navigare mai ușoară.</p>
-                        </div>
-                        
-                        <div class="mb-0">
-                            <strong><i class="bi bi-chat-dots me-1"></i>Interacționează</strong>
-                            <p class="mb-0 text-muted">Răspunde la comentarii și vizitează alte bloguri din comunitate.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -767,8 +711,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const formData = new FormData(donationLinksForm);
             const donationData = {
-                patreon_url: formData.get("patreon_url"),
-                paypal_url: formData.get("paypal_url"),
                 buymeacoffee_url: formData.get("buymeacoffee_url")
             };
             
@@ -803,13 +745,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await response.json();
                 
                 if (response.ok) {
-                    showDonationLinksMessage("Link-urile de donații au fost salvate cu succes!", "success");
+                    showDonationLinksMessage("Link-ul de sprijin a fost salvat cu succes!", "success");
                 } else {
-                    showDonationLinksMessage(result.detail || "A apărut o eroare la salvarea link-urilor.", "error");
+                    showDonationLinksMessage(result.detail || "A apărut o eroare la salvarea link-ului.", "error");
                 }
             } catch (error) {
                 console.error("Error:", error);
-                showDonationLinksMessage("A apărut o eroare la salvarea link-urilor.", "error");
+                showDonationLinksMessage("A apărut o eroare la salvarea link-ului.", "error");
             }
         });
     }

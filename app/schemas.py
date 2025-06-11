@@ -41,8 +41,6 @@ class SocialLinksUpdate(BaseModel):
     instagram_url: Optional[str] = None
     x_url: Optional[str] = None
     bluesky_url: Optional[str] = None
-    patreon_url: Optional[str] = None
-    paypal_url: Optional[str] = None
     buymeacoffee_url: Optional[str] = None
 
 class TagBase(BaseModel):

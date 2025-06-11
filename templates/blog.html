@@ -35,48 +35,48 @@
                     </h6>
                     <div class="d-flex flex-wrap gap-2">
                         {% if blog_owner.facebook_url %}
-                            <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn btn-primary btn-sm social-btn">
-                                <i class="bi bi-facebook me-1"></i>Facebook
+                            <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn btn-primary social-icon-btn" title="Facebook">
+                                <i class="bi bi-facebook"></i>
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm social-btn disabled">
-                                <i class="bi bi-facebook me-1"></i>Facebook
+                            <span class="btn btn-secondary social-icon-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-facebook"></i>
                             </span>
                         {% endif %}
                         {% if blog_owner.tiktok_url %}
-                            <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
-                                <i class="bi bi-tiktok me-1"></i>TikTok
+                            <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark social-icon-btn" title="TikTok">
+                                <i class="bi bi-tiktok"></i>
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm social-btn disabled">
-                                <i class="bi bi-tiktok me-1"></i>TikTok
+                            <span class="btn btn-secondary social-icon-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-tiktok"></i>
                             </span>
                         {% endif %}
                         {% if blog_owner.instagram_url %}
-                            <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger btn-sm social-btn">
-                                <i class="bi bi-instagram me-1"></i>Instagram
+                            <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger social-icon-btn" title="Instagram">
+                                <i class="bi bi-instagram"></i>
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm social-btn disabled">
-                                <i class="bi bi-instagram me-1"></i>Instagram
+                            <span class="btn btn-secondary social-icon-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-instagram"></i>
                             </span>
                         {% endif %}
                         {% if blog_owner.x_url %}
-                            <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
-                                <i class="bi bi-twitter-x me-1"></i>X
+                            <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark social-icon-btn" title="X">
+                                <i class="bi bi-twitter-x"></i>
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm social-btn disabled">
-                                <i class="bi bi-twitter-x me-1"></i>X
+                            <span class="btn btn-secondary social-icon-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-twitter-x"></i>
                             </span>
                         {% endif %}
                         {% if blog_owner.bluesky_url %}
-                            <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info btn-sm social-btn">
-                                <i class="bi bi-cloud me-1"></i>BlueSky
+                            <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info social-icon-btn" title="BlueSky">
+                                <i class="bi bi-cloud"></i>
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm social-btn disabled">
-                                <i class="bi bi-cloud me-1"></i>BlueSky
+                            <span class="btn btn-secondary social-icon-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-cloud"></i>
                             </span>
                         {% endif %}
                     </div>
@@ -88,31 +88,13 @@
                         <i class="bi bi-heart me-1"></i>Sprijină-mă, de ce nu?
                     </h6>
                     <div class="d-flex flex-wrap gap-2">
-                        {% if blog_owner.patreon_url %}
-                            <a href="{{ blog_owner.patreon_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
-                                <i class="bi bi-star me-1"></i>Patreon
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary btn-sm donation-btn disabled">
-                                <i class="bi bi-star me-1"></i>Patreon
-                            </span>
-                        {% endif %}
-                        {% if blog_owner.paypal_url %}
-                            <a href="{{ blog_owner.paypal_url }}" target="_blank" class="btn btn-primary btn-sm donation-btn">
-                                <i class="bi bi-paypal me-1"></i>PayPal
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary btn-sm donation-btn disabled">
-                                <i class="bi bi-paypal me-1"></i>PayPal
-                            </span>
-                        {% endif %}
                         {% if blog_owner.buymeacoffee_url %}
                             <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
-                                <i class="bi bi-cup-hot me-1"></i>Buy Me a Coffee
+                                <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
                             </a>
                         {% else %}
-                            <span class="btn btn-secondary btn-sm donation-btn disabled">
-                                <i class="bi bi-cup-hot me-1"></i>Buy Me a Coffee
+                            <span class="btn btn-secondary btn-sm donation-btn disabled" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
+                                <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
                             </span>
                         {% endif %}
                     </div>

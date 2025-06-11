@@ -317,14 +317,8 @@ async def update_user_social_links(
     if social_update.bluesky_url and not validate_social_url(social_update.bluesky_url, 'bluesky'):
         validation_errors.append("URL-ul BlueSky trebuie să conțină bsky.app")
     
-    if social_update.patreon_url and not validate_social_url(social_update.patreon_url, 'patreon'):
-        validation_errors.append("URL-ul Patreon trebuie să conțină patreon.com")
-    
-    if social_update.paypal_url and not validate_social_url(social_update.paypal_url, 'paypal'):
-        validation_errors.append("URL-ul PayPal trebuie să conțină paypal.me sau paypal.com")
-    
     if social_update.buymeacoffee_url and not validate_social_url(social_update.buymeacoffee_url, 'buymeacoffee'):
-        validation_errors.append("URL-ul Buy Me a Coffee trebuie să conțină buymeacoffee.com")
+        validation_errors.append("URL-ul Cumpără-mi o cafea trebuie să conțină buymeacoffee.com")
     
     if validation_errors:
         raise HTTPException(status_code=422, detail="; ".join(validation_errors))
@@ -342,10 +336,6 @@ async def update_user_social_links(
         current_user.bluesky_url = social_update.bluesky_url.strip() or None
     
     # Update donation links
-    if social_update.patreon_url is not None:
-        current_user.patreon_url = social_update.patreon_url.strip() or None
-    if social_update.paypal_url is not None:
-        current_user.paypal_url = social_update.paypal_url.strip() or None
     if social_update.buymeacoffee_url is not None:
         current_user.buymeacoffee_url = social_update.buymeacoffee_url.strip() or None
     
