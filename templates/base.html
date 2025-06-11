@@ -46,23 +46,25 @@
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
-                    {% if current_user %}
-                        <li class="nav-item">
-                            <a class="nav-link text-white hover-accent" href="/create-post">
-                                <i class="bi bi-pencil-square me-1"></i>Creează Postare
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-white hover-accent" href="/dashboard">
-                                <i class="bi bi-speedometer2 me-1"></i>Panou Admin
-                            </a>
-                        </li>
-                    {% endif %}
-                    
                     <li class="nav-item">
-                        <a class="nav-link text-white hover-accent" href="//calimara.ro">
-                            <i class="bi bi-house-door me-1"></i>Domeniul Principal
-                        </a>
+                        {% if current_user %}
+                            {% if current_domain == 'calimara.ro' %}
+                                <!-- User is on main domain, show link to their microblog -->
+                                <a class="nav-link text-white hover-accent" href="//{{ current_user.username }}.calimara.ro">
+                                    <i class="bi bi-journal me-1"></i>{{ current_user.username }}.calimara.ro
+                                </a>
+                            {% else %}
+                                <!-- User is on their microblog, show link to main domain -->
+                                <a class="nav-link text-white hover-accent" href="//calimara.ro">
+                                    <i class="bi bi-house-door me-1"></i>calimara.ro
+                                </a>
+                            {% endif %}
+                        {% else %}
+                            <!-- Not logged in, always show main domain -->
+                            <a class="nav-link text-white hover-accent" href="//calimara.ro">
+                                <i class="bi bi-house-door me-1"></i>calimara.ro
+                            </a>
+                        {% endif %}
                     </li>
                     
                     {% if not current_user %}

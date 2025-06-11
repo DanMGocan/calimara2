@@ -797,6 +797,7 @@ async def get_filtered_random_posts(category: str = "toate", db: Session = Depen
         posts_data.append({
             "id": post.id,
             "title": post.title,
+            "slug": post.slug,
             "content": post.content[:120] + ("..." if len(post.content) > 120 else ""),
             "username": post.owner.username,
             "created_at": post.created_at.strftime('%d %b'),

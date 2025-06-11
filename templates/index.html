@@ -127,7 +127,7 @@
                     {% if random_posts %}
                         <div class="list-group list-group-flush">
                             {% for post in random_posts[:10] %}
-                                <a href="//{{ post.owner.username }}.calimara.ro#post-{{ post.id }}" 
+                                <a href="//{{ post.owner.username }}.calimara.ro/{{ post.slug }}" 
                                    class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift text-decoration-none">
                                     <div class="d-flex align-items-start">
                                         <div class="bg-accent text-white rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0" style="width: 2.8125rem; height: 2.8125rem;">
@@ -438,7 +438,7 @@ document.querySelectorAll('.category-filter-btn').forEach(button => {
                 let postsHtml = '<div class="list-group list-group-flush">';
                 data.posts.forEach(post => {
                     postsHtml += `
-                        <a href="//${post.username}.calimara.ro#post-${post.id}" 
+                        <a href="//${post.username}.calimara.ro/${post.slug}" 
                            class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift text-decoration-none">
                             <div class="d-flex align-items-start">
                                 <div class="bg-accent text-white rounded-circle d-flex align-items-center justify-content-center me-3 flex-shrink-0" style="width: 2.8125rem; height: 2.8125rem;">
