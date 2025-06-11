@@ -101,6 +101,7 @@ Use `get_common_context(request, current_user)` for consistent template variable
 - **schema.sql**: Contains full database schema with sample data
 - **initdb.py**: Executes schema.sql and replaces placeholder password with bcrypt hash
 - **Test user**: gandurisilimbrici/sad@sad.sad/123 for testing
+- **Database Reinitialization**: Database will be reinitalized after every update, no need to create migrations. It will use the schema.sql for the general layout of the DB and init_db.py to process the creation of the database.
 
 ### Deployment Architecture
 - **Azure VM**: Single Ubuntu VM running FastAPI + MySQL + Nginx

@@ -19,6 +19,7 @@ from starlette.middleware.sessions import SessionMiddleware # Import SessionMidd
 from . import models, schemas, crud, auth
 from .database import SessionLocal, engine, get_db
 from .categories import CATEGORIES_AND_GENRES, get_main_categories, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
+import urllib.parse
 
 # Configure logging
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
@@ -106,6 +107,38 @@ def get_common_context(request: Request, current_user: Optional[models.User] = N
 # Dependency to get client IP for anonymous likes
 def get_client_ip(request: Request):
     return request.client.host
+
+# URL validation function for social media and donation platforms
+def validate_social_url(url: str, platform: str) -> bool:
+    """Validate that URL matches the expected platform domain"""
+    if not url or not url.strip():
+        return True  # Empty URLs are valid (will be stored as None)
+    
+    try:
+        parsed = urllib.parse.urlparse(url.lower())
+        domain = parsed.netloc.lower()
+        
+        # Remove www. prefix for comparison
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        
+        platform_domains = {
+            'facebook': ['facebook.com', 'fb.com'],
+            'instagram': ['instagram.com'],
+            'tiktok': ['tiktok.com'],
+            'x': ['x.com', 'twitter.com'],
+            'bluesky': ['bsky.app'],
+            'patreon': ['patreon.com'],
+            'paypal': ['paypal.me', 'paypal.com'],
+            'buymeacoffee': ['buymeacoffee.com']
+        }
+        
+        if platform not in platform_domains:
+            return False
+            
+        return any(domain.endswith(valid_domain) for valid_domain in platform_domains[platform])
+    except:
+        return False
 
 # --- API Endpoints (Authentication & User Management) ---
 
@@ -256,6 +289,70 @@ async def update_current_user(
     db.commit()
     db.refresh(current_user)
     logger.info(f"Profil utilizator actualizat cu succes: {current_user.username}")
+    return current_user
+
+@app.put("/api/user/social-links", response_model=schemas.UserInDB)
+async def update_user_social_links(
+    social_update: schemas.SocialLinksUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    logger.info(f"Se încearcă actualizarea link-urilor sociale pentru utilizatorul: {current_user.username}")
+    
+    # Validate URLs for each platform
+    validation_errors = []
+    
+    if social_update.facebook_url and not validate_social_url(social_update.facebook_url, 'facebook'):
+        validation_errors.append("URL-ul Facebook trebuie să conțină facebook.com sau fb.com")
+    
+    if social_update.instagram_url and not validate_social_url(social_update.instagram_url, 'instagram'):
+        validation_errors.append("URL-ul Instagram trebuie să conțină instagram.com")
+    
+    if social_update.tiktok_url and not validate_social_url(social_update.tiktok_url, 'tiktok'):
+        validation_errors.append("URL-ul TikTok trebuie să conțină tiktok.com")
+    
+    if social_update.x_url and not validate_social_url(social_update.x_url, 'x'):
+        validation_errors.append("URL-ul X trebuie să conțină x.com sau twitter.com")
+    
+    if social_update.bluesky_url and not validate_social_url(social_update.bluesky_url, 'bluesky'):
+        validation_errors.append("URL-ul BlueSky trebuie să conțină bsky.app")
+    
+    if social_update.patreon_url and not validate_social_url(social_update.patreon_url, 'patreon'):
+        validation_errors.append("URL-ul Patreon trebuie să conțină patreon.com")
+    
+    if social_update.paypal_url and not validate_social_url(social_update.paypal_url, 'paypal'):
+        validation_errors.append("URL-ul PayPal trebuie să conțină paypal.me sau paypal.com")
+    
+    if social_update.buymeacoffee_url and not validate_social_url(social_update.buymeacoffee_url, 'buymeacoffee'):
+        validation_errors.append("URL-ul Buy Me a Coffee trebuie să conțină buymeacoffee.com")
+    
+    if validation_errors:
+        raise HTTPException(status_code=422, detail="; ".join(validation_errors))
+    
+    # Update social media links
+    if social_update.facebook_url is not None:
+        current_user.facebook_url = social_update.facebook_url.strip() or None
+    if social_update.tiktok_url is not None:
+        current_user.tiktok_url = social_update.tiktok_url.strip() or None
+    if social_update.instagram_url is not None:
+        current_user.instagram_url = social_update.instagram_url.strip() or None
+    if social_update.x_url is not None:
+        current_user.x_url = social_update.x_url.strip() or None
+    if social_update.bluesky_url is not None:
+        current_user.bluesky_url = social_update.bluesky_url.strip() or None
+    
+    # Update donation links
+    if social_update.patreon_url is not None:
+        current_user.patreon_url = social_update.patreon_url.strip() or None
+    if social_update.paypal_url is not None:
+        current_user.paypal_url = social_update.paypal_url.strip() or None
+    if social_update.buymeacoffee_url is not None:
+        current_user.buymeacoffee_url = social_update.buymeacoffee_url.strip() or None
+    
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    logger.info(f"Link-uri sociale actualizate cu succes pentru utilizatorul: {current_user.username}")
     return current_user
 
 # --- API Endpoints (Posts) ---

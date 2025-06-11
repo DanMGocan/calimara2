@@ -24,73 +24,98 @@
             </div>
         </div>
 
-            <!-- Social Media and Donation Buttons -->
-            {% set has_social = blog_owner.facebook_url or blog_owner.tiktok_url or blog_owner.instagram_url or blog_owner.x_url or blog_owner.bluesky_url %}
-            {% set has_donations = blog_owner.patreon_url or blog_owner.paypal_url or blog_owner.buymeacoffee_url %}
-
-            {% if has_social or has_donations %}
-                <div class="social-donation-section mb-3">
-                    {% if has_social %}
-                        <div class="social-buttons mb-2">
-                            <h6 class="small text-muted mb-2 fw-bold">
-                                <i class="bi bi-people me-1"></i>Urmărește-mă pe sociale:
-                            </h6>
-                            <div class="d-flex flex-wrap gap-2">
-                                {% if blog_owner.facebook_url %}
-                                    <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn btn-primary btn-sm social-btn">
-                                        <i class="bi bi-facebook me-1"></i>Facebook
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.instagram_url %}
-                                    <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger btn-sm social-btn">
-                                        <i class="bi bi-instagram me-1"></i>Instagram
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.tiktok_url %}
-                                    <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
-                                        <i class="bi bi-tiktok me-1"></i>TikTok
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.x_url %}
-                                    <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
-                                        <i class="bi bi-twitter-x me-1"></i>X
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.bluesky_url %}
-                                    <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info btn-sm social-btn">
-                                        <i class="bi bi-cloud me-1"></i>BlueSky
-                                    </a>
-                                {% endif %}
-                            </div>
-                        </div>
-                    {% endif %}
-                    
-                    {% if has_donations %}
-                        <div class="donation-buttons">
-                            <h6 class="small text-muted mb-2 fw-bold">
-                                <i class="bi bi-heart me-1"></i>Sprijină-mă, de ce nu?
-                            </h6>
-                            <div class="d-flex flex-wrap gap-2">
-                                {% if blog_owner.patreon_url %}
-                                    <a href="{{ blog_owner.patreon_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
-                                        <i class="bi bi-star me-1"></i>Patreon
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.paypal_url %}
-                                    <a href="{{ blog_owner.paypal_url }}" target="_blank" class="btn btn-primary btn-sm donation-btn">
-                                        <i class="bi bi-paypal me-1"></i>PayPal
-                                    </a>
-                                {% endif %}
-                                {% if blog_owner.buymeacoffee_url %}
-                                    <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
-                                        <i class="bi bi-cup-hot me-1"></i>Buy Me a Coffee
-                                    </a>
-                                {% endif %}
-                            </div>
-                        </div>
-                    {% endif %}
+            <!-- Social Media and Donation Buttons - Always Visible -->
+            <div class="social-donation-section mb-3">
+                <!-- Social Media Buttons -->
+                <div class="social-buttons mb-2">
+                    <h6 class="small text-muted mb-2 fw-bold">
+                        <i class="bi bi-people me-1"></i>Urmărește-mă pe sociale:
+                    </h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if blog_owner.facebook_url %}
+                            <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn btn-primary btn-sm social-btn">
+                                <i class="bi bi-facebook me-1"></i>Facebook
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm social-btn disabled">
+                                <i class="bi bi-facebook me-1"></i>Facebook
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.tiktok_url %}
+                            <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
+                                <i class="bi bi-tiktok me-1"></i>TikTok
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm social-btn disabled">
+                                <i class="bi bi-tiktok me-1"></i>TikTok
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.instagram_url %}
+                            <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger btn-sm social-btn">
+                                <i class="bi bi-instagram me-1"></i>Instagram
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm social-btn disabled">
+                                <i class="bi bi-instagram me-1"></i>Instagram
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.x_url %}
+                            <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark btn-sm social-btn">
+                                <i class="bi bi-twitter-x me-1"></i>X
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm social-btn disabled">
+                                <i class="bi bi-twitter-x me-1"></i>X
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.bluesky_url %}
+                            <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info btn-sm social-btn">
+                                <i class="bi bi-cloud me-1"></i>BlueSky
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm social-btn disabled">
+                                <i class="bi bi-cloud me-1"></i>BlueSky
+                            </span>
+                        {% endif %}
+                    </div>
                 </div>
-            {% endif %}
+                
+                <!-- Donation Buttons -->
+                <div class="donation-buttons">
+                    <h6 class="small text-muted mb-2 fw-bold">
+                        <i class="bi bi-heart me-1"></i>Sprijină-mă, de ce nu?
+                    </h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if blog_owner.patreon_url %}
+                            <a href="{{ blog_owner.patreon_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
+                                <i class="bi bi-star me-1"></i>Patreon
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm donation-btn disabled">
+                                <i class="bi bi-star me-1"></i>Patreon
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.paypal_url %}
+                            <a href="{{ blog_owner.paypal_url }}" target="_blank" class="btn btn-primary btn-sm donation-btn">
+                                <i class="bi bi-paypal me-1"></i>PayPal
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm donation-btn disabled">
+                                <i class="bi bi-paypal me-1"></i>PayPal
+                            </span>
+                        {% endif %}
+                        {% if blog_owner.buymeacoffee_url %}
+                            <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning btn-sm donation-btn">
+                                <i class="bi bi-cup-hot me-1"></i>Buy Me a Coffee
+                            </a>
+                        {% else %}
+                            <span class="btn btn-secondary btn-sm donation-btn disabled">
+                                <i class="bi bi-cup-hot me-1"></i>Buy Me a Coffee
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         
         <div class="col-md-4 text-md-end">
             <a href="//{{ blog_owner.username }}.calimara.ro" class="btn btn-outline-primary-custom">

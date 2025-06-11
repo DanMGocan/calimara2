@@ -35,6 +35,16 @@ class UserInDB(UserBase):
     class Config:
         from_attributes = True
 
+class SocialLinksUpdate(BaseModel):
+    facebook_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    x_url: Optional[str] = None
+    bluesky_url: Optional[str] = None
+    patreon_url: Optional[str] = None
+    paypal_url: Optional[str] = None
+    buymeacoffee_url: Optional[str] = None
+
 class TagBase(BaseModel):
     tag_name: str = Field(..., max_length=12, description="Tag name (max 12 characters)")
 

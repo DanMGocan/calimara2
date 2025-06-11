@@ -154,122 +154,159 @@
             </div>
         </div>
 
-        <!-- Social Media and Donation Links -->
+        <!-- Social Media Links -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
-                <h5 class="mb-0">
-                    <i class="bi bi-share me-2"></i>Link-uri Sociale și Donații
-                </h5>
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#socialMediaCollapse" aria-expanded="true" aria-controls="socialMediaCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-share me-2"></i>Adaugă-ți linkurile de social media</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
             </div>
-            <div class="card-body">
-                <form id="socialLinksForm">
-                    <div class="row g-3">
-                        <div class="col-12">
-                            <h6 class="fw-bold mb-3">
-                                <i class="bi bi-people me-2"></i>Urmărește-mă pe sociale:
-                            </h6>
+            <div class="collapse show" id="socialMediaCollapse">
+                <div class="card-body">
+                    <form id="socialLinksForm">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="facebook_url" class="form-label">
+                                    <i class="bi bi-facebook me-1 text-primary"></i>Facebook
+                                </label>
+                                <input type="url" class="form-control" id="facebook_url" name="facebook_url" 
+                                       value="{{ current_user.facebook_url if current_user.facebook_url else '' }}"
+                                       placeholder="https://facebook.com/username">
+                                <div class="invalid-feedback" id="facebook_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="instagram_url" class="form-label">
+                                    <i class="bi bi-instagram me-1 text-danger"></i>Instagram
+                                </label>
+                                <input type="url" class="form-control" id="instagram_url" name="instagram_url" 
+                                       value="{{ current_user.instagram_url if current_user.instagram_url else '' }}"
+                                       placeholder="https://instagram.com/username">
+                                <div class="invalid-feedback" id="instagram_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="tiktok_url" class="form-label">
+                                    <i class="bi bi-tiktok me-1 text-dark"></i>TikTok
+                                </label>
+                                <input type="url" class="form-control" id="tiktok_url" name="tiktok_url" 
+                                       value="{{ current_user.tiktok_url if current_user.tiktok_url else '' }}"
+                                       placeholder="https://tiktok.com/@username">
+                                <div class="invalid-feedback" id="tiktok_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="x_url" class="form-label">
+                                    <i class="bi bi-twitter-x me-1 text-dark"></i>X (Twitter)
+                                </label>
+                                <input type="url" class="form-control" id="x_url" name="x_url" 
+                                       value="{{ current_user.x_url if current_user.x_url else '' }}"
+                                       placeholder="https://x.com/username">
+                                <div class="invalid-feedback" id="x_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="bluesky_url" class="form-label">
+                                    <i class="bi bi-cloud me-1 text-info"></i>BlueSky
+                                </label>
+                                <input type="url" class="form-control" id="bluesky_url" name="bluesky_url" 
+                                       value="{{ current_user.bluesky_url if current_user.bluesky_url else '' }}"
+                                       placeholder="https://bsky.app/profile/username">
+                                <div class="invalid-feedback" id="bluesky_url_error"></div>
+                            </div>
                         </div>
                         
-                        <!-- Social Media Links -->
-                        <div class="col-md-6">
-                            <label for="facebook_url" class="form-label">
-                                <i class="bi bi-facebook me-1 text-primary"></i>Facebook
-                            </label>
-                            <input type="url" class="form-control" id="facebook_url" name="facebook_url" 
-                                   value="{{ current_user.facebook_url if current_user.facebook_url else '' }}"
-                                   placeholder="https://facebook.com/username">
+                        <div class="form-text mt-3">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Link-urile de social media vor apărea ca butoane colorate pe blogul tău. Lasă câmpurile goale dacă nu vrei să afișezi butonul respectiv.
                         </div>
                         
-                        <div class="col-md-6">
-                            <label for="instagram_url" class="form-label">
-                                <i class="bi bi-instagram me-1 text-danger"></i>Instagram
-                            </label>
-                            <input type="url" class="form-control" id="instagram_url" name="instagram_url" 
-                                   value="{{ current_user.instagram_url if current_user.instagram_url else '' }}"
-                                   placeholder="https://instagram.com/username">
+                        <div id="socialLinksError" class="alert alert-danger d-none mt-3" role="alert">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <span class="error-message"></span>
                         </div>
                         
-                        <div class="col-md-6">
-                            <label for="tiktok_url" class="form-label">
-                                <i class="bi bi-tiktok me-1 text-dark"></i>TikTok
-                            </label>
-                            <input type="url" class="form-control" id="tiktok_url" name="tiktok_url" 
-                                   value="{{ current_user.tiktok_url if current_user.tiktok_url else '' }}"
-                                   placeholder="https://tiktok.com/@username">
+                        <div id="socialLinksSuccess" class="alert alert-success d-none mt-3" role="alert">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <span class="success-message"></span>
                         </div>
                         
-                        <div class="col-md-6">
-                            <label for="x_url" class="form-label">
-                                <i class="bi bi-twitter-x me-1 text-dark"></i>X (Twitter)
-                            </label>
-                            <input type="url" class="form-control" id="x_url" name="x_url" 
-                                   value="{{ current_user.x_url if current_user.x_url else '' }}"
-                                   placeholder="https://x.com/username">
+                        <button type="submit" class="btn btn-primary-custom mt-3">
+                            <i class="bi bi-save me-2"></i>Salvează Link-urile Sociale
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Donation Links -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-warning text-dark">
+                <button class="btn btn-link text-dark text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#donationLinksCollapse" aria-expanded="false" aria-controls="donationLinksCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-heart me-2"></i>Adaugă-ți linkurile unde urmăritorii tăi te pot sprijini</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
+            </div>
+            <div class="collapse" id="donationLinksCollapse">
+                <div class="card-body">
+                    <form id="donationLinksForm">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="patreon_url" class="form-label">
+                                    <i class="bi bi-star me-1 text-warning"></i>Patreon
+                                </label>
+                                <input type="url" class="form-control" id="patreon_url" name="patreon_url" 
+                                       value="{{ current_user.patreon_url if current_user.patreon_url else '' }}"
+                                       placeholder="https://patreon.com/username">
+                                <div class="invalid-feedback" id="patreon_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label for="paypal_url" class="form-label">
+                                    <i class="bi bi-paypal me-1 text-primary"></i>PayPal
+                                </label>
+                                <input type="url" class="form-control" id="paypal_url" name="paypal_url" 
+                                       value="{{ current_user.paypal_url if current_user.paypal_url else '' }}"
+                                       placeholder="https://paypal.me/username">
+                                <div class="invalid-feedback" id="paypal_url_error"></div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label for="buymeacoffee_url" class="form-label">
+                                    <i class="bi bi-cup-hot me-1 text-warning"></i>Buy Me a Coffee
+                                </label>
+                                <input type="url" class="form-control" id="buymeacoffee_url" name="buymeacoffee_url" 
+                                       value="{{ current_user.buymeacoffee_url if current_user.buymeacoffee_url else '' }}"
+                                       placeholder="https://buymeacoffee.com/username">
+                                <div class="invalid-feedback" id="buymeacoffee_url_error"></div>
+                            </div>
                         </div>
                         
-                        <div class="col-md-6">
-                            <label for="bluesky_url" class="form-label">
-                                <i class="bi bi-cloud me-1 text-info"></i>BlueSky
-                            </label>
-                            <input type="url" class="form-control" id="bluesky_url" name="bluesky_url" 
-                                   value="{{ current_user.bluesky_url if current_user.bluesky_url else '' }}"
-                                   placeholder="https://bsky.app/profile/username">
+                        <div class="form-text mt-3">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Link-urile de donații vor apărea ca butoane colorate pe blogul tău. Urmăritorii tăi te pot sprijini direct prin aceste platforme.
                         </div>
                         
-                        <div class="col-12 mt-4">
-                            <h6 class="fw-bold mb-3">
-                                <i class="bi bi-heart me-2"></i>Sprijină-mă, de ce nu?
-                            </h6>
+                        <div id="donationLinksError" class="alert alert-danger d-none mt-3" role="alert">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <span class="error-message"></span>
                         </div>
                         
-                        <!-- Donation Links -->
-                        <div class="col-md-4">
-                            <label for="patreon_url" class="form-label">
-                                <i class="bi bi-star me-1 text-warning"></i>Patreon
-                            </label>
-                            <input type="url" class="form-control" id="patreon_url" name="patreon_url" 
-                                   value="{{ current_user.patreon_url if current_user.patreon_url else '' }}"
-                                   placeholder="https://patreon.com/username">
+                        <div id="donationLinksSuccess" class="alert alert-success d-none mt-3" role="alert">
+                            <i class="bi bi-check-circle me-2"></i>
+                            <span class="success-message"></span>
                         </div>
                         
-                        <div class="col-md-4">
-                            <label for="paypal_url" class="form-label">
-                                <i class="bi bi-paypal me-1 text-primary"></i>PayPal
-                            </label>
-                            <input type="url" class="form-control" id="paypal_url" name="paypal_url" 
-                                   value="{{ current_user.paypal_url if current_user.paypal_url else '' }}"
-                                   placeholder="https://paypal.me/username">
-                        </div>
-                        
-                        <div class="col-md-4">
-                            <label for="buymeacoffee_url" class="form-label">
-                                <i class="bi bi-cup-hot me-1 text-warning"></i>Buy Me a Coffee
-                            </label>
-                            <input type="url" class="form-control" id="buymeacoffee_url" name="buymeacoffee_url" 
-                                   value="{{ current_user.buymeacoffee_url if current_user.buymeacoffee_url else '' }}"
-                                   placeholder="https://buymeacoffee.com/username">
-                        </div>
-                    </div>
-                    
-                    <div class="form-text mt-3">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Link-urile vor apărea ca butoane colorate pe blogul tău. Lasă câmpurile goale pentru a nu afișa butonul respectiv.
-                    </div>
-                    
-                    <div id="socialLinksError" class="alert alert-danger d-none mt-3" role="alert">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <span class="error-message"></span>
-                    </div>
-                    
-                    <div id="socialLinksSuccess" class="alert alert-success d-none mt-3" role="alert">
-                        <i class="bi bi-check-circle me-2"></i>
-                        <span class="success-message"></span>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary-custom mt-3">
-                        <i class="bi bi-save me-2"></i>Salvează Link-urile
-                    </button>
-                </form>
+                        <button type="submit" class="btn btn-warning mt-3">
+                            <i class="bi bi-save me-2"></i>Salvează Link-urile de Donații
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
 
@@ -602,11 +639,46 @@ document.addEventListener('DOMContentLoaded', function() {
     // Generate initial set of avatars for dashboard
     generateDashboardAvatarOptions();
 
+    // URL validation function
+    function validateUrl(url, platform) {
+        if (!url || url.trim() === '') return true; // Empty URLs are valid
+        
+        const platformDomains = {
+            'facebook': ['facebook.com', 'fb.com'],
+            'instagram': ['instagram.com'],
+            'tiktok': ['tiktok.com'],
+            'x': ['x.com', 'twitter.com'],
+            'bluesky': ['bsky.app'],
+            'patreon': ['patreon.com'],
+            'paypal': ['paypal.me', 'paypal.com'],
+            'buymeacoffee': ['buymeacoffee.com']
+        };
+        
+        try {
+            const urlObj = new URL(url.toLowerCase());
+            const domain = urlObj.hostname.replace('www.', '');
+            return platformDomains[platform]?.some(validDomain => domain.includes(validDomain)) || false;
+        } catch {
+            return false;
+        }
+    }
+    
+    // Clear validation states
+    function clearValidationStates(form) {
+        form.querySelectorAll('.form-control').forEach(input => {
+            input.classList.remove('is-invalid', 'is-valid');
+        });
+        form.querySelectorAll('.invalid-feedback').forEach(feedback => {
+            feedback.textContent = '';
+        });
+    }
+    
     // Social Links Form Handling
     const socialLinksForm = document.getElementById("socialLinksForm");
     if (socialLinksForm) {
         socialLinksForm.addEventListener("submit", async function(e) {
             e.preventDefault();
+            clearValidationStates(socialLinksForm);
             
             const formData = new FormData(socialLinksForm);
             const socialData = {
@@ -614,14 +686,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 tiktok_url: formData.get("tiktok_url"),
                 instagram_url: formData.get("instagram_url"),
                 x_url: formData.get("x_url"),
-                bluesky_url: formData.get("bluesky_url"),
-                patreon_url: formData.get("patreon_url"),
-                paypal_url: formData.get("paypal_url"),
-                buymeacoffee_url: formData.get("buymeacoffee_url")
+                bluesky_url: formData.get("bluesky_url")
             };
             
+            // Client-side validation
+            let hasErrors = false;
+            for (const [field, url] of Object.entries(socialData)) {
+                const platform = field.replace('_url', '');
+                const input = document.getElementById(field);
+                const errorDiv = document.getElementById(field + '_error');
+                
+                if (url && !validateUrl(url, platform)) {
+                    input.classList.add('is-invalid');
+                    errorDiv.textContent = `URL-ul trebuie să conțină ${platform === 'x' ? 'x.com sau twitter.com' : platform + '.com'}`;
+                    hasErrors = true;
+                } else if (url) {
+                    input.classList.add('is-valid');
+                }
+            }
+            
+            if (hasErrors) {
+                showSocialLinksMessage("Te rog corectează erorile de mai sus.", "error");
+                return;
+            }
+            
             try {
-                const response = await fetch("/api/user/me", {
+                const response = await fetch("/api/user/social-links", {
                     method: "PUT",
                     headers: {"Content-Type": "application/json"},
                     body: JSON.stringify(socialData)
@@ -630,7 +720,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const result = await response.json();
                 
                 if (response.ok) {
-                    showSocialLinksMessage("Link-urile au fost salvate cu succes!", "success");
+                    showSocialLinksMessage("Link-urile sociale au fost salvate cu succes!", "success");
                 } else {
                     showSocialLinksMessage(result.detail || "A apărut o eroare la salvarea link-urilor.", "error");
                 }
@@ -640,11 +730,86 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Donation Links Form Handling
+    const donationLinksForm = document.getElementById("donationLinksForm");
+    if (donationLinksForm) {
+        donationLinksForm.addEventListener("submit", async function(e) {
+            e.preventDefault();
+            clearValidationStates(donationLinksForm);
+            
+            const formData = new FormData(donationLinksForm);
+            const donationData = {
+                patreon_url: formData.get("patreon_url"),
+                paypal_url: formData.get("paypal_url"),
+                buymeacoffee_url: formData.get("buymeacoffee_url")
+            };
+            
+            // Client-side validation
+            let hasErrors = false;
+            for (const [field, url] of Object.entries(donationData)) {
+                const platform = field.replace('_url', '');
+                const input = document.getElementById(field);
+                const errorDiv = document.getElementById(field + '_error');
+                
+                if (url && !validateUrl(url, platform)) {
+                    input.classList.add('is-invalid');
+                    errorDiv.textContent = `URL-ul trebuie să conțină ${platform}.com`;
+                    hasErrors = true;
+                } else if (url) {
+                    input.classList.add('is-valid');
+                }
+            }
+            
+            if (hasErrors) {
+                showDonationLinksMessage("Te rog corectează erorile de mai sus.", "error");
+                return;
+            }
+            
+            try {
+                const response = await fetch("/api/user/social-links", {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(donationData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showDonationLinksMessage("Link-urile de donații au fost salvate cu succes!", "success");
+                } else {
+                    showDonationLinksMessage(result.detail || "A apărut o eroare la salvarea link-urilor.", "error");
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                showDonationLinksMessage("A apărut o eroare la salvarea link-urilor.", "error");
+            }
+        });
+    }
 });
 
 function showSocialLinksMessage(message, type) {
     const errorDiv = document.getElementById("socialLinksError");
     const successDiv = document.getElementById("socialLinksSuccess");
+    
+    // Hide both divs first
+    errorDiv.classList.add("d-none");
+    successDiv.classList.add("d-none");
+    
+    if (type === "success") {
+        successDiv.querySelector(".success-message").textContent = message;
+        successDiv.classList.remove("d-none");
+        setTimeout(() => successDiv.classList.add("d-none"), 5000);
+    } else {
+        errorDiv.querySelector(".error-message").textContent = message;
+        errorDiv.classList.remove("d-none");
+        setTimeout(() => errorDiv.classList.add("d-none"), 8000);
+    }
+}
+
+function showDonationLinksMessage(message, type) {
+    const errorDiv = document.getElementById("donationLinksError");
+    const successDiv = document.getElementById("donationLinksSuccess");
     
     // Hide both divs first
     errorDiv.classList.add("d-none");
