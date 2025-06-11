@@ -84,11 +84,15 @@
         <!-- Blog Settings -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
-                <h5 class="mb-0">
-                    <i class="bi bi-gear me-2"></i>Setări Blog
-                </h5>
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#blogSettingsCollapse" aria-expanded="true" aria-controls="blogSettingsCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-gear me-2"></i>Setări Blog</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
             </div>
-            <div class="card-body">
+            <div class="collapse show" id="blogSettingsCollapse">
+                <div class="card-body">
                 <form id="subtitleForm">
                     <div class="mb-3">
                         <label for="subtitle" class="form-label">
@@ -147,24 +151,25 @@
                         <span class="success-message"></span>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary-custom">
+                    <button type="submit" class="btn btn-success">
                         <i class="bi bi-save me-2"></i>Salvează Setări
                     </button>
                 </form>
+                </div>
             </div>
         </div>
 
         <!-- Social Media Links -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
-                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#socialMediaCollapse" aria-expanded="true" aria-controls="socialMediaCollapse">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#socialMediaCollapse" aria-expanded="false" aria-controls="socialMediaCollapse">
                     <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-share me-2"></i>Adaugă-ți linkurile de social media</span>
+                        <span><i class="bi bi-share me-2"></i>Link-uri Sociale</span>
                         <i class="bi bi-chevron-down collapse-arrow"></i>
                     </h5>
                 </button>
             </div>
-            <div class="collapse show" id="socialMediaCollapse">
+            <div class="collapse" id="socialMediaCollapse">
                 <div class="card-body">
                     <form id="socialLinksForm">
                         <div class="row g-3">
@@ -234,7 +239,7 @@
                             <span class="success-message"></span>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary-custom mt-3">
+                        <button type="submit" class="btn btn-success mt-3">
                             <i class="bi bi-save me-2"></i>Salvează Link-urile Sociale
                         </button>
                     </form>
@@ -244,10 +249,10 @@
 
         <!-- Donation Links -->
         <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-warning text-dark">
-                <button class="btn btn-link text-dark text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#donationLinksCollapse" aria-expanded="false" aria-controls="donationLinksCollapse">
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#donationLinksCollapse" aria-expanded="false" aria-controls="donationLinksCollapse">
                     <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-heart me-2"></i>Adaugă-ți linkurile unde urmăritorii tăi te pot sprijini</span>
+                        <span><i class="bi bi-heart me-2"></i>Link-uri Donații</span>
                         <i class="bi bi-chevron-down collapse-arrow"></i>
                     </h5>
                 </button>
@@ -302,7 +307,7 @@
                             <span class="success-message"></span>
                         </div>
                         
-                        <button type="submit" class="btn btn-warning mt-3">
+                        <button type="submit" class="btn btn-success mt-3">
                             <i class="bi bi-save me-2"></i>Salvează Link-urile de Donații
                         </button>
                     </form>
@@ -312,15 +317,16 @@
 
         <!-- Posts Management -->
         <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-primary-custom text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-file-text me-2"></i>Postările Tale
-                </h5>
-                <a href="/create-post" class="btn btn-light btn-sm">
-                    <i class="bi bi-plus-circle me-1"></i>Postare Nouă
-                </a>
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#postsManagementCollapse" aria-expanded="false" aria-controls="postsManagementCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-file-text me-2"></i>Postările Tale</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
             </div>
-            <div class="card-body p-0">
+            <div class="collapse" id="postsManagementCollapse">
+                <div class="card-body p-0">
                 {% if user_posts %}
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
@@ -400,11 +406,12 @@
                         <i class="bi bi-file-text display-1 text-muted mb-4"></i>
                         <h4 class="fw-bold mb-3">Nu ai creat încă nicio postare</h4>
                         <p class="text-muted mb-4">Începe să scrii prima ta postare și împărtășește-ți gândurile cu lumea!</p>
-                        <a href="/create-post" class="btn btn-primary-custom btn-lg">
+                        <a href="/create-post" class="btn btn-success btn-lg">
                             <i class="bi bi-pencil-square me-2"></i>Creează Prima Postare
                         </a>
                     </div>
                 {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -433,13 +440,16 @@
         <!-- Unapproved Comments -->
         {% if unapproved_comments %}
         <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-warning text-dark">
-                <h5 class="mb-0">
-                    <i class="bi bi-chat-dots me-2"></i>Comentarii de Aprobat
-                    <span class="badge bg-dark ms-2">{{ unapproved_comments|length }}</span>
-                </h5>
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#unapprovedCommentsCollapse" aria-expanded="false" aria-controls="unapprovedCommentsCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-chat-dots me-2"></i>Comentarii de Aprobat <span class="badge bg-light text-dark ms-2">{{ unapproved_comments|length }}</span></span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
             </div>
-            <div class="card-body p-0">
+            <div class="collapse" id="unapprovedCommentsCollapse">
+                <div class="card-body p-0">
                 <div class="table-responsive">
                     <table class="table table-hover mb-0">
                         <tbody>
@@ -479,65 +489,82 @@
                         </tbody>
                     </table>
                 </div>
+                </div>
             </div>
         </div>
         {% endif %}
 
         <!-- Blog Statistics -->
-        <div class="sidebar-card mb-4">
-            <h5 class="fw-bold mb-3">
-                <i class="bi bi-graph-up text-accent me-2"></i>Statistici Blog
-            </h5>
-            
-            <div class="row g-3">
-                <div class="col-6">
-                    <div class="text-center p-3 bg-light rounded">
-                        <div class="h4 fw-bold text-primary mb-1">{{ user_posts|length }}</div>
-                        <small class="text-muted">Postări</small>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="text-center p-3 bg-light rounded">
-                        <div class="h4 fw-bold text-danger mb-1">{{ user_posts|sum(attribute='likes_count') or 0 }}</div>
-                        <small class="text-muted">Aprecieri</small>
-                    </div>
-                </div>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#blogStatisticsCollapse" aria-expanded="false" aria-controls="blogStatisticsCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-graph-up me-2"></i>Statistici Blog</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
             </div>
-            
-            <hr>
-            
-            <div class="small text-muted">
-                <div class="d-flex justify-content-between mb-2">
-                    <span><i class="bi bi-calendar3 me-1"></i>Membru din:</span>
-                    <span>{{ current_user.created_at.strftime('%B %Y') if current_user.created_at else 'N/A' }}</span>
-                </div>
-                <div class="d-flex justify-content-between">
-                    <span><i class="bi bi-clock me-1"></i>Ultima activitate:</span>
-                    <span>Astăzi</span>
+            <div class="collapse" id="blogStatisticsCollapse">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <div class="text-center p-3 bg-light rounded">
+                                <div class="h4 fw-bold text-primary mb-1">{{ user_posts|length }}</div>
+                                <small class="text-muted">Postări</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-3 bg-light rounded">
+                                <div class="h4 fw-bold text-danger mb-1">{{ user_posts|sum(attribute='likes_count') or 0 }}</div>
+                                <small class="text-muted">Aprecieri</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="small text-muted">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span><i class="bi bi-calendar3 me-1"></i>Membru din:</span>
+                            <span>{{ current_user.created_at.strftime('%B %Y') if current_user.created_at else 'N/A' }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span><i class="bi bi-clock me-1"></i>Ultima activitate:</span>
+                            <span>Astăzi</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Tips & Help -->
-        <div class="sidebar-card bg-light">
-            <h5 class="fw-bold mb-3">
-                <i class="bi bi-lightbulb text-warning me-2"></i>Sfaturi Utile
-            </h5>
-            
-            <div class="small">
-                <div class="mb-3">
-                    <strong><i class="bi bi-pencil me-1"></i>Scrie regulat</strong>
-                    <p class="mb-0 text-muted">Postează conținut nou în mod constant pentru a-ți menține audiența angajată.</p>
-                </div>
-                
-                <div class="mb-3">
-                    <strong><i class="bi bi-tags me-1"></i>Folosește categorii</strong>
-                    <p class="mb-0 text-muted">Organizează-ți postările cu categorii pentru o navigare mai ușoară.</p>
-                </div>
-                
-                <div class="mb-0">
-                    <strong><i class="bi bi-chat-dots me-1"></i>Interacționează</strong>
-                    <p class="mb-0 text-muted">Răspunde la comentarii și vizitează alte bloguri din comunitate.</p>
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#tipsHelpCollapse" aria-expanded="false" aria-controls="tipsHelpCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-lightbulb me-2"></i>Sfaturi Utile</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
+            </div>
+            <div class="collapse" id="tipsHelpCollapse">
+                <div class="card-body">
+                    <div class="small">
+                        <div class="mb-3">
+                            <strong><i class="bi bi-pencil me-1"></i>Scrie regulat</strong>
+                            <p class="mb-0 text-muted">Postează conținut nou în mod constant pentru a-ți menține audiența angajată.</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <strong><i class="bi bi-tags me-1"></i>Folosește categorii</strong>
+                            <p class="mb-0 text-muted">Organizează-ți postările cu categorii pentru o navigare mai ușoară.</p>
+                        </div>
+                        
+                        <div class="mb-0">
+                            <strong><i class="bi bi-chat-dots me-1"></i>Interacționează</strong>
+                            <p class="mb-0 text-muted">Răspunde la comentarii și vizitează alte bloguri din comunitate.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
