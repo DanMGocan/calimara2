@@ -22,10 +22,11 @@ Calimara is a Romanian microblogging platform for writers and poets. Each writer
 - **Bootstrap + custom CSS** with Inter font
 
 ### Database Architecture
-- **Users Table**: `username` (unique, lowercase), `email`, `password_hash`, `subtitle`
-- **Posts Table**: `user_id`, `title`, `content`, `category`, `genre`
+- **Users Table**: `username` (unique, lowercase), `email`, `password_hash`, `subtitle`, `avatar_seed`, social media URLs (facebook_url, tiktok_url, instagram_url, x_url, bluesky_url), donation URLs (patreon_url, paypal_url, buymeacoffee_url)
+- **Posts Table**: `user_id`, `title`, `slug` (SEO-friendly URLs), `content`, `category`, `genre`, `view_count`
 - **Comments Table**: Supports both authenticated and anonymous comments with approval system
 - **Likes Table**: Supports both user-based and IP-based likes
+- **Tags Table**: Post tagging system with autocomplete suggestions
 - **Key Relationship**: Post model has `@property likes_count` that auto-calculates from relationship
 
 ## Development Commands
@@ -39,13 +40,16 @@ pip install -r requirements.txt
 python scripts/initdb.py
 ```
 
-### Local Development
-```bash
-# Run development server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+### Testing Environment
+**⚠️ IMPORTANT: Local testing is not available for this project.**
+- All testing must be done on the Azure virtual machine
+- Use `python deploy_vm.py` to deploy and test changes
+- Local development server cannot properly test subdomain functionality
 
-# Test specific user credentials
+```bash
+# Test specific user credentials on Azure VM
 # Email: sad@sad.sad, Password: 123, Username: gandurisilimbrici
+# Access via: https://gandurisilimbrici.calimara.ro
 ```
 
 ### VM Deployment
@@ -69,6 +73,16 @@ sudo journalctl -u calimara -f
 
 ### Template Context Helper
 Use `get_common_context(request, current_user)` for consistent template variables including domain configuration that's passed to JavaScript via `window.CALIMARA_CONFIG`.
+
+## Development Philosophy
+
+### Server-Side Processing Preference
+**⚠️ IMPORTANT: Minimize JavaScript usage and prefer server-side processing whenever possible.**
+- Use FastAPI endpoints and server-side redirects over client-side routing
+- Prefer Jinja2 template rendering over dynamic JavaScript DOM manipulation  
+- Keep JavaScript limited to essential interactions (form submissions, modals, UI enhancements)
+- Use HTML forms with server-side processing rather than complex client-side logic
+- When JavaScript is necessary, keep it simple and progressively enhanced
 
 ## Important Implementation Details
 
@@ -107,3 +121,21 @@ Use `get_common_context()` helper and update with specific data rather than manu
 
 ### Subdomain detection
 Check `request.state.is_subdomain` and `request.state.username` (set by SubdomainMiddleware) rather than parsing Host header manually.
+
+## Recent Features
+
+### Social Media and Donation Buttons (Latest)
+- **User Profile Enhancement**: Added 8 new URL fields to User model for social media and donation links
+- **Admin Management**: Complete interface in admin dashboard for managing social links
+- **Frontend Display**: Social buttons appear on both blog.html and post_detail.html templates
+- **Visual Design**: Platform-specific colors (Facebook blue, Instagram gradient, etc.) with disabled states
+- **API Integration**: PUT `/api/user/me` endpoint handles social link updates
+- **Template Structure**: 
+  - Social section: "Urmărește-mă pe sociale:" (Facebook, TikTok, Instagram, X, BlueSky)
+  - Donation section: "Sprijină-mă, de ce nu?" (Patreon, PayPal, Buy Me a Coffee)
+- **Behavior**: Buttons only appear when URLs are set, all links open in new tabs
+
+### SEO-Friendly URLs and Post Tracking
+- **Slug Generation**: Automatic SEO-friendly URLs from post titles with Romanian character handling
+- **View Tracking**: Post view count incrementation for analytics
+- **Unique Slugs**: Automatic slug conflict resolution with counter suffixes

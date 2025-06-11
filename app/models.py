@@ -16,6 +16,18 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     subtitle: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # New field
     avatar_seed: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # DiceBear avatar seed
+    
+    # Social media links
+    facebook_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    tiktok_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    instagram_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    x_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    bluesky_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    
+    # Donation/support links
+    patreon_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    paypal_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    buymeacoffee_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -29,9 +41,10 @@ class Post(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(300), unique=True, index=True, nullable=False) # SEO-friendly URL slug
     content: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Category key
-    genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Genre key
+    view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False) # Track post views
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

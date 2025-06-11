@@ -71,8 +71,8 @@
         <div class="card border-0 bg-info text-white hover-lift">
             <div class="card-body text-center">
                 <i class="bi bi-eye display-4 mb-3"></i>
-                <h3 class="fw-bold">-</h3>
-                <p class="mb-0">Vizualizări (În Curând)</p>
+                <h3 class="fw-bold">{{ user_posts|sum(attribute='view_count') or 0 }}</h3>
+                <p class="mb-0">Vizualizări Totale</p>
             </div>
         </div>
     </div>
@@ -154,6 +154,125 @@
             </div>
         </div>
 
+        <!-- Social Media and Donation Links -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-share me-2"></i>Link-uri Sociale și Donații
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="socialLinksForm">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <h6 class="fw-bold mb-3">
+                                <i class="bi bi-people me-2"></i>Urmărește-mă pe sociale:
+                            </h6>
+                        </div>
+                        
+                        <!-- Social Media Links -->
+                        <div class="col-md-6">
+                            <label for="facebook_url" class="form-label">
+                                <i class="bi bi-facebook me-1 text-primary"></i>Facebook
+                            </label>
+                            <input type="url" class="form-control" id="facebook_url" name="facebook_url" 
+                                   value="{{ current_user.facebook_url if current_user.facebook_url else '' }}"
+                                   placeholder="https://facebook.com/username">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="instagram_url" class="form-label">
+                                <i class="bi bi-instagram me-1 text-danger"></i>Instagram
+                            </label>
+                            <input type="url" class="form-control" id="instagram_url" name="instagram_url" 
+                                   value="{{ current_user.instagram_url if current_user.instagram_url else '' }}"
+                                   placeholder="https://instagram.com/username">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="tiktok_url" class="form-label">
+                                <i class="bi bi-tiktok me-1 text-dark"></i>TikTok
+                            </label>
+                            <input type="url" class="form-control" id="tiktok_url" name="tiktok_url" 
+                                   value="{{ current_user.tiktok_url if current_user.tiktok_url else '' }}"
+                                   placeholder="https://tiktok.com/@username">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="x_url" class="form-label">
+                                <i class="bi bi-twitter-x me-1 text-dark"></i>X (Twitter)
+                            </label>
+                            <input type="url" class="form-control" id="x_url" name="x_url" 
+                                   value="{{ current_user.x_url if current_user.x_url else '' }}"
+                                   placeholder="https://x.com/username">
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <label for="bluesky_url" class="form-label">
+                                <i class="bi bi-cloud me-1 text-info"></i>BlueSky
+                            </label>
+                            <input type="url" class="form-control" id="bluesky_url" name="bluesky_url" 
+                                   value="{{ current_user.bluesky_url if current_user.bluesky_url else '' }}"
+                                   placeholder="https://bsky.app/profile/username">
+                        </div>
+                        
+                        <div class="col-12 mt-4">
+                            <h6 class="fw-bold mb-3">
+                                <i class="bi bi-heart me-2"></i>Sprijină-mă, de ce nu?
+                            </h6>
+                        </div>
+                        
+                        <!-- Donation Links -->
+                        <div class="col-md-4">
+                            <label for="patreon_url" class="form-label">
+                                <i class="bi bi-star me-1 text-warning"></i>Patreon
+                            </label>
+                            <input type="url" class="form-control" id="patreon_url" name="patreon_url" 
+                                   value="{{ current_user.patreon_url if current_user.patreon_url else '' }}"
+                                   placeholder="https://patreon.com/username">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="paypal_url" class="form-label">
+                                <i class="bi bi-paypal me-1 text-primary"></i>PayPal
+                            </label>
+                            <input type="url" class="form-control" id="paypal_url" name="paypal_url" 
+                                   value="{{ current_user.paypal_url if current_user.paypal_url else '' }}"
+                                   placeholder="https://paypal.me/username">
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <label for="buymeacoffee_url" class="form-label">
+                                <i class="bi bi-cup-hot me-1 text-warning"></i>Buy Me a Coffee
+                            </label>
+                            <input type="url" class="form-control" id="buymeacoffee_url" name="buymeacoffee_url" 
+                                   value="{{ current_user.buymeacoffee_url if current_user.buymeacoffee_url else '' }}"
+                                   placeholder="https://buymeacoffee.com/username">
+                        </div>
+                    </div>
+                    
+                    <div class="form-text mt-3">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Link-urile vor apărea ca butoane colorate pe blogul tău. Lasă câmpurile goale pentru a nu afișa butonul respectiv.
+                    </div>
+                    
+                    <div id="socialLinksError" class="alert alert-danger d-none mt-3" role="alert">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <span class="error-message"></span>
+                    </div>
+                    
+                    <div id="socialLinksSuccess" class="alert alert-success d-none mt-3" role="alert">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <span class="success-message"></span>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary-custom mt-3">
+                        <i class="bi bi-save me-2"></i>Salvează Link-urile
+                    </button>
+                </form>
+            </div>
+        </div>
+
         <!-- Posts Management -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white d-flex justify-content-between align-items-center">
@@ -177,6 +296,9 @@
                                         <i class="bi bi-calendar3 me-1"></i>Data Creării
                                     </th>
                                     <th scope="col" class="px-4 py-3 text-center">
+                                        <i class="bi bi-eye me-1"></i>Vizualizări
+                                    </th>
+                                    <th scope="col" class="px-4 py-3 text-center">
                                         <i class="bi bi-heart me-1"></i>Aprecieri
                                     </th>
                                     <th scope="col" class="px-4 py-3 text-center">Acțiuni</th>
@@ -187,7 +309,12 @@
                                 <tr class="align-middle">
                                     <td class="px-4 py-3">
                                         <div>
-                                            <h6 class="fw-medium mb-1">{{ post.title }}</h6>
+                                            <h6 class="fw-medium mb-1">
+                                                <a href="//{{ current_user.username }}.calimara.ro/{{ post.slug }}" 
+                                                   class="text-decoration-none text-dark">
+                                                    {{ post.title }}
+                                                </a>
+                                            </h6>
                                             <small class="text-muted">
                                                 {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
                                             </small>
@@ -198,13 +325,18 @@
                                         <small class="text-muted">{{ post.created_at.strftime('%H:%M') }}</small>
                                     </td>
                                     <td class="px-4 py-3 text-center">
+                                        <span class="badge bg-info rounded-pill">
+                                            <i class="bi bi-eye me-1"></i>{{ post.view_count }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
                                         <span class="badge bg-danger rounded-pill">
                                             <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         <div class="btn-group" role="group">
-                                            <a href="//{{ current_user.username }}.calimara.ro#post-{{ post.id }}" 
+                                            <a href="//{{ current_user.username }}.calimara.ro/{{ post.slug }}" 
                                                class="btn btn-outline-primary btn-sm" target="_blank" 
                                                data-bs-toggle="tooltip" title="Vezi Postarea">
                                                 <i class="bi bi-eye"></i>
@@ -286,7 +418,7 @@
                                                 {{ comment.author_name if comment.author_name else comment.commenter.username }}
                                             </h6>
                                             <p class="small text-muted mb-1">
-                                                Pe: <a href="//{{ current_user.username }}.calimara.ro#post-{{ comment.post_id }}" 
+                                                Pe: <a href="//{{ current_user.username }}.calimara.ro/{{ comment.post.slug }}" 
                                                        class="text-decoration-none">{{ comment.post.title }}</a>
                                             </p>
                                             <p class="small mb-2">{{ comment.content[:80] }}{% if comment.content|length > 80 %}...{% endif %}</p>
@@ -469,6 +601,64 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Generate initial set of avatars for dashboard
     generateDashboardAvatarOptions();
+
+    // Social Links Form Handling
+    const socialLinksForm = document.getElementById("socialLinksForm");
+    if (socialLinksForm) {
+        socialLinksForm.addEventListener("submit", async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(socialLinksForm);
+            const socialData = {
+                facebook_url: formData.get("facebook_url"),
+                tiktok_url: formData.get("tiktok_url"),
+                instagram_url: formData.get("instagram_url"),
+                x_url: formData.get("x_url"),
+                bluesky_url: formData.get("bluesky_url"),
+                patreon_url: formData.get("patreon_url"),
+                paypal_url: formData.get("paypal_url"),
+                buymeacoffee_url: formData.get("buymeacoffee_url")
+            };
+            
+            try {
+                const response = await fetch("/api/user/me", {
+                    method: "PUT",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(socialData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSocialLinksMessage("Link-urile au fost salvate cu succes!", "success");
+                } else {
+                    showSocialLinksMessage(result.detail || "A apărut o eroare la salvarea link-urilor.", "error");
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                showSocialLinksMessage("A apărut o eroare la salvarea link-urilor.", "error");
+            }
+        });
+    }
 });
+
+function showSocialLinksMessage(message, type) {
+    const errorDiv = document.getElementById("socialLinksError");
+    const successDiv = document.getElementById("socialLinksSuccess");
+    
+    // Hide both divs first
+    errorDiv.classList.add("d-none");
+    successDiv.classList.add("d-none");
+    
+    if (type === "success") {
+        successDiv.querySelector(".success-message").textContent = message;
+        successDiv.classList.remove("d-none");
+        setTimeout(() => successDiv.classList.add("d-none"), 5000);
+    } else {
+        errorDiv.querySelector(".error-message").textContent = message;
+        errorDiv.classList.remove("d-none");
+        setTimeout(() => errorDiv.classList.add("d-none"), 8000);
+    }
+}
 </script>
 {% endblock %}

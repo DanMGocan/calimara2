@@ -4,8 +4,62 @@ from . import models, schemas
 from passlib.context import CryptContext
 from typing import Optional, List
 import random
+import re
+import unicodedata
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def generate_slug(title: str) -> str:
+    """Generate a URL-friendly slug from a post title"""
+    # Normalize unicode characters (handle Romanian diacritics)
+    slug = unicodedata.normalize('NFKD', title)
+    
+    # Convert Romanian characters
+    replacements = {
+        'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ț': 't',
+        'Ă': 'a', 'Â': 'a', 'Î': 'i', 'Ș': 's', 'Ț': 't'
+    }
+    for old, new in replacements.items():
+        slug = slug.replace(old, new)
+    
+    # Convert to lowercase
+    slug = slug.lower()
+    
+    # Replace spaces and special characters with hyphens
+    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    
+    # Remove leading/trailing hyphens and limit length
+    slug = slug.strip('-')[:250]  # Leave room for potential suffixes
+    
+    # Remove trailing hyphens again after truncation
+    slug = slug.rstrip('-')
+    
+    return slug
+
+def ensure_unique_slug(db: Session, base_slug: str, post_id: Optional[int] = None) -> str:
+    """Ensure the slug is unique by adding a number suffix if needed"""
+    slug = base_slug
+    counter = 1
+    
+    while True:
+        # Check if slug exists (excluding current post if updating)
+        query = db.query(models.Post).filter(models.Post.slug == slug)
+        if post_id:
+            query = query.filter(models.Post.id != post_id)
+        
+        if not query.first():
+            return slug
+        
+        # Add counter suffix
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+        
+        # Prevent infinite loop
+        if counter > 100:
+            slug = f"{base_slug}-{random.randint(1000, 9999)}"
+            break
+    
+    return slug
 
 def get_password_hash(password):
     return pwd_context.hash(password)
@@ -38,11 +92,35 @@ def create_user(db: Session, user: schemas.UserCreate):
 def get_post(db: Session, post_id: int):
     return db.query(models.Post).filter(models.Post.id == post_id).first()
 
+def get_post_by_slug(db: Session, slug: str):
+    """Get a post by its slug"""
+    return db.query(models.Post).filter(models.Post.slug == slug).first()
+
+def increment_post_view(db: Session, post_id: int):
+    """Increment the view count for a post"""
+    db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if db_post:
+        db_post.view_count = db_post.view_count + 1
+        db.commit()
+        db.refresh(db_post)
+    return db_post
+
 def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
     return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
-    db_post = models.Post(title=post.title, content=post.content, category=post.category, user_id=user_id)
+    # Generate unique slug from title
+    base_slug = generate_slug(post.title)
+    unique_slug = ensure_unique_slug(db, base_slug)
+    
+    db_post = models.Post(
+        title=post.title, 
+        slug=unique_slug,
+        content=post.content, 
+        category=post.category, 
+        user_id=user_id,
+        view_count=0
+    )
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
@@ -60,9 +138,19 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
     if db_post:
-        # Update fields from post_update schema
-        for key, value in post_update.model_dump(exclude_unset=True).items():
-            setattr(db_post, key, value)
+        update_data = post_update.model_dump(exclude_unset=True)
+        
+        # If title is being updated, regenerate slug
+        if 'title' in update_data:
+            base_slug = generate_slug(update_data['title'])
+            unique_slug = ensure_unique_slug(db, base_slug, post_id)
+            update_data['slug'] = unique_slug
+        
+        # Update fields
+        for key, value in update_data.items():
+            if key != 'tags':  # Handle tags separately
+                setattr(db_post, key, value)
+        
         db.commit()
         db.refresh(db_post)
     return db_post
@@ -107,6 +195,30 @@ def get_distinct_categories_used(db: Session, user_id: Optional[int] = None):
     
     categories = query.filter(models.Post.category != None, models.Post.category != '').all()
     return [cat.category for cat in categories if cat.category]
+
+def update_user_social_links(db: Session, user_id: int, social_data: dict):
+    """
+    Update user's social media and donation links
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    
+    # Update social media links
+    user.facebook_url = social_data.get('facebook_url', '').strip() or None
+    user.tiktok_url = social_data.get('tiktok_url', '').strip() or None
+    user.instagram_url = social_data.get('instagram_url', '').strip() or None
+    user.x_url = social_data.get('x_url', '').strip() or None
+    user.bluesky_url = social_data.get('bluesky_url', '').strip() or None
+    
+    # Update donation links
+    user.patreon_url = social_data.get('patreon_url', '').strip() or None
+    user.paypal_url = social_data.get('paypal_url', '').strip() or None
+    user.buymeacoffee_url = social_data.get('buymeacoffee_url', '').strip() or None
+    
+    db.commit()
+    db.refresh(user)
+    return user
 
 def delete_post(db: Session, post_id: int):
     db_post = db.query(models.Post).filter(models.Post.id == post_id).first()

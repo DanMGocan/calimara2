@@ -9,3 +9,4 @@
 # #1 poster per previous week gets a spotlight 
 # Lupta cu globalismul scriind o poezie. 
 # Allow user to have 3 postari in evidenta 
+# Environmentaly friendly webdevelopment 

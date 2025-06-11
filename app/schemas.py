@@ -7,6 +7,18 @@ class UserBase(BaseModel):
     email: EmailStr
     subtitle: Optional[str] = None # New field
     avatar_seed: Optional[str] = None # DiceBear avatar seed
+    
+    # Social media links
+    facebook_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    x_url: Optional[str] = None
+    bluesky_url: Optional[str] = None
+    
+    # Donation/support links
+    patreon_url: Optional[str] = None
+    paypal_url: Optional[str] = None
+    buymeacoffee_url: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -53,6 +65,8 @@ class PostUpdate(PostBase):
 class Post(PostBase):
     id: int
     user_id: int
+    slug: str
+    view_count: int = 0
     created_at: datetime
     updated_at: datetime
     tags: List[Tag] = []

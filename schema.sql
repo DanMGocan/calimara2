@@ -25,6 +25,14 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL COMMENT 'Bcrypt hashed password',
     subtitle VARCHAR(500) COMMENT 'Optional blog subtitle/description',
     avatar_seed VARCHAR(100) COMMENT 'DiceBear avatar seed for generating avatars',
+    facebook_url VARCHAR(300) COMMENT 'Facebook profile/page URL',
+    tiktok_url VARCHAR(300) COMMENT 'TikTok profile URL',
+    instagram_url VARCHAR(300) COMMENT 'Instagram profile URL',
+    x_url VARCHAR(300) COMMENT 'X (Twitter) profile URL',
+    bluesky_url VARCHAR(300) COMMENT 'BlueSky profile URL',
+    patreon_url VARCHAR(300) COMMENT 'Patreon page URL',
+    paypal_url VARCHAR(300) COMMENT 'PayPal donation URL',
+    buymeacoffee_url VARCHAR(300) COMMENT 'Buy Me a Coffee page URL',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -40,18 +48,20 @@ CREATE TABLE posts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL COMMENT 'Reference to post author',
     title VARCHAR(255) NOT NULL COMMENT 'Post title',
+    slug VARCHAR(300) UNIQUE NOT NULL COMMENT 'SEO-friendly URL slug',
     content TEXT NOT NULL COMMENT 'Post content',
     category VARCHAR(100) COMMENT 'Category key',
-    genre VARCHAR(100) COMMENT 'Genre key within category',
+    view_count INT DEFAULT 0 NOT NULL COMMENT 'Number of times post has been viewed',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
+    INDEX idx_slug (slug),
     INDEX idx_category (category),
-    INDEX idx_genre (genre),
+    INDEX idx_view_count (view_count),
     INDEX idx_created_at (created_at),
-    INDEX idx_category_genre (category, genre)
+    INDEX idx_category_views (category, view_count)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
@@ -123,20 +133,20 @@ INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES
 );
 
 -- Sample posts for the test user
-INSERT INTO posts (user_id, title, content, category, genre) VALUES 
-(1, 'Primul meu gând', 'Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.', 'proza', 'povestiri_scurte');
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(1, 'Primul meu gând', 'primul-meu-gand', 'Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.', 'proza', 15);
 
-INSERT INTO posts (user_id, title, content, category, genre) VALUES 
-(1, 'Limbrici și poezie', 'Chiar și limbricii au o frumusețe aparte,\nO mișcare lentă, dar hotărâtă prin pământ.\nAșa și poezia se strecoară în suflet\nȘi lasă urme adânci, veșnice în timp.', 'poezie', 'poezie_lirica');
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(1, 'Limbrici și poezie', 'limbrici-si-poezie', 'Chiar și limbricii au o frumusețe aparte,\nO mișcare lentă, dar hotărâtă prin pământ.\nAșa și poezia se strecoară în suflet\nȘi lasă urme adânci, veșnice în timp.', 'poezie', 23);
 
-INSERT INTO posts (user_id, title, content, category, genre) VALUES 
-(1, 'O zi obișnuită', 'O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie.', 'proza', 'povestiri_scurte');
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(1, 'O zi obișnuită', 'o-zi-obisnuita', 'O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie.', 'proza', 8);
 
-INSERT INTO posts (user_id, title, content, category, genre) VALUES 
-(1, 'Reflecții despre timp', 'Timpul este un râu care curge mereu înainte, fără să se întoarcă vreodată. În aceste pagini de jurnal încerc să opresc câteva picături din acest râu.', 'jurnal', 'jurnale_personale');
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(1, 'Reflecții despre timp', 'reflectii-despre-timp', 'Timpul este un râu care curge mereu înainte, fără să se întoarcă vreodată. În aceste pagini de jurnal încerc să opresc câteva picături din acest râu.', 'jurnal', 12);
 
-INSERT INTO posts (user_id, title, content, category, genre) VALUES 
-(1, 'Scrisoare către viitorul meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 'scrisori_personale');
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(1, 'Scrisoare către viitorul meu', 'scrisoare-catre-viitorul-meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 19);
 
 -- Sample comments
 INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 

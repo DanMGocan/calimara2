@@ -216,16 +216,41 @@ async def logout_user(request: Request):
     # Redirect to main domain instead of returning JSON
     return RedirectResponse(url=f"//{MAIN_DOMAIN}", status_code=status.HTTP_302_FOUND)
 
-@app.put("/api/users/me", response_model=schemas.UserInDB) # Changed back to PUT and response_model
+@app.put("/api/user/me", response_model=schemas.UserInDB) # Changed back to PUT and response_model
 async def update_current_user(
     user_update: schemas.UserBase, # Use UserBase for updatable fields
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
     logger.info(f"Se încearcă actualizarea profilului pentru utilizatorul: {current_user.username}")
-    # Only allow updating subtitle for now
+    
+    # Update subtitle
     if user_update.subtitle is not None:
         current_user.subtitle = user_update.subtitle
+    
+    # Update avatar seed
+    if hasattr(user_update, 'avatar_seed') and user_update.avatar_seed is not None:
+        current_user.avatar_seed = user_update.avatar_seed
+    
+    # Update social media links
+    if hasattr(user_update, 'facebook_url') and user_update.facebook_url is not None:
+        current_user.facebook_url = user_update.facebook_url.strip() or None
+    if hasattr(user_update, 'tiktok_url') and user_update.tiktok_url is not None:
+        current_user.tiktok_url = user_update.tiktok_url.strip() or None
+    if hasattr(user_update, 'instagram_url') and user_update.instagram_url is not None:
+        current_user.instagram_url = user_update.instagram_url.strip() or None
+    if hasattr(user_update, 'x_url') and user_update.x_url is not None:
+        current_user.x_url = user_update.x_url.strip() or None
+    if hasattr(user_update, 'bluesky_url') and user_update.bluesky_url is not None:
+        current_user.bluesky_url = user_update.bluesky_url.strip() or None
+    
+    # Update donation links
+    if hasattr(user_update, 'patreon_url') and user_update.patreon_url is not None:
+        current_user.patreon_url = user_update.patreon_url.strip() or None
+    if hasattr(user_update, 'paypal_url') and user_update.paypal_url is not None:
+        current_user.paypal_url = user_update.paypal_url.strip() or None
+    if hasattr(user_update, 'buymeacoffee_url') and user_update.buymeacoffee_url is not None:
+        current_user.buymeacoffee_url = user_update.buymeacoffee_url.strip() or None
     
     db.add(current_user)
     db.commit()
@@ -775,6 +800,33 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
         if not user:
             raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
         
+        # Check if path is a post slug
+        if path and path != "":
+            post = crud.get_post_by_slug(db, path)
+            if post and post.user_id == user.id:
+                # Increment view count
+                crud.increment_post_view(db, post.id)
+                
+                # Get post comments and related data
+                post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+                
+                # Get related posts from same user
+                related_posts = crud.get_posts_by_user(db, user.id, limit=5)
+                related_posts = [p for p in related_posts if p.id != post.id][:3]
+                
+                return templates.TemplateResponse(
+                    "post_detail.html",
+                    {
+                        "request": request,
+                        "blog_owner": user,
+                        "post": post,
+                        "related_posts": related_posts,
+                        "current_user": current_user,
+                        "current_domain": request.url.hostname
+                    }
+                )
+        
+        # If no post slug or post not found, show blog homepage
         posts = crud.get_latest_posts_for_user(db, user.id, limit=5)
         random_posts = crud.get_random_posts(db, limit=10)
         random_users = crud.get_random_users(db, limit=10)
