@@ -7,22 +7,22 @@
 /* CSS Custom Properties (Variables) */
 :root {
     /* Primary Color Palette */
-    --color-primary: #003049ff; /* Prussian Blue */
-    --color-primary-light: #669bbcff; /* Air Superiority Blue */
-    --color-primary-dark: #003049ff; /* Prussian Blue */
+    --color-primary: #264653ff; /* Charcoal */
+    --color-primary-light: #2a9d8fff; /* Persian Green */
+    --color-primary-dark: #264653ff; /* Charcoal */
     
     /* Accent Colors */
-    --color-accent: #c1121fff; /* Fire Brick */
-    --color-accent-light: #c1121fff; /* Fire Brick */
-    --color-accent-dark: #780000ff; /* Barn Red */
+    --color-accent: #e76f51ff; /* Burnt Sienna */
+    --color-accent-light: #f4a261ff; /* Sandy Brown */
+    --color-accent-dark: #e76f51ff; /* Burnt Sienna */
     
     /* Secondary Colors */
-    --color-secondary: #669bbcff; /* Air Superiority Blue */
-    --color-secondary-light: #669bbcff; /* Air Superiority Blue */
-    --color-secondary-dark: #003049ff; /* Prussian Blue */
+    --color-secondary: #2a9d8fff; /* Persian Green */
+    --color-secondary-light: #2a9d8fff; /* Persian Green */
+    --color-secondary-dark: #264653ff; /* Charcoal */
     
     /* Neutral Colors */
-    --color-light: #fdf0d5ff; /* Papaya Whip */
+    --color-light: #e9c46aff; /* Saffron */
     --color-muted: #6c757d;
     --color-dark: #212529;
     
@@ -30,7 +30,7 @@
     --color-highlight: #F2C84B;
     --color-success: #28a745;
     --color-warning: #ffc107;
-    --color-danger: #780000ff; /* Barn Red */
+    --color-danger: #e76f51ff; /* Burnt Sienna */
     --color-info: #17a2b8;
     
     /* Background & Overlay */
