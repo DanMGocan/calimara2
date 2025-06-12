@@ -129,8 +129,30 @@
             {% set post = posts[0] %}
             
             
+            {% if post.category == 'poezie' %}
+            <!-- Poetry Post Layout -->
+            <article class="poetry-post-card slide-up" id="post-{{ post.id }}">
+                <header class="poetry-post-header">
+                    <div class="poetry-post-meta">
+                        <div class="poetry-post-meta-item">
+                            <i class="bi bi-person"></i>
+                            <span>{{ blog_owner.username }}</span>
+                        </div>
+                        <div class="poetry-post-meta-item">
+                            <i class="bi bi-calendar3"></i>
+                            <span>{{ post.created_at.strftime('%d %B %Y') }}</span>
+                        </div>
+                    </div>
+                    <h3 class="poetry-post-title">{{ post.title }}</h3>
+                    {% if post.category %}
+                    <div class="poetry-categories">
+                        <span class="poetry-category-tag">{{ post.category|title }}</span>
+                    </div>
+                    {% endif %}
+                </header>
+            {% else %}
+            <!-- Regular Post Layout -->
             <article class="post-card hover-lift slide-up" id="post-{{ post.id }}">
-                <!-- Enhanced Post Header -->
                 <header class="mb-4">
                     <div class="post-meta mb-2">
                         <div class="post-meta-item">
@@ -157,13 +179,43 @@
                     </div>
                     {% endif %}
                 </header>
+            {% endif %}
                 
                 <!-- Post Content -->
+                {% if post.category == 'poezie' %}
+                <div class="poetry-content">
+                    {{ post.content|safe }}
+                </div>
+                
+                <hr class="poetry-divider">
+                {% else %}
                 <div class="post-content mb-5">
                     <p class="lh-lg">{{ post.content }}</p>
                 </div>
+                {% endif %}
                 
                 <!-- Enhanced Post Actions -->
+                {% if post.category == 'poezie' %}
+                <div class="poetry-interactions">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex gap-3">
+                            <button class="btn poetry-like-button like-button" data-post-id="{{ post.id }}">
+                                <i class="bi bi-heart me-2"></i>
+                                <span id="likes-count-{{ post.id }}">{{ post.likes_count }}</span>
+                            </button>
+                            
+                            <span class="text-muted d-flex align-items-center">
+                                <i class="bi bi-chat-dots me-2"></i>
+                                {{ post.comments|length }} comentarii
+                            </span>
+                        </div>
+                        
+                        <button class="btn poetry-share-button" onclick="sharePost('{{ post.id }}')">
+                            <i class="bi bi-share me-2"></i>Distribuie
+                        </button>
+                    </div>
+                </div>
+                {% else %}
                 <div class="post-actions">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex gap-3">
@@ -186,6 +238,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
                 
                 <!-- Comments Section -->
                 <div id="comments-{{ post.id }}">
@@ -230,7 +283,54 @@
                         </div>
                     {% endif %}
                     
-                    <!-- Add Comment Form Toggle -->
+                    <!-- Comments Section -->
+                    {% if post.category == 'poezie' %}
+                    <div class="poetry-comments-section">
+                        <!-- Poetry Comment Toggle -->
+                        <div class="poetry-comment-prompt">
+                            <button class="poetry-comment-toggle w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#commentForm-{{ post.id }}" aria-expanded="false" aria-controls="commentForm-{{ post.id }}">
+                                <i class="bi bi-chat-heart me-2"></i>Ce gânduri ți-a trezit această poezie?
+                            </button>
+                        </div>
+                        
+                        <div class="collapse" id="commentForm-{{ post.id }}">
+                            <div class="poetry-comment-form">
+                                <form class="comment-form" data-post-id="{{ post.id }}">
+                                    <div class="mb-3">
+                                        <textarea class="form-control poetry-comment-input" rows="4" placeholder="Împărtășește-ți impresiile despre această poezie..." name="content" required></textarea>
+                                    </div>
+                                    
+                                    {% if not current_user %}
+                                        <div class="row g-3 mb-3">
+                                            <div class="col-md-6">
+                                                <input type="text" class="form-control poetry-comment-input" placeholder="Numele tău" name="author_name">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input type="email" class="form-control poetry-comment-input" placeholder="Emailul tău" name="author_email">
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                    
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">
+                                            <i class="bi bi-info-circle me-1"></i>
+                                            Comentariile sunt moderate și vor apărea după aprobare.
+                                        </small>
+                                        <button type="submit" class="btn btn-primary-custom">
+                                            <i class="bi bi-send me-2"></i>Trimite
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="comment-error alert alert-danger d-none mt-3" role="alert">
+                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                        <span class="error-message"></span>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <!-- Regular Comment Form -->
                     <div class="mb-3">
                         <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#commentForm-{{ post.id }}" aria-expanded="false" aria-controls="commentForm-{{ post.id }}">
                             <i class="bi bi-plus-circle me-2"></i>Adaugă un Comentariu
@@ -274,6 +374,7 @@
                             </div>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </article>
             

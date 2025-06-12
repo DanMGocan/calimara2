@@ -1126,6 +1126,48 @@ footer {
    RESPONSIVE DESIGN
    ================================== */
 
+/* Poetry Responsive Styles */
+@media (max-width: 768px) {
+    .poetry-post-card {
+        padding: 2rem 1.5rem;
+        border-radius: 1rem;
+    }
+    
+    .poetry-post-title {
+        font-size: 1.625rem;
+    }
+    
+    .poetry-content {
+        font-size: 1.125rem;
+        line-height: 1.7;
+    }
+    
+    .poetry-post-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .poetry-interactions {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .poetry-post-card {
+        padding: 1.5rem 1rem;
+    }
+    
+    .poetry-post-title {
+        font-size: 1.5rem;
+    }
+    
+    .poetry-content {
+        font-size: 1rem;
+        line-height: 1.6;
+    }
+}
+
 @media (max-width: 48em) {
     .hero-section {
         padding: 2rem 0;
