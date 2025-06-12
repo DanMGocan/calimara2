@@ -6,91 +6,93 @@
 {% block content %}
 <!-- Blog Header -->
 <div class="blog-card animate__animated animate__fadeIn">
-    <div class="row align-items-center">
-        <div class="col-12">
-            <div class="d-flex align-items-center justify-content-between mb-3">
-                <div class="d-flex align-items-center">
-                    <img src="{{ get_avatar_url(blog_owner, 64) }}" 
-                         alt="Avatar {{ blog_owner.username }}" class="avatar avatar-lg me-3 border border-3 border-light shadow">
-                    <div>
-                        <h1 class="h2 fw-bold mb-1">Călimara lui @{{ blog_owner.username }}</h1>
-                        <div class="d-flex align-items-center gap-2">
-                            <p class="text-muted mb-0">
-                                <i class="bi bi-globe me-1"></i>{{ blog_owner.username }}.calimara.ro
-                            </p>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('https://{{ blog_owner.username }}.calimara.ro')" title="Copiază URL-ul">
-                                <i class="bi bi-link-45deg"></i>
-                            </button>
+    <div class="blog-card-body">
+        <div class="row align-items-center">
+            <div class="col-12">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex align-items-center">
+                        <img src="{{ get_avatar_url(blog_owner, 64) }}" 
+                             alt="Avatar {{ blog_owner.username }}" class="avatar avatar-lg me-3 border border-3 border-light shadow">
+                        <div>
+                            <h1 class="h2 fw-bold mb-1">Călimara lui @{{ blog_owner.username }}</h1>
+                            <div class="d-flex align-items-center gap-2">
+                                <p class="text-muted mb-0">
+                                    <i class="bi bi-globe me-1"></i>{{ blog_owner.username }}.calimara.ro
+                                </p>
+                                <button class="btn btn-outline-secondary btn-sm" onclick="copyToClipboard('https://{{ blog_owner.username }}.calimara.ro')" title="Copiază URL-ul">
+                                    <i class="bi bi-link-45deg"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                
-                {% if current_user and current_user.username == blog_owner.username %}
-                <!-- User Action Buttons -->
-                <div class="d-flex gap-2 align-items-center">
-                    <a href="/create-post" class="btn btn-primary-custom btn-sm">
-                        <i class="bi bi-pencil-square me-1"></i>Creează Postare
-                    </a>
-                    <a href="/dashboard" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-speedometer2 me-1"></i>Panou Administrare
-                    </a>
-                    <button class="btn btn-danger btn-sm" id="logoutButtonBlog">
-                        <i class="bi bi-box-arrow-right me-1"></i>Deconectare
-                    </button>
-                </div>
-                {% elif not current_user %}
-                <!-- Register Button for Unregistered Users -->
-                <div class="d-flex gap-2 align-items-center">
-                    <a href="/register" class="btn btn-primary-custom btn-sm hover-lift">
-                        <i class="bi bi-journal-plus me-1"></i>Deschide-ți și tu o calimara!
-                    </a>
-                </div>
-                {% endif %}
-            </div>
-            
-            {% if blog_owner.subtitle %}
-                <p class="lead text-muted mb-3">{{ blog_owner.subtitle }}</p>
-            {% else %}
-                <p class="lead text-muted mb-3">Bun venit pe microblogul meu!</p>
-            {% endif %}
-
-            <!-- Social Media and Donation Buttons -->
-            <div class="social-donation-section mb-3">
-                <div class="d-flex flex-wrap gap-2 align-items-center">
-                    {% if blog_owner.facebook_url %}
-                        <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn social-icon-btn" style="background-color: #1877F2; border-color: #1877F2; color: white;" data-bs-toggle="tooltip" title="Facebook">
-                            <i class="bi bi-facebook"></i>
-                        </a>
-                    {% endif %}
-                    {% if blog_owner.tiktok_url %}
-                        <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="TikTok">
-                            <i class="bi bi-tiktok"></i>
-                        </a>
-                    {% endif %}
-                    {% if blog_owner.instagram_url %}
-                        <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger social-icon-btn" data-bs-toggle="tooltip" title="Instagram">
-                            <i class="bi bi-instagram"></i>
-                        </a>
-                    {% endif %}
-                    {% if blog_owner.x_url %}
-                        <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="X">
-                            <i class="bi bi-twitter-x"></i>
-                        </a>
-                    {% endif %}
-                    {% if blog_owner.bluesky_url %}
-                        <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info social-icon-btn" data-bs-toggle="tooltip" title="BlueSky">
-                            <i class="bi bi-bluesky"></i>
-                        </a>
-                    {% endif %}
                     
-                    <!-- Coffee Button -->
-                    {% if blog_owner.buymeacoffee_url %}
-                    <div class="ms-2">
-                        <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn">
-                            <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
+                    {% if current_user and current_user.username == blog_owner.username %}
+                    <!-- User Action Buttons -->
+                    <div class="d-flex gap-2 align-items-center">
+                        <a href="/create-post" class="btn btn-primary-custom btn-sm">
+                            <i class="bi bi-pencil-square me-1"></i>Creează Postare
+                        </a>
+                        <a href="/dashboard" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-speedometer2 me-1"></i>Panou Administrare
+                        </a>
+                        <button class="btn btn-danger btn-sm" id="logoutButtonBlog">
+                            <i class="bi bi-box-arrow-right me-1"></i>Deconectare
+                        </button>
+                    </div>
+                    {% elif not current_user %}
+                    <!-- Register Button for Unregistered Users -->
+                    <div class="d-flex gap-2 align-items-center">
+                        <a href="/register" class="btn btn-primary-custom btn-sm hover-lift">
+                            <i class="bi bi-journal-plus me-1"></i>Deschide-ți și tu o calimara!
                         </a>
                     </div>
                     {% endif %}
+                </div>
+                
+                {% if blog_owner.subtitle %}
+                    <p class="lead text-muted mb-3">{{ blog_owner.subtitle }}</p>
+                {% else %}
+                    <p class="lead text-muted mb-3">Bun venit pe microblogul meu!</p>
+                {% endif %}
+
+                <!-- Social Media and Donation Buttons -->
+                <div class="social-donation-section mb-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        {% if blog_owner.facebook_url %}
+                            <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn social-icon-btn" style="background-color: #1877F2; border-color: #1877F2; color: white;" data-bs-toggle="tooltip" title="Facebook">
+                                <i class="bi bi-facebook"></i>
+                            </a>
+                        {% endif %}
+                        {% if blog_owner.tiktok_url %}
+                            <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="TikTok">
+                                <i class="bi bi-tiktok"></i>
+                            </a>
+                        {% endif %}
+                        {% if blog_owner.instagram_url %}
+                            <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger social-icon-btn" data-bs-toggle="tooltip" title="Instagram">
+                                <i class="bi bi-instagram"></i>
+                            </a>
+                        {% endif %}
+                        {% if blog_owner.x_url %}
+                            <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="X">
+                                <i class="bi bi-twitter-x"></i>
+                            </a>
+                        {% endif %}
+                        {% if blog_owner.bluesky_url %}
+                            <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info social-icon-btn" data-bs-toggle="tooltip" title="BlueSky">
+                                <i class="bi bi-bluesky"></i>
+                            </a>
+                        {% endif %}
+                        
+                        <!-- Coffee Button -->
+                        {% if blog_owner.buymeacoffee_url %}
+                        <div class="ms-2">
+                            <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn">
+                                <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -102,210 +104,80 @@
     <!-- Featured Posts -->
     <div class="col-12 col-lg-4">
         <div class="blog-card">
-            <div class="d-flex align-items-center mb-3">
-                <i class="bi bi-star-fill text-warning me-2 fs-5"></i>
-                <h5 class="fw-bold mb-0">Postări în Evidență</h5>
+            <div class="blog-card-header">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-award-fill me-2 fs-5"></i>
+                    <h5 class="fw-bold mb-0">Sunt mândru de:</h5>
+                </div>
             </div>
-            
-            {% if featured_posts %}
-                <div class="d-flex flex-column gap-3">
-                    {% for post in featured_posts %}
-                        <a href="/{{ post.slug }}" class="text-decoration-none">
-                            <div class="featured-post-card p-3 rounded border hover-lift">
-                                <h6 class="fw-bold mb-2 text-dark">{{ post.title }}</h6>
-                                <p class="text-muted small mb-2">
-                                    {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
-                                </p>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <small class="text-muted">
-                                        <i class="bi bi-calendar3 me-1"></i>{{ post.created_at.strftime('%d %B %Y') }}
-                                    </small>
-                                    <div class="d-flex gap-2">
+            <div class="blog-card-body">
+                {% if featured_posts %}
+                    <div class="d-flex flex-column gap-3">
+                        {% for post in featured_posts %}
+                            <a href="/{{ post.slug }}" class="text-decoration-none">
+                                <div class="featured-post-card p-3 rounded border hover-lift">
+                                    <h6 class="fw-bold mb-2 text-dark">{{ post.title }}</h6>
+                                    <p class="text-muted small mb-2">
+                                        {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
+                                    </p>
+                                    <div class="d-flex justify-content-between align-items-center">
                                         <small class="text-muted">
-                                            <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
+                                            <i class="bi bi-calendar3 me-1"></i>{{ post.created_at.strftime('%d %B %Y') }}
                                         </small>
-                                        <small class="text-muted">
-                                            <i class="bi bi-chat-dots me-1"></i>{{ post.comments|length }}
-                                        </small>
+                                        <div class="d-flex gap-2">
+                                            <small class="text-muted">
+                                                <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
+                                            </small>
+                                            <small class="text-muted">
+                                                <i class="bi bi-chat-dots me-1"></i>{{ post.comments|length }}
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </a>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-4 text-muted">
-                    <i class="bi bi-star display-4 mb-3"></i>
-                    <p class="mb-0">
-                        {% if current_user and current_user.username == blog_owner.username %}
-                            Nu ai selectat încă postări în evidență.<br>
-                            <a href="/dashboard" class="text-decoration-none">Selectează-le din panoul de administrare</a>.
-                        {% else %}
-                            {{ blog_owner.username }} nu a selectat încă postări în evidență.
-                        {% endif %}
-                    </p>
-                </div>
-            {% endif %}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-award display-4 mb-3"></i>
+                        <p class="mb-0">
+                            {% if current_user and current_user.username == blog_owner.username %}
+                                Nu ai selectat încă postări în evidență.<br>
+                                <a href="/dashboard" class="text-decoration-none">Selectează-le din panoul de administrare</a>.
+                            {% else %}
+                                {{ blog_owner.username }} nu a selectat încă postări în evidență.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 
     <!-- Latest 3 Posts -->
     <div class="col-12 col-lg-4">
         <div class="blog-card">
-            <div class="d-flex align-items-center mb-3">
-                <i class="bi bi-clock-fill text-primary me-2 fs-5"></i>
-                <h5 class="fw-bold mb-0">Ultimele Postări</h5>
+            <div class="blog-card-header">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-clock-fill me-2 fs-5"></i>
+                    <h5 class="fw-bold mb-0">Ultimele Postări</h5>
+                </div>
             </div>
-            
-            {% if latest_posts %}
-                <div class="d-flex flex-column gap-3">
-                    {% for post in latest_posts %}
-                        <a href="/{{ post.slug }}" class="text-decoration-none">
-                            <div class="latest-post-card p-3 rounded border hover-lift">
-                                <h6 class="fw-bold mb-2 text-dark">{{ post.title }}</h6>
-                                <p class="text-muted small mb-2">
-                                    {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
-                                </p>
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <small class="text-muted">
-                                        <i class="bi bi-calendar3 me-1"></i>{{ post.created_at.strftime('%d %B %Y') }}
-                                    </small>
-                                    <div class="d-flex gap-2">
-                                        <small class="text-muted">
-                                            <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
-                                        </small>
-                                        <small class="text-muted">
-                                            <i class="bi bi-chat-dots me-1"></i>{{ post.comments|length }}
-                                        </small>
-                                        <small class="text-muted">
-                                            <i class="bi bi-eye me-1"></i>{{ post.view_count }}
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
-                        </a>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-4 text-muted">
-                    <i class="bi bi-journal-x display-4 mb-3"></i>
-                    <p class="mb-0">
-                        {% if current_user and current_user.username == blog_owner.username %}
-                            Nu ai creat încă nicio postare.<br>
-                            <a href="/create-post" class="btn btn-primary-custom btn-sm mt-2">
-                                <i class="bi bi-pencil-square me-1"></i>Creează Prima Postare
-                            </a>
-                        {% else %}
-                            {{ blog_owner.username }} nu a creat încă postări.
-                        {% endif %}
-                    </p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Best Friends -->
-    <div class="col-12 col-lg-4">
-        <div class="blog-card">
-            <div class="d-flex align-items-center mb-3">
-                <i class="bi bi-people-fill text-success me-2 fs-5"></i>
-                <h5 class="fw-bold mb-0">Prietenii Mei</h5>
-            </div>
-            
-            {% if best_friends %}
-                <div class="d-flex flex-column gap-3">
-                    {% for friendship in best_friends %}
-                        <a href="//{{ friendship.friend.username }}.calimara.ro" class="text-decoration-none">
-                            <div class="friend-card p-3 rounded border hover-lift d-flex align-items-center">
-                                <img src="{{ get_avatar_url(friendship.friend, 45) }}" 
-                                     alt="Avatar {{ friendship.friend.username }}" 
-                                     class="rounded-circle me-3" 
-                                     style="width: 2.8rem; height: 2.8rem; object-fit: cover;">
-                                <div class="flex-grow-1">
-                                    <h6 class="fw-semibold mb-1 text-dark">@{{ friendship.friend.username }}</h6>
-                                    {% if friendship.friend.subtitle %}
-                                        <p class="text-muted small mb-0">{{ friendship.friend.subtitle[:50] }}{% if friendship.friend.subtitle|length > 50 %}...{% endif %}</p>
-                                    {% else %}
-                                        <p class="text-muted small mb-0">Călimara lui {{ friendship.friend.username }}</p>
-                                    {% endif %}
-                                </div>
-                                <i class="bi bi-arrow-right text-muted"></i>
-                            </div>
-                        </a>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-4 text-muted">
-                    <i class="bi bi-people display-4 mb-3"></i>
-                    <p class="mb-0">
-                        {% if current_user and current_user.username == blog_owner.username %}
-                            Nu ai selectat încă prieteni.<br>
-                            <a href="/dashboard" class="text-decoration-none">Selectează-i din panoul de administrare</a>.
-                        {% else %}
-                            {{ blog_owner.username }} nu a selectat încă prieteni.
-                        {% endif %}
-                    </p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<!-- Posts Archive -->
-<div class="blog-card">
-    <div class="d-flex align-items-center justify-content-between mb-4">
-        <div class="d-flex align-items-center">
-            <i class="bi bi-archive-fill text-info me-2 fs-5"></i>
-            <h5 class="fw-bold mb-0">Arhiva Postărilor</h5>
-        </div>
-        
-        <!-- Month/Year Filter -->
-        {% if available_months %}
-        <div class="d-flex gap-2 align-items-center">
-            <label class="form-label mb-0 me-2">Filtrează:</label>
-            <select class="form-select form-select-sm" id="monthYearFilter" style="width: auto;">
-                <option value="">Toate postările</option>
-                {% for month_data in available_months %}
-                    <option value="{{ month_data.month }}-{{ month_data.year }}">
-                        {% set month_names = {
-                            1: 'Ianuarie', 2: 'Februarie', 3: 'Martie', 4: 'Aprilie',
-                            5: 'Mai', 6: 'Iunie', 7: 'Iulie', 8: 'August',
-                            9: 'Septembrie', 10: 'Octombrie', 11: 'Noiembrie', 12: 'Decembrie'
-                        } %}
-                        {{ month_names[month_data.month] }} {{ month_data.year }} ({{ month_data.post_count }})
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
-        {% endif %}
-    </div>
-    
-    <div id="postsArchive">
-        {% if all_posts %}
-            <div class="row g-3">
-                {% for post in all_posts %}
-                    <div class="col-12 col-md-6 col-lg-4">
-                        <a href="/{{ post.slug }}" class="text-decoration-none">
-                            <div class="archive-post-card p-3 rounded border hover-lift h-100">
-                                <h6 class="fw-bold mb-2 text-dark">{{ post.title }}</h6>
-                                
-                                {% if post.category %}
-                                    <span class="badge bg-light text-dark border mb-2">{{ post.category|title }}</span>
-                                {% endif %}
-                                
-                                <p class="text-muted small mb-3">
-                                    {{ post.content[:120] }}{% if post.content|length > 120 %}...{% endif %}
-                                </p>
-                                
-                                <div class="mt-auto">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="blog-card-body">
+                {% if latest_posts %}
+                    <div class="d-flex flex-column gap-3">
+                        {% for post in latest_posts %}
+                            <a href="/{{ post.slug }}" class="text-decoration-none">
+                                <div class="latest-post-card p-3 rounded hover-lift">
+                                    <h6 class="fw-bold mb-2 text-dark">{{ post.title }}</h6>
+                                    <p class="text-muted small mb-2">
+                                        {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
+                                    </p>
+                                    <div class="d-flex justify-content-between align-items-center">
                                         <small class="text-muted">
                                             <i class="bi bi-calendar3 me-1"></i>{{ post.created_at.strftime('%d %B %Y') }}
                                         </small>
-                                    </div>
-                                    
-                                    <div class="d-flex justify-content-between">
-                                        <div class="d-flex gap-3">
+                                        <div class="d-flex gap-2">
                                             <small class="text-muted">
                                                 <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
                                             </small>
@@ -318,42 +190,166 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        </a>
+                            </a>
+                        {% endfor %}
                     </div>
-                {% endfor %}
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-journal-x display-4 mb-3"></i>
+                        <p class="mb-0">
+                            {% if current_user and current_user.username == blog_owner.username %}
+                                Nu ai creat încă nicio postare.<br>
+                                <a href="/create-post" class="btn btn-primary-custom btn-sm mt-2">
+                                    <i class="bi bi-pencil-square me-1"></i>Creează Prima Postare
+                                </a>
+                            {% else %}
+                                {{ blog_owner.username }} nu a creat încă postări.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
             </div>
-        {% else %}
-            <div class="text-center py-5 text-muted">
-                <i class="bi bi-archive display-1 mb-4"></i>
-                <h4 class="fw-bold mb-3">Arhiva este goală</h4>
-                <p class="mb-0">
-                    {% if current_user and current_user.username == blog_owner.username %}
-                        Începe să scrii pentru a umple arhiva cu postări!
-                    {% else %}
-                        Nu există încă postări în arhivă.
-                    {% endif %}
-                </p>
+        </div>
+    </div>
+
+    <!-- Best Friends -->
+    <div class="col-12 col-lg-4">
+        <div class="blog-card">
+            <div class="blog-card-header">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-heart-fill me-2 fs-5"></i>
+                    <h5 class="fw-bold mb-0">Recomand cu căldură:</h5>
+                </div>
             </div>
-        {% endif %}
+            <div class="blog-card-body">
+                {% if best_friends %}
+                    <div class="d-flex flex-column gap-3">
+                        {% for friendship in best_friends %}
+                            <a href="//{{ friendship.friend.username }}.calimara.ro" class="text-decoration-none">
+                                <div class="friend-card p-3 rounded border hover-lift d-flex align-items-center">
+                                    <img src="{{ get_avatar_url(friendship.friend, 45) }}" 
+                                         alt="Avatar {{ friendship.friend.username }}" 
+                                         class="rounded-circle me-3" 
+                                         style="width: 2.8rem; height: 2.8rem; object-fit: cover;">
+                                    <div class="flex-grow-1">
+                                        <h6 class="fw-semibold mb-1 text-dark">@{{ friendship.friend.username }}</h6>
+                                        {% if friendship.friend.subtitle %}
+                                            <p class="text-muted small mb-0">{{ friendship.friend.subtitle[:50] }}{% if friendship.friend.subtitle|length > 50 %}...{% endif %}</p>
+                                        {% else %}
+                                            <p class="text-muted small mb-0">Călimara lui {{ friendship.friend.username }}</p>
+                                        {% endif %}
+                                    </div>
+                                    <i class="bi bi-arrow-right text-muted"></i>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-people display-4 mb-3"></i>
+                        <p class="mb-0">
+                            {% if current_user and current_user.username == blog_owner.username %}
+                                Nu ai selectat încă prieteni.<br>
+                                <a href="/dashboard" class="text-decoration-none">Selectează-i din panoul de administrare</a>.
+                            {% else %}
+                                {{ blog_owner.username }} nu a selectat încă prieteni.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- Call to Action for Non-Users -->
-{% if not current_user %}
-<div class="blog-card bg-gradient text-white mt-4" style="background: var(--gradient-accent);">
-    <div class="text-center">
-        <i class="bi bi-journal-plus display-4 mb-3"></i>
-        <h5 class="fw-bold mb-3">Deschide-ți și tu o calimara!</h5>
-        <p class="mb-4">
-            Alătură-te comunității noastre de scriitori și poeți români.
-        </p>
-        <a href="/register" class="btn btn-light btn-lg hover-lift">
-            <i class="bi bi-arrow-right me-2"></i>Înregistrează-te Gratuit
-        </a>
+<!-- Posts Archive -->
+<div class="blog-card">
+    <div class="blog-card-header">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-archive-fill me-2 fs-5"></i>
+                <h5 class="fw-bold mb-0">Arhiva Postărilor</h5>
+            </div>
+            
+            <!-- Month/Year Filter -->
+            {% if available_months %}
+            <div class="d-flex gap-2 align-items-center">
+                <label class="form-label mb-0 me-2 text-white">Filtrează:</label>
+                <select class="form-select form-select-sm" id="monthYearFilter" style="width: auto;">
+                    <option value="">Toate postările</option>
+                    {% for month_data in available_months %}
+                        <option value="{{ month_data.month }}-{{ month_data.year }}">
+                            {% set month_names = {
+                                1: 'Ianuarie', 2: 'Februarie', 3: 'Martie', 4: 'Aprilie',
+                                5: 'Mai', 6: 'Iunie', 7: 'Iulie', 8: 'August',
+                                9: 'Septembrie', 10: 'Octombrie', 11: 'Noiembrie', 12: 'Decembrie'
+                            } %}
+                            {{ month_names[month_data.month] }} {{ month_data.year }} ({{ month_data.post_count }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="blog-card-body">
+        <div id="postsArchive">
+            {% if all_posts %}
+                <ul class="archive-list">
+                    {% for post in all_posts %}
+                        <li class="archive-list-item">
+                            <a href="/{{ post.slug }}" class="archive-post-title">{{ post.title }}</a>
+                            
+                            <div class="archive-post-meta">
+                                <span class="text-muted">
+                                    <i class="bi bi-calendar3 me-1"></i>
+                                    {{ post.created_at.strftime('%d %B %Y') }}
+                                </span>
+                                
+                                {% if post.category %}
+                                    <span class="badge bg-light text-dark border">{{ post.category|title }}</span>
+                                {% endif %}
+                                
+                                <div class="archive-post-stats">
+                                    <span>
+                                        <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
+                                    </span>
+                                    <span>
+                                        <i class="bi bi-eye me-1"></i>{{ post.view_count }}
+                                    </span>
+                                    <span>
+                                        <i class="bi bi-chat-dots me-1"></i>{{ post.comments|length }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {% if post.tags %}
+                                <div class="archive-post-tags">
+                                    {% for tag in post.tags %}
+                                        <span class="badge bg-secondary">{{ tag.tag_name }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-archive display-1 mb-4"></i>
+                    <h4 class="fw-bold mb-3">Arhiva este goală</h4>
+                    <p class="mb-0">
+                        {% if current_user and current_user.username == blog_owner.username %}
+                            Începe să scrii pentru a umple arhiva cu postări!
+                        {% else %}
+                            Nu există încă postări în arhivă.
+                        {% endif %}
+                    </p>
+                </div>
+            {% endif %}
+        </div>
     </div>
 </div>
-{% endif %}
 
 <script>
 // Copy to clipboard function
@@ -410,13 +406,13 @@ document.addEventListener('DOMContentLoaded', function() {
         monthYearFilter.addEventListener('change', function() {
             const filterValue = this.value;
             if (!filterValue) {
-                // Show all posts
-                document.querySelectorAll('#postsArchive .col-12').forEach(card => {
-                    card.style.display = 'block';
-                });
+                // Show all posts - reload page without params
+                const url = new URL(window.location);
+                url.searchParams.delete('month');
+                url.searchParams.delete('year');
+                window.location.href = url.toString();
             } else {
-                // This would typically make an AJAX call to filter posts
-                // For now, we'll just reload the page with query parameters
+                // Filter by month/year
                 const [month, year] = filterValue.split('-');
                 const url = new URL(window.location);
                 url.searchParams.set('month', month);

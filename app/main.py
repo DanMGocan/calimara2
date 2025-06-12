@@ -651,9 +651,10 @@ async def read_root(request: Request, category: str = "toate", month: int = None
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model
         
-        # Add comments count to all posts for archive display
+        # Add comments count and tags to all posts for archive display
         for post in all_posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+            post.tags = crud.get_tags_for_post(db, post.id)
         
         # Get distinct categories for this user's blog
         blog_categories = crud.get_distinct_categories_used(db, user_id=user.id)
@@ -1055,9 +1056,10 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model
         
-        # Add comments count to all posts for archive display
+        # Add comments count and tags to all posts for archive display
         for post in all_posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+            post.tags = crud.get_tags_for_post(db, post.id)
         
         context = get_common_context(request, current_user)
         context.update({
