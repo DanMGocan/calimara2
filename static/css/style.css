@@ -37,7 +37,7 @@
     --color-bg-overlay: rgba(255, 255, 255, 0.6);
     --color-bg-overlay-dark: rgba(0, 0, 0, 0.7);
     --color-glass: rgba(255, 255, 255, 0.1);
-    --color-container-bg: rgba(255, 255, 255, 0.85);
+    --color-container-bg: rgba(255, 255, 255, 0.3);
     
     /* Gradients - Updated with Dark Green */
     --gradient-primary: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
@@ -636,9 +636,36 @@ body::before {
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
-    border: 3px dotted var(--color-accent);
+    border-top: 4px solid var(--color-accent);
+    border-bottom: 4px solid var(--color-accent);
     backdrop-filter: blur(0.625rem);
     overflow: hidden;
+    position: relative;
+}
+
+/* Decorative dots inside containers */
+.blog-card::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 8px;
+    height: 8px;
+    background: #ff6b35;
+    border-radius: 50%;
+    opacity: 0.6;
+}
+
+.blog-card::after {
+    content: '';
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 6px;
+    height: 6px;
+    background: #1e3a8a;
+    border-radius: 50%;
+    opacity: 0.5;
 }
 
 .blog-card-header {
@@ -725,12 +752,44 @@ body::before {
 /* Award card styles */
 .award-card {
     transition: all var(--transition-normal);
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .award-card:hover {
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.4);
     transform: translateY(-2px);
+}
+
+/* Different dot positions for different containers */
+.blog-card:nth-child(2)::before {
+    background: #1e3a8a;
+    top: 30px;
+    right: 30px;
+    width: 10px;
+    height: 10px;
+}
+
+.blog-card:nth-child(2)::after {
+    background: #ff6b35;
+    bottom: 30px;
+    left: 30px;
+    width: 7px;
+    height: 7px;
+}
+
+/* Third and fourth containers */
+.blog-card:nth-child(odd)::before {
+    width: 6px;
+    height: 6px;
+    top: 25px;
+    right: 25px;
+}
+
+.blog-card:nth-child(even)::after {
+    width: 9px;
+    height: 9px;
+    bottom: 25px;
+    left: 25px;
 }
 
 .post-card {

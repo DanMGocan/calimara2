@@ -101,13 +101,21 @@ def init_db():
                         table_name = stmt.split()[2]
                         print(f"✓ Table {table_name} created")
                     elif stmt.upper().startswith('INSERT INTO USERS'):
-                        print("✓ Test user created")
+                        print("✓ Test users created")
                     elif stmt.upper().startswith('INSERT INTO POSTS'):
                         print("✓ Sample posts created")
                     elif stmt.upper().startswith('INSERT INTO COMMENTS'):
                         print("✓ Sample comments created")
                     elif stmt.upper().startswith('INSERT INTO LIKES'):
                         print("✓ Sample likes created")
+                    elif stmt.upper().startswith('INSERT INTO TAGS'):
+                        print("✓ Sample tags created")
+                    elif stmt.upper().startswith('INSERT INTO BEST_FRIENDS'):
+                        print("✓ Best friends relationships created")
+                    elif stmt.upper().startswith('INSERT INTO FEATURED_POSTS'):
+                        print("✓ Featured posts created")
+                    elif stmt.upper().startswith('INSERT INTO USER_AWARDS'):
+                        print("✓ User awards created")
                         
                 except SQLAlchemyError as e:
                     # Skip validation statements that might fail
@@ -134,6 +142,18 @@ def init_db():
                 result = connection.execute(text("SELECT COUNT(*) FROM likes"))
                 like_count = result.scalar()
                 
+                result = connection.execute(text("SELECT COUNT(*) FROM tags"))
+                tag_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM best_friends"))
+                best_friends_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM featured_posts"))
+                featured_posts_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM user_awards"))
+                awards_count = result.scalar()
+                
                 print("\n" + "=" * 30)
                 print("DATABASE INITIALIZATION SUMMARY")
                 print("=" * 30)
@@ -141,6 +161,10 @@ def init_db():
                 print(f"Posts created: {post_count}")
                 print(f"Comments created: {comment_count}")
                 print(f"Likes created: {like_count}")
+                print(f"Tags created: {tag_count}")
+                print(f"Best friends: {best_friends_count}")
+                print(f"Featured posts: {featured_posts_count}")
+                print(f"User awards: {awards_count}")
                 print("=" * 30)
                 print("✓ Database initialization complete!")
                 print("\nTest user credentials:")
