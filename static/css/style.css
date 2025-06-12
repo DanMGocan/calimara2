@@ -7,22 +7,22 @@
 /* CSS Custom Properties (Variables) */
 :root {
     /* Primary Color Palette */
-    --color-primary: #2C2C2C;
-    --color-primary-light: #404040;
-    --color-primary-dark: #1a1a1a;
+    --color-primary: #003049ff; /* Prussian Blue */
+    --color-primary-light: #669bbcff; /* Air Superiority Blue */
+    --color-primary-dark: #003049ff; /* Prussian Blue */
     
-    /* Accent Colors - Changed to Dark Green */
-    --color-accent: #1B5E20;
-    --color-accent-light: #2E7D32;
-    --color-accent-dark: #0D4E14;
+    /* Accent Colors */
+    --color-accent: #c1121fff; /* Fire Brick */
+    --color-accent-light: #c1121fff; /* Fire Brick */
+    --color-accent-dark: #780000ff; /* Barn Red */
     
     /* Secondary Colors */
-    --color-secondary: #3C4F76;
-    --color-secondary-light: #4a5f8f;
-    --color-secondary-dark: #2d3b5a;
+    --color-secondary: #669bbcff; /* Air Superiority Blue */
+    --color-secondary-light: #669bbcff; /* Air Superiority Blue */
+    --color-secondary-dark: #003049ff; /* Prussian Blue */
     
     /* Neutral Colors */
-    --color-light: #f8f9fa;
+    --color-light: #fdf0d5ff; /* Papaya Whip */
     --color-muted: #6c757d;
     --color-dark: #212529;
     
@@ -30,7 +30,7 @@
     --color-highlight: #F2C84B;
     --color-success: #28a745;
     --color-warning: #ffc107;
-    --color-danger: #dc3545;
+    --color-danger: #780000ff; /* Barn Red */
     --color-info: #17a2b8;
     
     /* Background & Overlay */
