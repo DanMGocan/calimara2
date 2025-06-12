@@ -57,6 +57,13 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    
+    # User awards
+    awards: Mapped[List["UserAward"]] = relationship(
+        "UserAward",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
 class Post(Base):
     __tablename__ = "posts"
@@ -144,3 +151,17 @@ class FeaturedPost(Base):
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="featured_posts")
     post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="featured_by")
+
+class UserAward(Base):
+    __tablename__ = "user_awards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    award_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    award_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    award_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    award_type: Mapped[str] = mapped_column(String(50), nullable=False, default="writing")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="awards")

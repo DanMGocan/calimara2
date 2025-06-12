@@ -99,10 +99,11 @@
     </div>
 </div>
 
-<!-- Three Column Layout Row -->
+<!-- Four Container Layout - 2 per row -->
+<!-- First Row -->
 <div class="row g-4 mb-4">
     <!-- Featured Posts -->
-    <div class="col-12 col-lg-4">
+    <div class="col-12 col-lg-6">
         <div class="blog-card">
             <div class="blog-card-header">
                 <div class="d-flex align-items-center">
@@ -155,7 +156,7 @@
     </div>
 
     <!-- Latest 3 Posts -->
-    <div class="col-12 col-lg-4">
+    <div class="col-12 col-lg-6">
         <div class="blog-card">
             <div class="blog-card-header">
                 <div class="d-flex align-items-center">
@@ -211,9 +212,12 @@
             </div>
         </div>
     </div>
+</div>
 
+<!-- Second Row -->
+<div class="row g-4 mb-4">
     <!-- Best Friends -->
-    <div class="col-12 col-lg-4">
+    <div class="col-12 col-lg-6">
         <div class="blog-card">
             <div class="blog-card-header">
                 <div class="d-flex align-items-center">
@@ -257,6 +261,82 @@
                         </p>
                     </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Awards and Achievements -->
+    <div class="col-12 col-lg-6">
+        <div class="blog-card">
+            <div class="blog-card-header">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-trophy-fill me-2 fs-5"></i>
+                    <h5 class="fw-bold mb-0">Premii și Realizări</h5>
+                </div>
+            </div>
+            <div class="blog-card-body">
+                {% if user_awards %}
+                    <div class="d-flex flex-column gap-3 mb-4">
+                        {% for award in user_awards[:5] %}
+                            <div class="award-card p-3 rounded border">
+                                <div class="d-flex align-items-start">
+                                    {% if award.award_type == 'writing' %}
+                                        <i class="bi bi-pencil-fill text-primary me-3 fs-4"></i>
+                                    {% elif award.award_type == 'community' %}
+                                        <i class="bi bi-people-fill text-success me-3 fs-4"></i>
+                                    {% elif award.award_type == 'milestone' %}
+                                        <i class="bi bi-flag-fill text-warning me-3 fs-4"></i>
+                                    {% else %}
+                                        <i class="bi bi-star-fill text-info me-3 fs-4"></i>
+                                    {% endif %}
+                                    <div class="flex-grow-1">
+                                        <h6 class="fw-bold mb-1 text-dark">{{ award.award_title }}</h6>
+                                        {% if award.award_description %}
+                                            <p class="text-muted small mb-1">{{ award.award_description }}</p>
+                                        {% endif %}
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar3 me-1"></i>{{ award.award_date.strftime('%d %B %Y') }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                        {% if user_awards|length > 5 %}
+                            <p class="text-muted small text-center mb-0">
+                                <i class="bi bi-three-dots"></i> și încă {{ user_awards|length - 5 }} premii
+                            </p>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted mb-4">
+                        <i class="bi bi-trophy display-4 mb-3"></i>
+                        <p class="mb-0">
+                            {% if current_user and current_user.username == blog_owner.username %}
+                                Premiile tale vor apărea aici pe măsură ce îți dezvolți activitatea pe platformă.
+                            {% else %}
+                                {{ blog_owner.username }} nu a primit încă premii.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
+
+                <!-- Statistics Summary -->
+                <div class="border-top pt-3">
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="p-2 bg-light rounded">
+                                <div class="h5 fw-bold text-primary mb-1">{{ total_likes }}</div>
+                                <small class="text-muted">Total aprecieri primite</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-2 bg-light rounded">
+                                <div class="h5 fw-bold text-success mb-1">{{ total_comments }}</div>
+                                <small class="text-muted">Total comentarii primite</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

@@ -383,3 +383,25 @@ def get_available_months_for_user(db: Session, user_id: int):
     ).all()
     
     return [{"year": r.year, "month": r.month, "post_count": r.post_count} for r in result]
+
+# User Awards CRUD functions
+def get_user_awards(db: Session, user_id: int):
+    """Get all awards for a specific user, ordered by date"""
+    return db.query(models.UserAward).filter(
+        models.UserAward.user_id == user_id
+    ).order_by(models.UserAward.award_date.desc()).all()
+
+def get_user_total_likes(db: Session, user_id: int):
+    """Get total likes received by a user across all their posts"""
+    return db.query(func.count(models.Like.id)).join(
+        models.Post, models.Like.post_id == models.Post.id
+    ).filter(models.Post.user_id == user_id).scalar() or 0
+
+def get_user_total_comments(db: Session, user_id: int):
+    """Get total approved comments received by a user across all their posts"""
+    return db.query(func.count(models.Comment.id)).join(
+        models.Post, models.Comment.post_id == models.Post.id
+    ).filter(
+        models.Post.user_id == user_id,
+        models.Comment.approved == True
+    ).scalar() or 0

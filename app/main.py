@@ -646,6 +646,11 @@ async def read_root(request: Request, category: str = "toate", month: int = None
         # Get best friends for the blog owner
         best_friends = crud.get_best_friends_for_user(db, user.id)
         
+        # Get user awards and statistics
+        user_awards = crud.get_user_awards(db, user.id)
+        total_likes = crud.get_user_total_likes(db, user.id)
+        total_comments = crud.get_user_total_comments(db, user.id)
+        
         # Get approved comments for featured and latest posts
         for post in featured_posts + latest_posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
@@ -667,7 +672,10 @@ async def read_root(request: Request, category: str = "toate", month: int = None
             "all_posts": all_posts,
             "available_months": available_months,
             "blog_categories": blog_categories,
-            "best_friends": best_friends
+            "best_friends": best_friends,
+            "user_awards": user_awards,
+            "total_likes": total_likes,
+            "total_comments": total_comments
         })
         return templates.TemplateResponse("blog.html", context)
     else:
@@ -1051,6 +1059,11 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
         # Get best friends for the blog owner
         best_friends = crud.get_best_friends_for_user(db, user.id)
         
+        # Get user awards and statistics
+        user_awards = crud.get_user_awards(db, user.id)
+        total_likes = crud.get_user_total_likes(db, user.id)
+        total_comments = crud.get_user_total_comments(db, user.id)
+        
         # Get approved comments for featured and latest posts
         for post in featured_posts + latest_posts:
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
@@ -1068,7 +1081,10 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
             "latest_posts": latest_posts,
             "all_posts": all_posts,
             "available_months": available_months,
-            "best_friends": best_friends
+            "best_friends": best_friends,
+            "user_awards": user_awards,
+            "total_likes": total_likes,
+            "total_comments": total_comments
         })
         return templates.TemplateResponse("blog.html", context)
     else:

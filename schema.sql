@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS likes;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS best_friends;
 DROP TABLE IF EXISTS featured_posts;
+DROP TABLE IF EXISTS user_awards;
 DROP TABLE IF EXISTS posts;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS tags; 
@@ -168,6 +169,25 @@ CREATE TABLE featured_posts (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
+-- USER AWARDS TABLE
+-- ===================================
+CREATE TABLE user_awards (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'User who received the award',
+    award_title VARCHAR(255) NOT NULL COMMENT 'Title of the award',
+    award_description TEXT COMMENT 'Description of the achievement',
+    award_date DATE NOT NULL COMMENT 'Date when award was received',
+    award_type ENUM('writing', 'community', 'milestone', 'special') DEFAULT 'writing' COMMENT 'Type of award',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_award_date (award_date),
+    INDEX idx_award_type (award_type)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
 -- SAMPLE DATA
 -- ===================================
 
@@ -304,3 +324,21 @@ INSERT INTO featured_posts (user_id, post_id, position) VALUES
 -- vanatordecuvinte's featured posts
 (3, 8, 1),  -- "Labirintul din metrou" as 1st featured
 (3, 9, 2);  -- "Manifest pentru cuvinte" as 2nd featured
+
+-- Sample user awards
+INSERT INTO user_awards (user_id, award_title, award_description, award_date, award_type) VALUES 
+-- gandurisilimbrici's awards
+(1, 'Primul Gând', 'Prima postare pe platforma Calimara', '2024-01-15', 'milestone'),
+(1, 'Poet Popular', 'Peste 50 de aprecieri pentru poezii', '2024-02-20', 'writing'),
+(1, 'Blogger Dedicat', '5 postări în prima lună', '2024-02-01', 'community'),
+
+-- mireasufletului's awards
+(2, 'Inima României', 'Poezie despre patriotism cu peste 40 de aprecieri', '2024-03-10', 'writing'),
+(2, 'Scriitor Prolific', '10 postări publicate', '2024-03-15', 'milestone'),
+
+-- vanatordecuvinte's awards
+(3, 'Observator Urban', 'Serie de articole despre București', '2024-02-25', 'writing'),
+(3, 'Filosof Modern', 'Manifest pentru cuvinte - lucrare excepțională', '2024-03-01', 'special'),
+
+-- filedintramvai's awards
+(4, 'Cronist al Orașului', 'Jurnale urbane apreciate de comunitate', '2024-03-05', 'writing');
