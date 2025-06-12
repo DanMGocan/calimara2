@@ -295,6 +295,67 @@
             </div>
         </div>
 
+        <!-- Best Friends -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#bestFriendsCollapse" aria-expanded="false" aria-controls="bestFriendsCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-people me-2"></i>Prietenii Mei (max 3)</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
+            </div>
+            <div class="collapse" id="bestFriendsCollapse">
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Selectează până la 3 autori care îți plac și pe care vrei să-i promovezi pe blogul tău. Aceștia vor apărea într-o secțiune specială pe blog.
+                    </p>
+                    
+                    <form id="bestFriendsForm">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-heart me-1"></i>Prietenul #1
+                                </label>
+                                <input type="text" class="form-control friend-search" 
+                                       id="friend1" name="friend1" 
+                                       placeholder="Caută nume de utilizator..." 
+                                       autocomplete="off">
+                                <div class="search-results" id="results1"></div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-heart me-1"></i>Prietenul #2
+                                </label>
+                                <input type="text" class="form-control friend-search" 
+                                       id="friend2" name="friend2" 
+                                       placeholder="Caută nume de utilizator..." 
+                                       autocomplete="off">
+                                <div class="search-results" id="results2"></div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-heart me-1"></i>Prietenul #3
+                                </label>
+                                <input type="text" class="form-control friend-search" 
+                                       id="friend3" name="friend3" 
+                                       placeholder="Caută nume de utilizator..." 
+                                       autocomplete="off">
+                                <div class="search-results" id="results3"></div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success mt-3">
+                            <i class="bi bi-save me-2"></i>Salvează Prietenii
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- Posts Management -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
@@ -792,6 +853,105 @@ function showDonationLinksMessage(message, type) {
         errorDiv.querySelector(".error-message").textContent = message;
         errorDiv.classList.remove("d-none");
         setTimeout(() => errorDiv.classList.add("d-none"), 8000);
+    }
+}
+
+// Best Friends functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Load current best friends
+    loadCurrentBestFriends();
+    
+    // Handle friend search inputs
+    document.querySelectorAll('.friend-search').forEach(input => {
+        let searchTimeout;
+        input.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            const resultsDiv = document.getElementById('results' + this.id.slice(-1));
+            
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '';
+                return;
+            }
+            
+            searchTimeout = setTimeout(() => {
+                searchFriends(query, resultsDiv, this);
+            }, 300);
+        });
+    });
+    
+    // Handle best friends form submission
+    document.getElementById('bestFriendsForm').addEventListener('submit', saveBestFriends);
+});
+
+async function loadCurrentBestFriends() {
+    try {
+        const response = await fetch('/api/user/me');
+        const user = await response.json();
+        
+        // Note: You'll need to add best friends to the user endpoint response
+        // For now, we'll leave the fields empty as this requires backend changes
+    } catch (error) {
+        console.error('Error loading best friends:', error);
+    }
+}
+
+async function searchFriends(query, resultsDiv, inputElement) {
+    try {
+        const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+        const users = await response.json();
+        
+        if (users.length === 0) {
+            resultsDiv.innerHTML = '<div class="search-result-item text-muted small">Nu s-au găsit utilizatori</div>';
+            return;
+        }
+        
+        resultsDiv.innerHTML = users.map(user => `
+            <div class="search-result-item" onclick="selectFriend('${user.username}', '${inputElement.id}')">
+                <strong>@${user.username}</strong>
+                ${user.subtitle ? `<br><small class="text-muted">${user.subtitle}</small>` : ''}
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error searching friends:', error);
+        resultsDiv.innerHTML = '<div class="search-result-item text-danger small">Eroare la căutare</div>';
+    }
+}
+
+function selectFriend(username, inputId) {
+    document.getElementById(inputId).value = username;
+    document.getElementById('results' + inputId.slice(-1)).innerHTML = '';
+}
+
+async function saveBestFriends(e) {
+    e.preventDefault();
+    
+    const friend1 = document.getElementById('friend1').value.trim();
+    const friend2 = document.getElementById('friend2').value.trim();
+    const friend3 = document.getElementById('friend3').value.trim();
+    
+    const friends = [friend1, friend2, friend3].filter(f => f !== '');
+    
+    try {
+        const response = await fetch('/api/user/best-friends', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ friends: friends })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showMessage(true, 'Prietenii au fost salvați cu succes!');
+        } else {
+            showMessage(false, result.detail || 'Eroare la salvarea prietenilor');
+        }
+    } catch (error) {
+        console.error('Error saving best friends:', error);
+        showMessage(false, 'Eroare la salvarea prietenilor');
     }
 }
 </script>

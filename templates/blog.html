@@ -453,6 +453,62 @@
             {% endif %}
         </div>
         
+        <!-- Best Friends -->
+        {% if best_friends %}
+            <div class="sidebar-card">
+                <h5 class="fw-bold mb-4">
+                    <i class="bi bi-people text-accent me-2"></i>Prietenii Mei
+                </h5>
+                <div class="d-flex flex-column gap-3">
+                    {% for friendship in best_friends %}
+                        <a href="//{{ friendship.friend.username }}.calimara.ro" 
+                           class="text-decoration-none d-flex align-items-center p-2 rounded hover-lift" 
+                           style="background: rgba(27, 94, 32, 0.05); transition: all 0.3s ease;">
+                            <img src="{{ get_avatar_url(friendship.friend, 40) }}" 
+                                 alt="Avatar {{ friendship.friend.username }}" 
+                                 class="rounded-circle me-3" 
+                                 style="width: 2.5rem; height: 2.5rem; object-fit: cover;">
+                            <div class="flex-grow-1">
+                                <h6 class="fw-semibold mb-1 text-dark">@{{ friendship.friend.username }}</h6>
+                                {% if friendship.friend.subtitle %}
+                                    <p class="text-muted small mb-0">{{ friendship.friend.subtitle[:60] }}{% if friendship.friend.subtitle|length > 60 %}...{% endif %}</p>
+                                {% else %}
+                                    <p class="text-muted small mb-0">Călimara lui {{ friendship.friend.username }}</p>
+                                {% endif %}
+                            </div>
+                            <i class="bi bi-arrow-right text-muted"></i>
+                        </a>
+                    {% endfor %}
+                </div>
+                
+                {% if best_friends|length < 3 %}
+                    <div class="text-center mt-3 pt-3 border-top">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            {% if current_user and current_user.username == blog_owner.username %}
+                                Poți selecta până la 3 prieteni din <a href="/dashboard" class="text-decoration-none">panoul de administrare</a>.
+                            {% else %}
+                                {{ blog_owner.username }} poate selecta până la 3 prieteni.
+                            {% endif %}
+                        </small>
+                    </div>
+                {% endif %}
+            </div>
+        {% elif current_user and current_user.username == blog_owner.username %}
+            <div class="sidebar-card text-center">
+                <h5 class="fw-bold mb-3">
+                    <i class="bi bi-people text-accent me-2"></i>Prietenii Mei
+                </h5>
+                <div class="text-muted mb-3">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Nu ai selectat încă niciun prieten.
+                </div>
+                <a href="/dashboard" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i>Selectează Prieteni
+                </a>
+            </div>
+        {% endif %}
+        
         <!-- Call to Action -->
         {% if not current_user %}
             <div class="sidebar-card bg-gradient text-white" style="background: var(--gradient-accent);">

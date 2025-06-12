@@ -10,6 +10,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- Drop tables in reverse order of dependency
 DROP TABLE IF EXISTS likes;
 DROP TABLE IF EXISTS comments;
+DROP TABLE IF EXISTS best_friends;
 DROP TABLE IF EXISTS posts;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS tags; 
@@ -121,6 +122,29 @@ CREATE TABLE tags (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
+-- BEST FRIENDS TABLE
+-- ===================================
+CREATE TABLE best_friends (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'User who is selecting best friends',
+    friend_user_id INT NOT NULL COMMENT 'User who is being selected as best friend',
+    position INT NOT NULL COMMENT 'Position order (1, 2, or 3)',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    UNIQUE KEY unique_user_position (user_id, position),
+    UNIQUE KEY unique_user_friend (user_id, friend_user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_friend_user_id (friend_user_id),
+    INDEX idx_position (position),
+    
+    CONSTRAINT chk_position CHECK (position BETWEEN 1 AND 3),
+    CONSTRAINT chk_no_self_friend CHECK (user_id != friend_user_id)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
 -- SAMPLE DATA
 -- ===================================
 
@@ -155,6 +179,52 @@ INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
 (1, 'Scrisoare către viitorul meu', 'scrisoare-catre-viitorul-meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 19);
 
+-- Additional test users
+INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+    'mireasufletului',
+    'mirabela@poezie.ro',
+    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+    'Poezii din inima României, scrise cu drag pentru sufletele românești',
+    'mireasufletului-shapes'
+);
+
+INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+    'vanatordecuvinte',
+    'alex.scriitor@literatura.ro',
+    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+    'Vânez cuvintele prin labirintul gândurilor și le prind în capcana poveștilor',
+    'vanatordecuvinte-shapes'
+);
+
+INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+    'filedintramvai',
+    'elena.urban@bucuresti.ro',
+    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5N5YhF8lVJ5Hn5N5O',
+    'File din tramvaiul vieții - observații urban-poetice din București',
+    'filedintramvai-shapes'
+);
+
+-- Posts for mireasufletului
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(2, 'Dor de țară', 'dor-de-tara', 'Când vântul bate prin câmpurile de grâu\nȘi miroase a pâine și a cer senin,\nAtunci știu că sunt acasă, în România,\nÎn țara mea, cu dor și bucurie.', 'poezie', 42);
+
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(2, 'Amintiri din copilărie', 'amintiri-din-copilarie', 'Strada copilăriei mele era presărată cu flori de tei și râsete de copii. Vara se întindea nesfârșit, ca o pătură caldă peste zilele noastre fără griji. Alergam desculți pe iarbă și credeam că lumea întreagă ne aparține.', 'proza', 31);
+
+-- Posts for vanatordecuvinte  
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(3, 'Labirintul din metrou', 'labirintul-din-metrou', 'Coborând în subteranele Bucureștiului, descoperi un alt univers. Aici, în tunelurile de beton, se întâlnesc destine diferite, fiecare cu povestea lui. Observ și notez, ca un etnograf al timpurilor moderne.', 'proza', 28);
+
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(3, 'Manifest pentru cuvinte', 'manifest-pentru-cuvinte', 'Cuvintele sunt arme și sunt medicamente,\nSunt poduri și sunt ziduri,\nSunt întrebări și sunt răspunsuri.\nEu le vânez cu plasa imaginației\nȘi le eliberez în cărțile mele.', 'poezie', 35);
+
+-- Posts for filedintramvai
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(4, 'Stația Victoriei dimineața', 'statia-victoriei-dimineata', 'Ora 7:30, stația Victoriei. Un om citește ziarul, o femeie se uită pe geam, un copil râde. Fiecare pasager e o poveste în tramvaiul 41. Bucureștiul se trezește încet, iar eu notez tot ce văd.', 'jurnal', 18);
+
+INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
+(4, 'Ghid de supraviețuire urbană', 'ghid-de-supravietuire-urbana', 'Pentru a supraviețui în jungla de beton: învață să citești semne invizibile, să găsești frumusețe în colțuri uitate, să asculți poveștile străzii. Orașul e un organism viu - trebuie doar să știi să-l asculți.', 'eseu', 22);
+
 -- Sample comments
 INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 
 (1, 'Maria Popescu', 'maria@example.com', 'Ce frumos ai scris! Abia aștept să citesc mai multe din gândurile tale.', TRUE);
@@ -179,3 +249,20 @@ INSERT INTO tags (post_id, tag_name) VALUES
 (4, 'filozofie'),
 (5, 'scrisoare'),
 (5, 'viitor');
+
+-- Sample best friends relationships
+INSERT INTO best_friends (user_id, friend_user_id, position) VALUES 
+-- gandurisilimbrici's best friends
+(1, 2, 1),  -- mireasufletului as 1st best friend
+(1, 3, 2),  -- vanatordecuvinte as 2nd best friend
+(1, 4, 3),  -- filedintramvai as 3rd best friend
+
+-- mireasufletului's best friends  
+(2, 1, 1),  -- gandurisilimbrici as 1st best friend
+(2, 4, 2),  -- filedintramvai as 2nd best friend
+(2, 3, 3),  -- vanatordecuvinte as 3rd best friend
+
+-- vanatordecuvinte's best friends
+(3, 4, 1),  -- filedintramvai as 1st best friend
+(3, 1, 2),  -- gandurisilimbrici as 2nd best friend
+(3, 2, 3);  -- mireasufletului as 3rd best friend

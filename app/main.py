@@ -345,6 +345,61 @@ async def update_user_social_links(
     logger.info(f"Link-uri sociale actualizate cu succes pentru utilizatorul: {current_user.username}")
     return current_user
 
+@app.put("/api/user/best-friends")
+async def update_best_friends(
+    best_friends_data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    """Update user's best friends list (max 3 friends)"""
+    try:
+        friend_usernames = best_friends_data.get("friends", [])
+        
+        # Validate max 3 friends
+        if len(friend_usernames) > 3:
+            raise HTTPException(status_code=400, detail="Maximum 3 best friends allowed")
+        
+        # Remove existing best friends
+        db.execute(text("DELETE FROM best_friends WHERE user_id = :user_id"), {"user_id": current_user.id})
+        
+        # Add new best friends
+        for position, username in enumerate(friend_usernames, 1):
+            if username.strip():  # Skip empty usernames
+                friend = db.query(models.User).filter(models.User.username == username.strip()).first()
+                if friend and friend.id != current_user.id:  # Can't add self as best friend
+                    new_friendship = models.BestFriend(
+                        user_id=current_user.id,
+                        friend_user_id=friend.id,
+                        position=position
+                    )
+                    db.add(new_friendship)
+        
+        db.commit()
+        logger.info(f"Best friends actualizați pentru utilizatorul: {current_user.username}")
+        return {"success": True, "message": "Best friends updated successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Eroare la actualizarea best friends pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update best friends")
+
+@app.get("/api/users/search")
+async def search_users(
+    q: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    """Search for users by username for best friends selection"""
+    if len(q.strip()) < 2:
+        return []
+    
+    users = db.query(models.User).filter(
+        models.User.username.contains(q.strip()),
+        models.User.id != current_user.id  # Exclude current user
+    ).limit(10).all()
+    
+    return [{"username": user.username, "subtitle": user.subtitle} for user in users]
+
 # --- API Endpoints (Posts) ---
 
 @app.post("/api/posts/", response_model=schemas.Post) # Re-added response_model
@@ -489,13 +544,17 @@ async def read_root(request: Request, category: str = "toate", db: Session = Dep
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model
 
+        # Get best friends for the blog owner
+        best_friends = crud.get_best_friends_for_user(db, user.id)
+        
         context = get_common_context(request, current_user)
         context.update({
             "blog_owner": user,
             "posts": posts,
             "random_posts": random_posts,
             "random_users": random_users,
-            "blog_categories": blog_categories
+            "blog_categories": blog_categories,
+            "best_friends": best_friends
         })
         return templates.TemplateResponse("blog.html", context)
     else:
@@ -868,12 +927,16 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model # Re-added likes count
 
+        # Get best friends for the blog owner
+        best_friends = crud.get_best_friends_for_user(db, user.id)
+        
         context = get_common_context(request, current_user)
         context.update({
             "blog_owner": user,
             "posts": posts,
             "random_posts": random_posts,
-            "random_users": random_users
+            "random_users": random_users,
+            "best_friends": best_friends
         })
         return templates.TemplateResponse("blog.html", context)
     else:

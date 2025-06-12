@@ -343,3 +343,10 @@ def delete_tags_for_post(db: Session, post_id: int):
     """Delete all tags for a specific post"""
     db.query(models.Tag).filter(models.Tag.post_id == post_id).delete()
     db.commit()
+
+# Best Friends CRUD functions
+def get_best_friends_for_user(db: Session, user_id: int):
+    """Get the best friends for a specific user, ordered by position"""
+    return db.query(models.BestFriend).filter(
+        models.BestFriend.user_id == user_id
+    ).order_by(models.BestFriend.position).all()

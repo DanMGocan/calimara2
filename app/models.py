@@ -34,6 +34,21 @@ class User(Base):
     posts: Mapped[List["Post"]] = relationship("Post", back_populates="owner")
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="commenter")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="liker")
+    
+    # Best friends relationships
+    best_friends: Mapped[List["BestFriend"]] = relationship(
+        "BestFriend", 
+        foreign_keys="BestFriend.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    
+    # Users who have this user as a best friend
+    friend_of: Mapped[List["BestFriend"]] = relationship(
+        "BestFriend",
+        foreign_keys="BestFriend.friend_user_id", 
+        back_populates="friend"
+    )
 
 class Post(Base):
     __tablename__ = "posts"
@@ -94,3 +109,16 @@ class Tag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     post: Mapped["Post"] = relationship("Post", back_populates="tags")
+
+class BestFriend(Base):
+    __tablename__ = "best_friends"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    friend_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="best_friends")
+    friend: Mapped["User"] = relationship("User", foreign_keys=[friend_user_id], back_populates="friend_of")
