@@ -116,6 +116,10 @@ def init_db():
                         print("✓ Featured posts created")
                     elif stmt.upper().startswith('INSERT INTO USER_AWARDS'):
                         print("✓ User awards created")
+                    elif stmt.upper().startswith('INSERT INTO CONVERSATIONS'):
+                        print("✓ Sample conversations created")
+                    elif stmt.upper().startswith('INSERT INTO MESSAGES'):
+                        print("✓ Sample messages created")
                         
                 except SQLAlchemyError as e:
                     # Skip validation statements that might fail
@@ -154,6 +158,12 @@ def init_db():
                 result = connection.execute(text("SELECT COUNT(*) FROM user_awards"))
                 awards_count = result.scalar()
                 
+                result = connection.execute(text("SELECT COUNT(*) FROM conversations"))
+                conversations_count = result.scalar()
+                
+                result = connection.execute(text("SELECT COUNT(*) FROM messages"))
+                messages_count = result.scalar()
+                
                 print("\n" + "=" * 30)
                 print("DATABASE INITIALIZATION SUMMARY")
                 print("=" * 30)
@@ -165,6 +175,8 @@ def init_db():
                 print(f"Best friends: {best_friends_count}")
                 print(f"Featured posts: {featured_posts_count}")
                 print(f"User awards: {awards_count}")
+                print(f"Conversations: {conversations_count}")
+                print(f"Messages: {messages_count}")
                 print("=" * 30)
                 print("✓ Database initialization complete!")
                 print("\nTest user credentials:")

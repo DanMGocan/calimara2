@@ -405,3 +405,188 @@ def get_user_total_comments(db: Session, user_id: int):
         models.Post.user_id == user_id,
         models.Comment.approved == True
     ).scalar() or 0
+
+# ===================================
+# MESSAGES CRUD FUNCTIONS
+# ===================================
+
+def get_or_create_conversation(db: Session, user1_id: int, user2_id: int) -> models.Conversation:
+    """Get existing conversation between two users or create a new one"""
+    # Ensure user1_id is smaller than user2_id for consistent ordering
+    if user1_id > user2_id:
+        user1_id, user2_id = user2_id, user1_id
+    
+    # Try to find existing conversation
+    conversation = db.query(models.Conversation).filter(
+        models.Conversation.user1_id == user1_id,
+        models.Conversation.user2_id == user2_id
+    ).first()
+    
+    if not conversation:
+        # Create new conversation
+        conversation = models.Conversation(
+            user1_id=user1_id,
+            user2_id=user2_id
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+    
+    return conversation
+
+def get_user_conversations(db: Session, user_id: int, limit: int = 50):
+    """Get all conversations for a user with latest message info"""
+    conversations = db.query(models.Conversation).filter(
+        or_(
+            models.Conversation.user1_id == user_id,
+            models.Conversation.user2_id == user_id
+        )
+    ).order_by(models.Conversation.updated_at.desc()).limit(limit).all()
+    
+    # Load messages for each conversation to get latest message
+    for conversation in conversations:
+        latest_message = db.query(models.Message).filter(
+            models.Message.conversation_id == conversation.id
+        ).order_by(models.Message.created_at.desc()).first()
+        conversation._latest_message = latest_message
+    
+    return conversations
+
+def get_conversation_by_id(db: Session, conversation_id: int, user_id: int) -> Optional[models.Conversation]:
+    """Get a conversation by ID, but only if the user is a participant"""
+    return db.query(models.Conversation).filter(
+        models.Conversation.id == conversation_id,
+        or_(
+            models.Conversation.user1_id == user_id,
+            models.Conversation.user2_id == user_id
+        )
+    ).first()
+
+def get_conversation_messages(db: Session, conversation_id: int, user_id: int, limit: int = 50, offset: int = 0):
+    """Get messages for a conversation, but only if user is a participant"""
+    # First verify user is part of the conversation
+    conversation = get_conversation_by_id(db, conversation_id, user_id)
+    if not conversation:
+        return []
+    
+    return db.query(models.Message).filter(
+        models.Message.conversation_id == conversation_id
+    ).order_by(models.Message.created_at.desc()).limit(limit).offset(offset).all()
+
+def create_message(db: Session, conversation_id: int, sender_id: int, content: str) -> Optional[models.Message]:
+    """Create a new message in a conversation"""
+    # Verify sender is part of the conversation
+    conversation = get_conversation_by_id(db, conversation_id, sender_id)
+    if not conversation:
+        return None
+    
+    message = models.Message(
+        conversation_id=conversation_id,
+        sender_id=sender_id,
+        content=content.strip(),
+        is_read=False
+    )
+    
+    db.add(message)
+    
+    # Update conversation's updated_at timestamp
+    conversation.updated_at = func.now()
+    db.add(conversation)
+    
+    db.commit()
+    db.refresh(message)
+    
+    return message
+
+def send_message_to_user(db: Session, sender_id: int, recipient_username: str, content: str) -> Optional[models.Message]:
+    """Send a message to a user by their username"""
+    # Get recipient user
+    recipient = get_user_by_username(db, recipient_username)
+    if not recipient or recipient.id == sender_id:
+        return None
+    
+    # Get or create conversation
+    conversation = get_or_create_conversation(db, sender_id, recipient.id)
+    
+    # Create message
+    return create_message(db, conversation.id, sender_id, content)
+
+def mark_messages_as_read(db: Session, conversation_id: int, user_id: int):
+    """Mark all unread messages in a conversation as read for a specific user"""
+    # Verify user is part of the conversation
+    conversation = get_conversation_by_id(db, conversation_id, user_id)
+    if not conversation:
+        return False
+    
+    # Mark messages from the other user as read
+    db.query(models.Message).filter(
+        models.Message.conversation_id == conversation_id,
+        models.Message.sender_id != user_id,
+        models.Message.is_read == False
+    ).update({"is_read": True})
+    
+    db.commit()
+    return True
+
+def get_unread_message_count(db: Session, user_id: int) -> int:
+    """Get count of unread messages for a user"""
+    # Get all conversations where user is a participant
+    user_conversations = db.query(models.Conversation.id).filter(
+        or_(
+            models.Conversation.user1_id == user_id,
+            models.Conversation.user2_id == user_id
+        )
+    ).subquery()
+    
+    # Count unread messages from other users in those conversations
+    return db.query(func.count(models.Message.id)).filter(
+        models.Message.conversation_id.in_(user_conversations),
+        models.Message.sender_id != user_id,
+        models.Message.is_read == False
+    ).scalar() or 0
+
+def delete_conversation(db: Session, conversation_id: int, user_id: int) -> bool:
+    """Delete a conversation (only if user is a participant)"""
+    conversation = get_conversation_by_id(db, conversation_id, user_id)
+    if not conversation:
+        return False
+    
+    db.delete(conversation)
+    db.commit()
+    return True
+
+def search_conversations(db: Session, user_id: int, query: str, limit: int = 20):
+    """Search conversations by other user's username or latest message content"""
+    if not query or len(query.strip()) < 2:
+        return []
+    
+    query = f"%{query.strip()}%"
+    
+    # Get conversations where user is a participant
+    conversations = db.query(models.Conversation).filter(
+        or_(
+            models.Conversation.user1_id == user_id,
+            models.Conversation.user2_id == user_id
+        )
+    ).all()
+    
+    matching_conversations = []
+    
+    for conv in conversations:
+        other_user = conv.get_other_user(user_id)
+        
+        # Check if other user's username matches
+        if query.lower().replace('%', '') in other_user.username.lower():
+            matching_conversations.append(conv)
+            continue
+        
+        # Check if any message content matches
+        message_match = db.query(models.Message).filter(
+            models.Message.conversation_id == conv.id,
+            models.Message.content.ilike(query)
+        ).first()
+        
+        if message_match:
+            matching_conversations.append(conv)
+    
+    return matching_conversations[:limit]

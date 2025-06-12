@@ -55,6 +55,25 @@
                 <ul class="navbar-nav ms-auto">
                     {% if current_user %}
                         <!-- Logged in user navigation -->
+                        <!-- Messages link (always visible for logged users) -->
+                        <li class="nav-item">
+                            {% if current_domain == 'calimara.ro' %}
+                                <a class="nav-link text-white hover-accent position-relative" href="//{{ current_user.username }}.calimara.ro/messages">
+                                    <i class="bi bi-chat-dots me-1"></i>Mesaje
+                                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" id="unreadBadge">
+                                        <span class="visually-hidden">mesaje necitite</span>
+                                    </span>
+                                </a>
+                            {% else %}
+                                <a class="nav-link text-white hover-accent position-relative" href="/messages">
+                                    <i class="bi bi-chat-dots me-1"></i>Mesaje
+                                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" id="unreadBadge">
+                                        <span class="visually-hidden">mesaje necitite</span>
+                                    </span>
+                                </a>
+                            {% endif %}
+                        </li>
+                        
                         {% if current_domain == 'calimara.ro' %}
                             <!-- User is on main domain, show link to their microblog -->
                             <li class="nav-item">
@@ -191,5 +210,40 @@
     <script>
         document.getElementById('currentYear').textContent = new Date().getFullYear();
     </script>
+    
+    <!-- Unread Messages Notification -->
+    {% if current_user %}
+    <script>
+        // Load unread message count for logged-in users
+        function loadUnreadMessageCount() {
+            fetch('/api/messages/unread-count')
+                .then(response => response.json())
+                .then(data => {
+                    const unreadCount = data.unread_count || 0;
+                    const badge = document.getElementById('unreadBadge');
+                    
+                    if (badge) {
+                        if (unreadCount > 0) {
+                            badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                            badge.classList.remove('d-none');
+                        } else {
+                            badge.classList.add('d-none');
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading unread count:', error);
+                });
+        }
+        
+        // Load unread count on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadUnreadMessageCount();
+            
+            // Refresh unread count every 30 seconds
+            setInterval(loadUnreadMessageCount, 30000);
+        });
+    </script>
+    {% endif %}
 </body>
 </html>

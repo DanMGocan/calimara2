@@ -8,6 +8,8 @@ SET CHARACTER SET utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- Drop tables in reverse order of dependency
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS conversations;
 DROP TABLE IF EXISTS likes;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS best_friends;
@@ -188,6 +190,47 @@ CREATE TABLE user_awards (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
+-- CONVERSATIONS TABLE
+-- ===================================
+CREATE TABLE conversations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user1_id INT NOT NULL COMMENT 'First participant (lower user ID)',
+    user2_id INT NOT NULL COMMENT 'Second participant (higher user ID)',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    UNIQUE KEY unique_participants (user1_id, user2_id),
+    FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user1_id (user1_id),
+    INDEX idx_user2_id (user2_id),
+    INDEX idx_updated_at (updated_at),
+    
+    CONSTRAINT chk_different_users CHECK (user1_id != user2_id),
+    CONSTRAINT chk_user_order CHECK (user1_id < user2_id)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
+-- MESSAGES TABLE
+-- ===================================
+CREATE TABLE messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id INT NOT NULL COMMENT 'Reference to conversation',
+    sender_id INT NOT NULL COMMENT 'User who sent the message',
+    content TEXT NOT NULL COMMENT 'Message content',
+    is_read BOOLEAN DEFAULT FALSE COMMENT 'Whether message has been read by recipient',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_conversation_id (conversation_id),
+    INDEX idx_sender_id (sender_id),
+    INDEX idx_created_at (created_at),
+    INDEX idx_is_read (is_read),
+    INDEX idx_conversation_created (conversation_id, created_at)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
 -- SAMPLE DATA
 -- ===================================
 
@@ -342,3 +385,28 @@ INSERT INTO user_awards (user_id, award_title, award_description, award_date, aw
 
 -- filedintramvai's awards
 (4, 'Cronist al Orașului', 'Jurnale urbane apreciate de comunitate', '2024-03-05', 'writing');
+
+-- Sample conversations
+INSERT INTO conversations (user1_id, user2_id) VALUES 
+-- gandurisilimbrici (1) and mireasufletului (2)
+(1, 2),
+-- gandurisilimbrici (1) and vanatordecuvinte (3)  
+(1, 3),
+-- mireasufletului (2) and vanatordecuvinte (3)
+(2, 3);
+
+-- Sample messages
+INSERT INTO messages (conversation_id, sender_id, content, is_read) VALUES 
+-- Conversation between gandurisilimbrici and mireasufletului
+(1, 1, 'Salut! Mi-a plăcut foarte mult poezia ta despre dorul de țară. Îmi amintește de sentimentele mele din copilărie.', TRUE),
+(1, 2, 'Mulțumesc frumos! Și mie îmi plac gândurile tale despre limbrici și poezie. E o metaforă foarte interesantă.', TRUE),
+(1, 1, 'Da, am vrut să arăt că și lucrurile aparent simple au frumusețea lor. Poate colaborăm la un proiect împreună?', FALSE),
+
+-- Conversation between gandurisilimbrici and vanatordecuvinte
+(2, 3, 'Bună! Am citit textul tău despre metropolitanul din București. Foarte captivant stilul tău!', TRUE),
+(2, 1, 'Salut! Mulțumesc pentru apreciere. Mi-ar plăcea să citesc mai multe din observațiile tale urbane.', TRUE),
+(2, 3, 'Cu siguranță! Poate ne întâlnim să discutăm despre literatură și oraș.', FALSE),
+
+-- Conversation between mireasufletului and vanatordecuvinte
+(3, 2, 'Salut Alex! Manifestul tău pentru cuvinte m-a impresionat profund. Filozofia ta despre scriere rezonează cu mine.', TRUE),
+(3, 3, 'Mulțumesc, Mirabela! Și poeziile tale sunt pline de emoție autentică. Cred că avem viziuni similare despre literatura română.', FALSE);

@@ -10,3 +10,8 @@
 # Lupta cu globalismul scriind o poezie. 
 # Allow user to have 3 postari in evidenta 
 # Environmentaly friendly webdevelopment 
+
+# FEATURES 
+
+# User messaging 
+# Users recommending other blogs 
