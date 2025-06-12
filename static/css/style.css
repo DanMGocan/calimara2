@@ -7,30 +7,30 @@
 /* CSS Custom Properties (Variables) */
 :root {
     /* Primary Color Palette */
-    --color-primary: #1b2429ff; /* Gunmetal */
-    --color-primary-light: #6e8187ff; /* Slate Gray */
-    --color-primary-dark: #1b2429ff; /* Gunmetal */
+    --color-primary: #2C2C2C;
+    --color-primary-light: #404040;
+    --color-primary-dark: #1a1a1a;
     
-    /* Accent Colors */
-    --color-accent: #c7dadfff; /* Columbia Blue */
-    --color-accent-light: #e0e8eaff; /* Antiflash White */
-    --color-accent-dark: #a1b9bdff; /* Ash Gray */
+    /* Accent Colors - Changed to Dark Green */
+    --color-accent: #1B5E20;
+    --color-accent-light: #2E7D32;
+    --color-accent-dark: #0D4E14;
     
     /* Secondary Colors */
-    --color-secondary: #a1b9bdff; /* Ash Gray */
-    --color-secondary-light: #c7dadfff; /* Columbia Blue */
-    --color-secondary-dark: #6e8187ff; /* Slate Gray */
+    --color-secondary: #3C4F76;
+    --color-secondary-light: #4a5f8f;
+    --color-secondary-dark: #2d3b5a;
     
     /* Neutral Colors */
-    --color-light: #e0e8eaff; /* Antiflash White */
-    --color-muted: #6e8187ff; /* Slate Gray */
-    --color-dark: #1b2429ff; /* Gunmetal */
+    --color-light: #f8f9fa;
+    --color-muted: #6c757d;
+    --color-dark: #212529;
     
     /* Highlight & Success */
     --color-highlight: #F2C84B;
     --color-success: #28a745;
     --color-warning: #ffc107;
-    --color-danger: #e76f51ff; /* Keep existing Burnt Sienna */
+    --color-danger: #dc3545;
     --color-info: #17a2b8;
     
     /* Background & Overlay */
@@ -85,7 +85,7 @@ html {
 
 body {
     font-family: var(--font-family-base);
-    background: url('/static/img/background.svg') center/cover fixed; /* Changed background image */
+    background: url('/static/img/bear.jpg') center/cover fixed;
     background-attachment: fixed;
     color: var(--color-primary);
     line-height: 1.6;
@@ -441,11 +441,6 @@ body::before {
    BOOTSTRAP CUSTOMIZATIONS
    ================================== */
 
-/* Alert Enhancements */
-.alert {
-    padding: 1.5rem; /* Added padding to alerts */
-}
-
 /* Primary Color System */
 .bg-primary-custom {
     background: var(--gradient-primary) !important;
@@ -507,10 +502,6 @@ body::before {
     color: white;
     border: none;
     font-weight: var(--font-weight-semibold);
-}
-
-.card-body {
-    padding: 1.5rem; /* Added padding to card body */
 }
 
 /* Form Enhancements */
@@ -641,7 +632,7 @@ body::before {
 .blog-card {
     background: var(--color-container-bg);
     border-radius: var(--border-radius-lg);
-    padding: 1.5rem; /* Added padding to blog card */
+    padding: 0;
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
@@ -650,17 +641,6 @@ body::before {
     backdrop-filter: blur(0.625rem);
     overflow: hidden;
     position: relative;
-}
-
-.blog-card-flush-header {
-    margin-left: -1.5rem;
-    margin-right: -1.5rem;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-    padding-top: 1rem; /* Match existing header padding */
-    padding-bottom: 1rem; /* Match existing header padding */
-    background: var(--color-accent); /* Match existing header background */
-    color: white; /* Match existing header text color */
 }
 
 /* Decorative dots inside containers */
@@ -965,7 +945,7 @@ body::before {
 .sidebar-card {
     background: var(--color-bg-overlay);
     border-radius: var(--border-radius);
-    padding: 1.5rem; /* Existing padding, ensuring consistency */
+    padding: 1.5rem;
     margin-bottom: 1.5rem;
     box-shadow: var(--shadow);
     backdrop-filter: blur(0.625rem);
@@ -1227,7 +1207,7 @@ footer {
 .social-contact-card {
     background: rgba(255, 255, 255, 0.95);
     border-radius: var(--border-radius-lg);
-    padding: 2.5rem 2rem; /* Reverted padding */
+    padding: 2.5rem 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
     backdrop-filter: blur(0.625rem);
@@ -1469,7 +1449,7 @@ footer {
 .poetry-post-card {
     background: rgba(255, 255, 255, 0.98);
     border-radius: 1.5rem;
-    padding: 3rem; /* Reverted padding */
+    padding: 3rem;
     margin-bottom: 2rem;
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
     transition: all var(--transition-normal);
@@ -2406,3 +2386,5 @@ button[aria-expanded="false"] .collapse-arrow {
 .friend-search:focus + .search-results {
     display: block;
 }
+
+EOF < /dev/null
