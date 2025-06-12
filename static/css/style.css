@@ -7,30 +7,30 @@
 /* CSS Custom Properties (Variables) */
 :root {
     /* Primary Color Palette */
-    --color-primary: #264653ff; /* Charcoal */
-    --color-primary-light: #2a9d8fff; /* Persian Green */
-    --color-primary-dark: #264653ff; /* Charcoal */
+    --color-primary: #1b2429ff; /* Gunmetal */
+    --color-primary-light: #6e8187ff; /* Slate Gray */
+    --color-primary-dark: #1b2429ff; /* Gunmetal */
     
     /* Accent Colors */
-    --color-accent: #e76f51ff; /* Burnt Sienna */
-    --color-accent-light: #f4a261ff; /* Sandy Brown */
-    --color-accent-dark: #e76f51ff; /* Burnt Sienna */
+    --color-accent: #c7dadfff; /* Columbia Blue */
+    --color-accent-light: #e0e8eaff; /* Antiflash White */
+    --color-accent-dark: #a1b9bdff; /* Ash Gray */
     
     /* Secondary Colors */
-    --color-secondary: #2a9d8fff; /* Persian Green */
-    --color-secondary-light: #2a9d8fff; /* Persian Green */
-    --color-secondary-dark: #264653ff; /* Charcoal */
+    --color-secondary: #a1b9bdff; /* Ash Gray */
+    --color-secondary-light: #c7dadfff; /* Columbia Blue */
+    --color-secondary-dark: #6e8187ff; /* Slate Gray */
     
     /* Neutral Colors */
-    --color-light: #e9c46aff; /* Saffron */
-    --color-muted: #6c757d;
-    --color-dark: #212529;
+    --color-light: #e0e8eaff; /* Antiflash White */
+    --color-muted: #6e8187ff; /* Slate Gray */
+    --color-dark: #1b2429ff; /* Gunmetal */
     
     /* Highlight & Success */
     --color-highlight: #F2C84B;
     --color-success: #28a745;
     --color-warning: #ffc107;
-    --color-danger: #e76f51ff; /* Burnt Sienna */
+    --color-danger: #e76f51ff; /* Keep existing Burnt Sienna */
     --color-info: #17a2b8;
     
     /* Background & Overlay */
@@ -85,7 +85,7 @@ html {
 
 body {
     font-family: var(--font-family-base);
-    background: url('/static/img/bear.jpg') center/cover fixed;
+    background: url('/static/img/background.svg') center/cover fixed; /* Changed background image */
     background-attachment: fixed;
     color: var(--color-primary);
     line-height: 1.6;
@@ -441,6 +441,11 @@ body::before {
    BOOTSTRAP CUSTOMIZATIONS
    ================================== */
 
+/* Alert Enhancements */
+.alert {
+    padding: 1.5rem; /* Added padding to alerts */
+}
+
 /* Primary Color System */
 .bg-primary-custom {
     background: var(--gradient-primary) !important;
@@ -636,7 +641,7 @@ body::before {
 .blog-card {
     background: var(--color-container-bg);
     border-radius: var(--border-radius-lg);
-    padding: 0; /* Reverted padding */
+    padding: 1.5rem; /* Added padding to blog card */
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
@@ -645,6 +650,17 @@ body::before {
     backdrop-filter: blur(0.625rem);
     overflow: hidden;
     position: relative;
+}
+
+.blog-card-flush-header {
+    margin-left: -1.5rem;
+    margin-right: -1.5rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    padding-top: 1rem; /* Match existing header padding */
+    padding-bottom: 1rem; /* Match existing header padding */
+    background: var(--color-accent); /* Match existing header background */
+    color: white; /* Match existing header text color */
 }
 
 /* Decorative dots inside containers */
