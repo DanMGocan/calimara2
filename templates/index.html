@@ -31,14 +31,12 @@
 <div class="container mb-4">
     <div class="row justify-content-center">
         <div class="col-lg-8">
-            <div class="alert alert-info border-2 border-primary bg-light shadow-sm animate__animated animate__fadeIn" role="alert">
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-info-circle-fill text-primary me-3 fs-4"></i>
-                    <div>
-                        <h6 class="alert-heading mb-2 fw-bold text-primary">Șanse egale pentru toți autorii</h6>
-                        <p class="mb-0 small">Pentru a acorda tuturor autorilor calimara.ro o șansă egală, toate lucrările literare și toți autorii de pe această pagină sunt aleși aleatoriu și se schimbă în fiecare zi!</p>
-                    </div>
+            <div class="blog-card text-center animate__animated animate__fadeIn">
+                <div class="d-flex align-items-center justify-content-center mb-3">
+                    <i class="bi bi-info-circle-fill text-accent me-3 fs-3"></i>
+                    <h4 class="fw-bold mb-0 text-primary">Șanse egale pentru toți autorii</h4>
                 </div>
+                <p class="text-muted mb-0">Pentru a acorda tuturor autorilor calimara.ro o șansă egală, toate lucrările literare și toți autorii de pe această pagină sunt aleși aleatoriu și se schimbă în fiecare zi!</p>
             </div>
         </div>
     </div>
@@ -61,11 +59,12 @@
                             <a href="//{{ user.username }}.calimara.ro" 
                                class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift">
                                 <div class="d-flex align-items-center">
-                                    <div class="bg-primary-custom text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 3rem; height: 3rem;">
-                                        <i class="bi bi-person fs-5"></i>
-                                    </div>
+                                    <img src="{{ get_avatar_url(user, 48) }}" 
+                                         alt="Avatar {{ user.username }}" 
+                                         class="rounded-circle me-3" 
+                                         style="width: 3rem; height: 3rem; object-fit: cover;">
                                     <div class="flex-grow-1">
-                                        <h5 class="fw-medium mb-1">@{{ user.username }}</h5>
+                                        <h5 class="fw-medium mb-1 text-dark">@{{ user.username }}</h5>
                                         <p class="text-muted small mb-0">
                                             {% if user.subtitle %}
                                                 {{ user.subtitle }}
@@ -104,7 +103,7 @@
                 
                 <!-- Category Filter Buttons -->
                 <div class="category-filters mb-4">
-                    <div class="d-flex flex-wrap gap-2 justify-content-center">
+                    <div class="d-flex flex-wrap gap-2">
                         <button class="btn btn-sm btn-outline-primary category-filter-btn active" data-category="toate">
                             Toate
                         </button>
@@ -145,7 +144,7 @@
                                         </div>
                                         <div class="flex-grow-1">
                                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                                <h6 class="fw-semibold mb-0 text-primary">{{ post.title }}</h6>
+                                                <h6 class="fw-semibold mb-0 text-dark flex-grow-1 me-2">{{ post.title }}</h6>
                                                 {% if post.likes_count > 0 %}
                                                     <span class="badge bg-danger rounded-pill">
                                                         <i class="bi bi-heart-fill me-1"></i>{{ post.likes_count }}
@@ -456,7 +455,7 @@ document.querySelectorAll('.category-filter-btn').forEach(button => {
                                 </div>
                                 <div class="flex-grow-1">
                                     <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <h6 class="fw-semibold mb-0 text-primary">${post.title}</h6>
+                                        <h6 class="fw-semibold mb-0 text-dark flex-grow-1 me-2">${post.title}</h6>
                                         ${post.likes_count > 0 ? `
                                             <span class="badge bg-danger rounded-pill">
                                                 <i class="bi bi-heart-fill me-1"></i>${post.likes_count}
