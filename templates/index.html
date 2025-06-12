@@ -4,15 +4,25 @@
 {% block description %}Platforma românească de microblogging pentru scriitori și poeți. Creează-ți propriul blog și conectează-te cu comunitatea literară.{% endblock %}
 
 {% block content %}
+<!-- Development Warning -->
+<div class="alert alert-danger mb-0 border-0 rounded-0 text-center" role="alert">
+    <div class="container">
+        <div class="d-flex align-items-center justify-content-center">
+            <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+            <strong>ATENȚIE: Platformă în dezvoltare!</strong>
+            <span class="ms-2">Conținutul este șters zilnic. Nu postați încă lucrări importante!</span>
+        </div>
+    </div>
+</div>
+
 <!-- Hero Section -->
 <div class="hero-section animate__animated animate__fadeIn">
     <div class="container text-center">
         <div class="row justify-content-center">
             <div class="col-lg-8">
                 <h1 class="display-3 fw-bold mb-4">Calimara.ro</h1>
-                <p class="lead mb-5">
-                    Platforma românească de microblogging pentru scriitori și poeți. 
-                    Creează-ți propriul spațiu literar și conectează-te cu comunitatea.
+                <p class="small text-light opacity-75 mb-5" style="font-weight: 300;">
+                    Lupta cu globalismul! Scrie o poezie!
                 </p>
                 <div class="d-grid gap-3 d-md-flex justify-content-md-center">
                     <a href="/register" class="btn btn-primary-custom btn-lg px-5 py-3 hover-lift">

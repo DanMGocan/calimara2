@@ -631,18 +631,18 @@ body::before {
 .blog-card {
     background: var(--color-bg-overlay);
     border-radius: var(--border-radius-lg);
-    padding: 2rem;
+    padding: 1.5rem;
     margin-bottom: 2rem;
     box-shadow: var(--shadow);
     transition: all var(--transition-normal);
-    border-left: 0.25rem solid var(--color-accent);
+    border: 0.0625rem solid var(--color-accent);
     backdrop-filter: blur(0.625rem);
 }
 
 .blog-card:hover {
     transform: translateY(-0.3125rem);
     box-shadow: var(--shadow-xl);
-    border-left-color: var(--color-highlight);
+    border-color: var(--color-accent-light);
 }
 
 .post-card {
@@ -1249,6 +1249,7 @@ footer {
     transition: all var(--transition-normal);
     position: relative;
     overflow: hidden;
+    padding: 0.75rem 1rem !important;
 }
 
 .list-group-item::before {
