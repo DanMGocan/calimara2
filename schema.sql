@@ -11,6 +11,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS likes;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS best_friends;
+DROP TABLE IF EXISTS featured_posts;
 DROP TABLE IF EXISTS posts;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS tags; 
@@ -145,6 +146,28 @@ CREATE TABLE best_friends (
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================
+-- FEATURED POSTS TABLE
+-- ===================================
+CREATE TABLE featured_posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'User who is featuring the post',
+    post_id INT NOT NULL COMMENT 'Post being featured',
+    position INT NOT NULL COMMENT 'Position order (1, 2, or 3)',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    UNIQUE KEY unique_user_position (user_id, position),
+    UNIQUE KEY unique_user_post (user_id, post_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_post_id (post_id),
+    INDEX idx_position (position),
+    
+    CONSTRAINT chk_featured_position CHECK (position BETWEEN 1 AND 3)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
 -- SAMPLE DATA
 -- ===================================
 
@@ -266,3 +289,18 @@ INSERT INTO best_friends (user_id, friend_user_id, position) VALUES
 (3, 4, 1),  -- filedintramvai as 1st best friend
 (3, 1, 2),  -- gandurisilimbrici as 2nd best friend
 (3, 2, 3);  -- mireasufletului as 3rd best friend
+
+-- Sample featured posts
+INSERT INTO featured_posts (user_id, post_id, position) VALUES 
+-- gandurisilimbrici's featured posts
+(1, 2, 1),  -- "Limbrici și poezie" as 1st featured
+(1, 4, 2),  -- "Reflecții despre timp" as 2nd featured
+(1, 1, 3),  -- "Primul meu gând" as 3rd featured
+
+-- mireasufletului's featured posts
+(2, 6, 1),  -- "Dor de țară" as 1st featured
+(2, 7, 2),  -- "Amintiri din copilărie" as 2nd featured
+
+-- vanatordecuvinte's featured posts
+(3, 8, 1),  -- "Labirintul din metrou" as 1st featured
+(3, 9, 2);  -- "Manifest pentru cuvinte" as 2nd featured

@@ -356,6 +356,61 @@
             </div>
         </div>
 
+        <!-- Featured Posts -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-primary-custom text-white">
+                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#featuredPostsCollapse" aria-expanded="false" aria-controls="featuredPostsCollapse">
+                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-star me-2"></i>Postări în Evidență (max 3)</span>
+                        <i class="bi bi-chevron-down collapse-arrow"></i>
+                    </h5>
+                </button>
+            </div>
+            <div class="collapse" id="featuredPostsCollapse">
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Selectează până la 3 postări pe care vrei să le promovezi pe blogul tău. Acestea vor apărea în secțiunea "Postări în Evidență".
+                    </p>
+                    
+                    <form id="featuredPostsForm">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-star me-1"></i>Postarea #1
+                                </label>
+                                <select class="form-select" id="featured1" name="featured1">
+                                    <option value="">Selectează o postare...</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-star me-1"></i>Postarea #2
+                                </label>
+                                <select class="form-select" id="featured2" name="featured2">
+                                    <option value="">Selectează o postare...</option>
+                                </select>
+                            </div>
+                            
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">
+                                    <i class="bi bi-star me-1"></i>Postarea #3
+                                </label>
+                                <select class="form-select" id="featured3" name="featured3">
+                                    <option value="">Selectează o postare...</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success mt-3">
+                            <i class="bi bi-save me-2"></i>Salvează Postările în Evidență
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- Posts Management -->
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary-custom text-white">
@@ -952,6 +1007,86 @@ async function saveBestFriends(e) {
     } catch (error) {
         console.error('Error saving best friends:', error);
         showMessage(false, 'Eroare la salvarea prietenilor');
+    }
+}
+
+// Featured Posts functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Load user's posts and current featured posts
+    loadUserPostsAndFeatured();
+    
+    // Handle featured posts form submission
+    document.getElementById('featuredPostsForm').addEventListener('submit', saveFeaturedPosts);
+});
+
+async function loadUserPostsAndFeatured() {
+    try {
+        // Load user's posts for selection
+        const response = await fetch('/api/posts/archive');
+        const data = await response.json();
+        
+        const posts = data.posts || [];
+        
+        // Populate select options
+        ['featured1', 'featured2', 'featured3'].forEach(selectId => {
+            const select = document.getElementById(selectId);
+            
+            // Clear existing options except first
+            select.innerHTML = '<option value="">Selectează o postare...</option>';
+            
+            // Add posts as options
+            posts.forEach(post => {
+                const option = document.createElement('option');
+                option.value = post.id;
+                option.textContent = `${post.title} (${post.created_at})`;
+                select.appendChild(option);
+            });
+        });
+        
+        // TODO: Load current featured posts and set selected values
+        // This would require adding featured posts to the user data endpoint
+        
+    } catch (error) {
+        console.error('Error loading posts:', error);
+        showMessage(false, 'Eroare la încărcarea postărilor');
+    }
+}
+
+async function saveFeaturedPosts(e) {
+    e.preventDefault();
+    
+    const featured1 = document.getElementById('featured1').value;
+    const featured2 = document.getElementById('featured2').value;
+    const featured3 = document.getElementById('featured3').value;
+    
+    const posts = [featured1, featured2, featured3].filter(p => p !== '').map(p => parseInt(p));
+    
+    // Check for duplicates
+    const uniquePosts = [...new Set(posts)];
+    if (posts.length !== uniquePosts.length) {
+        showMessage(false, 'Nu poți selecta aceeași postare de mai multe ori');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/user/featured-posts', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ posts: posts })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showMessage(true, 'Postările în evidență au fost salvate cu succes!');
+        } else {
+            showMessage(false, result.detail || 'Eroare la salvarea postărilor în evidență');
+        }
+    } catch (error) {
+        console.error('Error saving featured posts:', error);
+        showMessage(false, 'Eroare la salvarea postărilor în evidență');
     }
 }
 </script>

@@ -49,6 +49,14 @@ class User(Base):
         foreign_keys="BestFriend.friend_user_id", 
         back_populates="friend"
     )
+    
+    # Featured posts by this user
+    featured_posts: Mapped[List["FeaturedPost"]] = relationship(
+        "FeaturedPost",
+        foreign_keys="FeaturedPost.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
 class Post(Base):
     __tablename__ = "posts"
@@ -67,6 +75,7 @@ class Post(Base):
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
     tags: Mapped[List["Tag"]] = relationship("Tag", back_populates="post")
+    featured_by: Mapped[List["FeaturedPost"]] = relationship("FeaturedPost", back_populates="post")
 
     @property
     def likes_count(self) -> int:
@@ -122,3 +131,16 @@ class BestFriend(Base):
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="best_friends")
     friend: Mapped["User"] = relationship("User", foreign_keys=[friend_user_id], back_populates="friend_of")
+
+class FeaturedPost(Base):
+    __tablename__ = "featured_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="featured_posts")
+    post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="featured_by")

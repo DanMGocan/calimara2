@@ -400,6 +400,101 @@ async def search_users(
     
     return [{"username": user.username, "subtitle": user.subtitle} for user in users]
 
+@app.put("/api/user/featured-posts")
+async def update_featured_posts(
+    featured_posts_data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    """Update user's featured posts list (max 3 posts)"""
+    try:
+        post_ids = featured_posts_data.get("posts", [])
+        
+        # Validate max 3 posts
+        if len(post_ids) > 3:
+            raise HTTPException(status_code=400, detail="Maximum 3 featured posts allowed")
+        
+        # Validate that all posts belong to the user
+        for post_id in post_ids:
+            if post_id:  # Skip empty IDs
+                post = db.query(models.Post).filter(
+                    models.Post.id == post_id,
+                    models.Post.user_id == current_user.id
+                ).first()
+                if not post:
+                    raise HTTPException(status_code=400, detail=f"Post {post_id} not found or not owned by user")
+        
+        # Remove existing featured posts
+        db.execute(text("DELETE FROM featured_posts WHERE user_id = :user_id"), {"user_id": current_user.id})
+        
+        # Add new featured posts
+        for position, post_id in enumerate(post_ids, 1):
+            if post_id:  # Skip empty post IDs
+                new_featured = models.FeaturedPost(
+                    user_id=current_user.id,
+                    post_id=post_id,
+                    position=position
+                )
+                db.add(new_featured)
+        
+        db.commit()
+        logger.info(f"Featured posts actualizate pentru utilizatorul: {current_user.username}")
+        return {"success": True, "message": "Featured posts updated successfully"}
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Eroare la actualizarea featured posts pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update featured posts")
+
+@app.get("/api/posts/archive")
+async def get_posts_archive(
+    month: int = None,
+    year: int = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    """Get posts archive for current user, optionally filtered by month/year"""
+    try:
+        if month and year:
+            posts = crud.get_posts_by_month_year(db, current_user.id, month, year)
+        else:
+            posts = crud.get_latest_posts_for_user(db, current_user.id, limit=50)
+        
+        # Format posts for frontend
+        formatted_posts = []
+        for post in posts:
+            formatted_posts.append({
+                "id": post.id,
+                "title": post.title,
+                "slug": post.slug,
+                "content": post.content[:200] + "..." if len(post.content) > 200 else post.content,
+                "category": post.category,
+                "view_count": post.view_count,
+                "likes_count": post.likes_count,
+                "comments_count": len(post.comments),
+                "created_at": post.created_at.strftime('%d %B %Y'),
+                "url": f"//{current_user.username}.calimara.ro/{post.slug}"
+            })
+        
+        return {"posts": formatted_posts}
+        
+    except Exception as e:
+        logger.error(f"Eroare la obținerea arhivei pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get posts archive")
+
+@app.get("/api/posts/months")
+async def get_available_months(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    """Get available months/years for user's posts"""
+    try:
+        months = crud.get_available_months_for_user(db, current_user.id)
+        return {"months": months}
+    except Exception as e:
+        logger.error(f"Eroare la obținerea lunilor pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get available months")
+
 # --- API Endpoints (Posts) ---
 
 @app.post("/api/posts/", response_model=schemas.Post) # Re-added response_model
@@ -524,7 +619,7 @@ async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 # --- HTML Routes ---
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request, category: str = "toate", db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
+async def read_root(request: Request, category: str = "toate", month: int = None, year: int = None, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
     # If it's a subdomain, render the blog page
     if request.state.is_subdomain:
         username = request.state.username
@@ -532,27 +627,44 @@ async def read_root(request: Request, category: str = "toate", db: Session = Dep
         if not user:
             raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
         
-        posts = crud.get_latest_posts_for_user(db, user.id, limit=1) # Get only the last post
-        random_posts = crud.get_random_posts(db, limit=10)
-        random_users = crud.get_random_users(db, limit=10)
+        # Get featured posts for the blog owner
+        featured_posts_data = crud.get_featured_posts_for_user(db, user.id)
+        featured_posts = [fp.post for fp in featured_posts_data]
+        
+        # Get latest 3 posts
+        latest_posts = crud.get_latest_posts_for_user(db, user.id, limit=3)
+        
+        # Get all posts for archive with statistics (filtered by month/year if provided)
+        if month and year:
+            all_posts = crud.get_posts_by_month_year(db, user.id, month, year, limit=50)
+        else:
+            all_posts = crud.get_latest_posts_for_user(db, user.id, limit=50)
+        
+        # Get available months for filtering
+        available_months = crud.get_available_months_for_user(db, user.id)
+        
+        # Get best friends for the blog owner
+        best_friends = crud.get_best_friends_for_user(db, user.id)
+        
+        # Get approved comments for featured and latest posts
+        for post in featured_posts + latest_posts:
+            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+            # likes_count is automatically calculated by the @property in the model
+        
+        # Add comments count to all posts for archive display
+        for post in all_posts:
+            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
         
         # Get distinct categories for this user's blog
         blog_categories = crud.get_distinct_categories_used(db, user_id=user.id)
-
-        # Get approved comments for each post
-        for post in posts:
-            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            # likes_count is automatically calculated by the @property in the model
-
-        # Get best friends for the blog owner
-        best_friends = crud.get_best_friends_for_user(db, user.id)
         
         context = get_common_context(request, current_user)
         context.update({
             "blog_owner": user,
-            "posts": posts,
-            "random_posts": random_posts,
-            "random_users": random_users,
+            "featured_posts": featured_posts,
+            "latest_posts": latest_posts,
+            "all_posts": all_posts,
+            "available_months": available_months,
             "blog_categories": blog_categories,
             "best_friends": best_friends
         })
@@ -889,7 +1001,7 @@ async def register_page(request: Request, current_user: Optional[models.User] = 
 
 # Catch-all for subdomains that don't match specific routes (e.g., /static on subdomain)
 @app.get("/{path:path}", response_class=HTMLResponse)
-async def catch_all(request: Request, path: str, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
+async def catch_all(request: Request, path: str, month: int = None, year: int = None, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
     if request.state.is_subdomain:
         username = request.state.username
         user = crud.get_user_by_username(db, username=username)
@@ -919,23 +1031,41 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
                 return templates.TemplateResponse("post_detail.html", context)
         
         # If no post slug or post not found, show blog homepage
-        posts = crud.get_latest_posts_for_user(db, user.id, limit=5)
-        random_posts = crud.get_random_posts(db, limit=10)
-        random_users = crud.get_random_users(db, limit=10)
-
-        for post in posts:
-            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
-            # likes_count is automatically calculated by the @property in the model # Re-added likes count
-
+        # Get featured posts for the blog owner
+        featured_posts_data = crud.get_featured_posts_for_user(db, user.id)
+        featured_posts = [fp.post for fp in featured_posts_data]
+        
+        # Get latest 3 posts
+        latest_posts = crud.get_latest_posts_for_user(db, user.id, limit=3)
+        
+        # Get all posts for archive with statistics (filtered by month/year if provided)
+        if month and year:
+            all_posts = crud.get_posts_by_month_year(db, user.id, month, year, limit=50)
+        else:
+            all_posts = crud.get_latest_posts_for_user(db, user.id, limit=50)
+        
+        # Get available months for filtering
+        available_months = crud.get_available_months_for_user(db, user.id)
+        
         # Get best friends for the blog owner
         best_friends = crud.get_best_friends_for_user(db, user.id)
+        
+        # Get approved comments for featured and latest posts
+        for post in featured_posts + latest_posts:
+            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
+            # likes_count is automatically calculated by the @property in the model
+        
+        # Add comments count to all posts for archive display
+        for post in all_posts:
+            post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
         
         context = get_common_context(request, current_user)
         context.update({
             "blog_owner": user,
-            "posts": posts,
-            "random_posts": random_posts,
-            "random_users": random_users,
+            "featured_posts": featured_posts,
+            "latest_posts": latest_posts,
+            "all_posts": all_posts,
+            "available_months": available_months,
             "best_friends": best_friends
         })
         return templates.TemplateResponse("blog.html", context)

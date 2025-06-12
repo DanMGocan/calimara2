@@ -350,3 +350,36 @@ def get_best_friends_for_user(db: Session, user_id: int):
     return db.query(models.BestFriend).filter(
         models.BestFriend.user_id == user_id
     ).order_by(models.BestFriend.position).all()
+
+# Featured Posts CRUD functions
+def get_featured_posts_for_user(db: Session, user_id: int):
+    """Get the featured posts for a specific user, ordered by position"""
+    return db.query(models.FeaturedPost).filter(
+        models.FeaturedPost.user_id == user_id
+    ).order_by(models.FeaturedPost.position).all()
+
+def get_posts_by_month_year(db: Session, user_id: int, month: int, year: int, skip: int = 0, limit: int = 20):
+    """Get posts for a specific user filtered by month and year"""
+    return db.query(models.Post).filter(
+        models.Post.user_id == user_id,
+        func.MONTH(models.Post.created_at) == month,
+        func.YEAR(models.Post.created_at) == year
+    ).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_available_months_for_user(db: Session, user_id: int):
+    """Get available months/years for a user's posts"""
+    result = db.query(
+        func.YEAR(models.Post.created_at).label('year'),
+        func.MONTH(models.Post.created_at).label('month'),
+        func.COUNT(models.Post.id).label('post_count')
+    ).filter(
+        models.Post.user_id == user_id
+    ).group_by(
+        func.YEAR(models.Post.created_at),
+        func.MONTH(models.Post.created_at)
+    ).order_by(
+        func.YEAR(models.Post.created_at).desc(),
+        func.MONTH(models.Post.created_at).desc()
+    ).all()
+    
+    return [{"year": r.year, "month": r.month, "post_count": r.post_count} for r in result]
