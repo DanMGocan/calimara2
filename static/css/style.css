@@ -1320,7 +1320,10 @@ footer {
         padding: 2rem 0;
     }
     
-    .blog-card,
+    .blog-card-body {
+        padding: 1rem;
+    }
+    
     .post-card {
         padding: 1rem;
     }
@@ -1359,10 +1362,21 @@ footer {
         margin-bottom: 1rem;
     }
     
+    .blog-card-body {
+        padding: 0.75rem;
+    }
+    
     .blog-card,
     .post-card,
     .sidebar-card {
         margin-bottom: 1rem;
+    }
+    
+    .post-card {
+        padding: 0.75rem;
+    }
+    
+    .sidebar-card {
         padding: 0.75rem;
     }
     
@@ -2387,4 +2401,3 @@ button[aria-expanded="false"] .collapse-arrow {
     display: block;
 }
 
-EOF < /dev/null
