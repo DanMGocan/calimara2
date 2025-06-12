@@ -489,19 +489,15 @@ async def read_root(request: Request, category: str = "toate", db: Session = Dep
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model
 
-        return templates.TemplateResponse(
-            "blog.html",
-            {
-                "request": request,
-                "blog_owner": user,
-                "posts": posts,
-                "random_posts": random_posts,
-                "random_users": random_users,
-                "blog_categories": blog_categories, # Pass blog categories
-                "current_user": current_user, # Pass actual current_user
-                "current_domain": request.url.hostname # Pass current domain
-            }
-        )
+        context = get_common_context(request, current_user)
+        context.update({
+            "blog_owner": user,
+            "posts": posts,
+            "random_posts": random_posts,
+            "random_users": random_users,
+            "blog_categories": blog_categories
+        })
+        return templates.TemplateResponse("blog.html", context)
     else:
         # If not a subdomain (i.e., calimara.ro), always render the main landing page
         # Filter random posts based on category parameter
@@ -555,20 +551,16 @@ async def category_page(category_key: str, request: Request, db: Session = Depen
         post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
         # likes_count is automatically calculated by the @property in the model
     
-    return templates.TemplateResponse(
-        "category.html",
-        {
-            "request": request,
-            "category_key": category_key,
-            "category_name": get_category_name(category_key),
-            "genres": get_genres_for_category(category_key),
-            "posts": posts,
-            "sort_by": sort_by,
-            "current_user": current_user,
-            "current_domain": request.url.hostname,
-            "categories": CATEGORIES_AND_GENRES
-        }
-    )
+    context = get_common_context(request, current_user)
+    context.update({
+        "category_key": category_key,
+        "category_name": get_category_name(category_key),
+        "genres": get_genres_for_category(category_key),
+        "posts": posts,
+        "sort_by": sort_by,
+        "categories": CATEGORIES_AND_GENRES
+    })
+    return templates.TemplateResponse("category.html", context)
 
 @app.get("/category/{category_key}/{genre_key}", response_class=HTMLResponse)
 async def genre_page(category_key: str, genre_key: str, request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user), sort_by: str = "newest"):
@@ -584,21 +576,17 @@ async def genre_page(category_key: str, genre_key: str, request: Request, db: Se
         post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
         # likes_count is automatically calculated by the @property in the model
     
-    return templates.TemplateResponse(
-        "genre.html",
-        {
-            "request": request,
-            "category_key": category_key,
-            "category_name": get_category_name(category_key),
-            "genre_key": genre_key,
-            "genre_name": get_genre_name(category_key, genre_key),
-            "posts": posts,
-            "sort_by": sort_by,
-            "current_user": current_user,
-            "current_domain": request.url.hostname,
-            "categories": CATEGORIES_AND_GENRES
-        }
-    )
+    context = get_common_context(request, current_user)
+    context.update({
+        "category_key": category_key,
+        "category_name": get_category_name(category_key),
+        "genre_key": genre_key,
+        "genre_name": get_genre_name(category_key, genre_key),
+        "posts": posts,
+        "sort_by": sort_by,
+        "categories": CATEGORIES_AND_GENRES
+    })
+    return templates.TemplateResponse("genre.html", context)
 
 # API endpoint to get genres for a category (for dynamic form updates)
 @app.get("/api/genres/{category_key}")
@@ -793,16 +781,12 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
     user_posts = crud.get_posts_by_user(db, current_user.id)
     unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
     
-    return templates.TemplateResponse(
-        "admin_dashboard.html",
-        {
-            "request": request,
-            "current_user": current_user,
-            "user_posts": user_posts,
-            "unapproved_comments": unapproved_comments,
-            "current_domain": request.url.hostname # Pass current domain
-        }
-    )
+    context = get_common_context(request, current_user)
+    context.update({
+        "user_posts": user_posts,
+        "unapproved_comments": unapproved_comments
+    })
+    return templates.TemplateResponse("admin_dashboard.html", context)
 
 @app.get("/create-post", response_class=HTMLResponse)
 async def create_post_page(request: Request, current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
@@ -810,15 +794,11 @@ async def create_post_page(request: Request, current_user: models.User = Depends
     if request.url.hostname == MAIN_DOMAIN:
         return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}/create-post", status_code=status.HTTP_302_FOUND)
 
-    return templates.TemplateResponse(
-        "create_post.html",
-        {
-            "request": request,
-            "current_user": current_user,
-            "current_domain": request.url.hostname, # Pass current domain
-            "categories": get_all_categories() # Pass categories for form
-        }
-    )
+    context = get_common_context(request, current_user)
+    context.update({
+        "categories": get_all_categories()
+    })
+    return templates.TemplateResponse("create_post.html", context)
 
 @app.get("/edit-post/{post_id}", response_class=HTMLResponse)
 async def edit_post_page(post_id: int, request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
@@ -829,15 +809,11 @@ async def edit_post_page(post_id: int, request: Request, db: Session = Depends(g
     post = crud.get_post(db, post_id)
     if not post or post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
-    return templates.TemplateResponse(
-        "edit_post.html",
-        {
-            "request": request,
-            "current_user": current_user,
-            "post": post,
-            "current_domain": request.url.hostname # Pass current domain
-        }
-    )
+    context = get_common_context(request, current_user)
+    context.update({
+        "post": post
+    })
+    return templates.TemplateResponse("edit_post.html", context)
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
@@ -845,11 +821,7 @@ async def register_page(request: Request, current_user: Optional[models.User] = 
     if request.url.hostname == MAIN_DOMAIN and current_user:
         return RedirectResponse(url=f"//{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
 
-    return templates.TemplateResponse("register.html", {
-        "request": request,
-        "current_user": current_user, # Pass actual current_user
-        "current_domain": request.url.hostname # Pass current domain
-    })
+    return templates.TemplateResponse("register.html", get_common_context(request, current_user))
 
 # Redirect /login to main page, as login is a modal (this route is now handled by the new /login GET route)
 # @app.get("/login", response_class=RedirectResponse, status_code=status.HTTP_302_FOUND)
@@ -879,17 +851,13 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
                 related_posts = crud.get_posts_by_user(db, user.id, limit=5)
                 related_posts = [p for p in related_posts if p.id != post.id][:3]
                 
-                return templates.TemplateResponse(
-                    "post_detail.html",
-                    {
-                        "request": request,
-                        "blog_owner": user,
-                        "post": post,
-                        "related_posts": related_posts,
-                        "current_user": current_user,
-                        "current_domain": request.url.hostname
-                    }
-                )
+                context = get_common_context(request, current_user)
+                context.update({
+                    "blog_owner": user,
+                    "post": post,
+                    "related_posts": related_posts
+                })
+                return templates.TemplateResponse("post_detail.html", context)
         
         # If no post slug or post not found, show blog homepage
         posts = crud.get_latest_posts_for_user(db, user.id, limit=5)
@@ -900,18 +868,14 @@ async def catch_all(request: Request, path: str, db: Session = Depends(get_db), 
             post.comments = crud.get_comments_for_post(db, post.id, approved_only=True)
             # likes_count is automatically calculated by the @property in the model # Re-added likes count
 
-        return templates.TemplateResponse(
-            "blog.html",
-            {
-                "request": request,
-                "blog_owner": user,
-                "posts": posts,
-                "random_posts": random_posts,
-                "random_users": random_users,
-                "current_user": current_user, # Pass actual current_user
-                "current_domain": request.url.hostname # Pass current domain
-            }
-        )
+        context = get_common_context(request, current_user)
+        context.update({
+            "blog_owner": user,
+            "posts": posts,
+            "random_posts": random_posts,
+            "random_users": random_users
+        })
+        return templates.TemplateResponse("blog.html", context)
     else:
         # If not a subdomain and no specific route matched, return 404 for main domain
         raise HTTPException(status_code=404, detail="Pagina nu a fost găsită")

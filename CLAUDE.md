@@ -140,3 +140,6 @@ Check `request.state.is_subdomain` and `request.state.username` (set by Subdomai
 - **Slug Generation**: Automatic SEO-friendly URLs from post titles with Romanian character handling
 - **View Tracking**: Post view count incrementation for analytics
 - **Unique Slugs**: Automatic slug conflict resolution with counter suffixes
+
+## Development Notes
+- do not try to use git, I will do that

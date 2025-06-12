@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Autentificare - Calimara.ro{% endblock %}
+{% block description %}Conectează-te la contul tău Calimara pentru a accesa dashboard-ul și a gestiona postările.{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow border-0">
+                <div class="card-header bg-primary-custom text-white text-center">
+                    <h4 class="mb-0">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>Autentificare
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="loginEmail" class="form-label">
+                                <i class="bi bi-envelope me-1"></i>Adresă de email
+                            </label>
+                            <input type="email" class="form-control" id="loginEmail" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="loginPassword" class="form-label">
+                                <i class="bi bi-lock me-1"></i>Parolă
+                            </label>
+                            <input type="password" class="form-control" id="loginPassword" required>
+                        </div>
+                        <div id="loginError" class="alert alert-danger d-none" role="alert">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <span class="error-message"></span>
+                        </div>
+                        <button type="submit" class="btn btn-primary-custom w-100">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Autentificare
+                        </button>
+                    </form>
+                </div>
+                <div class="card-footer text-center bg-light">
+                    <p class="text-muted small mb-0">
+                        Nu ai cont? <a href="/register" class="text-decoration-none">Înregistrează-te aici</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
