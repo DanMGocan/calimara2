@@ -469,7 +469,7 @@ async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 # --- HTML Routes ---
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
+async def read_root(request: Request, category: str = "toate", db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)):
     # If it's a subdomain, render the blog page
     if request.state.is_subdomain:
         username = request.state.username
@@ -504,14 +504,39 @@ async def read_root(request: Request, db: Session = Depends(get_db), current_use
         )
     else:
         # If not a subdomain (i.e., calimara.ro), always render the main landing page
-        random_posts = crud.get_random_posts(db, limit=10)
+        # Filter random posts based on category parameter
+        if category == "toate":
+            random_posts = crud.get_random_posts(db, limit=10)
+        else:
+            # Map category filter names to actual category keys
+            category_mapping = {
+                "poezie": "poezie",
+                "proza": "proza", 
+                "teatru": "teatru",
+                "eseu": "eseu",
+                "critica_literara": "critica_literara",
+                "jurnal": "jurnal",
+                "altele": ["literatura_experimentala", "scrisoare"]  # Multiple categories for "altele"
+            }
+            
+            if category in category_mapping:
+                mapped_category = category_mapping[category]
+                if isinstance(mapped_category, list):
+                    # Handle multiple categories for "altele"
+                    random_posts = crud.get_random_posts_by_categories(db, mapped_category, limit=10)
+                else:
+                    random_posts = crud.get_random_posts_by_category(db, mapped_category, limit=10)
+            else:
+                random_posts = []
+        
         random_users = crud.get_random_users(db, limit=10)
         context = get_common_context(request, current_user)
         context.update({
             "random_posts": random_posts,
             "random_users": random_users,
             "categories": CATEGORIES_AND_GENRES, # Pass predefined categories for navigation
-            "main_categories": get_main_categories() # Pass main categories for navigation
+            "main_categories": get_main_categories(), # Pass main categories for navigation
+            "selected_category": category # Pass selected category for template
         })
         return templates.TemplateResponse("index.html", context)
 
@@ -758,54 +783,6 @@ async def debug_info(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e), "type": type(e).__name__}
 
-@app.get("/api/random-posts")
-async def get_filtered_random_posts(category: str = "toate", db: Session = Depends(get_db)):
-    """Get random posts filtered by category"""
-    if category == "toate":
-        posts = crud.get_random_posts(db, limit=10)
-    else:
-        # Map category filter names to actual category keys
-        category_mapping = {
-            "poezie": "poezie",
-            "proza": "proza", 
-            "teatru": "teatru",
-            "eseu": "eseu",
-            "critica_literara": "critica_literara",
-            "jurnal": "jurnal",
-            "altele": ["literatura_experimentala", "scrisoare"]  # Multiple categories for "altele"
-        }
-        
-        if category in category_mapping:
-            mapped_category = category_mapping[category]
-            if isinstance(mapped_category, list):
-                # Handle multiple categories for "altele"
-                posts = crud.get_random_posts_by_categories(db, mapped_category, limit=10)
-            else:
-                posts = crud.get_random_posts_by_category(db, mapped_category, limit=10)
-        else:
-            posts = []
-    
-    # Convert posts to a format suitable for JSON response
-    posts_data = []
-    for post in posts:
-        category_name = ""
-        if post.category and post.category in CATEGORIES_AND_GENRES:
-            category_name = CATEGORIES_AND_GENRES[post.category]["name"]
-            if post.genre and post.genre in CATEGORIES_AND_GENRES[post.category]["genres"]:
-                category_name += f" - {CATEGORIES_AND_GENRES[post.category]['genres'][post.genre]}"
-        
-        posts_data.append({
-            "id": post.id,
-            "title": post.title,
-            "slug": post.slug,
-            "content": post.content[:120] + ("..." if len(post.content) > 120 else ""),
-            "username": post.owner.username,
-            "created_at": post.created_at.strftime('%d %b'),
-            "likes_count": post.likes_count,
-            "category_display": category_name
-        })
-    
-    return {"posts": posts_data}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_required_user)): # Use get_required_user
