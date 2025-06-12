@@ -504,6 +504,10 @@ body::before {
     font-weight: var(--font-weight-semibold);
 }
 
+.card-body {
+    padding: 1.5rem; /* Added padding to card body */
+}
+
 /* Form Enhancements */
 .form-control {
     border: 0.125rem solid #e9ecef;
