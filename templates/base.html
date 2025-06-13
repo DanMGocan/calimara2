@@ -211,39 +211,5 @@
         document.getElementById('currentYear').textContent = new Date().getFullYear();
     </script>
     
-    <!-- Unread Messages Notification -->
-    {% if current_user %}
-    <script>
-        // Load unread message count for logged-in users
-        function loadUnreadMessageCount() {
-            fetch('/api/messages/unread-count')
-                .then(response => response.json())
-                .then(data => {
-                    const unreadCount = data.unread_count || 0;
-                    const badge = document.getElementById('unreadBadge');
-                    
-                    if (badge) {
-                        if (unreadCount > 0) {
-                            badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                            badge.classList.remove('d-none');
-                        } else {
-                            badge.classList.add('d-none');
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading unread count:', error);
-                });
-        }
-        
-        // Load unread count on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadUnreadMessageCount();
-            
-            // Refresh unread count every 30 seconds
-            setInterval(loadUnreadMessageCount, 30000);
-        });
-    </script>
-    {% endif %}
 </body>
 </html>

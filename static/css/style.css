@@ -2413,3 +2413,77 @@ button[aria-expanded="false"] .collapse-arrow {
     display: block;
 }
 
+/* ===================================
+   MESSAGES SYSTEM STYLES
+   ================================== */
+
+/* Messages page styles */
+.hover-bg-light:hover {
+    background-color: rgba(27, 94, 32, 0.05) !important;
+}
+
+.conversation-item {
+    transition: background-color 0.2s ease;
+}
+
+.user-suggestion {
+    transition: background-color 0.2s ease;
+}
+
+#userSuggestions {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Conversation page styles */
+.message-mine .message-content {
+    background: var(--color-accent);
+    color: white;
+}
+
+.message-theirs .message-content {
+    background: var(--color-light);
+    color: var(--color-dark);
+}
+
+.message-bubble {
+    animation: messageSlideIn 0.3s ease-out;
+}
+
+@keyframes messageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#messagesContainer {
+    scroll-behavior: smooth;
+}
+
+#messagesContainer::-webkit-scrollbar {
+    width: 6px;
+}
+
+#messagesContainer::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+#messagesContainer::-webkit-scrollbar-thumb {
+    background: var(--color-accent);
+    border-radius: 3px;
+}
+
+#messagesContainer::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent-dark);
+}
+
+.message-item:last-child {
+    margin-bottom: 0 !important;
+}
+

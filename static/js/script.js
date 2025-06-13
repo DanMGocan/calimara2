@@ -826,3 +826,766 @@ if ('serviceWorker' in navigator) {
             .catch(registrationError => console.log('SW registration failed'));
     });
 }
+
+// ===================================
+// MESSAGES SYSTEM FUNCTIONALITY
+// ===================================
+
+// Messages page functionality
+let conversations = [];
+let currentUser = null;
+
+function initializeMessagesPage() {
+    // Get current user info for messages page
+    fetch('/api/user/me')
+        .then(response => response.json())
+        .then(data => {
+            if (data.authenticated) {
+                currentUser = data.user;
+                loadConversations();
+                loadUnreadCount();
+            } else {
+                window.location.href = '/login';
+            }
+        })
+        .catch(error => {
+            console.error('Error getting user info:', error);
+        });
+    
+    // Setup messages event listeners
+    setupMessagesEventListeners();
+}
+
+function setupMessagesEventListeners() {
+    // Character counter for new message
+    const messageContent = document.getElementById('messageContent');
+    const charCount = document.getElementById('charCount');
+    
+    if (messageContent && charCount) {
+        messageContent.addEventListener('input', function() {
+            charCount.textContent = this.value.length;
+        });
+    }
+    
+    // Send new message button
+    const sendNewMessageBtn = document.getElementById('sendNewMessage');
+    if (sendNewMessageBtn) {
+        sendNewMessageBtn.addEventListener('click', sendNewMessage);
+    }
+    
+    // Search conversations
+    const searchConversations = document.getElementById('searchConversations');
+    if (searchConversations) {
+        searchConversations.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query.length >= 2) {
+                searchConversationsFunc(query);
+            } else if (query.length === 0) {
+                loadConversations();
+            }
+        });
+    }
+    
+    // User suggestions for new message
+    const recipientUsername = document.getElementById('recipientUsername');
+    if (recipientUsername) {
+        recipientUsername.addEventListener('input', function() {
+            const query = this.value.trim();
+            if (query.length >= 2) {
+                searchUsers(query);
+            } else {
+                hideUserSuggestions();
+            }
+        });
+    }
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('#recipientUsername') && !e.target.closest('#userSuggestions')) {
+            hideUserSuggestions();
+        }
+    });
+}
+
+function loadConversations() {
+    fetch('/api/messages/conversations')
+        .then(response => response.json())
+        .then(data => {
+            conversations = data.conversations;
+            renderConversations(conversations);
+            const loadingState = document.getElementById('loadingState');
+            if (loadingState) {
+                loadingState.classList.add('d-none');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading conversations:', error);
+            const loadingState = document.getElementById('loadingState');
+            if (loadingState) {
+                loadingState.innerHTML = `
+                    <div class="text-center text-danger">
+                        <i class="bi bi-exclamation-triangle fs-1 mb-3"></i>
+                        <p>Eroare la încărcarea conversațiilor</p>
+                    </div>
+                `;
+            }
+        });
+}
+
+function loadUnreadCount() {
+    fetch('/api/messages/unread-count')
+        .then(response => response.json())
+        .then(data => {
+            const unreadCount = data.unread_count || 0;
+            const unreadCountEl = document.getElementById('unreadCount');
+            if (unreadCountEl) {
+                unreadCountEl.textContent = 
+                    unreadCount === 0 ? '0 necitite' : 
+                    unreadCount === 1 ? '1 necitiit' : 
+                    unreadCount + ' necitite';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading unread count:', error);
+        });
+}
+
+function renderConversations(conversationList) {
+    const container = document.getElementById('conversationsList');
+    if (!container) return;
+    
+    if (conversationList.length === 0) {
+        const emptyState = document.getElementById('emptyState');
+        if (emptyState) {
+            emptyState.classList.remove('d-none');
+            container.innerHTML = emptyState.outerHTML;
+        }
+        return;
+    }
+    
+    const emptyState = document.getElementById('emptyState');
+    if (emptyState) {
+        emptyState.classList.add('d-none');
+    }
+    
+    const html = conversationList.map(conv => {
+        const otherUser = conv.other_user;
+        const latestMessage = conv.latest_message;
+        const unreadBadge = conv.unread_count > 0 ? 
+            `<span class="badge bg-danger ms-2">${conv.unread_count}</span>` : '';
+        
+        return `
+            <div class="conversation-item border-bottom p-3 hover-bg-light" style="cursor: pointer;" 
+                 onclick="openConversation(${conv.id})">
+                <div class="d-flex align-items-start">
+                    <img src="${getAvatarUrl(otherUser.avatar_seed || otherUser.username + '-shapes', 48)}" 
+                         alt="Avatar ${otherUser.username}" 
+                         class="rounded-circle me-3" 
+                         style="width: 3rem; height: 3rem; object-fit: cover;">
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <h6 class="fw-bold mb-0">@${otherUser.username}${unreadBadge}</h6>
+                            <small class="text-muted">
+                                ${latestMessage ? formatTime(latestMessage.created_at) : ''}
+                            </small>
+                        </div>
+                        ${otherUser.subtitle ? `<p class="text-muted small mb-1">${otherUser.subtitle}</p>` : ''}
+                        ${latestMessage ? `
+                            <p class="text-muted small mb-0">
+                                <i class="bi bi-${latestMessage.sender_id === currentUser.id ? 'arrow-right' : 'arrow-left'} me-1"></i>
+                                ${latestMessage.content}
+                            </p>
+                        ` : '<p class="text-muted small mb-0">Niciun mesaj încă</p>'}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = html;
+}
+
+function openConversation(conversationId) {
+    window.location.href = `/messages/${conversationId}`;
+}
+
+function searchConversationsFunc(query) {
+    fetch(`/api/messages/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            renderConversations(data.conversations);
+        })
+        .catch(error => {
+            console.error('Error searching conversations:', error);
+        });
+}
+
+function searchUsers(query) {
+    fetch(`/api/users/search?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            showUserSuggestions(data);
+        })
+        .catch(error => {
+            console.error('Error searching users:', error);
+        });
+}
+
+function showUserSuggestions(users) {
+    const suggestionsContainer = document.getElementById('userSuggestions');
+    if (!suggestionsContainer) return;
+    
+    if (users.length === 0) {
+        suggestionsContainer.style.display = 'none';
+        return;
+    }
+    
+    const html = users.map(user => `
+        <div class="user-suggestion p-2 hover-bg-light" style="cursor: pointer;" 
+             onclick="selectUser('${user.username}')">
+            <div class="d-flex align-items-center">
+                <img src="${getAvatarUrl(user.username + '-shapes', 32)}" 
+                     alt="Avatar ${user.username}" 
+                     class="rounded-circle me-2" 
+                     style="width: 2rem; height: 2rem; object-fit: cover;">
+                <div>
+                    <div class="fw-medium">@${user.username}</div>
+                    ${user.subtitle ? `<small class="text-muted">${user.subtitle}</small>` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    suggestionsContainer.innerHTML = html;
+    suggestionsContainer.style.display = 'block';
+}
+
+function hideUserSuggestions() {
+    const suggestionsContainer = document.getElementById('userSuggestions');
+    if (suggestionsContainer) {
+        suggestionsContainer.style.display = 'none';
+    }
+}
+
+function selectUser(username) {
+    const recipientUsername = document.getElementById('recipientUsername');
+    if (recipientUsername) {
+        recipientUsername.value = username;
+    }
+    hideUserSuggestions();
+}
+
+function sendNewMessage() {
+    const form = document.getElementById('newMessageForm');
+    if (!form) return;
+    
+    const formData = new FormData(form);
+    
+    const messageData = {
+        recipient_username: formData.get('recipient_username'),
+        content: formData.get('content')
+    };
+    
+    if (!messageData.recipient_username || !messageData.content) {
+        showToast('Te rog completează toate câmpurile', 'danger');
+        return;
+    }
+    
+    fetch('/api/messages/send', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.conversation_id) {
+                showToast('Mesaj trimis cu succes!', 'success');
+                const modal = bootstrap.Modal.getInstance(document.getElementById('newMessageModal'));
+                if (modal) modal.hide();
+                form.reset();
+                const charCount = document.getElementById('charCount');
+                if (charCount) charCount.textContent = '0';
+                
+                // Redirect to the conversation
+                setTimeout(() => {
+                    window.location.href = `/messages/${data.conversation_id}`;
+                }, 1000);
+            } else {
+                showToast(data.detail || 'Eroare la trimiterea mesajului', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error sending message:', error);
+            showToast('Eroare la trimiterea mesajului', 'danger');
+        });
+}
+
+// ===================================
+// CONVERSATION PAGE FUNCTIONALITY
+// ===================================
+
+let conversationId = null;
+let conversation = null;
+let messages = [];
+let isLoadingMessages = false;
+
+function initializeConversationPage(convId) {
+    conversationId = convId || window.conversationId;
+    
+    // Get current user info
+    fetch('/api/user/me')
+        .then(response => response.json())
+        .then(data => {
+            if (data.authenticated) {
+                currentUser = data.user;
+                loadConversation();
+            } else {
+                window.location.href = '/login';
+            }
+        })
+        .catch(error => {
+            console.error('Error getting user info:', error);
+        });
+    
+    setupConversationEventListeners();
+}
+
+function setupConversationEventListeners() {
+    // Character counter
+    const messageInput = document.getElementById('messageInput');
+    const charCount = document.getElementById('charCount');
+    
+    if (messageInput && charCount) {
+        messageInput.addEventListener('input', function() {
+            charCount.textContent = this.value.length;
+        });
+        
+        // Auto-resize textarea
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+        
+        // Send message on Ctrl+Enter
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+    
+    // Send message on form submit
+    const messageForm = document.getElementById('messageForm');
+    if (messageForm) {
+        messageForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            sendMessage();
+        });
+    }
+}
+
+function loadConversation() {
+    isLoadingMessages = true;
+    
+    fetch(`/api/messages/conversations/${conversationId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Conversation not found');
+            }
+            return response.json();
+        })
+        .then(data => {
+            conversation = data.conversation;
+            messages = data.messages;
+            
+            renderConversationHeader();
+            renderMessages();
+            scrollToBottom();
+            
+            const loadingMessages = document.getElementById('loadingMessages');
+            if (loadingMessages) {
+                loadingMessages.classList.add('d-none');
+            }
+            isLoadingMessages = false;
+        })
+        .catch(error => {
+            console.error('Error loading conversation:', error);
+            const loadingMessages = document.getElementById('loadingMessages');
+            if (loadingMessages) {
+                loadingMessages.innerHTML = `
+                    <div class="text-center text-danger">
+                        <i class="bi bi-exclamation-triangle fs-1 mb-3"></i>
+                        <p>Conversația nu a fost găsită sau nu ai acces la ea</p>
+                        <a href="/messages" class="btn btn-primary-custom">
+                            <i class="bi bi-arrow-left me-1"></i>Înapoi la mesaje
+                        </a>
+                    </div>
+                `;
+            }
+        });
+}
+
+function renderConversationHeader() {
+    if (!conversation) return;
+    
+    const otherUser = conversation.other_user;
+    const headerHtml = `
+        <div class="d-flex align-items-center">
+            <img src="${getAvatarUrl(otherUser.avatar_seed || otherUser.username + '-shapes', 48)}" 
+                 alt="Avatar ${otherUser.username}" 
+                 class="rounded-circle me-3" 
+                 style="width: 3rem; height: 3rem; object-fit: cover;">
+            <div>
+                <h5 class="fw-bold mb-0">@${otherUser.username}</h5>
+                ${otherUser.subtitle ? `<small class="text-muted">${otherUser.subtitle}</small>` : ''}
+            </div>
+        </div>
+    `;
+    
+    const conversationHeader = document.getElementById('conversationHeader');
+    if (conversationHeader) {
+        conversationHeader.innerHTML = headerHtml;
+    }
+}
+
+function renderMessages() {
+    const container = document.getElementById('messagesList');
+    if (!container) return;
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-4">
+                <i class="bi bi-chat-dots display-4 mb-3"></i>
+                <p>Niciun mesaj încă. Începe conversația!</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const html = messages.map(message => {
+        const isMyMessage = message.is_mine;
+        const messageClass = isMyMessage ? 'message-mine' : 'message-theirs';
+        const alignClass = isMyMessage ? 'ms-auto' : 'me-auto';
+        
+        return `
+            <div class="message-item mb-3 d-flex ${isMyMessage ? 'justify-content-end' : 'justify-content-start'}">
+                <div class="message-bubble ${messageClass} ${alignClass}" style="max-width: 70%;">
+                    <div class="message-content p-3 rounded-3">
+                        <p class="mb-1">${escapeHtml(message.content)}</p>
+                        <small class="text-muted">
+                            ${formatTime(message.created_at)}
+                            ${isMyMessage && message.is_read ? '<i class="bi bi-check2-all ms-1"></i>' : ''}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = html;
+}
+
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    if (!messageInput) return;
+    
+    const content = messageInput.value.trim();
+    
+    if (!content) {
+        return;
+    }
+    
+    const messageData = {
+        content: content
+    };
+    
+    // Disable input while sending
+    messageInput.disabled = true;
+    
+    fetch(`/api/messages/conversations/${conversationId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messageData)
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                // Add message to local array
+                messages.push(data);
+                renderMessages();
+                scrollToBottom();
+                
+                // Clear input
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+                const charCount = document.getElementById('charCount');
+                if (charCount) charCount.textContent = '0';
+                
+                showToast('Mesaj trimis!', 'success');
+            } else {
+                showToast(data.detail || 'Eroare la trimiterea mesajului', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error sending message:', error);
+            showToast('Eroare la trimiterea mesajului', 'danger');
+        })
+        .finally(() => {
+            messageInput.disabled = false;
+            messageInput.focus();
+        });
+}
+
+function deleteConversation() {
+    if (!confirm('Ești sigur că vrei să ștergi această conversație? Această acțiune nu poate fi anulată.')) {
+        return;
+    }
+    
+    fetch(`/api/messages/conversations/${conversationId}`, {
+        method: 'DELETE'
+    })
+        .then(response => response.json())
+        .then(data => {
+            showToast('Conversație ștearsă', 'success');
+            setTimeout(() => {
+                window.location.href = '/messages';
+            }, 1000);
+        })
+        .catch(error => {
+            console.error('Error deleting conversation:', error);
+            showToast('Eroare la ștergerea conversației', 'danger');
+        });
+}
+
+function scrollToBottom() {
+    const container = document.getElementById('messagesContainer');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// ===================================
+// BLOG PAGE FUNCTIONALITY
+// ===================================
+
+function initializeBlogPage() {
+    // Initialize Bootstrap tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
+    // Setup send message functionality
+    setupSendMessage();
+    
+    // Handle logout button
+    const logoutButtonBlog = document.getElementById('logoutButtonBlog');
+    if (logoutButtonBlog) {
+        logoutButtonBlog.addEventListener('click', function(e) {
+            e.preventDefault();
+            showToast('Se deconectează...', 'info');
+            window.location.href = '/api/logout';
+        });
+    }
+    
+    // Handle month/year filter
+    const monthYearFilter = document.getElementById('monthYearFilter');
+    if (monthYearFilter) {
+        monthYearFilter.addEventListener('change', function() {
+            const filterValue = this.value;
+            if (!filterValue) {
+                // Show all posts - reload page without params
+                const url = new URL(window.location);
+                url.searchParams.delete('month');
+                url.searchParams.delete('year');
+                window.location.href = url.toString();
+            } else {
+                // Filter by month/year
+                const [month, year] = filterValue.split('-');
+                const url = new URL(window.location);
+                url.searchParams.set('month', month);
+                url.searchParams.set('year', year);
+                window.location.href = url.toString();
+            }
+        });
+    }
+}
+
+function setupSendMessage() {
+    const messageContent = document.getElementById('messageContent');
+    const charCount = document.getElementById('charCount');
+    const sendBtn = document.getElementById('sendMessageBtn');
+    
+    if (!messageContent || !charCount || !sendBtn) {
+        return; // Elements not found, probably not on a blog with send message capability
+    }
+    
+    // Character counter
+    messageContent.addEventListener('input', function() {
+        charCount.textContent = this.value.length;
+    });
+    
+    // Send message
+    sendBtn.addEventListener('click', function() {
+        const recipientUsername = document.getElementById('recipientUsername').value;
+        const content = messageContent.value.trim();
+        
+        if (!content) {
+            showToast('Te rog scrie un mesaj', 'danger');
+            return;
+        }
+        
+        const messageData = {
+            recipient_username: recipientUsername,
+            content: content
+        };
+        
+        // Disable button while sending
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Se trimite...';
+        
+        fetch('/api/messages/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(messageData)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.conversation_id) {
+                    showToast('Mesaj trimis cu succes!', 'success');
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('sendMessageModal'));
+                    if (modal) modal.hide();
+                    messageContent.value = '';
+                    charCount.textContent = '0';
+                    
+                    // Offer to go to conversation
+                    setTimeout(() => {
+                        if (confirm('Vrei să vezi conversația cu ' + recipientUsername + '?')) {
+                            window.location.href = `/messages/${data.conversation_id}`;
+                        }
+                    }, 1500);
+                } else {
+                    showToast(data.detail || 'Eroare la trimiterea mesajului', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                showToast('Eroare la trimiterea mesajului', 'danger');
+            })
+            .finally(() => {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="bi bi-send me-1"></i>Trimite mesaj';
+            });
+    });
+}
+
+// Copy to clipboard function
+function copyToClipboard(text = window.location.href) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Link copiat în clipboard!', 'success');
+    });
+}
+
+// ===================================
+// UTILITY FUNCTIONS FOR MESSAGES
+// ===================================
+
+function getAvatarUrl(seed, size = 48) {
+    return `https://api.dicebear.com/7.x/shapes/svg?seed=${seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size=${size}`;
+}
+
+function formatTime(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now - date) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'acum';
+    if (diffInMinutes < 60) return `${diffInMinutes}m`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h`;
+    if (diffInMinutes < 10080) return `${Math.floor(diffInMinutes / 1440)}z`;
+    
+    return date.toLocaleDateString('ro-RO', { 
+        day: 'numeric', 
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ===================================
+// UNREAD MESSAGES FUNCTIONALITY
+// ===================================
+
+// Load unread message count for logged-in users
+function loadUnreadMessageCount() {
+    fetch('/api/messages/unread-count')
+        .then(response => response.json())
+        .then(data => {
+            const unreadCount = data.unread_count || 0;
+            const badge = document.getElementById('unreadBadge');
+            
+            if (badge) {
+                if (unreadCount > 0) {
+                    badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                    badge.classList.remove('d-none');
+                } else {
+                    badge.classList.add('d-none');
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading unread count:', error);
+        });
+}
+
+// ===================================
+// PAGE-SPECIFIC INITIALIZATION
+// ===================================
+
+// Initialize different page functionality based on current page
+document.addEventListener('DOMContentLoaded', function() {
+    // Check what page we're on and initialize accordingly
+    const path = window.location.pathname;
+    
+    if (path === '/messages') {
+        initializeMessagesPage();
+    } else if (path.startsWith('/messages/') && window.conversationId) {
+        initializeConversationPage(window.conversationId);
+    } else if (window.location.hostname.includes('.calimara.ro') && window.location.hostname !== 'calimara.ro') {
+        // On a subdomain blog page
+        initializeBlogPage();
+    }
+    
+    // Initialize unread message count for logged-in users on all pages
+    const currentUserElement = document.querySelector('[data-current-user]');
+    if (currentUserElement || document.getElementById('unreadBadge')) {
+        loadUnreadMessageCount();
+        // Refresh unread count every 30 seconds
+        setInterval(loadUnreadMessageCount, 30000);
+    }
+    
+    // Set current year in footer
+    const currentYearElement = document.getElementById('currentYear');
+    if (currentYearElement) {
+        currentYearElement.textContent = new Date().getFullYear();
+    }
+});
+
+// Global functions that need to be accessible from HTML onclick attributes
+window.openConversation = openConversation;
+window.selectUser = selectUser;
+window.deleteConversation = deleteConversation;
+window.copyToClipboard = copyToClipboard;
