@@ -331,6 +331,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Initialize AJAX category filtering
+    initializeCategoryFiltering();
 });
 
 async function handleContactForm(e) {
@@ -425,18 +428,26 @@ document.querySelectorAll('.category-item').forEach(categoryItem => {
     });
 });
 
-// AJAX Category filtering
-initializeCategoryFiltering();
+// AJAX Category filtering functions
 
 function initializeCategoryFiltering() {
+    console.log('Initializing category filtering...');
     const categoryButtons = document.querySelectorAll('.category-filter-btn');
     const postsContainer = document.getElementById('postsContainer');
     
-    if (!postsContainer) return;
+    console.log('Found category buttons:', categoryButtons.length);
+    console.log('Found posts container:', !!postsContainer);
     
-    categoryButtons.forEach(button => {
+    if (!postsContainer) {
+        console.error('Posts container not found!');
+        return;
+    }
+    
+    categoryButtons.forEach((button, index) => {
+        console.log(`Adding listener to button ${index}:`, button.dataset.category);
         button.addEventListener('click', function(e) {
             e.preventDefault();
+            console.log('Category button clicked:', this.dataset.category);
             
             const category = this.dataset.category;
             
@@ -455,16 +466,22 @@ function initializeCategoryFiltering() {
 }
 
 async function fetchFilteredPosts(category) {
+    console.log('Fetching posts for category:', category);
     const postsContainer = document.getElementById('postsContainer');
     
     try {
-        const response = await fetch(`/api/posts/random?category=${encodeURIComponent(category)}&limit=10`);
+        const url = `/api/posts/random?category=${encodeURIComponent(category)}&limit=10`;
+        console.log('Fetching from URL:', url);
+        
+        const response = await fetch(url);
+        console.log('Response status:', response.status);
         
         if (!response.ok) {
-            throw new Error('Failed to fetch posts');
+            throw new Error(`HTTP ${response.status}: Failed to fetch posts`);
         }
         
         const data = await response.json();
+        console.log('Received data:', data);
         
         // Animate out current content
         postsContainer.style.transform = 'translateY(20px)';
