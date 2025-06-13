@@ -178,36 +178,6 @@
             </div>
         </div>
 
-        <!-- Features Preview -->
-        <div class="row g-4 mt-5">
-            <div class="col-md-4">
-                <div class="text-center">
-                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3.75rem; height: 3.75rem;">
-                        <i class="bi bi-globe text-primary fs-4"></i>
-                    </div>
-                    <h5 class="fw-bold">Subdomeniu Personal</h5>
-                    <p class="text-muted small">Primești propriul tău subdomeniu pentru o prezență online profesională.</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="text-center">
-                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3.75rem; height: 3.75rem;">
-                        <i class="bi bi-pencil-square text-primary fs-4"></i>
-                    </div>
-                    <h5 class="fw-bold">Editor Simplu</h5>
-                    <p class="text-muted small">Scrie și publică conținut fără distrageri, concentrându-te pe creativitate.</p>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="text-center">
-                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3.75rem; height: 3.75rem;">
-                        <i class="bi bi-people text-primary fs-4"></i>
-                    </div>
-                    <h5 class="fw-bold">Comunitate</h5>
-                    <p class="text-muted small">Conectează-te cu alți scriitori și poeți din România.</p>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -350,18 +320,26 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Real-time validation
+    // Real-time validation - only validate after user has interacted
     const form = document.getElementById('registerForm');
     const inputs = form.querySelectorAll('input[required]');
     
     inputs.forEach(input => {
+        let hasBeenTouched = false;
+        
+        input.addEventListener('input', function() {
+            hasBeenTouched = true;
+        });
+        
         input.addEventListener('blur', function() {
-            if (this.checkValidity()) {
-                this.classList.remove('is-invalid');
-                this.classList.add('is-valid');
-            } else {
-                this.classList.remove('is-valid');
-                this.classList.add('is-invalid');
+            if (hasBeenTouched) {
+                if (this.checkValidity()) {
+                    this.classList.remove('is-invalid');
+                    this.classList.add('is-valid');
+                } else {
+                    this.classList.remove('is-valid');
+                    this.classList.add('is-invalid');
+                }
             }
         });
     });

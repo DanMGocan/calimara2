@@ -93,6 +93,17 @@ body {
     position: relative;
 }
 
+/* Global hyperlink styles */
+a {
+    color: #000000 !important;
+    text-decoration: underline !important;
+}
+
+a:hover {
+    color: #000000 !important;
+    text-decoration: underline !important;
+}
+
 /* Background overlay for the bear image */
 body::before {
     content: '';
@@ -101,7 +112,7 @@ body::before {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.3);
     z-index: -1;
     pointer-events: none;
 }
