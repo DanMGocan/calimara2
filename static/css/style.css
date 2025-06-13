@@ -34,10 +34,10 @@
     --color-info: #17a2b8;
     
     /* Background & Overlay */
-    --color-bg-overlay: rgba(255, 255, 255, 0.6);
-    --color-bg-overlay-dark: rgba(0, 0, 0, 0.7);
-    --color-glass: rgba(255, 255, 255, 0.1);
-    --color-container-bg: rgba(255, 255, 255, 0.3);
+    --color-bg-overlay: rgba(255, 255, 255, 0.85);
+    --color-bg-overlay-dark: rgba(0, 0, 0, 0.8);
+    --color-glass: rgba(255, 255, 255, 0.2);
+    --color-container-bg: rgba(255, 255, 255, 0.7);
     
     /* Gradients - Updated with Dark Green */
     --gradient-primary: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
