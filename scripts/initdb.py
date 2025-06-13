@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from passlib.context import CryptContext
 
 # Get the project root directory (parent of scripts directory)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -59,15 +58,8 @@ def init_db():
         
         print(f"✓ Schema file loaded ({len(schema_content)} characters)")
         
-        # Generate actual password hash for test user
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        test_password_hash = pwd_context.hash("123")
-        
-        # Replace placeholder password hash with real one
-        schema_content = schema_content.replace(
-            '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
-            test_password_hash
-        )
+        # Note: No password hashing needed for Google OAuth authentication
+        # The google_id placeholders in schema.sql will remain as test values
 
         with engine.connect() as connection:
             print("Executing database schema...")
@@ -179,11 +171,12 @@ def init_db():
                 print(f"Messages: {messages_count}")
                 print("=" * 30)
                 print("✓ Database initialization complete!")
-                print("\nTest user credentials:")
+                print("\nTest user information:")
                 print("  Username: gandurisilimbrici")
                 print("  Email: sad@sad.sad")
-                print("  Password: 123")
+                print("  Authentication: Google OAuth (test google_id: test-google-id-123456789)")
                 print("  Blog URL: gandurisilimbrici.calimara.ro")
+                print("\nNote: Users now authenticate via Google OAuth instead of local passwords.")
                 
                 return True
                 

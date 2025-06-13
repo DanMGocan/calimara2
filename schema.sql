@@ -28,7 +28,7 @@ CREATE TABLE users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL COMMENT 'Unique username for subdomain',
     email VARCHAR(255) UNIQUE NOT NULL COMMENT 'User email for authentication',
-    password_hash VARCHAR(255) NOT NULL COMMENT 'Bcrypt hashed password',
+    google_id VARCHAR(100) UNIQUE NOT NULL COMMENT 'Google OAuth unique identifier',
     subtitle VARCHAR(500) COMMENT 'Optional blog subtitle/description',
     avatar_seed VARCHAR(100) COMMENT 'DiceBear avatar seed for generating avatars',
     facebook_url VARCHAR(300) COMMENT 'Facebook profile/page URL',
@@ -44,6 +44,7 @@ CREATE TABLE users (
     
     INDEX idx_username (username),
     INDEX idx_email (email),
+    INDEX idx_google_id (google_id),
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -234,11 +235,11 @@ CREATE TABLE messages (
 -- SAMPLE DATA
 -- ===================================
 
--- Test user (password will be replaced by initdb.py)
-INSERT INTO users (username, email, password_hash, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url) VALUES (
+-- Test user (google_id will be replaced by initdb.py)
+INSERT INTO users (username, email, google_id, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url) VALUES (
     'gandurisilimbrici',
     'sad@sad.sad',
-    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+    'test-google-id-123456789',
     'Mi-am facut si io blog, sa nu mor prost lol',
     'gandurisilimbrici-shapes',
     'https://facebook.com/gandurisilimbrici',
@@ -266,26 +267,26 @@ INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES
 (1, 'Scrisoare către viitorul meu', 'scrisoare-catre-viitorul-meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 19);
 
 -- Additional test users
-INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
     'mireasufletului',
     'mirabela@poezie.ro',
-    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+    'test-google-id-234567890',
     'Poezii din inima României, scrise cu drag pentru sufletele românești',
     'mireasufletului-shapes'
 );
 
-INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
     'vanatordecuvinte',
     'alex.scriitor@literatura.ro',
-    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5YhF8lVJ5Hn5N5O',
+    'test-google-id-345678901',
     'Vânez cuvintele prin labirintul gândurilor și le prind în capcana poveștilor',
     'vanatordecuvinte-shapes'
 );
 
-INSERT INTO users (username, email, password_hash, subtitle, avatar_seed) VALUES (
+INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
     'filedintramvai',
     'elena.urban@bucuresti.ro',
-    '$2b$12$KIXaQQWU8jT7nBp3rEJ5PeZmVQKJhF8lVJ5Hn5N5N5YhF8lVJ5Hn5N5O',
+    'test-google-id-456789012',
     'File din tramvaiul vieții - observații urban-poetice din București',
     'filedintramvai-shapes'
 );

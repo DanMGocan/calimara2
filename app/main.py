@@ -21,22 +21,22 @@ from .database import SessionLocal, engine, get_db
 from .categories import CATEGORIES_AND_GENRES, get_main_categories, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
 import urllib.parse
 
-# Configure logging
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
-LOG_FILE = os.path.join(LOG_DIR, "calimara_app_python.log")
-
-# Ensure log directory exists
-os.makedirs(LOG_DIR, exist_ok=True)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler() # Also output to console/syslog
-    ]
-)
+# Configure logging (only if not already configured by Gunicorn)
 logger = logging.getLogger(__name__)
+
+# Only configure logging if no handlers exist (avoid conflicts with Gunicorn)
+if not logger.hasHandlers():
+    LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
+    LOG_FILE = os.path.join(LOG_DIR, "calimara_app_python.log")
+    
+    # Ensure log directory exists
+    os.makedirs(LOG_DIR, exist_ok=True)
+    
+    # Set up file handler only
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.INFO)
 
 # Ensure tables are created (this is for development, initdb.py is for explicit reset)
 # models.Base.metadata.create_all(bind=engine)
