@@ -16,13 +16,14 @@ Calimara is a Romanian microblogging platform for writers and poets. Each writer
 
 ### Core Components
 - **FastAPI app** with Jinja2 templates and session-based auth (no JWT)
+- **Google OAuth 2.0** authentication using Authlib for secure user login
 - **SQLAlchemy ORM** with modern `Mapped` annotations
 - **Category system** in `app/categories.py` with hierarchical structure (main categories → subcategories → genres)
 - **Environment-based configuration** via `.env` file with domain variables
 - **Bootstrap + custom CSS** with Inter font
 
 ### Database Architecture
-- **Users Table**: `username` (unique, lowercase), `email`, `password_hash`, `subtitle`, `avatar_seed`, social media URLs (facebook_url, tiktok_url, instagram_url, x_url, bluesky_url), donation URLs (patreon_url, paypal_url, buymeacoffee_url)
+- **Users Table**: `username` (unique, lowercase), `email`, `google_id` (OAuth unique identifier), `subtitle`, `avatar_seed`, social media URLs (facebook_url, tiktok_url, instagram_url, x_url, bluesky_url), donation URLs (patreon_url, paypal_url, buymeacoffee_url)
 - **Posts Table**: `user_id`, `title`, `slug` (SEO-friendly URLs), `content`, `category`, `genre`, `view_count`
 - **Comments Table**: Supports both authenticated and anonymous comments with approval system
 - **Likes Table**: Supports both user-based and IP-based likes
@@ -47,8 +48,9 @@ python scripts/initdb.py
 - Local development server cannot properly test subdomain functionality
 
 ```bash
-# Test specific user credentials on Azure VM
-# Email: sad@sad.sad, Password: 123, Username: gandurisilimbrici
+# Test user information on Azure VM
+# Email: sad@sad.sad, Username: gandurisilimbrici
+# Authentication: Google OAuth (no local password)
 # Access via: https://gandurisilimbrici.calimara.ro
 ```
 
@@ -70,6 +72,9 @@ sudo journalctl -u calimara -f
 - **SUBDOMAIN_SUFFIX**: Subdomain pattern (e.g., `.calimara.ro`)
 - **SESSION_SECRET_KEY**: Session encryption key
 - **MYSQL_* variables**: Database connection details
+- **GOOGLE_CLIENT_ID**: Google OAuth client ID from Google Cloud Console
+- **GOOGLE_CLIENT_SECRET**: Google OAuth client secret from Google Cloud Console
+- **GOOGLE_REDIRECT_URI**: OAuth callback URL (e.g., `https://calimara.ro/auth/google/callback`)
 
 ### Template Context Helper
 Use `get_common_context(request, current_user)` for consistent template variables including domain configuration that's passed to JavaScript via `window.CALIMARA_CONFIG`.
@@ -86,8 +91,12 @@ Use `get_common_context(request, current_user)` for consistent template variable
 
 ## Important Implementation Details
 
-### Authentication Flow
-- **Login**: POST `/api/token` sets `request.session["user_id"]` and redirects to user's subdomain
+### Authentication Flow (Google OAuth)
+- **Login**: GET `/auth/google` initiates OAuth flow, redirects to Google
+- **Callback**: GET `/auth/google/callback` handles OAuth response
+- **New Users**: Redirected to `/auth/setup` for username/avatar selection
+- **Existing Users**: Logged in automatically and redirected to their subdomain
+- **Complete Setup**: POST `/api/auth/complete-setup` finalizes new user registration
 - **Logout**: GET `/api/logout` clears session and redirects to main domain via server-side redirect
 - **Session detection**: `auth.get_current_user()` checks `request.session["user_id"]`
 
@@ -98,9 +107,9 @@ Use `get_common_context(request, current_user)` for consistent template variable
 - **Categories**: Hierarchical system with main categories, subcategories, and genres
 
 ### Database Initialization
-- **schema.sql**: Contains full database schema with sample data
-- **initdb.py**: Executes schema.sql and replaces placeholder password with bcrypt hash
-- **Test user**: gandurisilimbrici/sad@sad.sad/123 for testing
+- **schema.sql**: Contains full database schema with sample data (uses google_id instead of password_hash)
+- **initdb.py**: Executes schema.sql (no password hashing needed for OAuth)
+- **Test user**: gandurisilimbrici/sad@sad.sad with test Google ID for testing
 - **Database Reinitialization**: Database will be reinitalized after every update, no need to create migrations. It will use the schema.sql for the general layout of the DB and init_db.py to process the creation of the database.
 
 ### Deployment Architecture
@@ -125,7 +134,33 @@ Check `request.state.is_subdomain` and `request.state.username` (set by Subdomai
 
 ## Recent Features
 
-### Social Media and Donation Buttons (Latest)
+### Google OAuth Authentication (Latest)
+- **Complete Authentication Overhaul**: Replaced local email/password authentication with Google OAuth 2.0
+- **OAuth Flow**: Users authenticate via Google, then customize username and avatar in setup page
+- **Database Changes**: Replaced `password_hash` with `google_id` in Users table
+- **New Templates**: 
+  - `auth_setup.html`: User customization page after Google authentication
+  - Updated `register.html`: Simplified to only show Google OAuth option
+  - Updated `base.html`: Replaced login modal with "Conectează-te cu Google" button
+- **Security**: All authentication now handled by Google's secure OAuth system
+- **User Experience**: Streamlined registration process with no local passwords to remember
+- **Backend Implementation**: 
+  - `app/google_oauth.py`: Complete OAuth handling module
+  - New endpoints: `/auth/google`, `/auth/google/callback`, `/auth/setup`, `/api/auth/complete-setup`
+  - Updated schemas for Google authentication in `app/schemas.py`
+
+### Security Improvements
+- **Cross-User Data Protection**: Fixed vulnerability where users could see other users' unread message counts when visiting different subdomains
+- **Subdomain Verification**: Added proper authentication checks in JavaScript to prevent unauthorized data access
+- **Session Security**: Enhanced session validation for subdomain-specific features
+
+### UI/UX Improvements
+- **Visual Consistency**: Improved button styling and link behavior across the platform
+- **AJAX Category Filtering**: Replaced page reloads with smooth AJAX transitions on landing page
+- **Background Opacity**: Adjusted background images for better readability
+- **Clean Registration**: Simplified registration page to focus only on Google OAuth
+
+### Social Media and Donation Buttons
 - **User Profile Enhancement**: Added 8 new URL fields to User model for social media and donation links
 - **Admin Management**: Complete interface in admin dashboard for managing social links
 - **Frontend Display**: Social buttons appear on both blog.html and post_detail.html templates
