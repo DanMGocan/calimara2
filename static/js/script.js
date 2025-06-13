@@ -1578,12 +1578,44 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeBlogPage();
     }
     
-    // Initialize unread message count for logged-in users on all pages
+    // Initialize unread message count ONLY for logged-in users on their OWN pages
+    // This prevents cross-user data exposure when visiting other subdomains
     const currentUserElement = document.querySelector('[data-current-user]');
-    if (currentUserElement || document.getElementById('unreadBadge')) {
-        loadUnreadMessageCount();
-        // Refresh unread count every 30 seconds
-        setInterval(loadUnreadMessageCount, 30000);
+    const unreadBadge = document.getElementById('unreadBadge');
+    
+    // Only load unread count if user is logged in AND either:
+    // 1. On main domain (calimara.ro), OR
+    // 2. On their own subdomain (current user's username matches subdomain)
+    if (unreadBadge && window.CALIMARA_CONFIG) {
+        const currentDomain = window.location.hostname;
+        const isMainDomain = currentDomain === window.CALIMARA_CONFIG.MAIN_DOMAIN;
+        const isOwnSubdomain = currentDomain.includes(window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX) && 
+                               currentDomain !== window.CALIMARA_CONFIG.MAIN_DOMAIN;
+        
+        // Only load messages on main domain or check if this is the user's own subdomain
+        if (isMainDomain) {
+            loadUnreadMessageCount();
+            setInterval(loadUnreadMessageCount, 30000);
+        } else if (isOwnSubdomain) {
+            // For subdomains, we need to verify this is the user's own subdomain
+            // We'll check this via an API call to prevent unauthorized access
+            fetch('/api/user/me')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.authenticated) {
+                        const subdomain = currentDomain.replace(window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX, '');
+                        if (data.user.username === subdomain) {
+                            loadUnreadMessageCount();
+                            setInterval(loadUnreadMessageCount, 30000);
+                        }
+                        // If not their own subdomain, don't load any message data
+                    }
+                })
+                .catch(error => {
+                    console.error('Error verifying user subdomain access:', error);
+                    // On error, don't load message data for security
+                });
+        }
     }
     
     // Set current year in footer
