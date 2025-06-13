@@ -454,6 +454,48 @@ body::before {
     box-shadow: var(--shadow);
 }
 
+/* Navy Blue Admin Button */
+.btn-navy-custom {
+    background-color: #1e3a8a !important;
+    border-color: #1e3a8a !important;
+    color: white !important;
+    font-weight: var(--font-weight-medium);
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    transition: all var(--transition-normal);
+}
+
+.btn-navy-custom:hover {
+    background-color: #1e40af !important;
+    border-color: #1e40af !important;
+    color: white !important;
+    transform: translateY(-0.125rem);
+    box-shadow: inset 31.25rem 0 0 0 white !important;
+    color: #1e3a8a !important;
+}
+
+/* Consistent Logout Button */
+.btn-logout-custom {
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: white !important;
+    font-weight: var(--font-weight-medium);
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    transition: all var(--transition-normal);
+}
+
+.btn-logout-custom:hover {
+    background-color: #c82333 !important;
+    border-color: #c82333 !important;
+    color: white !important;
+    transform: translateY(-0.125rem);
+    box-shadow: inset 31.25rem 0 0 0 white !important;
+    color: #dc3545 !important;
+}
+
 /* Animated Create Button */
 .btn-primary-custom.create-animation {
     background: white !important;

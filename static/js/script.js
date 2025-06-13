@@ -1383,10 +1383,19 @@ function initializeBlogPage() {
     // Setup send message functionality
     setupSendMessage();
     
-    // Handle logout button
+    // Handle logout buttons
     const logoutButtonBlog = document.getElementById('logoutButtonBlog');
     if (logoutButtonBlog) {
         logoutButtonBlog.addEventListener('click', function(e) {
+            e.preventDefault();
+            showToast('Se deconectează...', 'info');
+            window.location.href = '/api/logout';
+        });
+    }
+    
+    const logoutButtonPost = document.getElementById('logoutButtonPost');
+    if (logoutButtonPost) {
+        logoutButtonPost.addEventListener('click', function(e) {
             e.preventDefault();
             showToast('Se deconectează...', 'info');
             window.location.href = '/api/logout';

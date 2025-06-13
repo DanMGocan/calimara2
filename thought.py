@@ -15,3 +15,5 @@
 
 # User messaging 
 # Users recommending other blogs 
+# Utilizatorii au posibilitatea sa critice alte lucrari 
+
