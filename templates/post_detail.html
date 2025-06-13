@@ -42,8 +42,8 @@
                     <a href="/dashboard" class="btn btn-navy-custom">
                         <i class="bi bi-speedometer2 me-1"></i>Panou Administrare
                     </a>
-                    <button class="btn btn-logout-custom" id="logoutButtonPost">
-                        <i class="bi bi-box-arrow-left me-1"></i>Deconectare
+                    <button class="btn btn-logout-custom" id="logoutButtonPost" data-bs-toggle="tooltip" title="Deconectare">
+                        <i class="bi bi-box-arrow-left"></i>
                     </button>
                     {% endif %}
                 </div>
@@ -101,12 +101,12 @@
                     <!-- Coffee Button - Same line but with text -->
                     <div class="ms-2">
                         {% if blog_owner.buymeacoffee_url %}
-                            <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn">
-                                <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
+                            <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn" data-bs-toggle="tooltip" title="Cumpără-mi o cafea!">
+                                <i class="bi bi-cup-hot"></i>
                             </a>
                         {% else %}
                             <span class="btn btn-secondary coffee-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-cup-hot me-1"></i>Cumpără-mi o cafea!
+                                <i class="bi bi-cup-hot"></i>
                             </span>
                         {% endif %}
                     </div>

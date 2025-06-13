@@ -790,6 +790,70 @@ async def get_tag_suggestions_api(
     suggestions = crud.get_tag_suggestions(db, query.strip(), limit)
     return {"suggestions": [tag[0] for tag in suggestions]}
 
+@app.get("/api/posts/random")
+async def get_random_posts_api(
+    category: str = "toate",
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Get random posts filtered by category for AJAX requests"""
+    try:
+        # Filter random posts based on category parameter
+        if category == "toate":
+            random_posts = crud.get_random_posts(db, limit=limit)
+        else:
+            # Map category filter names to actual category keys
+            category_mapping = {
+                "poezie": "poezie",
+                "proza": "proza", 
+                "teatru": "teatru",
+                "eseu": "eseu",
+                "critica_literara": "critica_literara",
+                "jurnal": "jurnal",
+                "altele": ["literatura_experimentala", "scrisoare"]  # Multiple categories for "altele"
+            }
+            
+            if category in category_mapping:
+                mapped_category = category_mapping[category]
+                if isinstance(mapped_category, list):
+                    # Handle multiple categories for "altele"
+                    random_posts = crud.get_random_posts_by_categories(db, mapped_category, limit=limit)
+                else:
+                    random_posts = crud.get_random_posts_by_category(db, mapped_category, limit=limit)
+            else:
+                random_posts = []
+        
+        # Format posts for frontend
+        formatted_posts = []
+        for post in random_posts:
+            # Get category name for display
+            category_name = ""
+            if post.category and post.category in CATEGORIES_AND_GENRES:
+                category_name = CATEGORIES_AND_GENRES[post.category]["name"]
+                if post.genre and post.genre in CATEGORIES_AND_GENRES[post.category]["genres"]:
+                    category_name += f" - {CATEGORIES_AND_GENRES[post.category]['genres'][post.genre]}"
+            
+            formatted_posts.append({
+                "id": post.id,
+                "title": post.title,
+                "slug": post.slug,
+                "content": post.content[:120] + "..." if len(post.content) > 120 else post.content,
+                "likes_count": post.likes_count,
+                "created_at": post.created_at.strftime('%d %b'),
+                "category": post.category,
+                "category_name": category_name,
+                "owner": {
+                    "username": post.owner.username,
+                    "avatar_seed": post.owner.avatar_seed or f"{post.owner.username}-shapes"
+                }
+            })
+        
+        return {"posts": formatted_posts}
+        
+    except Exception as e:
+        logger.error(f"Error getting random posts: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get random posts")
+
 # --- API Endpoints (Messages) ---
 
 @app.get("/api/messages/conversations")

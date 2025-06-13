@@ -110,35 +110,35 @@
                 <!-- Category Filter Buttons -->
                 <div class="category-filters mb-4">
                     <div class="d-flex flex-wrap gap-2">
-                        <a href="/?category=toate" class="btn btn-sm btn-outline-primary{% if selected_category == 'toate' %} active{% endif %}">
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'toate' %} active{% endif %}" data-category="toate">
                             Toate
-                        </a>
-                        <a href="/?category=poezie" class="btn btn-sm btn-outline-primary{% if selected_category == 'poezie' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'poezie' %} active{% endif %}" data-category="poezie">
                             Poezie
-                        </a>
-                        <a href="/?category=proza" class="btn btn-sm btn-outline-primary{% if selected_category == 'proza' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'proza' %} active{% endif %}" data-category="proza">
                             Proză Scurtă
-                        </a>
-                        <a href="/?category=teatru" class="btn btn-sm btn-outline-primary{% if selected_category == 'teatru' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'teatru' %} active{% endif %}" data-category="teatru">
                             Dramaturgie
-                        </a>
-                        <a href="/?category=eseu" class="btn btn-sm btn-outline-primary{% if selected_category == 'eseu' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'eseu' %} active{% endif %}" data-category="eseu">
                             Eseu
-                        </a>
-                        <a href="/?category=critica_literara" class="btn btn-sm btn-outline-primary{% if selected_category == 'critica_literara' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'critica_literara' %} active{% endif %}" data-category="critica_literara">
                             Critică Literară
-                        </a>
-                        <a href="/?category=jurnal" class="btn btn-sm btn-outline-primary{% if selected_category == 'jurnal' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'jurnal' %} active{% endif %}" data-category="jurnal">
                             Jurnal
-                        </a>
-                        <a href="/?category=altele" class="btn btn-sm btn-outline-primary{% if selected_category == 'altele' %} active{% endif %}">
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary category-filter-btn{% if selected_category == 'altele' %} active{% endif %}" data-category="altele">
                             Altele
-                        </a>
+                        </button>
                     </div>
                 </div>
                 
                 <!-- Posts Container -->
-                <div>
+                <div id="postsContainer">
                     {% if random_posts %}
                         <div class="list-group list-group-flush">
                             {% for post in random_posts[:10] %}
@@ -425,6 +425,130 @@ document.querySelectorAll('.category-item').forEach(categoryItem => {
     });
 });
 
-// Category filtering is now handled server-side via URL parameters
+// AJAX Category filtering
+initializeCategoryFiltering();
+
+function initializeCategoryFiltering() {
+    const categoryButtons = document.querySelectorAll('.category-filter-btn');
+    const postsContainer = document.getElementById('postsContainer');
+    
+    if (!postsContainer) return;
+    
+    categoryButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const category = this.dataset.category;
+            
+            // Update active button
+            categoryButtons.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Add loading state
+            postsContainer.style.opacity = '0.5';
+            postsContainer.style.transition = 'opacity 0.3s ease';
+            
+            // Fetch filtered posts
+            fetchFilteredPosts(category);
+        });
+    });
+}
+
+async function fetchFilteredPosts(category) {
+    const postsContainer = document.getElementById('postsContainer');
+    
+    try {
+        const response = await fetch(`/api/posts/random?category=${encodeURIComponent(category)}&limit=10`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch posts');
+        }
+        
+        const data = await response.json();
+        
+        // Animate out current content
+        postsContainer.style.transform = 'translateY(20px)';
+        
+        setTimeout(() => {
+            // Update content
+            renderPosts(data.posts);
+            
+            // Animate in new content
+            postsContainer.style.opacity = '1';
+            postsContainer.style.transform = 'translateY(0)';
+        }, 300);
+        
+    } catch (error) {
+        console.error('Error fetching filtered posts:', error);
+        // Restore opacity on error
+        postsContainer.style.opacity = '1';
+        postsContainer.style.transform = 'translateY(0)';
+    }
+}
+
+function renderPosts(posts) {
+    const postsContainer = document.getElementById('postsContainer');
+    
+    if (posts.length === 0) {
+        postsContainer.innerHTML = `
+            <div class="text-center py-4">
+                <i class="bi bi-file-text-x display-4 text-muted mb-3"></i>
+                <p class="text-muted">Nu există postări pentru această categorie.</p>
+                <a href="/register" class="btn btn-primary-custom">
+                    <i class="bi bi-pencil-square me-2"></i>Scrie prima postare
+                </a>
+            </div>
+        `;
+        return;
+    }
+    
+    const postsHtml = posts.map(post => `
+        <a href="//${post.owner.username}.calimara.ro/${post.slug}" 
+           class="list-group-item list-group-item-action border-0 px-0 py-3 hover-lift text-decoration-none">
+            <div class="d-flex align-items-start">
+                <img src="https://api.dicebear.com/7.x/shapes/svg?seed=${post.owner.avatar_seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size=45" 
+                     alt="Avatar ${post.owner.username}" 
+                     class="rounded-circle me-3 flex-shrink-0" 
+                     style="width: 2.8125rem; height: 2.8125rem; object-fit: cover;">
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="fw-semibold mb-0 text-dark flex-grow-1 me-2">${escapeHtml(post.title)}</h6>
+                        ${post.likes_count > 0 ? `
+                            <span class="badge bg-danger rounded-pill">
+                                <i class="bi bi-heart-fill me-1"></i>${post.likes_count}
+                            </span>
+                        ` : ''}
+                    </div>
+                    <p class="text-muted small mb-2 lh-sm">
+                        ${escapeHtml(post.content)}
+                    </p>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center text-muted small">
+                            <i class="bi bi-person me-1"></i>
+                            <span class="me-3 fw-medium">${escapeHtml(post.owner.username)}</span>
+                            <i class="bi bi-clock me-1"></i>
+                            <span>${post.created_at}</span>
+                        </div>
+                        ${post.category_name ? `
+                            <div class="d-flex gap-1">
+                                <span class="badge bg-accent rounded-pill text-white small">
+                                    ${escapeHtml(post.category_name)}
+                                </span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </a>
+    `).join('');
+    
+    postsContainer.innerHTML = `<div class="list-group list-group-flush">${postsHtml}</div>`;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 </script>
 {% endblock %}

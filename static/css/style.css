@@ -104,6 +104,21 @@ a:hover {
     text-decoration: underline !important;
 }
 
+/* Remove underlines from buttons */
+.btn, .btn:hover, .btn:focus, .btn:active {
+    text-decoration: none !important;
+}
+
+/* AJAX transitions for posts container */
+#postsContainer {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#postsContainer.loading {
+    opacity: 0.5;
+    transform: translateY(20px);
+}
+
 /* Background overlay for the bear image */
 body::before {
     content: '';
