@@ -76,21 +76,7 @@ function initializeAnimations() {
 // ===================================
 
 function initializeFormHandlers() {
-    // Login Form
-    const loginForm = document.getElementById('loginForm');
-    console.log('Login form found:', !!loginForm);
-    if (loginForm) {
-        console.log('Adding login event listener');
-        loginForm.addEventListener('submit', handleLogin);
-    } else {
-        console.error('Login form not found!');
-    }
-
-    // Register Form
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', handleRegister);
-    }
+    // Note: Login and registration now handled by Google OAuth
 
     // Create Post Form
     const createPostForm = document.getElementById('createPostForm');
@@ -164,134 +150,7 @@ function initializeInteractiveFeatures() {
 // API HANDLERS
 // ===================================
 
-async function handleLogin(e) {
-    e.preventDefault();
-    console.log('=== JavaScript Login Started ===');
-    const form = e.target;
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    const errorDiv = document.getElementById('loginError');
-
-    console.log('Email:', email);
-    console.log('Password length:', password ? password.length : 0);
-
-    showLoadingState(form);
-
-    try {
-        console.log('Sending login request...');
-        const response = await fetch('/api/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-            credentials: 'include' // Ensure cookies are included
-        });
-
-        console.log('Response status:', response.status);
-        console.log('Response headers:', response.headers);
-        
-        const data = await response.json();
-        console.log('Response data:', data);
-
-        if (response.ok) {
-            hideError(errorDiv);
-            showToast('Autentificare reușită! Te redirecționăm...', 'success');
-            
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('loginModal'));
-            if (modal) modal.hide();
-            
-            // Debug: Check session before redirect
-            console.log('Login successful, checking session...');
-            
-            // Verify session is set before redirect
-            setTimeout(async () => {
-                try {
-                    const sessionCheck = await fetch('/api/debug/session', {
-                        credentials: 'include'
-                    });
-                    const sessionData = await sessionCheck.json();
-                    console.log('Session data after login:', sessionData);
-                    
-                    if (sessionData.user_found) {
-                        // Session is valid, redirect
-                        window.location.href = `https://${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
-                    } else {
-                        console.error('Session not found after login');
-                        showError(errorDiv, 'Sesiune invalidă după autentificare. Te rugăm să încerci din nou.');
-                    }
-                } catch (e) {
-                    console.error('Session check failed:', e);
-                    // Fallback: try redirect anyway
-                    window.location.href = `https://${data.username}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
-                }
-            }, 1000);
-        } else {
-            showError(errorDiv, data.detail || 'Autentificare eșuată');
-        }
-    } catch (error) {
-        console.error('Login error:', error);
-        showError(errorDiv, 'A apărut o eroare neașteptată.');
-    } finally {
-        hideLoadingState(form);
-    }
-}
-
-async function handleRegister(e) {
-    e.preventDefault();
-    const form = e.target;
-    const username = document.getElementById('username').value;
-    const subtitle = document.getElementById('subtitle').value;
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const avatar_seed = document.getElementById('avatarSeed').value;
-    const errorDiv = document.getElementById('registerError');
-
-    showLoadingState(form);
-
-    try {
-        const response = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, subtitle, email, password, avatar_seed }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            showToast('Înregistrare reușită! Te redirecționăm...', 'success');
-            
-            // Verify authentication before redirecting
-            setTimeout(async () => {
-                try {
-                    const authCheck = await fetch('/api/user/me');
-                    const authData = await authCheck.json();
-                    
-                    if (authData.authenticated) {
-                        // User is authenticated, redirect to dashboard
-                        window.location.href = `https://${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
-                    } else {
-                        // Authentication failed, show error
-                        showError(errorDiv, 'Autentificare automată eșuată. Te rugăm să te conectezi manual.');
-                        setTimeout(() => {
-                            window.location.href = '/';
-                        }, 2000);
-                    }
-                } catch (error) {
-                    console.error('Auth verification error:', error);
-                    // Fallback: try to redirect anyway
-                    window.location.href = `https://${username.toLowerCase()}${window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX}/dashboard`;
-                }
-            }, 1500);
-        } else {
-            showError(errorDiv, data.detail || 'Înregistrare eșuată');
-        }
-    } catch (error) {
-        console.error('Register error:', error);
-        showError(errorDiv, 'A apărut o eroare neașteptată în timpul înregistrării.');
-    } finally {
-        hideLoadingState(form);
-    }
-}
+// Login and registration now handled by Google OAuth - no local handlers needed
 
 async function handleCreatePost(e) {
     e.preventDefault();

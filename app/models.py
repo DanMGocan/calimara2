@@ -13,8 +13,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    subtitle: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # New field
+    google_id: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    subtitle: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # User motto
     avatar_seed: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # DiceBear avatar seed
     
     # Social media links

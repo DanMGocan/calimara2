@@ -5,7 +5,8 @@ from typing import Optional, List
 class UserBase(BaseModel):
     username: str
     email: EmailStr
-    subtitle: Optional[str] = None # New field
+    google_id: str
+    subtitle: Optional[str] = None # User motto
     avatar_seed: Optional[str] = None # DiceBear avatar seed
     
     # Social media links
@@ -20,12 +21,16 @@ class UserBase(BaseModel):
     paypal_url: Optional[str] = None
     buymeacoffee_url: Optional[str] = None
 
-class UserCreate(UserBase):
-    password: str
+class UserSetup(BaseModel):
+    username: str
+    subtitle: Optional[str] = None
+    avatar_seed: str
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+class GoogleUserInfo(BaseModel):
+    google_id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
 
 class UserInDB(UserBase):
     id: int

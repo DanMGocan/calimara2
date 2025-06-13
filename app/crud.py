@@ -73,15 +73,18 @@ def get_user_by_email(db: Session, email: str):
 def get_user_by_username(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
 
-def create_user(db: Session, user: schemas.UserCreate):
-    hashed_password = get_password_hash(user.password)
+def get_user_by_google_id(db: Session, google_id: str):
+    return db.query(models.User).filter(models.User.google_id == google_id).first()
+
+def create_user_from_google(db: Session, user_data: dict):
+    """Create user from Google OAuth data"""
     # Generate default avatar seed if not provided
-    avatar_seed = user.avatar_seed or f"{user.username}-shapes"
+    avatar_seed = user_data.get('avatar_seed') or f"{user_data['username']}-shapes"
     db_user = models.User(
-        username=user.username, 
-        email=user.email, 
-        password_hash=hashed_password, 
-        subtitle=user.subtitle,
+        username=user_data['username'],
+        email=user_data['email'],
+        google_id=user_data['google_id'],
+        subtitle=user_data.get('subtitle'),
         avatar_seed=avatar_seed
     )
     db.add(db_user)
@@ -292,15 +295,18 @@ def get_likes_count_for_post(db: Session, post_id: int):
     return db.query(models.Like).filter(models.Like.post_id == post_id).count()
 
 def get_random_posts(db: Session, limit: int = 10):
-    return db.query(models.Post).order_by(func.rand()).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    return db.query(models.Post).options(joinedload(models.Post.owner)).order_by(func.rand()).limit(limit).all()
 
 def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
     """Get random posts filtered by a specific category"""
-    return db.query(models.Post).filter(models.Post.category == category).order_by(func.rand()).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    return db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.category == category).order_by(func.rand()).limit(limit).all()
 
 def get_random_posts_by_categories(db: Session, categories: List[str], limit: int = 10):
     """Get random posts filtered by multiple categories (for 'altele')"""
-    return db.query(models.Post).filter(models.Post.category.in_(categories)).order_by(func.rand()).limit(limit).all()
+    from sqlalchemy.orm import joinedload
+    return db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.category.in_(categories)).order_by(func.rand()).limit(limit).all()
 
 def get_random_users(db: Session, limit: int = 10):
     return db.query(models.User).order_by(func.rand()).limit(limit).all()

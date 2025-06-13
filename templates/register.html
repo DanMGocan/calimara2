@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
 {% block title %}Înregistrare - Calimara{% endblock %}
-{% block description %}Creează-ți contul gratuit pe Calimara.ro și începe să scrii propriul tău microblog{% endblock %}
+{% block description %}Creează-ți contul gratuit pe Calimara.ro prin Google și începe să scrii propriul tău microblog{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-lg-8">
+    <div class="col-lg-6">
         <!-- Registration Header -->
         <div class="text-center mb-5 animate__animated animate__fadeIn">
             <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style="width: 5rem; height: 5rem;">
@@ -13,465 +13,75 @@
             </div>
             <h1 class="display-5 fw-bold mb-3">Deschide-ți Călimara</h1>
             <p class="lead text-muted">
-                Alătură-te comunității de scriitori și poeți români. 
-                Creează-ți propriul microblog în doar câteva minute.
+                Alătură-te comunității de scriitori și poeți români.<br>
+                Conectează-te cu Google pentru a-ți crea microblogul în doar câteva minute.
             </p>
         </div>
 
-        <!-- Registration Form -->
+        <!-- Google OAuth Card -->
         <div class="card border-0 shadow-lg animate__animated animate__fadeInUp">
             <div class="card-header bg-primary-custom text-white text-center py-4">
                 <h3 class="mb-0">
-                    <i class="bi bi-person-plus me-2"></i>Creează Cont Nou
+                    <i class="bi bi-google me-2"></i>Creează Cont cu Google
                 </h3>
             </div>
-            <div class="card-body p-5">
-                <form id="registerForm" novalidate>
-                    <div class="row g-4">
-                        <!-- Username Field -->
-                        <div class="col-md-6">
-                            <label for="username" class="form-label">
-                                <i class="bi bi-person me-1"></i>Nume de utilizator *
-                            </label>
-                            <div class="input-group">
-                                <input type="text" class="form-control form-control-lg" id="username" name="username" 
-                                       required pattern="^[a-zA-Z0-9]+$" minlength="3" maxlength="20"
-                                       placeholder="ex: ionpopescu">
-                                <span class="input-group-text">.calimara.ro</span>
-                            </div>
-                            <div class="form-text">
-                                <i class="bi bi-info-circle me-1"></i>
-                                Doar litere și cifre, fără spații. Acesta va fi subdomeniul tău.
-                            </div>
-                            <div class="invalid-feedback">
-                                Numele de utilizator trebuie să conțină doar litere și cifre (3-20 caractere).
-                            </div>
-                        </div>
-
-                        <!-- Email Field -->
-                        <div class="col-md-6">
-                            <label for="email" class="form-label">
-                                <i class="bi bi-envelope me-1"></i>Adresă de email *
-                            </label>
-                            <input type="email" class="form-control form-control-lg" id="email" name="email" 
-                                   required placeholder="exemplu@email.com">
-                            <div class="form-text">
-                                <i class="bi bi-shield-check me-1"></i>
-                                Nu vom împărtăși emailul tău cu nimeni.
-                            </div>
-                            <div class="invalid-feedback">
-                                Te rugăm să introduci o adresă de email validă.
-                            </div>
-                        </div>
-
-                        <!-- Password Field -->
-                        <div class="col-md-6">
-                            <label for="password" class="form-label">
-                                <i class="bi bi-lock me-1"></i>Parolă *
-                            </label>
-                            <div class="input-group">
-                                <input type="password" class="form-control form-control-lg" id="password" name="password" 
-                                       required minlength="6" placeholder="Minim 6 caractere">
-                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                            </div>
-                            <div class="password-strength mt-2">
-                                <div class="progress" style="height: 0.25rem;">
-                                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                                </div>
-                                <small class="text-muted strength-text">Introdu o parolă</small>
-                            </div>
-                            <div class="invalid-feedback">
-                                Parola trebuie să aibă cel puțin 6 caractere.
-                            </div>
-                        </div>
-
-                        <!-- Subtitle Field -->
-                        <div class="col-md-6">
-                            <label for="subtitle" class="form-label">
-                                <i class="bi bi-quote me-1"></i>Motto / Subtitlu
-                            </label>
-                            <input type="text" class="form-control form-control-lg" id="subtitle" name="subtitle" 
-                                   maxlength="100" placeholder="Descrie-ți blogul în câteva cuvinte...">
-                            <div class="form-text">
-                                <i class="bi bi-lightbulb me-1"></i>
-                                Opțional - poți adăuga sau modifica mai târziu.
-                            </div>
-                        </div>
-
-                        <!-- Avatar Selection -->
-                        <div class="col-12">
-                            <label class="form-label">
-                                <i class="bi bi-person-circle me-1"></i>Alege un Avatar
-                            </label>
-                            <div class="avatar-selection-container">
-                                <div class="row g-3">
-                                    <div class="col-auto">
-                                        <div class="avatar-preview text-center">
-                                            <img id="selectedAvatarPreview" src="" alt="Avatar selectat" class="rounded-circle border" width="80" height="80">
-                                            <small class="d-block text-muted mt-2">Previzualizare</small>
-                                        </div>
-                                    </div>
-                                    <div class="col">
-                                        <div class="avatar-options">
-                                            <div class="d-flex flex-wrap gap-2 mb-3" id="avatarOptions">
-                                                <!-- Avatar options will be populated by JavaScript -->
-                                            </div>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" id="generateNewAvatars">
-                                                <i class="bi bi-arrow-clockwise me-1"></i>Generează Avataruri Noi
-                                            </button>
-                                        </div>
-                                        <input type="hidden" id="avatarSeed" name="avatar_seed" value="">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-text">
-                                <i class="bi bi-palette me-1"></i>
-                                Selectează unul dintre avatarurile generate sau generează altele noi. Poți schimba avatarul oricând din profil.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Terms and Conditions -->
-                    <div class="mt-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="terms" required>
-                            <label class="form-check-label" for="terms">
-                                Sunt de acord cu <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#termsModal">Termenii și Condițiile</a> 
-                                și <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#privacyModal">Politica de Confidențialitate</a> *
-                            </label>
-                            <div class="invalid-feedback">
-                                Trebuie să accepți termenii și condițiile pentru a continua.
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Error/Success Messages -->
-                    <div id="registerError" class="alert alert-danger d-none mt-4" role="alert">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <span class="error-message"></span>
-                    </div>
-
-                    <div id="registerSuccess" class="alert alert-success d-none mt-4" role="alert">
-                        <i class="bi bi-check-circle me-2"></i>
-                        <span class="success-message"></span>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div class="d-grid mt-4">
-                        <button type="submit" class="btn btn-primary-custom btn-lg py-3">
-                            <i class="bi bi-journal-plus me-2"></i>Creează Călimara Mea
-                        </button>
-                    </div>
-                </form>
-
-                <!-- Login Link -->
-                <div class="text-center mt-4">
-                    <p class="text-muted mb-0">
-                        Ai deja cont? 
-                        <a href="#" class="text-decoration-none fw-medium" data-bs-toggle="modal" data-bs-target="#loginModal">
-                            Autentifică-te aici
-                        </a>
+            <div class="card-body p-5 text-center">
+                <div class="mb-4">
+                    <i class="bi bi-google display-1 text-primary-custom mb-3"></i>
+                    <h4 class="mb-3">Simplu, rapid și sigur</h4>
+                    <p class="text-muted mb-4">
+                        Folosește contul tău Google pentru a te înregistra pe Calimara.<br>
+                        După autentificare, vei putea personaliza numele de utilizator și avatarul.
                     </p>
+                </div>
+
+                <div class="d-grid gap-3">
+                    <a href="/auth/google" class="btn btn-outline-dark btn-lg py-3">
+                        <i class="bi bi-google me-2"></i>Continuă cu Google
+                    </a>
+                    
+                    <div class="text-muted small">
+                        <i class="bi bi-shield-check me-1"></i>
+                        Datele tale sunt protejate și sigure. Nu stocăm parola ta Google.
+                    </div>
                 </div>
             </div>
         </div>
 
-    </div>
-</div>
+        <!-- Benefits Section -->
+        <div class="row mt-5 g-4">
+            <div class="col-md-4 text-center">
+                <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3rem; height: 3rem;">
+                    <i class="bi bi-lightning text-primary-custom"></i>
+                </div>
+                <h6>Rapid</h6>
+                <small class="text-muted">Înregistrare în 30 de secunde</small>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3rem; height: 3rem;">
+                    <i class="bi bi-shield-check text-primary-custom"></i>
+                </div>
+                <h6>Sigur</h6>
+                <small class="text-muted">Protecția Google OAuth</small>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 3rem; height: 3rem;">
+                    <i class="bi bi-person-check text-primary-custom"></i>
+                </div>
+                <h6>Personal</h6>
+                <small class="text-muted">Propriul tău subdomeniu</small>
+            </div>
+        </div>
 
-<!-- Terms Modal -->
-<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary-custom text-white">
-                <h5 class="modal-title" id="termsModalLabel">
-                    <i class="bi bi-file-text me-2"></i>Termeni și Condiții
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <h6>1. Acceptarea Termenilor</h6>
-                <p>Prin utilizarea platformei Calimara.ro, accepți acești termeni și condiții în totalitate.</p>
-                
-                <h6>2. Utilizarea Serviciului</h6>
-                <p>Calimara.ro este o platformă gratuită de microblogging destinată scriitorilor și poeților români. Te angajezi să folosești serviciul în mod responsabil.</p>
-                
-                <h6>3. Conținutul Utilizatorilor</h6>
-                <p>Ești responsabil pentru conținutul pe care îl publici. Nu sunt permise conținuturi ilegale, ofensatoare sau care încalcă drepturile altor persoane.</p>
-                
-                <h6>4. Confidențialitatea</h6>
-                <p>Respectăm confidențialitatea datelor tale personale conform Politicii de Confidențialitate.</p>
-                
-                <h6>5. Modificări</h6>
-                <p>Ne rezervăm dreptul de a modifica acești termeni. Modificările vor fi comunicate prin platformă.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Închide</button>
-            </div>
+        <!-- Already have account -->
+        <div class="text-center mt-5">
+            <p class="text-muted mb-0">
+                Ai deja cont? 
+                <a href="/auth/google" class="text-decoration-none fw-medium">
+                    Conectează-te cu Google
+                </a>
+            </p>
         </div>
     </div>
 </div>
-
-<!-- Privacy Modal -->
-<div class="modal fade" id="privacyModal" tabindex="-1" aria-labelledby="privacyModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary-custom text-white">
-                <h5 class="modal-title" id="privacyModalLabel">
-                    <i class="bi bi-shield-check me-2"></i>Politica de Confidențialitate
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <h6>Colectarea Datelor</h6>
-                <p>Colectăm doar datele necesare pentru funcționarea serviciului: email, nume de utilizator și conținutul pe care îl publici.</p>
-                
-                <h6>Utilizarea Datelor</h6>
-                <p>Datele tale sunt folosite exclusiv pentru:</p>
-                <ul>
-                    <li>Furnizarea serviciului de microblogging</li>
-                    <li>Comunicarea cu tine despre contul tău</li>
-                    <li>Îmbunătățirea platformei</li>
-                </ul>
-                
-                <h6>Partajarea Datelor</h6>
-                <p>Nu partajăm datele tale personale cu terțe părți, cu excepția cazurilor prevăzute de lege.</p>
-                
-                <h6>Securitatea</h6>
-                <p>Implementăm măsuri de securitate pentru protejarea datelor tale.</p>
-                
-                <h6>Drepturile Tale</h6>
-                <p>Ai dreptul să accesezi, modifici sau ștergi datele tale personale contactându-ne.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Închide</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const passwordInput = document.getElementById('password');
-    const togglePassword = document.getElementById('togglePassword');
-    const strengthBar = document.querySelector('.progress-bar');
-    const strengthText = document.querySelector('.strength-text');
-    const usernameInput = document.getElementById('username');
-
-    // Password visibility toggle
-    togglePassword.addEventListener('click', function() {
-        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-        passwordInput.setAttribute('type', type);
-        this.querySelector('i').classList.toggle('bi-eye');
-        this.querySelector('i').classList.toggle('bi-eye-slash');
-    });
-
-    // Password strength indicator
-    passwordInput.addEventListener('input', function() {
-        const password = this.value;
-        let strength = 0;
-        let strengthLabel = '';
-        let strengthClass = '';
-
-        if (password.length >= 6) strength += 25;
-        if (password.match(/[a-z]/)) strength += 25;
-        if (password.match(/[A-Z]/)) strength += 25;
-        if (password.match(/[0-9]/)) strength += 25;
-
-        if (strength === 0) {
-            strengthLabel = 'Introdu o parolă';
-            strengthClass = '';
-        } else if (strength <= 25) {
-            strengthLabel = 'Parolă slabă';
-            strengthClass = 'bg-danger';
-        } else if (strength <= 50) {
-            strengthLabel = 'Parolă medie';
-            strengthClass = 'bg-warning';
-        } else if (strength <= 75) {
-            strengthLabel = 'Parolă bună';
-            strengthClass = 'bg-info';
-        } else {
-            strengthLabel = 'Parolă puternică';
-            strengthClass = 'bg-success';
-        }
-
-        strengthBar.style.width = strength + '%';
-        strengthBar.className = 'progress-bar ' + strengthClass;
-        strengthText.textContent = strengthLabel;
-    });
-
-    // Username validation and preview
-    usernameInput.addEventListener('input', function() {
-        const username = this.value.toLowerCase();
-        const preview = document.querySelector('.input-group-text');
-        
-        if (username && /^[a-zA-Z0-9]+$/.test(username)) {
-            preview.textContent = '.calimara.ro';
-            preview.classList.remove('text-danger');
-            preview.classList.add('text-success');
-        } else {
-            preview.textContent = '.calimara.ro';
-            preview.classList.remove('text-success');
-            if (username) {
-                preview.classList.add('text-danger');
-            }
-        }
-    });
-
-    // Real-time validation - only validate after user has interacted
-    const form = document.getElementById('registerForm');
-    const inputs = form.querySelectorAll('input[required]');
-    
-    inputs.forEach(input => {
-        let hasBeenTouched = false;
-        
-        input.addEventListener('input', function() {
-            hasBeenTouched = true;
-        });
-        
-        input.addEventListener('blur', function() {
-            if (hasBeenTouched) {
-                if (this.checkValidity()) {
-                    this.classList.remove('is-invalid');
-                    this.classList.add('is-valid');
-                } else {
-                    this.classList.remove('is-valid');
-                    this.classList.add('is-invalid');
-                }
-            }
-        });
-    });
-
-    // Character counter for subtitle
-    const subtitleInput = document.getElementById('subtitle');
-    const maxLength = subtitleInput.getAttribute('maxlength');
-    
-    if (maxLength) {
-        const counter = document.createElement('small');
-        counter.className = 'text-muted character-counter';
-        counter.textContent = `0/${maxLength}`;
-        subtitleInput.parentNode.appendChild(counter);
-        
-        subtitleInput.addEventListener('input', function() {
-            const currentLength = this.value.length;
-            counter.textContent = `${currentLength}/${maxLength}`;
-            counter.className = currentLength > maxLength * 0.9 ? 'text-warning character-counter' : 'text-muted character-counter';
-        });
-    }
-
-    // Avatar Selection Logic
-    const avatarOptions = document.getElementById('avatarOptions');
-    const selectedAvatarPreview = document.getElementById('selectedAvatarPreview');
-    const avatarSeedInput = document.getElementById('avatarSeed');
-    const generateNewAvatarsBtn = document.getElementById('generateNewAvatars');
-    const usernameForAvatar = document.getElementById('username');
-    
-    function generateAvatarSeed() {
-        const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        let result = '';
-        for (let i = 0; i < 10; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-    }
-    
-    function getDiceBearUrl(seed) {
-        return `https://api.dicebear.com/7.x/shapes/svg?seed=${seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size=80`;
-    }
-    
-    function createAvatarOption(seed) {
-        const option = document.createElement('div');
-        option.className = 'avatar-option position-relative cursor-pointer';
-        option.style.cssText = 'cursor: pointer; transition: transform 0.2s;';
-        
-        const img = document.createElement('img');
-        img.src = getDiceBearUrl(seed);
-        img.alt = 'Avatar option';
-        img.className = 'rounded-circle border';
-        img.width = 50;
-        img.height = 50;
-        img.style.cssText = 'border: 2px solid transparent;';
-        
-        option.appendChild(img);
-        
-        option.addEventListener('click', function() {
-            // Remove selected state from all options
-            document.querySelectorAll('.avatar-option img').forEach(img => {
-                img.style.border = '2px solid transparent';
-            });
-            
-            // Add selected state to clicked option
-            img.style.border = '2px solid #0d6efd';
-            
-            // Update preview and hidden input
-            selectedAvatarPreview.src = getDiceBearUrl(seed);
-            avatarSeedInput.value = seed;
-        });
-        
-        option.addEventListener('mouseenter', function() {
-            this.style.transform = 'scale(1.1)';
-        });
-        
-        option.addEventListener('mouseleave', function() {
-            this.style.transform = 'scale(1)';
-        });
-        
-        return option;
-    }
-    
-    function generateAvatarOptions() {
-        avatarOptions.innerHTML = '';
-        const seeds = [];
-        
-        // Generate 8 different avatar options
-        for (let i = 0; i < 8; i++) {
-            const seed = generateAvatarSeed();
-            seeds.push(seed);
-            const option = createAvatarOption(seed);
-            avatarOptions.appendChild(option);
-        }
-        
-        // Auto-select the first avatar
-        if (seeds.length > 0) {
-            const firstOption = avatarOptions.firstChild.querySelector('img');
-            firstOption.style.border = '2px solid #0d6efd';
-            selectedAvatarPreview.src = getDiceBearUrl(seeds[0]);
-            avatarSeedInput.value = seeds[0];
-        }
-    }
-    
-    // Generate initial avatars when username changes
-    usernameForAvatar.addEventListener('input', function() {
-        if (this.value.length >= 3) {
-            // Use username as base for consistent avatars
-            const baseSeed = this.value.toLowerCase();
-            avatarOptions.innerHTML = '';
-            const seeds = [];
-            
-            for (let i = 0; i < 8; i++) {
-                const seed = `${baseSeed}-${i}`;
-                seeds.push(seed);
-                const option = createAvatarOption(seed);
-                avatarOptions.appendChild(option);
-            }
-            
-            // Auto-select the first avatar
-            if (seeds.length > 0) {
-                const firstOption = avatarOptions.firstChild.querySelector('img');
-                firstOption.style.border = '2px solid #0d6efd';
-                selectedAvatarPreview.src = getDiceBearUrl(seeds[0]);
-                avatarSeedInput.value = seeds[0];
-            }
-        }
-    });
-    
-    // Generate new random avatars button
-    generateNewAvatarsBtn.addEventListener('click', generateAvatarOptions);
-    
-    // Generate initial set of avatars
-    generateAvatarOptions();
-});
-</script>
 {% endblock %}

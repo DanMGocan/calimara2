@@ -16,7 +16,7 @@ from starlette.routing import Match
 from starlette.types import ASGIApp
 from starlette.middleware.sessions import SessionMiddleware # Import SessionMiddleware
 
-from . import models, schemas, crud, auth
+from . import models, schemas, crud, auth, google_oauth
 from .database import SessionLocal, engine, get_db
 from .categories import CATEGORIES_AND_GENRES, get_main_categories, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
 import urllib.parse
@@ -142,88 +142,95 @@ def validate_social_url(url: str, platform: str) -> bool:
 
 # --- API Endpoints (Authentication & User Management) ---
 
-@app.post("/api/register", response_model=schemas.UserInDB) # Re-added response_model
-async def register_user(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
-    logger.info(f"Se încearcă înregistrarea utilizatorului: {user.email} cu numele de utilizator: {user.username}")
-    
-    # Validate username: must be one word (no spaces) and alphanumeric
-    import re
-    if not re.fullmatch(r"^[a-zA-Z0-9]+$", user.username):
-        logger.warning(f"Înregistrare eșuată: Numele de utilizator '{user.username}' conține caractere nepermise sau spații.")
-        raise HTTPException(status_code=400, detail="Numele de utilizator poate conține doar litere și cifre, fără spații sau simboluri speciale.")
+# --- Google OAuth Authentication Endpoints ---
 
-    db_user_email = crud.get_user_by_email(db, email=user.email.lower()) # Ensure email is lowercased for uniqueness
-    if db_user_email:
-        logger.warning(f"Înregistrare eșuată: Emailul {user.email} este deja înregistrat.")
-        raise HTTPException(status_code=400, detail="Emailul este deja înregistrat")
-    db_user_username = crud.get_user_by_username(db, username=user.username.lower()) # Ensure username is lowercased for uniqueness
-    if db_user_username:
-        logger.warning(f"Înregistrare eșuată: Numele de utilizator {user.username} este deja luat.")
-        raise HTTPException(status_code=400, detail="Numele de utilizator este deja luat")
-    
-    # Ensure username and email are stored in lowercase
-    user.username = user.username.lower()
-    user.email = user.email.lower()
+@app.get("/auth/google")
+async def google_login(request: Request):
+    """Initiate Google OAuth flow"""
+    try:
+        auth_url = await google_oauth.get_google_auth_url(request)
+        return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+    except Exception as e:
+        logger.error(f"Error initiating Google OAuth: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initiate authentication")
 
-    new_user = crud.create_user(db=db, user=user)
-    
-    # Automatically log in the user by setting session
-    request.session["user_id"] = new_user.id
-    logger.info(f"Sesiune setată pentru utilizatorul nou înregistrat: user_id={new_user.id}")
-    
-    logger.info(f"Utilizator înregistrat și autentificat cu succes: {new_user.email}")
-    return new_user
+@app.get("/auth/google/callback")
+async def google_callback(request: Request, db: Session = Depends(get_db)):
+    """Handle Google OAuth callback"""
+    try:
+        # Get user info from Google
+        google_user = await google_oauth.handle_google_callback(request)
+        
+        # Check if user exists
+        user, is_new = google_oauth.find_or_create_user(db, google_user)
+        
+        if user:
+            # Existing user - log them in directly
+            request.session["user_id"] = user.id
+            logger.info(f"Google OAuth login successful for existing user: {user.username}")
+            return RedirectResponse(url=f"https://{user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
+        else:
+            # New user - store Google info in session and redirect to setup
+            request.session["google_user"] = {
+                "google_id": google_user.google_id,
+                "email": google_user.email,
+                "name": google_user.name,
+                "picture": google_user.picture
+            }
+            logger.info(f"New Google user detected: {google_user.email}. Redirecting to setup.")
+            return RedirectResponse(url="/auth/setup", status_code=status.HTTP_302_FOUND)
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in Google callback: {e}")
+        raise HTTPException(status_code=500, detail="Authentication failed")
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, current_user: Optional[models.User] = Depends(auth.get_current_user)):
-    if current_user: # If already logged in, redirect to their blog
-        return RedirectResponse(url=f"https://{current_user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
-    return templates.TemplateResponse("login.html", get_common_context(request))
+@app.get("/auth/setup", response_class=HTMLResponse)
+async def auth_setup_page(request: Request):
+    """Setup page for new Google OAuth users"""
+    google_user_data = request.session.get("google_user")
+    if not google_user_data:
+        # No Google user data in session, redirect to login
+        return RedirectResponse(url="/auth/google", status_code=status.HTTP_302_FOUND)
+    
+    context = get_common_context(request)
+    context.update({
+        "google_user": google_user_data
+    })
+    return templates.TemplateResponse("auth_setup.html", context)
 
-@app.post("/api/token")
-async def login_for_access_token(request: Request, db: Session = Depends(get_db)):
-    logger.info("=== LOGIN ENDPOINT CALLED ===")
-    logger.info(f"Content-Type: {request.headers.get('content-type', 'N/A')}")
+@app.post("/api/auth/complete-setup")
+async def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
+    """Complete user setup after Google OAuth"""
+    google_user_data = request.session.get("google_user")
+    if not google_user_data:
+        raise HTTPException(status_code=400, detail="No authentication session found")
     
     try:
-        # Handle both JSON and form data
-        content_type = request.headers.get('content-type', '')
+        # Validate username
+        import re
+        if not re.fullmatch(r"^[a-zA-Z0-9]+$", setup_data.username):
+            raise HTTPException(status_code=400, detail="Numele de utilizator poate conține doar litere și cifre, fără spații sau simboluri speciale.")
         
-        if 'application/json' in content_type:
-            body = await request.json()
-            email = body.get('email')
-            password = body.get('password')
-        else:
-            # Handle form data
-            form = await request.form()
-            email = form.get('email')
-            password = form.get('password')
+        # Create Google user info object
+        google_user = schemas.GoogleUserInfo(**google_user_data)
         
-        logger.info(f"Se încearcă autentificarea pentru email: {email}")
-        logger.info(f"Password length: {len(password) if password else 0}")
+        # Create the user
+        new_user = google_oauth.create_user_from_google(db, google_user, setup_data)
         
-        user = crud.get_user_by_email(db, email=email)
-        if not user or not crud.verify_password(password, user.password_hash):
-            logger.warning(f"Autentificare eșuată: Credențiale incorecte pentru {email}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Email sau parolă incorecte",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        # Clear Google user data from session and set user session
+        request.session.pop("google_user", None)
+        request.session["user_id"] = new_user.id
         
-        # Set user ID in session
-        request.session["user_id"] = user.id
-        logger.info(f"Autentificare reușită pentru {user.email}. Sesiune setată cu user_id={user.id}")
-        logger.info(f"Session după setare: {dict(request.session)}")
-        logger.info(f"Host header: {request.headers.get('host', 'N/A')}")
-        return {"message": "Autentificat cu succes", "username": user.username} # Return username for client-side redirect
-    
+        logger.info(f"User setup completed for: {new_user.username}")
+        return {"message": "Setup completed successfully", "username": new_user.username}
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Login endpoint error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Eroare internă de server",
-        )
+        logger.error(f"Error completing user setup: {e}")
+        raise HTTPException(status_code=500, detail="Failed to complete setup")
 
 @app.get("/api/user/me")
 async def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
