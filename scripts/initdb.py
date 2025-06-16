@@ -174,7 +174,7 @@ def init_db():
                 print("\n=== ACCOUNT INFORMATION ===")
                 print("\nGod Admin Account:")
                 print("  Username: admin")
-                print("  Email: dangocan@outlook.com")
+                print("  Email: admin@calimara.ro")
                 print("  Authentication: Google OAuth (test google_id: god-admin-google-id-000000000)")
                 print("  Blog URL: admin.calimara.ro")
                 print("  Access: Full moderation control panel")

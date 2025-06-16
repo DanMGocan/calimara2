@@ -260,7 +260,7 @@ CREATE TABLE messages (
 -- God Admin account
 INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
     'admin',
-    'dangocan@outlook.com',
+    'admin@calimara.ro',
     'god-admin-google-id-000000000',
     'Calimara Platform Administrator - Moderation & User Management',
     'admin-shapes'
