@@ -248,7 +248,7 @@
 
     <!-- Sidebar -->
     <div class="col-lg-4">
-        <!-- Related Posts -->
+        <!-- Related Posts from Same Author -->
         {% if related_posts %}
             <div class="blog-card mb-4 animate__animated animate__fadeInUp">
                 <h5 class="fw-bold mb-4">
@@ -271,6 +271,77 @@
                         </small>
                     </div>
                 {% endfor %}
+            </div>
+        {% endif %}
+
+        <!-- Posts from Other Authors -->
+        {% if other_authors_posts %}
+            <div class="blog-card mb-4 animate__animated animate__fadeInUp">
+                <h5 class="fw-bold mb-4">
+                    <i class="bi bi-people me-2"></i>
+                    Alte postări de alți autori
+                </h5>
+                {% for other_post in other_authors_posts %}
+                    <div class="related-post-item mb-3{% if not loop.last %} pb-3 border-bottom{% endif %}">
+                        <div class="d-flex align-items-start">
+                            <img src="{{ get_avatar_url(other_post.owner, 32) }}" 
+                                 alt="Avatar {{ other_post.owner.username }}" class="avatar avatar-sm me-2 mt-1">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">
+                                    <a href="//{{ other_post.owner.username }}.calimara.ro/{{ other_post.slug }}" 
+                                       class="text-decoration-none">
+                                        {{ other_post.title }}
+                                    </a>
+                                </h6>
+                                <small class="text-muted d-block mb-1">
+                                    de <a href="//{{ other_post.owner.username }}.calimara.ro" 
+                                          class="text-decoration-none fw-bold">@{{ other_post.owner.username }}</a>
+                                </small>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar3 me-1"></i>
+                                    {{ other_post.created_at.strftime('%d %B %Y') }}
+                                    <span class="mx-2">•</span>
+                                    <i class="bi bi-eye me-1"></i>
+                                    {{ other_post.view_count }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <!-- Other Authors -->
+        {% if other_authors %}
+            <div class="blog-card mb-4 animate__animated animate__fadeInUp">
+                <h5 class="fw-bold mb-4">
+                    <i class="bi bi-person-lines-fill me-2"></i>
+                    Alți autori
+                </h5>
+                {% for author in other_authors %}
+                    <div class="author-item mb-3{% if not loop.last %} pb-3 border-bottom{% endif %}">
+                        <div class="d-flex align-items-center">
+                            <img src="{{ get_avatar_url(author, 40) }}" 
+                                 alt="Avatar {{ author.username }}" class="avatar avatar-md me-3">
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">
+                                    <a href="//{{ author.username }}.calimara.ro" 
+                                       class="text-decoration-none fw-bold">@{{ author.username }}</a>
+                                </h6>
+                                {% if author.subtitle %}
+                                    <small class="text-muted">{{ author.subtitle[:50] }}{% if author.subtitle|length > 50 %}...{% endif %}</small>
+                                {% else %}
+                                    <small class="text-muted">Scriitor pe Calimara</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+                <div class="text-center mt-3">
+                    <a href="//calimara.ro" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-search me-1"></i>Descoperă mai mulți autori
+                    </a>
+                </div>
             </div>
         {% endif %}
 

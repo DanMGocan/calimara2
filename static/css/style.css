@@ -2562,3 +2562,81 @@ button[aria-expanded="false"] .collapse-arrow {
     margin-bottom: 0 !important;
 }
 
+/* ===================================
+   POST DETAIL SIDEBAR STYLES
+   ================================== */
+
+/* Related Post Items */
+.related-post-item {
+    transition: all var(--transition-normal);
+    padding: 0.5rem;
+    border-radius: var(--border-radius);
+}
+
+.related-post-item:hover {
+    background-color: var(--color-light);
+    transform: translateX(0.25rem);
+}
+
+.related-post-item h6 a {
+    color: var(--color-dark);
+    transition: color var(--transition-normal);
+}
+
+.related-post-item:hover h6 a {
+    color: var(--color-accent);
+}
+
+/* Author Items */
+.author-item {
+    transition: all var(--transition-normal);
+    padding: 0.5rem;
+    border-radius: var(--border-radius);
+}
+
+.author-item:hover {
+    background-color: var(--color-light);
+    transform: translateX(0.25rem);
+}
+
+.author-item h6 a {
+    color: var(--color-dark);
+    transition: color var(--transition-normal);
+}
+
+.author-item:hover h6 a {
+    color: var(--color-accent);
+}
+
+/* Avatar Improvements for Sidebar */
+.avatar-sm {
+    width: 2rem !important;
+    height: 2rem !important;
+    border-radius: 50%;
+    border: 0.125rem solid var(--color-light);
+    transition: all var(--transition-normal);
+}
+
+.avatar-md {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 50%;
+    border: 0.125rem solid var(--color-light);
+    transition: all var(--transition-normal);
+}
+
+.related-post-item:hover .avatar-sm,
+.author-item:hover .avatar-md {
+    border-color: var(--color-accent);
+    transform: scale(1.05);
+}
+
+/* Sidebar Container Spacing */
+.col-lg-4 .blog-card {
+    margin-bottom: 1.5rem;
+}
+
+.col-lg-4 .blog-card:last-child {
+    margin-bottom: 0;
+}
+

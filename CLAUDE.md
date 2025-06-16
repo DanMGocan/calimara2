@@ -160,6 +160,27 @@ Check `request.state.is_subdomain` and `request.state.username` (set by Subdomai
 - **Background Opacity**: Adjusted background images for better readability
 - **Clean Registration**: Simplified registration page to focus only on Google OAuth
 
+### Gemini 1.5 Flash Content Moderation System (Latest)
+- **AI-Powered Moderation**: Advanced content analysis using Google Gemini 1.5 Flash instead of Perspective API
+- **Romanian Language Support**: Specialized prompts and cultural context awareness for Romanian content
+- **Literary Context**: Understands artistic expression vs. harmful content in poetry, prose, and theater
+- **Multi-Category Analysis**: Toxicity, harassment, hate speech, explicit content, dangerous content, Romanian profanity
+- **Enhanced Detection**: Combines AI analysis with Romanian-specific pattern matching
+- **Automated Decisions**: Auto-approve safe content, auto-reject harmful content, flag ambiguous content for review
+- **Admin Control Panel**: God admin can review, approve, reject, or delete flagged content
+- **Cultural Sensitivity**: Recognizes Romanian idioms, sarcasm, humor, and cultural references
+- **Fail-Safe Design**: Defaults to approval if API fails to ensure content flow
+- **Environment Variables**: `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-1.5-flash`, `ROMANIAN_CONTEXT_AWARE=True`
+
+### God Admin and Moderation System
+- **God Admin Account**: Dedicated admin account (`gocandan@gmail.com`) with full moderation control
+- **Email-Based Access**: Admin access determined by email address matching `GOD_ADMIN_EMAIL`
+- **Moderation Control Panel**: Complete interface at `/admin/moderation` for content review
+- **Real-Time Statistics**: Dashboard showing pending, flagged, suspended counts and daily actions
+- **Content Review**: Tabbed interface for pending content, flagged content, user management, analytics
+- **User Management**: Search, suspend, and unsuspend user accounts with reasons
+- **Navigation Integration**: Admin link appears in navigation only for god admin users
+
 ### Social Media and Donation Buttons
 - **User Profile Enhancement**: Added 8 new URL fields to User model for social media and donation links
 - **Admin Management**: Complete interface in admin dashboard for managing social links

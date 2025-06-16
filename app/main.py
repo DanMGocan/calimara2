@@ -1360,11 +1360,21 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
                 related_posts = crud.get_posts_by_user(db, user.id, limit=5)
                 related_posts = [p for p in related_posts if p.id != post.id][:3]
                 
+                # Get posts from other authors (excluding current author)
+                other_authors_posts = crud.get_random_posts(db, limit=10)
+                other_authors_posts = [p for p in other_authors_posts if p.user_id != user.id][:4]
+                
+                # Get random users (excluding current user)
+                other_authors = crud.get_random_users(db, limit=8)
+                other_authors = [u for u in other_authors if u.id != user.id][:5]
+                
                 context = get_common_context(request, current_user)
                 context.update({
                     "blog_owner": user,
                     "post": post,
-                    "related_posts": related_posts
+                    "related_posts": related_posts,
+                    "other_authors_posts": other_authors_posts,
+                    "other_authors": other_authors
                 })
                 return templates.TemplateResponse("post_detail.html", context)
         

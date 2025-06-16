@@ -1,18 +1,28 @@
 import os
 import logging
-import httpx
+import json
 from typing import Dict, Tuple, Optional
 from enum import Enum
+from google import genai
 
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-PERSPECTIVE_API_KEY = os.getenv("PERSPECTIVE_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
 TOXICITY_THRESHOLD_AUTO_APPROVE = float(os.getenv("TOXICITY_THRESHOLD_AUTO_APPROVE", "0.3"))
 TOXICITY_THRESHOLD_AUTO_REJECT = float(os.getenv("TOXICITY_THRESHOLD_AUTO_REJECT", "0.8"))
+ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == "true"
 
-PERSPECTIVE_API_URL = "https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze"
+# Initialize Gemini client
+gemini_client = None
+if GEMINI_API_KEY and MODERATION_ENABLED:
+    try:
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        logger.info("Gemini client initialized successfully for content moderation")
+    except Exception as e:
+        logger.error(f"Failed to initialize Gemini client: {e}")
 
 class ModerationStatus(str, Enum):
     APPROVED = "approved"
@@ -21,100 +31,207 @@ class ModerationStatus(str, Enum):
     FLAGGED = "flagged"
 
 class ModerationResult:
-    def __init__(self, status: ModerationStatus, toxicity_score: float, reason: str):
+    def __init__(self, status: ModerationStatus, toxicity_score: float, reason: str, details: Optional[Dict] = None):
         self.status = status
         self.toxicity_score = toxicity_score
         self.reason = reason
+        self.details = details or {}
 
-async def analyze_content_toxicity(text: str, language: str = "ro") -> Dict[str, float]:
+# Romanian-specific moderation prompts
+ROMANIAN_CONTENT_MODERATION_PROMPT = """
+Ești un moderator de conținut specializat pentru o platformă românească de literatură și microblogging. 
+Analizează următorul text românesc și evaluează-l pentru:
+
+1. TOXICITATE (0.0-1.0): Limbaj ofensator, insultător sau dăunător
+2. HARASSMENT (0.0-1.0): Hărțuire, intimidare sau atacuri personale
+3. HATE_SPEECH (0.0-1.0): Discurs de ură bazat pe etnie, religie, orientare sexuală, etc.
+4. SEXUALLY_EXPLICIT (0.0-1.0): Conținut sexual explicit neadecvat
+5. DANGEROUS_CONTENT (0.0-1.0): Conținut care promovează violența sau activități periculoase
+6. ROMANIAN_PROFANITY (0.0-1.0): Înjurături și limbaj vulgar specific românesc
+
+Ia în considerare:
+- Contextul literar și artistic (poezie, proză, teatru)
+- Nuanțele culturale românești
+- Diferența între exprimarea artistică și atacurile personale
+- Sarcasmul și umorul românesc
+- Expresiile idiomatice românești
+
+Returnează doar un JSON valid cu acest format:
+{
+    "toxicity": 0.0,
+    "harassment": 0.0, 
+    "hate_speech": 0.0,
+    "sexually_explicit": 0.0,
+    "dangerous_content": 0.0,
+    "romanian_profanity": 0.0,
+    "overall_assessment": "safe|review|unsafe",
+    "reason": "Explicație scurtă în română",
+    "literary_context": "considerare pentru contextul literar dacă e cazul"
+}
+
+Text de analizat:
+"""
+
+ENGLISH_FALLBACK_PROMPT = """
+You are a content moderator for a Romanian literature and microblogging platform.
+Analyze the following text and evaluate it for:
+
+1. TOXICITY (0.0-1.0): Offensive, insulting, or harmful language
+2. HARASSMENT (0.0-1.0): Harassment, intimidation, or personal attacks  
+3. HATE_SPEECH (0.0-1.0): Hate speech based on ethnicity, religion, sexual orientation, etc.
+4. SEXUALLY_EXPLICIT (0.0-1.0): Inappropriate sexually explicit content
+5. DANGEROUS_CONTENT (0.0-1.0): Content promoting violence or dangerous activities
+
+Consider:
+- Literary and artistic context (poetry, prose, theater)
+- Difference between artistic expression and personal attacks
+- Sarcasm and humor
+- Idiomatic expressions
+
+Return only a valid JSON with this format:
+{
+    "toxicity": 0.0,
+    "harassment": 0.0,
+    "hate_speech": 0.0, 
+    "sexually_explicit": 0.0,
+    "dangerous_content": 0.0,
+    "overall_assessment": "safe|review|unsafe",
+    "reason": "Brief explanation",
+    "literary_context": "consideration for literary context if applicable"
+}
+
+Text to analyze:
+"""
+
+async def analyze_content_with_gemini(text: str, use_romanian_context: bool = True) -> Dict[str, float]:
     """
-    Analyze text using Google Perspective API
-    Returns toxicity scores for different attributes
+    Analyze text using Gemini 1.5 Flash with Romanian-aware prompts
+    Returns toxicity scores for different categories
     """
-    if not PERSPECTIVE_API_KEY or not MODERATION_ENABLED:
-        logger.warning("Perspective API not configured or disabled")
-        return {"TOXICITY": 0.0}
+    if not gemini_client or not MODERATION_ENABLED:
+        logger.warning("Gemini client not configured or moderation disabled")
+        return {"toxicity": 0.0, "overall_assessment": "safe"}
     
     try:
-        data = {
-            'comment': {'text': text},
-            'requestedAttributes': {
-                'TOXICITY': {},
-                'SEVERE_TOXICITY': {},
-                'IDENTITY_ATTACK': {},
-                'INSULT': {},
-                'PROFANITY': {},
-                'THREAT': {}
-            },
-            'languages': [language],
-            'doNotStore': True  # Don't store data for privacy
-        }
+        # Choose appropriate prompt based on context awareness setting
+        if use_romanian_context and ROMANIAN_CONTEXT_AWARE:
+            prompt = ROMANIAN_CONTENT_MODERATION_PROMPT + text
+        else:
+            prompt = ENGLISH_FALLBACK_PROMPT + text
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{PERSPECTIVE_API_URL}?key={PERSPECTIVE_API_KEY}",
-                json=data
+        # Configure safety settings to not interfere with content moderation
+        safety_settings = [
+            genai.types.SafetySetting(
+                category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
+            ),
+            genai.types.SafetySetting(
+                category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
+            ),
+            genai.types.SafetySetting(
+                category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
+            ),
+            genai.types.SafetySetting(
+                category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
             )
+        ]
+        
+        # Generate content with Gemini
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(
+                temperature=0.0,  # Deterministic for content moderation
+                safety_settings=safety_settings
+            )
+        )
+        
+        # Parse the JSON response
+        response_text = response.text.strip()
+        
+        # Clean response text if it contains markdown code blocks
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+        
+        try:
+            scores = json.loads(response_text)
+            logger.info(f"Gemini moderation analysis completed. Toxicity: {scores.get('toxicity', 0.0):.3f}")
+            return scores
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Gemini JSON response: {e}. Response: {response_text[:200]}...")
+            # Fallback to safe assessment
+            return {"toxicity": 0.0, "overall_assessment": "safe", "reason": "Parsing error - defaulting to safe"}
             
-            if response.status_code == 200:
-                result = response.json()
-                scores = {}
-                
-                for attribute, data in result.get('attributeScores', {}).items():
-                    score = data.get('summaryScore', {}).get('value', 0.0)
-                    scores[attribute] = score
-                
-                logger.info(f"Perspective API analysis completed. TOXICITY: {scores.get('TOXICITY', 0.0):.3f}")
-                return scores
-            else:
-                logger.error(f"Perspective API error: {response.status_code} - {response.text}")
-                return {"TOXICITY": 0.0}  # Fail safe - approve if API fails
-                
     except Exception as e:
-        logger.error(f"Error calling Perspective API: {e}")
-        return {"TOXICITY": 0.0}  # Fail safe - approve if API fails
+        logger.error(f"Error calling Gemini API: {e}")
+        # Fail safe - approve if API fails
+        return {"toxicity": 0.0, "overall_assessment": "safe", "reason": "API error - defaulting to safe"}
 
-def determine_moderation_status(toxicity_scores: Dict[str, float], content_type: str = "comment") -> ModerationResult:
+def determine_moderation_status(gemini_scores: Dict[str, float], content_type: str = "comment") -> ModerationResult:
     """
-    Determine moderation status based on toxicity scores
+    Determine moderation status based on Gemini analysis scores
     """
-    toxicity = toxicity_scores.get("TOXICITY", 0.0)
-    severe_toxicity = toxicity_scores.get("SEVERE_TOXICITY", 0.0)
-    identity_attack = toxicity_scores.get("IDENTITY_ATTACK", 0.0)
-    threat = toxicity_scores.get("THREAT", 0.0)
+    toxicity = gemini_scores.get("toxicity", 0.0)
+    harassment = gemini_scores.get("harassment", 0.0)
+    hate_speech = gemini_scores.get("hate_speech", 0.0)
+    sexually_explicit = gemini_scores.get("sexually_explicit", 0.0)
+    dangerous_content = gemini_scores.get("dangerous_content", 0.0)
+    romanian_profanity = gemini_scores.get("romanian_profanity", 0.0)
+    overall_assessment = gemini_scores.get("overall_assessment", "safe")
+    reason = gemini_scores.get("reason", "Automated moderation")
     
-    # Auto-reject for severe cases
-    if (toxicity >= TOXICITY_THRESHOLD_AUTO_REJECT or 
-        severe_toxicity >= 0.7 or 
-        identity_attack >= 0.7 or 
-        threat >= 0.7):
+    # Calculate maximum toxicity across all categories
+    max_toxicity = max(toxicity, harassment, hate_speech, sexually_explicit, dangerous_content, romanian_profanity)
+    
+    # Use Gemini's overall assessment if available, otherwise fall back to thresholds
+    if overall_assessment == "unsafe":
         return ModerationResult(
             status=ModerationStatus.REJECTED,
-            toxicity_score=toxicity,
-            reason=f"High toxicity detected (toxicity: {toxicity:.2f})"
+            toxicity_score=max_toxicity,
+            reason=f"Content rejected by AI moderator: {reason}",
+            details=gemini_scores
         )
-    
-    # Flag for manual review for medium toxicity
-    if (toxicity >= TOXICITY_THRESHOLD_AUTO_APPROVE or 
-        severe_toxicity >= 0.4 or 
-        identity_attack >= 0.4 or 
-        threat >= 0.4):
+    elif overall_assessment == "review":
         return ModerationResult(
             status=ModerationStatus.FLAGGED,
-            toxicity_score=toxicity,
-            reason=f"Medium toxicity detected - manual review required (toxicity: {toxicity:.2f})"
+            toxicity_score=max_toxicity,
+            reason=f"Content flagged for manual review: {reason}",
+            details=gemini_scores
+        )
+    
+    # Fallback to threshold-based decisions if overall_assessment is unclear
+    if max_toxicity >= TOXICITY_THRESHOLD_AUTO_REJECT:
+        return ModerationResult(
+            status=ModerationStatus.REJECTED,
+            toxicity_score=max_toxicity,
+            reason=f"High toxicity detected (score: {max_toxicity:.2f}): {reason}",
+            details=gemini_scores
+        )
+    elif max_toxicity >= TOXICITY_THRESHOLD_AUTO_APPROVE:
+        return ModerationResult(
+            status=ModerationStatus.FLAGGED,
+            toxicity_score=max_toxicity,
+            reason=f"Medium toxicity detected - manual review required (score: {max_toxicity:.2f}): {reason}",
+            details=gemini_scores
         )
     
     # Auto-approve for low toxicity
     return ModerationResult(
         status=ModerationStatus.APPROVED,
-        toxicity_score=toxicity,
-        reason=f"Content approved - low toxicity (toxicity: {toxicity:.2f})"
+        toxicity_score=max_toxicity,
+        reason=f"Content approved - low toxicity (score: {max_toxicity:.2f}): {reason}",
+        details=gemini_scores
     )
 
 async def moderate_comment(content: str) -> ModerationResult:
     """
-    Analyze and moderate a comment
+    Analyze and moderate a comment using Gemini 1.5 Flash
     """
     if not MODERATION_ENABLED:
         return ModerationResult(
@@ -123,12 +240,12 @@ async def moderate_comment(content: str) -> ModerationResult:
             reason="Moderation disabled"
         )
     
-    toxicity_scores = await analyze_content_toxicity(content)
-    return determine_moderation_status(toxicity_scores, "comment")
+    gemini_scores = await analyze_content_with_gemini(content)
+    return determine_moderation_status(gemini_scores, "comment")
 
 async def moderate_post(title: str, content: str) -> ModerationResult:
     """
-    Analyze and moderate a post (title + content)
+    Analyze and moderate a post (title + content) using Gemini 1.5 Flash
     """
     if not MODERATION_ENABLED:
         return ModerationResult(
@@ -138,9 +255,9 @@ async def moderate_post(title: str, content: str) -> ModerationResult:
         )
     
     # Combine title and content for analysis
-    full_text = f"{title}\n\n{content}"
-    toxicity_scores = await analyze_content_toxicity(full_text)
-    return determine_moderation_status(toxicity_scores, "post")
+    full_text = f"Titlu: {title}\n\nConținut: {content}"
+    gemini_scores = await analyze_content_with_gemini(full_text)
+    return determine_moderation_status(gemini_scores, "post")
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
     """Check if content should be automatically approved"""
@@ -154,19 +271,89 @@ def needs_manual_review(moderation_result: ModerationResult) -> bool:
     """Check if content needs manual review"""
     return moderation_result.status in [ModerationStatus.FLAGGED, ModerationStatus.PENDING]
 
-# Romanian-specific content filtering (can be expanded)
+# Romanian-specific content patterns for enhanced detection
 ROMANIAN_PROFANITY_PATTERNS = [
-    # Add Romanian-specific profanity patterns here if needed
-    # This is a basic example - you might want to expand this
+    # Common Romanian profanity - add more as needed
+    "pula", "muie", "futut", "cacat", "nenorocit", "jegos", "curve", "pizda",
+    "dracu", "mortii", "naiba", "dumnezeu", "ma-ta", "ma-tii", "pu[șs]a",
+    "idiot", "prost", "tâmpit", "retardat", "debil", "cretin"
 ]
 
-def contains_romanian_profanity(text: str) -> bool:
+ROMANIAN_HATE_SPEECH_PATTERNS = [
+    # Romanian hate speech patterns - cultural context aware
+    "țigan", "cioară", "jidan", "evreu de căcat", "ungur", "secui",
+    "musulman", "turc", "rus", "bulgar", "sârb"
+]
+
+def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
     """
-    Check for Romanian-specific profanity patterns
-    This is a basic implementation that can be expanded
+    Enhanced Romanian-specific profanity detection
+    Returns (has_profanity, severity_score)
     """
     text_lower = text.lower()
+    profanity_count = 0
+    total_words = len(text.split())
+    
     for pattern in ROMANIAN_PROFANITY_PATTERNS:
         if pattern in text_lower:
-            return True
-    return False
+            profanity_count += text_lower.count(pattern)
+    
+    if profanity_count == 0:
+        return False, 0.0
+    
+    # Calculate severity based on frequency relative to text length
+    severity = min(1.0, profanity_count / max(1, total_words) * 10)
+    return True, severity
+
+def contains_romanian_hate_speech(text: str) -> Tuple[bool, float]:
+    """
+    Enhanced Romanian-specific hate speech detection
+    Returns (has_hate_speech, severity_score)
+    """
+    text_lower = text.lower()
+    hate_count = 0
+    
+    for pattern in ROMANIAN_HATE_SPEECH_PATTERNS:
+        if pattern in text_lower:
+            hate_count += text_lower.count(pattern)
+    
+    if hate_count == 0:
+        return False, 0.0
+    
+    # Hate speech is always high severity when detected
+    severity = min(1.0, hate_count * 0.8)
+    return True, severity
+
+async def enhanced_romanian_analysis(text: str) -> Dict[str, float]:
+    """
+    Combine Gemini analysis with Romanian-specific pattern detection
+    """
+    # Get base analysis from Gemini
+    gemini_scores = await analyze_content_with_gemini(text)
+    
+    # Enhance with Romanian-specific detection
+    has_profanity, profanity_score = contains_romanian_profanity(text)
+    has_hate_speech, hate_score = contains_romanian_hate_speech(text)
+    
+    # Combine scores (take maximum to be conservative)
+    enhanced_scores = gemini_scores.copy()
+    enhanced_scores["romanian_profanity"] = max(
+        gemini_scores.get("romanian_profanity", 0.0), 
+        profanity_score
+    )
+    enhanced_scores["hate_speech"] = max(
+        gemini_scores.get("hate_speech", 0.0), 
+        hate_score
+    )
+    
+    # Update overall toxicity if local patterns detected severe issues
+    if has_profanity or has_hate_speech:
+        enhanced_scores["toxicity"] = max(
+            enhanced_scores.get("toxicity", 0.0),
+            max(profanity_score, hate_score)
+        )
+    
+    logger.info(f"Enhanced Romanian analysis: Gemini toxicity: {gemini_scores.get('toxicity', 0.0):.3f}, "
+                f"Romanian patterns: profanity={profanity_score:.3f}, hate={hate_score:.3f}")
+    
+    return enhanced_scores
