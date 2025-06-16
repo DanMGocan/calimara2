@@ -22,7 +22,7 @@ oauth.register(
     name='google',
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
-    server_metadata_url='https://accounts.google.com/.well-known/openid_configuration',
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     client_kwargs={
         'scope': 'openid email profile'
     }
@@ -31,20 +31,32 @@ oauth.register(
 async def get_google_auth_url(request: Request) -> str:
     """Generate Google OAuth authorization URL"""
     try:
-        # Create authorization URL without passing redirect_uri as parameter
-        # The redirect_uri should be configured in Google Cloud Console
-        authorization_url = await oauth.google.create_authorization_url(request)
-        return authorization_url.get('url', authorization_url)
+        # Create authorization URL with proper redirect_uri
+        authorization_url = await oauth.google.create_authorization_url(
+            request,
+            redirect_uri=GOOGLE_REDIRECT_URI
+        )
+        # Handle both dict and string responses
+        if isinstance(authorization_url, dict):
+            return authorization_url.get('url', str(authorization_url))
+        return str(authorization_url)
     except Exception as e:
         logger.error(f"Error creating Google auth URL: {e}")
-        # Fallback: try to create a manual authorization URL
+        # Fallback: create manual authorization URL with state
         import urllib.parse
+        import secrets
+        
+        # Generate and store state for CSRF protection
+        state = secrets.token_urlsafe(32)
+        request.session['oauth_state'] = state
+        
         params = {
             'client_id': GOOGLE_CLIENT_ID,
             'redirect_uri': GOOGLE_REDIRECT_URI,
             'scope': 'openid email profile',
             'response_type': 'code',
-            'access_type': 'offline'
+            'access_type': 'offline',
+            'state': state
         }
         auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
         logger.info(f"Using fallback OAuth URL: {auth_url}")
@@ -53,6 +65,17 @@ async def get_google_auth_url(request: Request) -> str:
 async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
     """Handle Google OAuth callback and extract user info"""
     try:
+        # Validate state parameter for CSRF protection if using fallback
+        query_params = dict(request.query_params)
+        if 'state' in query_params:
+            received_state = query_params['state']
+            stored_state = request.session.get('oauth_state')
+            if not stored_state or received_state != stored_state:
+                logger.error(f"OAuth state mismatch: received={received_state}, stored={stored_state}")
+                raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
+            # Clear the stored state
+            request.session.pop('oauth_state', None)
+        
         # Get the authorization code from the callback
         token = await oauth.google.authorize_access_token(request)
         
