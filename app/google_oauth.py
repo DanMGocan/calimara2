@@ -31,10 +31,9 @@ oauth.register(
 async def get_google_auth_url(request: Request) -> str:
     """Generate Google OAuth authorization URL"""
     try:
-        redirect_uri = GOOGLE_REDIRECT_URI
         authorization_url = await oauth.google.create_authorization_url(
-            request,
-            redirect_uri=redirect_uri
+            request, 
+            redirect_uri=GOOGLE_REDIRECT_URI
         )
         return authorization_url['url']
     except Exception as e:
