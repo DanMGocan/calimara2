@@ -167,7 +167,9 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         if user:
             # Existing user - log them in directly
             request.session["user_id"] = user.id
-            logger.info(f"Google OAuth login successful for existing user: {user.username}")
+            request.session["is_admin"] = user.is_admin
+            request.session["is_moderator"] = user.is_moderator
+            logger.info(f"Google OAuth login successful for existing user: {user.username} (admin: {user.is_admin}, moderator: {user.is_moderator})")
             return RedirectResponse(url=f"https://{user.username}{SUBDOMAIN_SUFFIX}", status_code=status.HTTP_302_FOUND)
         else:
             # New user - store Google info in session and redirect to setup
@@ -222,6 +224,8 @@ async def complete_user_setup(request: Request, setup_data: schemas.UserSetup, d
         # Clear Google user data from session and set user session
         request.session.pop("google_user", None)
         request.session["user_id"] = new_user.id
+        request.session["is_admin"] = new_user.is_admin
+        request.session["is_moderator"] = new_user.is_moderator
         
         logger.info(f"User setup completed for: {new_user.username}")
         return {"message": "Setup completed successfully", "username": new_user.username}

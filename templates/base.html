@@ -56,7 +56,7 @@
                     {% if current_user %}
                         <!-- Logged in user navigation -->
                         <!-- God Admin moderation panel (only for god admin) -->
-                        {% if current_user.email.lower() == 'admin@calimara.ro' %}
+                        {% if current_user.is_admin or current_user.is_moderator %}
                         <li class="nav-item">
                             <a class="nav-link text-white hover-accent" href="/admin/moderation">
                                 <i class="bi bi-shield-check me-1 text-danger"></i>Moderare

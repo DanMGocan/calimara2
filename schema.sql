@@ -39,6 +39,8 @@ CREATE TABLE users (
     patreon_url VARCHAR(300) COMMENT 'Patreon page URL',
     paypal_url VARCHAR(300) COMMENT 'PayPal donation URL',
     buymeacoffee_url VARCHAR(300) COMMENT 'Buy Me a Coffee page URL',
+    is_admin BOOLEAN DEFAULT FALSE COMMENT 'User has admin privileges',
+    is_moderator BOOLEAN DEFAULT FALSE COMMENT 'User has moderation privileges',
     is_suspended BOOLEAN DEFAULT FALSE COMMENT 'User suspension status',
     suspension_reason TEXT COMMENT 'Reason for user suspension',
     suspended_at DATETIME COMMENT 'When user was suspended',
@@ -257,45 +259,38 @@ CREATE TABLE messages (
 -- SAMPLE DATA
 -- ===================================
 
--- God Admin account
-INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
-    'admin',
-    'admin@calimara.ro',
-    'god-admin-google-id-000000000',
-    'Calimara Platform Administrator - Moderation & User Management',
-    'admin-shapes'
-);
-
--- Test user (google_id will be replaced by initdb.py)
-INSERT INTO users (username, email, google_id, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url) VALUES (
+-- Main admin user account (dangocan with admin privileges)
+INSERT INTO users (username, email, google_id, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url, is_admin, is_moderator) VALUES (
     'dangocan',
-    'dangocan@outlook.com',
-    'test-google-id-123456789',
-    'Scriitor și developer român',
+    'gocandan@gmail.com',
+    'admin-google-id-123456789',
+    'Scriitor și developer român - Administrator Calimara',
     'dangocan-shapes',
     'https://facebook.com/dangocan',
     'https://tiktok.com/@dangocan',
     'https://instagram.com/dangocan',
     'https://x.com/dangocan',
     'https://bsky.app/profile/dangocan.bsky.social',
-    'https://buymeacoffee.com/dangocan'
+    'https://buymeacoffee.com/dangocan',
+    TRUE,
+    TRUE
 );
 
--- Sample posts for the test user (dangocan is now user_id = 2)
+-- Sample posts for the admin user (dangocan is now user_id = 1)
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
-(2, 'Primul meu gând', 'primul-meu-gand', 'Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.', 'proza', 15);
+(1, 'Primul meu gând', 'primul-meu-gand', 'Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.', 'proza', 15);
 
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
-(2, 'Limbrici și poezie', 'limbrici-si-poezie', 'Chiar și limbricii au o frumusețe aparte,\nO mișcare lentă, dar hotărâtă prin pământ.\nAșa și poezia se strecoară în suflet\nȘi lasă urme adânci, veșnice în timp.', 'poezie', 23);
+(1, 'Limbrici și poezie', 'limbrici-si-poezie', 'Chiar și limbricii au o frumusețe aparte,\nO mișcare lentă, dar hotărâtă prin pământ.\nAșa și poezia se strecoară în suflet\nȘi lasă urme adânci, veșnice în timp.', 'poezie', 23);
 
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
-(2, 'O zi obișnuită', 'o-zi-obisnuita', 'O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie.', 'proza', 8);
+(1, 'O zi obișnuită', 'o-zi-obisnuita', 'O zi obișnuită, cu cafea, soare și multă muncă. Dar chiar și în banal, găsim momente de inspirație și bucurie.', 'proza', 8);
 
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
-(2, 'Reflecții despre timp', 'reflectii-despre-timp', 'Timpul este un râu care curge mereu înainte, fără să se întoarcă vreodată. În aceste pagini de jurnal încerc să opresc câteva picături din acest râu.', 'jurnal', 12);
+(1, 'Reflecții despre timp', 'reflectii-despre-timp', 'Timpul este un râu care curge mereu înainte, fără să se întoarcă vreodată. În aceste pagini de jurnal încerc să opresc câteva picături din acest râu.', 'jurnal', 12);
 
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
-(2, 'Scrisoare către viitorul meu', 'scrisoare-catre-viitorul-meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 19);
+(1, 'Scrisoare către viitorul meu', 'scrisoare-catre-viitorul-meu', 'Dragă eu din viitor,\n\nÎți scriu aceste rânduri cu speranța că vei fi mai înțelept decât sunt eu acum.\n\nCu drag,\nEu din trecut', 'scrisoare', 19);
 
 -- Additional test users
 INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
@@ -348,7 +343,7 @@ INSERT INTO comments (post_id, author_name, author_email, content, approved) VAL
 (1, 'Maria Popescu', 'maria@example.com', 'Ce frumos ai scris! Abia aștept să citesc mai multe din gândurile tale.', TRUE);
 
 INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 
-(2, 'Ion Creangă', 'ion@example.com', 'Poezia ta despre limbrici m-a emoționat. Comparația cu poezia este genială!', TRUE);
+(1, 'Ion Creangă', 'ion@example.com', 'Poezia ta despre limbrici m-a emoționat. Comparația cu poezia este genială!', TRUE);
 
 INSERT INTO comments (post_id, author_name, author_email, content, approved) VALUES 
 (1, 'Ana Blandiana', 'ana@example.com', 'Primul gând este adesea cel mai autentic. Continuă să scrii!', TRUE);
@@ -358,9 +353,9 @@ INSERT INTO tags (post_id, tag_name) VALUES
 (1, 'gânduri'),
 (1, 'debut'),
 (1, 'pasiune'),
-(2, 'natură'),
-(2, 'poezie'),
-(2, 'limbrici'),
+(1, 'natură'),
+(1, 'poezie'),
+(1, 'limbrici'),
 (3, 'cotidian'),
 (3, 'reflecții'),
 (4, 'timp'),
@@ -402,10 +397,10 @@ INSERT INTO featured_posts (user_id, post_id, position) VALUES
 
 -- Sample user awards
 INSERT INTO user_awards (user_id, award_title, award_description, award_date, award_type) VALUES 
--- dangocan's awards (user_id = 2)
-(2, 'Primul Gând', 'Prima postare pe platforma Calimara', '2024-01-15', 'milestone'),
-(2, 'Poet Popular', 'Peste 50 de aprecieri pentru poezii', '2024-02-20', 'writing'),
-(2, 'Blogger Dedicat', '5 postări în prima lună', '2024-02-01', 'community'),
+-- dangocan's awards (user_id = 1)
+(1, 'Primul Gând', 'Prima postare pe platforma Calimara', '2024-01-15', 'milestone'),
+(1, 'Poet Popular', 'Peste 50 de aprecieri pentru poezii', '2024-02-20', 'writing'),
+(1, 'Blogger Dedicat', '5 postări în prima lună', '2024-02-01', 'community'),
 
 -- mireasufletului's awards (user_id = 3)
 (3, 'Inima României', 'Poezie despre patriotism cu peste 40 de aprecieri', '2024-03-10', 'writing'),

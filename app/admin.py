@@ -1,37 +1,60 @@
-import os
 import logging
 from typing import Optional
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
 from sqlalchemy.orm import Session
 from . import models, auth
 
 logger = logging.getLogger(__name__)
 
-# Get god admin email from environment
-GOD_ADMIN_EMAIL = os.getenv("GOD_ADMIN_EMAIL", "").lower()
-
-def is_god_admin(user: Optional[models.User]) -> bool:
-    """Check if user is the god admin"""
-    if not user or not GOD_ADMIN_EMAIL:
+def is_admin(user: Optional[models.User]) -> bool:
+    """Check if user has admin privileges"""
+    if not user:
         return False
-    return user.email.lower() == GOD_ADMIN_EMAIL
+    return user.is_admin
 
-def require_god_admin(current_user: Optional[models.User] = Depends(auth.get_current_user)) -> models.User:
-    """Dependency that requires god admin authentication"""
+def is_moderator(user: Optional[models.User]) -> bool:
+    """Check if user has moderation privileges"""
+    if not user:
+        return False
+    return user.is_moderator or user.is_admin
+
+def require_admin(current_user: Optional[models.User] = Depends(auth.get_current_user)) -> models.User:
+    """Dependency that requires admin authentication"""
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required"
         )
     
-    if not is_god_admin(current_user):
+    if not is_admin(current_user):
         logger.warning(f"Unauthorized admin access attempt by {current_user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="God admin access required"
+            detail="Admin access required"
         )
     
     return current_user
+
+def require_moderator(current_user: Optional[models.User] = Depends(auth.get_current_user)) -> models.User:
+    """Dependency that requires moderation privileges"""
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
+    
+    if not is_moderator(current_user):
+        logger.warning(f"Unauthorized moderation access attempt by {current_user.email}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderation access required"
+        )
+    
+    return current_user
+
+# Backward compatibility aliases
+require_god_admin = require_admin
+is_god_admin = is_admin
 
 def log_admin_action(admin_user: models.User, action: str, target_type: str, target_id: int, details: Optional[str] = None):
     """Log administrative actions for audit trail"""

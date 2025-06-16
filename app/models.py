@@ -17,6 +17,10 @@ class User(Base):
     subtitle: Mapped[Optional[str]] = mapped_column(String(500), nullable=True) # User motto
     avatar_seed: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # DiceBear avatar seed
     
+    # Admin and moderation privileges
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_moderator: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
     # Social media links
     facebook_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     tiktok_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
