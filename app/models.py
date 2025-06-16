@@ -38,8 +38,8 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    posts: Mapped[List["Post"]] = relationship("Post", back_populates="owner")
-    comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="commenter")
+    posts: Mapped[List["Post"]] = relationship("Post", foreign_keys="Post.user_id", back_populates="owner")
+    comments: Mapped[List["Comment"]] = relationship("Comment", foreign_keys="Comment.user_id", back_populates="commenter")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="liker")
     
     # Best friends relationships
@@ -100,7 +100,8 @@ class Post(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    owner: Mapped["User"] = relationship("User", back_populates="posts")
+    owner: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="posts")
+    moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
     tags: Mapped[List["Tag"]] = relationship("Tag", back_populates="post")
@@ -132,7 +133,8 @@ class Comment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     post: Mapped["Post"] = relationship("Post", back_populates="comments")
-    commenter: Mapped[Optional["User"]] = relationship("User", back_populates="comments")
+    commenter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id], back_populates="comments")
+    comment_moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
 
 class Like(Base):
     __tablename__ = "likes"
@@ -144,7 +146,7 @@ class Like(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     post: Mapped["Post"] = relationship("Post", back_populates="likes")
-    liker: Mapped[Optional["User"]] = relationship("User", back_populates="likes")
+    liker: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id], back_populates="likes")
 
 class Tag(Base):
     __tablename__ = "tags"
