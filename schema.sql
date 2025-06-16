@@ -260,7 +260,7 @@ CREATE TABLE messages (
 -- God Admin account
 INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
     'admin',
-    'gocandan@gmail.com',
+    'dangocan@outlook.com',
     'god-admin-google-id-000000000',
     'Calimara Platform Administrator - Moderation & User Management',
     'admin-shapes'
@@ -268,20 +268,20 @@ INSERT INTO users (username, email, google_id, subtitle, avatar_seed) VALUES (
 
 -- Test user (google_id will be replaced by initdb.py)
 INSERT INTO users (username, email, google_id, subtitle, avatar_seed, facebook_url, tiktok_url, instagram_url, x_url, bluesky_url, buymeacoffee_url) VALUES (
-    'gandurisilimbrici',
-    'sad@sad.sad',
+    'dangocan',
+    'dangocan@outlook.com',
     'test-google-id-123456789',
-    'Mi-am facut si io blog, sa nu mor prost lol',
-    'gandurisilimbrici-shapes',
-    'https://facebook.com/gandurisilimbrici',
-    'https://tiktok.com/@gandurisilimbrici',
-    'https://instagram.com/gandurisilimbrici',
-    'https://x.com/gandurisilimbrici',
-    'https://bsky.app/profile/gandurisilimbrici.bsky.social',
-    'https://buymeacoffee.com/gandurisilimbrici'
+    'Scriitor și developer român',
+    'dangocan-shapes',
+    'https://facebook.com/dangocan',
+    'https://tiktok.com/@dangocan',
+    'https://instagram.com/dangocan',
+    'https://x.com/dangocan',
+    'https://bsky.app/profile/dangocan.bsky.social',
+    'https://buymeacoffee.com/dangocan'
 );
 
--- Sample posts for the test user (gandurisilimbrici is now user_id = 2)
+-- Sample posts for the test user (dangocan is now user_id = 2)
 INSERT INTO posts (user_id, title, slug, content, category, view_count) VALUES 
 (2, 'Primul meu gând', 'primul-meu-gand', 'Acesta este primul meu gând, o colecție de idei fără sens, dar pline de pasiune. Sper să vă placă această călătorie în mintea mea.', 'proza', 15);
 
@@ -370,24 +370,24 @@ INSERT INTO tags (post_id, tag_name) VALUES
 
 -- Sample best friends relationships
 INSERT INTO best_friends (user_id, friend_user_id, position) VALUES 
--- gandurisilimbrici's best friends (user_id = 2)
+-- dangocan's best friends (user_id = 2)
 (2, 3, 1),  -- mireasufletului as 1st best friend
 (2, 4, 2),  -- vanatordecuvinte as 2nd best friend
 (2, 5, 3),  -- filedintramvai as 3rd best friend
 
 -- mireasufletului's best friends (user_id = 3)
-(3, 2, 1),  -- gandurisilimbrici as 1st best friend
+(3, 2, 1),  -- dangocan as 1st best friend
 (3, 5, 2),  -- filedintramvai as 2nd best friend
 (3, 4, 3),  -- vanatordecuvinte as 3rd best friend
 
 -- vanatordecuvinte's best friends (user_id = 4)
 (4, 5, 1),  -- filedintramvai as 1st best friend
-(4, 2, 2),  -- gandurisilimbrici as 2nd best friend
+(4, 2, 2),  -- dangocan as 2nd best friend
 (4, 3, 3);  -- mireasufletului as 3rd best friend
 
 -- Sample featured posts
 INSERT INTO featured_posts (user_id, post_id, position) VALUES 
--- gandurisilimbrici's featured posts (user_id = 2, posts 1-5)
+-- dangocan's featured posts (user_id = 2, posts 1-5)
 (2, 2, 1),  -- "Limbrici și poezie" as 1st featured
 (2, 4, 2),  -- "Reflecții despre timp" as 2nd featured
 (2, 1, 3),  -- "Primul meu gând" as 3rd featured
@@ -402,7 +402,7 @@ INSERT INTO featured_posts (user_id, post_id, position) VALUES
 
 -- Sample user awards
 INSERT INTO user_awards (user_id, award_title, award_description, award_date, award_type) VALUES 
--- gandurisilimbrici's awards (user_id = 2)
+-- dangocan's awards (user_id = 2)
 (2, 'Primul Gând', 'Prima postare pe platforma Calimara', '2024-01-15', 'milestone'),
 (2, 'Poet Popular', 'Peste 50 de aprecieri pentru poezii', '2024-02-20', 'writing'),
 (2, 'Blogger Dedicat', '5 postări în prima lună', '2024-02-01', 'community'),
@@ -420,21 +420,21 @@ INSERT INTO user_awards (user_id, award_title, award_description, award_date, aw
 
 -- Sample conversations
 INSERT INTO conversations (user1_id, user2_id) VALUES 
--- gandurisilimbrici (2) and mireasufletului (3)
+-- dangocan (2) and mireasufletului (3)
 (2, 3),
--- gandurisilimbrici (2) and vanatordecuvinte (4)  
+-- dangocan (2) and vanatordecuvinte (4)  
 (2, 4),
 -- mireasufletului (3) and vanatordecuvinte (4)
 (3, 4);
 
 -- Sample messages
 INSERT INTO messages (conversation_id, sender_id, content, is_read) VALUES 
--- Conversation between gandurisilimbrici and mireasufletului
+-- Conversation between dangocan and mireasufletului
 (1, 2, 'Salut! Mi-a plăcut foarte mult poezia ta despre dorul de țară. Îmi amintește de sentimentele mele din copilărie.', TRUE),
 (1, 3, 'Mulțumesc frumos! Și mie îmi plac gândurile tale despre limbrici și poezie. E o metaforă foarte interesantă.', TRUE),
 (1, 2, 'Da, am vrut să arăt că și lucrurile aparent simple au frumusețea lor. Poate colaborăm la un proiect împreună?', FALSE),
 
--- Conversation between gandurisilimbrici and vanatordecuvinte
+-- Conversation between dangocan and vanatordecuvinte
 (2, 4, 'Bună! Am citit textul tău despre metropolitanul din București. Foarte captivant stilul tău!', TRUE),
 (2, 2, 'Salut! Mulțumesc pentru apreciere. Mi-ar plăcea să citesc mai multe din observațiile tale urbane.', TRUE),
 (2, 4, 'Cu siguranță! Poate ne întâlnim să discutăm despre literatură și oraș.', FALSE),

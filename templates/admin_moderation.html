@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Moderation Control Panel - Calimara{% endblock %}
-{% block description %}God Admin moderation control panel for content review and user management{% endblock %}
+{% block title %}Panou de Moderare - Calimara{% endblock %}
+{% block description %}Panou de administrare pentru moderarea conținutului și gestionarea utilizatorilor{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -10,8 +10,8 @@
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="h3 mb-0"><i class="bi bi-shield-check text-danger me-2"></i>Moderation Control Panel</h1>
-                    <p class="text-muted mb-0">God Admin Dashboard for Content Review & User Management</p>
+                    <h1 class="h3 mb-0"><i class="bi bi-shield-check text-danger me-2"></i>Panou de Moderare</h1>
+                    <p class="text-muted mb-0">Panou de Administrare pentru Moderarea Conținutului și Gestionarea Utilizatorilor</p>
                 </div>
                 <div class="badge bg-danger fs-6">
                     <i class="bi bi-person-badge me-1"></i>{{ current_user.email }}
@@ -26,8 +26,8 @@
                             <div class="display-6 text-warning mb-2" id="pendingCount">
                                 <i class="bi bi-clock-history"></i>
                             </div>
-                            <h6 class="card-title">Pending Review</h6>
-                            <p class="card-text text-muted mb-0">Comments & Posts</p>
+                            <h6 class="card-title">În Așteptare</h6>
+                            <p class="card-text text-muted mb-0">Comentarii și Postări</p>
                         </div>
                     </div>
                 </div>
@@ -37,8 +37,8 @@
                             <div class="display-6 text-danger mb-2" id="flaggedCount">
                                 <i class="bi bi-flag"></i>
                             </div>
-                            <h6 class="card-title">Flagged Content</h6>
-                            <p class="card-text text-muted mb-0">High Toxicity</p>
+                            <h6 class="card-title">Conținut Marcat</h6>
+                            <p class="card-text text-muted mb-0">Toxicitate Ridicată</p>
                         </div>
                     </div>
                 </div>
@@ -48,8 +48,8 @@
                             <div class="display-6 text-info mb-2" id="suspendedCount">
                                 <i class="bi bi-person-x"></i>
                             </div>
-                            <h6 class="card-title">Suspended Users</h6>
-                            <p class="card-text text-muted mb-0">Banned Accounts</p>
+                            <h6 class="card-title">Utilizatori Suspendați</h6>
+                            <p class="card-text text-muted mb-0">Conturi Blocate</p>
                         </div>
                     </div>
                 </div>
@@ -59,8 +59,8 @@
                             <div class="display-6 text-success mb-2" id="todayActions">
                                 <i class="bi bi-check-circle"></i>
                             </div>
-                            <h6 class="card-title">Today's Actions</h6>
-                            <p class="card-text text-muted mb-0">Moderation Activity</p>
+                            <h6 class="card-title">Acțiuni Azi</h6>
+                            <p class="card-text text-muted mb-0">Activitate de Moderare</p>
                         </div>
                     </div>
                 </div>
@@ -70,27 +70,27 @@
             <ul class="nav nav-tabs mb-4" id="moderationTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending-pane" type="button" role="tab">
-                        <i class="bi bi-clock-history me-1"></i>Pending Review
+                        <i class="bi bi-clock-history me-1"></i>În Așteptare
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="flagged-tab" data-bs-toggle="tab" data-bs-target="#flagged-pane" type="button" role="tab">
-                        <i class="bi bi-flag me-1"></i>Flagged Content
+                        <i class="bi bi-flag me-1"></i>Conținut Marcat
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button" role="tab">
-                        <i class="bi bi-people me-1"></i>User Management
+                        <i class="bi bi-people me-1"></i>Gestionare Utilizatori
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="analytics-tab" data-bs-toggle="tab" data-bs-target="#analytics-pane" type="button" role="tab">
-                        <i class="bi bi-graph-up me-1"></i>Analytics
+                        <i class="bi bi-graph-up me-1"></i>Analiză
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-pane" type="button" role="tab">
-                        <i class="bi bi-gear me-1"></i>Settings
+                        <i class="bi bi-gear me-1"></i>Setări
                     </button>
                 </li>
             </ul>
@@ -261,7 +261,7 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Moderate Content</h5>
+                <h5 class="modal-title">Moderare Conținut</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -269,22 +269,22 @@
                 <hr>
                 <div class="row">
                     <div class="col-md-6">
-                        <label class="form-label">Action</label>
+                        <label class="form-label">Acțiune</label>
                         <select class="form-select" id="moderationAction">
-                            <option value="approve">Approve</option>
-                            <option value="reject">Reject</option>
-                            <option value="delete">Delete</option>
+                            <option value="approve">Aprobă</option>
+                            <option value="reject">Respinge</option>
+                            <option value="delete">Șterge</option>
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Reason</label>
-                        <input type="text" class="form-control" id="moderationReason" placeholder="Optional reason...">
+                        <label class="form-label">Motiv</label>
+                        <input type="text" class="form-control" id="moderationReason" placeholder="Motiv opțional...">
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" id="submitModeration">Submit Action</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anulare</button>
+                <button type="button" class="btn btn-primary" id="submitModeration">Execută Acțiunea</button>
             </div>
         </div>
     </div>
