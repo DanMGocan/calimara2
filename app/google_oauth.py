@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime
 from authlib.integrations.starlette_client import OAuth
 from authlib.integrations.starlette_client import OAuthError
 from fastapi import HTTPException, Request
@@ -30,68 +31,123 @@ oauth.register(
 
 async def get_google_auth_url(request: Request) -> str:
     """Generate Google OAuth authorization URL"""
-    try:
-        # Create authorization URL with proper redirect_uri
-        authorization_url = await oauth.google.create_authorization_url(
-            request,
-            redirect_uri=GOOGLE_REDIRECT_URI
-        )
-        # Handle both dict and string responses
-        if isinstance(authorization_url, dict):
-            return authorization_url.get('url', str(authorization_url))
-        return str(authorization_url)
-    except Exception as e:
-        logger.error(f"Error creating Google auth URL: {e}")
-        # Fallback: create manual authorization URL with state
-        import urllib.parse
-        import secrets
-        
-        # Generate and store state for CSRF protection
-        state = secrets.token_urlsafe(32)
-        request.session['oauth_state'] = state
-        
-        params = {
-            'client_id': GOOGLE_CLIENT_ID,
-            'redirect_uri': GOOGLE_REDIRECT_URI,
-            'scope': 'openid email profile',
-            'response_type': 'code',
-            'access_type': 'offline',
-            'state': state
-        }
-        auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
-        logger.info(f"Using fallback OAuth URL: {auth_url}")
-        return auth_url
+    # Always use manual URL generation to avoid Authlib parameter conflicts
+    import urllib.parse
+    import secrets
+    import base64
+    import json
+    
+    # Generate state with embedded session info for cross-domain validation
+    state_data = {
+        'csrf_token': secrets.token_urlsafe(32),
+        'timestamp': int(datetime.now().timestamp()),
+        'host': request.headers.get('host', 'calimara.ro')
+    }
+    
+    # Encode state as base64 JSON for cross-domain compatibility
+    state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
+    
+    # Store minimal info in session as backup
+    request.session['oauth_csrf'] = state_data['csrf_token']
+    request.session['oauth_timestamp'] = state_data['timestamp']
+    
+    params = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'redirect_uri': GOOGLE_REDIRECT_URI,
+        'scope': 'openid email profile',
+        'response_type': 'code',
+        'access_type': 'offline',
+        'state': state
+    }
+    auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
+    logger.info(f"Generated OAuth URL with embedded state from host: {state_data['host']}")
+    return auth_url
 
 async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
     """Handle Google OAuth callback and extract user info"""
     try:
-        # Validate state parameter for CSRF protection if using fallback
+        import base64
+        import json
+        
+        # Validate state parameter for CSRF protection
         query_params = dict(request.query_params)
-        if 'state' in query_params:
-            received_state = query_params['state']
-            stored_state = request.session.get('oauth_state')
-            if not stored_state or received_state != stored_state:
-                logger.error(f"OAuth state mismatch: received={received_state}, stored={stored_state}")
+        if 'state' not in query_params:
+            raise HTTPException(status_code=400, detail="Missing OAuth state parameter")
+            
+        received_state = query_params['state']
+        
+        # Decode the embedded state
+        try:
+            state_data = json.loads(base64.urlsafe_b64decode(received_state.encode()).decode())
+            csrf_token = state_data.get('csrf_token')
+            timestamp = state_data.get('timestamp')
+            original_host = state_data.get('host')
+        except Exception as e:
+            logger.error(f"Failed to decode OAuth state: {e}")
+            raise HTTPException(status_code=400, detail="Invalid OAuth state format")
+        
+        # Validate against session (if available) or use embedded validation
+        stored_csrf = request.session.get('oauth_csrf')
+        stored_timestamp = request.session.get('oauth_timestamp')
+        
+        # Use session validation if available, otherwise validate embedded state
+        if stored_csrf and stored_timestamp:
+            if csrf_token != stored_csrf or timestamp != stored_timestamp:
+                logger.error(f"OAuth state mismatch via session: csrf={csrf_token[:8]}... vs {stored_csrf[:8] if stored_csrf else None}...")
                 raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
-            # Clear the stored state
-            request.session.pop('oauth_state', None)
+        else:
+            # Validate timestamp is recent (within 10 minutes) as fallback
+            current_time = int(datetime.now().timestamp())
+            if current_time - timestamp > 600:  # 10 minutes
+                logger.error(f"OAuth state expired: {current_time - timestamp} seconds old")
+                raise HTTPException(status_code=400, detail="OAuth state expired")
         
-        # Get the authorization code from the callback
-        token = await oauth.google.authorize_access_token(request)
+        # Clear the stored state
+        request.session.pop('oauth_csrf', None)
+        request.session.pop('oauth_timestamp', None)
         
-        # Get user information from Google
-        user_info = token.get('userinfo')
-        if not user_info:
-            # If userinfo is not in token, fetch it
-            resp = await oauth.google.parse_id_token(request, token)
-            user_info = resp
+        logger.info(f"OAuth state validated successfully for host: {original_host}")
+        
+        # Get the authorization code
+        if 'code' not in query_params:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+            
+        auth_code = query_params['code']
+        
+        # Manual token exchange to avoid Authlib issues
+        import httpx
+        
+        token_data = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'code': auth_code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': GOOGLE_REDIRECT_URI
+        }
+        
+        async with httpx.AsyncClient() as client:
+            # Exchange code for tokens
+            token_response = await client.post(
+                'https://oauth2.googleapis.com/token',
+                data=token_data
+            )
+            token_response.raise_for_status()
+            tokens = token_response.json()
+            
+            # Get user info using access token
+            user_response = await client.get(
+                'https://www.googleapis.com/oauth2/v2/userinfo',
+                headers={'Authorization': f"Bearer {tokens['access_token']}"}
+            )
+            user_response.raise_for_status()
+            user_info = user_response.json()
         
         if not user_info:
             raise HTTPException(status_code=400, detail="Failed to get user information from Google")
         
         # Extract relevant information
         google_user = schemas.GoogleUserInfo(
-            google_id=user_info['sub'],  # Google's unique identifier
+            google_id=user_info['id'],  # Google's unique identifier
             email=user_info['email'],
             name=user_info.get('name', ''),
             picture=user_info.get('picture')
@@ -100,8 +156,8 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         logger.info(f"Successfully authenticated Google user: {google_user.email}")
         return google_user
         
-    except OAuthError as e:
-        logger.error(f"OAuth error during Google callback: {e}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error during Google OAuth: {e}")
         raise HTTPException(status_code=400, detail="OAuth authentication failed")
     except Exception as e:
         logger.error(f"Unexpected error during Google callback: {e}")
