@@ -400,6 +400,30 @@ body::before {
     color: white !important;
 }
 
+/* Google Login Button */
+.btn-google-custom {
+    background-color: #4285f4 !important;
+    border-color: #4285f4 !important;
+    color: white !important;
+    font-weight: var(--font-weight-medium);
+    padding: 0.5rem 1rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    transition: all var(--transition-normal);
+    text-decoration: none;
+    border-width: 0.125rem;
+    border-style: solid;
+}
+
+.btn-google-custom:hover {
+    background-color: white !important;
+    border-color: #4285f4 !important;
+    color: #4285f4 !important;
+    transform: translateY(-0.125rem);
+    box-shadow: var(--shadow-lg);
+    text-decoration: none;
+}
+
 /* Social Media Buttons */
 .social-btn,
 .social-btn-small {
