@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 # Get the project root directory (parent of scripts directory)
 PROJECT_ROOT = Path(__file__).parent.parent
-SCHEMA_FILE = PROJECT_ROOT / "schema.sql"
+SCHEMA_FILE = PROJECT_ROOT / "schema_simple.sql"
 
 # Database connection details from environment variables or default
 DB_USER = os.getenv("MYSQL_USER", "admin")
