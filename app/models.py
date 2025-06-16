@@ -234,4 +234,4 @@ class Message(Base):
 
     # Relationships
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
-    sender: Mapped["User"] = relationship("User", foreign_keys=[sender_id])
+    sender: Mapped["User"] = relationship("User", foreign_keys=[sender_id], overlaps="sent_messages")
