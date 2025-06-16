@@ -28,6 +28,13 @@ class User(Base):
     patreon_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     paypal_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     buymeacoffee_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    
+    # Suspension fields
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suspension_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -82,6 +89,14 @@ class Post(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Category key
     view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False) # Track post views
+    
+    # Moderation fields
+    moderation_status: Mapped[str] = mapped_column(String(20), default="approved", nullable=False)
+    moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -106,6 +121,14 @@ class Comment(Base):
     author_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # Moderation fields
+    moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     post: Mapped["Post"] = relationship("Post", back_populates="comments")

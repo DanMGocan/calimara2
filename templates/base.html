@@ -55,6 +55,15 @@
                 <ul class="navbar-nav ms-auto">
                     {% if current_user %}
                         <!-- Logged in user navigation -->
+                        <!-- God Admin moderation panel (only for god admin) -->
+                        {% if current_user.email.lower() == 'gocandan@gmail.com' %}
+                        <li class="nav-item">
+                            <a class="nav-link text-white hover-accent" href="/admin/moderation">
+                                <i class="bi bi-shield-check me-1 text-danger"></i>Moderation
+                            </a>
+                        </li>
+                        {% endif %}
+                        
                         <!-- Messages link (always visible for logged users) -->
                         <li class="nav-item">
                             {% if current_domain == 'calimara.ro' %}

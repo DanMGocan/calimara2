@@ -9,14 +9,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_
 from typing import Optional # Import Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Match
 from starlette.types import ASGIApp
 from starlette.middleware.sessions import SessionMiddleware # Import SessionMiddleware
 
-from . import models, schemas, crud, auth, google_oauth
+from . import models, schemas, crud, auth, google_oauth, admin, moderation
 from .database import SessionLocal, engine, get_db
 from .categories import CATEGORIES_AND_GENRES, get_main_categories, get_all_categories, get_genres_for_category, get_category_name, get_genre_name, is_valid_category, is_valid_genre
 import urllib.parse
@@ -1419,3 +1419,324 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
     else:
         # If not a subdomain and no specific route matched, return 404 for main domain
         raise HTTPException(status_code=404, detail="Pagina nu a fost găsită")
+
+# ===================================
+# ADMIN & MODERATION ROUTES
+# ===================================
+
+@app.get("/admin/moderation", response_class=HTMLResponse)
+async def admin_moderation_panel(
+    request: Request, 
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """God admin moderation control panel"""
+    context = get_common_context(request, current_user)
+    return templates.TemplateResponse("admin_moderation.html", context)
+
+@app.get("/api/admin/stats")
+async def get_moderation_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Get moderation statistics for dashboard"""
+    try:
+        # Count pending content
+        pending_posts = db.query(models.Post).filter(
+            models.Post.moderation_status.in_(["pending", "flagged"])
+        ).count()
+        
+        pending_comments = db.query(models.Comment).filter(
+            models.Comment.moderation_status.in_(["pending", "flagged"])
+        ).count()
+        
+        # Count flagged content
+        flagged_posts = db.query(models.Post).filter(
+            models.Post.moderation_status == "flagged"
+        ).count()
+        
+        flagged_comments = db.query(models.Comment).filter(
+            models.Comment.moderation_status == "flagged"
+        ).count()
+        
+        # Count suspended users
+        suspended_users = db.query(models.User).filter(
+            models.User.is_suspended == True
+        ).count()
+        
+        # Count today's moderation actions (approximate)
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        today_actions = db.query(models.Post).filter(
+            models.Post.moderated_at >= today
+        ).count() + db.query(models.Comment).filter(
+            models.Comment.moderated_at >= today
+        ).count()
+        
+        return {
+            "pending_count": pending_posts + pending_comments,
+            "flagged_count": flagged_posts + flagged_comments,
+            "suspended_count": suspended_users,
+            "today_actions": today_actions
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting moderation stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get moderation stats")
+
+@app.get("/api/admin/content/pending")
+async def get_pending_content(
+    content_type: str = "all",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Get content pending moderation"""
+    try:
+        content = []
+        
+        if content_type in ["all", "posts"]:
+            posts = db.query(models.Post).filter(
+                models.Post.moderation_status.in_(["pending", "flagged"])
+            ).order_by(models.Post.created_at.desc()).limit(50).all()
+            
+            for post in posts:
+                content.append({
+                    "id": post.id,
+                    "type": "post",
+                    "title": post.title,
+                    "content": post.content,
+                    "author": post.owner.username,
+                    "toxicity_score": post.toxicity_score,
+                    "moderation_status": post.moderation_status,
+                    "created_at": post.created_at.isoformat()
+                })
+        
+        if content_type in ["all", "comments"]:
+            comments = db.query(models.Comment).filter(
+                models.Comment.moderation_status.in_(["pending", "flagged"])
+            ).order_by(models.Comment.created_at.desc()).limit(50).all()
+            
+            for comment in comments:
+                author = comment.commenter.username if comment.commenter else comment.author_name
+                content.append({
+                    "id": comment.id,
+                    "type": "comment",
+                    "title": None,
+                    "content": comment.content,
+                    "author": author,
+                    "toxicity_score": comment.toxicity_score,
+                    "moderation_status": comment.moderation_status,
+                    "created_at": comment.created_at.isoformat()
+                })
+        
+        # Sort by creation date
+        content.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {"content": content}
+        
+    except Exception as e:
+        logger.error(f"Error getting pending content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get pending content")
+
+@app.get("/api/admin/content/flagged")
+async def get_flagged_content(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Get flagged content (high toxicity)"""
+    try:
+        content = []
+        
+        # Get flagged posts
+        posts = db.query(models.Post).filter(
+            models.Post.moderation_status == "flagged"
+        ).order_by(models.Post.toxicity_score.desc()).limit(50).all()
+        
+        for post in posts:
+            content.append({
+                "id": post.id,
+                "type": "post",
+                "title": post.title,
+                "content": post.content,
+                "author": post.owner.username,
+                "toxicity_score": post.toxicity_score,
+                "moderation_status": post.moderation_status,
+                "created_at": post.created_at.isoformat()
+            })
+        
+        # Get flagged comments
+        comments = db.query(models.Comment).filter(
+            models.Comment.moderation_status == "flagged"
+        ).order_by(models.Comment.toxicity_score.desc()).limit(50).all()
+        
+        for comment in comments:
+            author = comment.commenter.username if comment.commenter else comment.author_name
+            content.append({
+                "id": comment.id,
+                "type": "comment",
+                "title": None,
+                "content": comment.content,
+                "author": author,
+                "toxicity_score": comment.toxicity_score,
+                "moderation_status": comment.moderation_status,
+                "created_at": comment.created_at.isoformat()
+            })
+        
+        # Sort by toxicity score
+        content.sort(key=lambda x: x["toxicity_score"] or 0, reverse=True)
+        
+        return {"content": content}
+        
+    except Exception as e:
+        logger.error(f"Error getting flagged content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get flagged content")
+
+@app.post("/api/admin/moderate/{content_type}/{content_id}")
+async def moderate_content_action(
+    content_type: str,
+    content_id: int,
+    action_data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Perform moderation action on content"""
+    try:
+        action = action_data.get("action")
+        reason = action_data.get("reason", "")
+        
+        if action not in ["approve", "reject", "delete"]:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        
+        if content_type == "post":
+            content = db.query(models.Post).filter(models.Post.id == content_id).first()
+        elif content_type == "comment":
+            content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
+        else:
+            raise HTTPException(status_code=400, detail="Invalid content type")
+        
+        if not content:
+            raise HTTPException(status_code=404, detail="Content not found")
+        
+        # Perform action
+        from datetime import datetime
+        
+        if action == "approve":
+            content.moderation_status = "approved"
+            if content_type == "comment":
+                content.approved = True
+        elif action == "reject":
+            content.moderation_status = "rejected"
+            if content_type == "comment":
+                content.approved = False
+        elif action == "delete":
+            db.delete(content)
+            db.commit()
+            admin.log_admin_action(current_user, "delete", content_type, content_id, reason)
+            return {"success": True, "message": f"{content_type.title()} deleted"}
+        
+        content.moderation_reason = reason
+        content.moderated_by = current_user.id
+        content.moderated_at = datetime.now()
+        
+        db.commit()
+        admin.log_admin_action(current_user, action, content_type, content_id, reason)
+        
+        return {"success": True, "message": f"{content_type.title()} {action}d successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error moderating content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to moderate content")
+
+@app.get("/api/admin/users/search")
+async def search_users_admin(
+    q: str = "",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Search users for admin management"""
+    try:
+        users = db.query(models.User).filter(
+            or_(
+                models.User.username.contains(q),
+                models.User.email.contains(q)
+            )
+        ).limit(50).all()
+        
+        result = []
+        for user in users:
+            result.append({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "is_suspended": user.is_suspended,
+                "suspension_reason": user.suspension_reason,
+                "created_at": user.created_at.isoformat(),
+                "is_god_admin": admin.is_god_admin(user)
+            })
+        
+        return {"users": result}
+        
+    except Exception as e:
+        logger.error(f"Error searching users: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search users")
+
+@app.post("/api/admin/users/{user_id}/suspend")
+async def suspend_user(
+    user_id: int,
+    suspension_data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Suspend a user"""
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if admin.is_god_admin(user):
+            raise HTTPException(status_code=400, detail="Cannot suspend god admin")
+        
+        from datetime import datetime
+        
+        user.is_suspended = True
+        user.suspension_reason = suspension_data.get("reason", "")
+        user.suspended_at = datetime.now()
+        user.suspended_by = current_user.id
+        
+        db.commit()
+        admin.log_admin_action(current_user, "suspend", "user", user_id, user.suspension_reason)
+        
+        return {"success": True, "message": f"User {user.username} suspended"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error suspending user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to suspend user")
+
+@app.post("/api/admin/users/{user_id}/unsuspend")
+async def unsuspend_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_god_admin)
+):
+    """Unsuspend a user"""
+    try:
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user.is_suspended = False
+        user.suspension_reason = None
+        user.suspended_at = None
+        user.suspended_by = None
+        
+        db.commit()
+        admin.log_admin_action(current_user, "unsuspend", "user", user_id)
+        
+        return {"success": True, "message": f"User {user.username} unsuspended"}
+        
+    except Exception as e:
+        logger.error(f"Error unsuspending user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to unsuspend user")
