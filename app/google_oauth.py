@@ -31,14 +31,24 @@ oauth.register(
 async def get_google_auth_url(request: Request) -> str:
     """Generate Google OAuth authorization URL"""
     try:
-        authorization_url = await oauth.google.create_authorization_url(
-            request, 
-            redirect_uri=GOOGLE_REDIRECT_URI
-        )
-        return authorization_url['url']
+        # Create authorization URL without passing redirect_uri as parameter
+        # The redirect_uri should be configured in Google Cloud Console
+        authorization_url = await oauth.google.create_authorization_url(request)
+        return authorization_url.get('url', authorization_url)
     except Exception as e:
         logger.error(f"Error creating Google auth URL: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create authorization URL")
+        # Fallback: try to create a manual authorization URL
+        import urllib.parse
+        params = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+            'scope': 'openid email profile',
+            'response_type': 'code',
+            'access_type': 'offline'
+        }
+        auth_url = 'https://accounts.google.com/o/oauth2/auth?' + urllib.parse.urlencode(params)
+        logger.info(f"Using fallback OAuth URL: {auth_url}")
+        return auth_url
 
 async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
     """Handle Google OAuth callback and extract user info"""
