@@ -1495,8 +1495,8 @@ async def get_moderation_stats(
 
 @app.get("/api/admin/content/pending")
 async def get_pending_content(
-    content_type: str = "all",
     request: Request,
+    content_type: str = "all",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin)
 ):
