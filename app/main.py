@@ -1381,12 +1381,27 @@ async def register_page(request: Request, current_user: Optional[models.User] = 
 # async def login_redirect():
 #     return "/"
 
+# ===================================
+# ADMIN & MODERATION ROUTES (before catch-all)
+# ===================================
+
+@app.get("/admin/moderation", response_class=HTMLResponse)
+async def moderation_panel(
+    request: Request, 
+    current_user: models.User = Depends(admin.require_moderator)
+):
+    """Admin moderation control panel - accessible to both admins and moderators"""
+    # Always redirect to main domain for admin functions
+    if request.url.hostname != MAIN_DOMAIN:
+        return RedirectResponse(url=f"https://{MAIN_DOMAIN}/admin/moderation", status_code=status.HTTP_302_FOUND)
+    
+    context = get_common_context(request, current_user)
+    logger.info(f"Moderation panel accessed by {current_user.username} (admin: {current_user.is_admin}, moderator: {current_user.is_moderator})")
+    return templates.TemplateResponse("admin_moderation.html", context)
+
 # Catch-all for subdomains that don't match specific routes (e.g., /static on subdomain)
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str, month: int = None, year: int = None, db: Session = Depends(get_db), current_user: Optional[models.User] = Depends(auth.get_current_user)): # Pass current_user
-    # Skip admin and api paths - let them be handled by their specific routes
-    if path.startswith("admin/") or path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="Pagina nu a fost găsită")
     
     if request.state.is_subdomain:
         username = request.state.username
@@ -1481,20 +1496,6 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
 # ===================================
 # ADMIN & MODERATION ROUTES
 # ===================================
-
-@app.get("/admin/moderation", response_class=HTMLResponse)
-async def admin_moderation_panel(
-    request: Request, 
-    current_user: models.User = Depends(admin.require_moderator)
-):
-    """Admin moderation control panel - accessible to both admins and moderators"""
-    # Always redirect to main domain for admin functions
-    if request.url.hostname != MAIN_DOMAIN:
-        return RedirectResponse(url=f"https://{MAIN_DOMAIN}/admin/moderation", status_code=status.HTTP_302_FOUND)
-    
-    context = get_common_context(request, current_user)
-    logger.info(f"Moderation panel accessed by {current_user.username} (admin: {current_user.is_admin}, moderator: {current_user.is_moderator})")
-    return templates.TemplateResponse("admin_moderation.html", context)
 
 @app.get("/api/admin/stats")
 async def get_moderation_stats(
