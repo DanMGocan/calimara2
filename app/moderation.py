@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration from environment
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
 TOXICITY_THRESHOLD_AUTO_APPROVE = float(os.getenv("TOXICITY_THRESHOLD_AUTO_APPROVE", "0.3"))
 TOXICITY_THRESHOLD_AUTO_REJECT = float(os.getenv("TOXICITY_THRESHOLD_AUTO_REJECT", "0.8"))
@@ -145,9 +145,25 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
             contents=prompt,
             config=genai.types.GenerateContentConfig(
                 temperature=0.0,  # Deterministic for content moderation
-                safety_settings=safety_settings
+                safety_settings=safety_settings,
+                max_output_tokens=1024
             )
         )
+        
+        # Check if response was blocked by safety filters
+        if not response.text or response.text.strip() == "":
+            logger.warning("Gemini response was empty, possibly blocked by safety filters")
+            # For blocked content, assume it's toxic and needs review
+            return {
+                "toxicity": 0.7, 
+                "harassment": 0.7,
+                "hate_speech": 0.0,
+                "sexually_explicit": 0.0,
+                "dangerous_content": 0.0,
+                "romanian_profanity": 0.0,
+                "overall_assessment": "review", 
+                "reason": "Content blocked by safety filters - flagged for manual review"
+            }
         
         # Parse the JSON response
         response_text = response.text.strip()

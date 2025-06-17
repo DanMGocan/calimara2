@@ -652,17 +652,19 @@ def mark_messages_as_read(db: Session, conversation_id: int, user_id: int):
 
 def get_unread_message_count(db: Session, user_id: int) -> int:
     """Get count of unread messages for a user"""
+    from sqlalchemy import select
+    
     # Get all conversations where user is a participant
-    user_conversations = db.query(models.Conversation.id).filter(
+    user_conversations_query = select(models.Conversation.id).filter(
         or_(
             models.Conversation.user1_id == user_id,
             models.Conversation.user2_id == user_id
         )
-    ).subquery()
+    )
     
     # Count unread messages from other users in those conversations
     return db.query(func.count(models.Message.id)).filter(
-        models.Message.conversation_id.in_(user_conversations),
+        models.Message.conversation_id.in_(user_conversations_query),
         models.Message.sender_id != user_id,
         models.Message.is_read == False
     ).scalar() or 0
