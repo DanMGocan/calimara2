@@ -607,6 +607,7 @@ async def add_comment_to_post(
         db.refresh(db_comment)
         
         logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
+        logger.info(f"Comment ID {db_comment.id} status: {db_comment.moderation_status}, approved: {db_comment.approved}")
         
     except Exception as e:
         logger.error(f"Moderation failed for comment: {e}. Auto-approving due to error.")
@@ -1627,6 +1628,7 @@ async def get_flagged_content(
         
         # Get flagged posts
         posts = crud.get_posts_for_moderation(db, status_filter="flagged", limit=50)
+        logger.info(f"Found {len(posts)} flagged posts")
         
         for post in posts:
             content.append({
@@ -1643,6 +1645,7 @@ async def get_flagged_content(
         
         # Get flagged comments
         comments = crud.get_comments_for_moderation(db, status_filter="flagged", limit=50)
+        logger.info(f"Found {len(comments)} flagged comments")
         
         for comment in comments:
             author = comment.commenter.username if comment.commenter else comment.author_name
@@ -1661,6 +1664,7 @@ async def get_flagged_content(
         # Sort by toxicity score
         content.sort(key=lambda x: x.get("toxicity_score", 0), reverse=True)
         
+        logger.info(f"Returning {len(content)} flagged content items")
         return {"content": content}
         
     except Exception as e:

@@ -190,8 +190,8 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
         if "HARM_CATEGORY" in error_msg:
             logger.warning(f"Gemini safety filter triggered: {error_msg}")
             return {
-                "toxicity": 0.8, 
-                "harassment": 0.8,
+                "toxicity": 1.0, 
+                "harassment": 1.0,
                 "hate_speech": 0.0,
                 "sexually_explicit": 0.0,
                 "dangerous_content": 0.0,
