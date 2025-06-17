@@ -176,6 +176,7 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
 def determine_moderation_status(gemini_scores: Dict[str, float], content_type: str = "comment") -> ModerationResult:
     """
     Determine moderation status based on Gemini analysis scores
+    AI NEVER auto-rejects content - only flags for human review or approves
     """
     toxicity = gemini_scores.get("toxicity", 0.0)
     harassment = gemini_scores.get("harassment", 0.0)
@@ -189,12 +190,12 @@ def determine_moderation_status(gemini_scores: Dict[str, float], content_type: s
     # Calculate maximum toxicity across all categories
     max_toxicity = max(toxicity, harassment, hate_speech, sexually_explicit, dangerous_content, romanian_profanity)
     
-    # Use Gemini's overall assessment if available, otherwise fall back to thresholds
-    if overall_assessment == "unsafe":
+    # AI never auto-rejects - only flags for human review if toxic
+    if overall_assessment == "unsafe" or max_toxicity >= TOXICITY_THRESHOLD_AUTO_APPROVE:
         return ModerationResult(
-            status=ModerationStatus.REJECTED,
+            status=ModerationStatus.FLAGGED,
             toxicity_score=max_toxicity,
-            reason=f"Content rejected by AI moderator: {reason}",
+            reason=f"High toxicity detected - requires human review (score: {max_toxicity:.2f}): {reason}",
             details=gemini_scores
         )
     elif overall_assessment == "review":
@@ -202,22 +203,6 @@ def determine_moderation_status(gemini_scores: Dict[str, float], content_type: s
             status=ModerationStatus.FLAGGED,
             toxicity_score=max_toxicity,
             reason=f"Content flagged for manual review: {reason}",
-            details=gemini_scores
-        )
-    
-    # Fallback to threshold-based decisions if overall_assessment is unclear
-    if max_toxicity >= TOXICITY_THRESHOLD_AUTO_REJECT:
-        return ModerationResult(
-            status=ModerationStatus.REJECTED,
-            toxicity_score=max_toxicity,
-            reason=f"High toxicity detected (score: {max_toxicity:.2f}): {reason}",
-            details=gemini_scores
-        )
-    elif max_toxicity >= TOXICITY_THRESHOLD_AUTO_APPROVE:
-        return ModerationResult(
-            status=ModerationStatus.FLAGGED,
-            toxicity_score=max_toxicity,
-            reason=f"Medium toxicity detected - manual review required (score: {max_toxicity:.2f}): {reason}",
             details=gemini_scores
         )
     

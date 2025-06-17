@@ -120,19 +120,10 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
     base_slug = generate_slug(post.title)
     unique_slug = ensure_unique_slug(db, base_slug)
     
-    # Skip automatic moderation in CRUD - will be handled at API level
-    try:
-        # For now, approve all posts and handle moderation at API level to avoid asyncio issues
-        moderation_status = "approved"
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved - moderation handled at API level"
-        logger.info("Post auto-approved - moderation will be handled asynchronously")
-            
-    except Exception as e:
-        logger.error(f"Error in post creation: {e}. Defaulting to approved.")
-        moderation_status = "approved"
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved due to error"
+    # Create post with pending status - moderation will be handled at API level
+    moderation_status = "pending"
+    toxicity_score = 0.0
+    moderation_reason = "Awaiting AI moderation"
     
     db_post = models.Post(
         title=post.title, 
@@ -157,7 +148,7 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
         db.commit()
         db.refresh(db_post)
     
-    logger.info(f"Post created with moderation status: {moderation_status} (toxicity: {toxicity_score:.3f})")
+    logger.info(f"Post created with moderation status: {moderation_status} - awaiting AI moderation")
     return db_post
 
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
@@ -253,21 +244,11 @@ def delete_post(db: Session, post_id: int):
     return db_post
 
 def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, user_id: Optional[int] = None):
-    # Skip automatic moderation in CRUD - will be handled at API level
-    try:
-        # For now, approve all comments and handle moderation at API level to avoid asyncio issues
-        moderation_status = "approved"
-        approved = True
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved - moderation handled at API level"
-        logger.info("Comment auto-approved - moderation will be handled asynchronously")
-            
-    except Exception as e:
-        logger.error(f"Error in comment creation: {e}. Defaulting to approved.")
-        moderation_status = "approved"
-        approved = True
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved due to error"
+    # Create comment with pending status - moderation will be handled at API level
+    moderation_status = "pending"
+    approved = False  # Will be set to True by moderation if approved
+    toxicity_score = 0.0
+    moderation_reason = "Awaiting AI moderation"
     
     db_comment = models.Comment(
         post_id=post_id,
@@ -284,7 +265,7 @@ def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, us
     db.commit()
     db.refresh(db_comment)
     
-    logger.info(f"Comment created with moderation status: {moderation_status} (toxicity: {toxicity_score:.3f})")
+    logger.info(f"Comment created with moderation status: {moderation_status} - awaiting AI moderation")
     return db_comment
 
 def get_comments_for_post(db: Session, post_id: int, approved_only: bool = True):
@@ -300,26 +281,22 @@ def get_unapproved_comments_for_user_posts(db: Session, user_id: int):
     ).order_by(models.Comment.created_at.desc()).all()
 
 def get_posts_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
-    """Get posts that need moderation (flagged or rejected)"""
+    """Get posts for moderation dashboard - ALL posts with their moderation status"""
     query = db.query(models.Post)
     
     if status_filter:
         query = query.filter(models.Post.moderation_status == status_filter)
-    else:
-        # Get posts that need attention (flagged, pending, or rejected)
-        query = query.filter(models.Post.moderation_status.in_(["flagged", "pending", "rejected"]))
+    # If no status filter, return ALL posts to show complete moderation history
     
     return query.order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def get_comments_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
-    """Get comments that need moderation (flagged or rejected)"""
+    """Get comments for moderation dashboard - ALL comments with their moderation status"""
     query = db.query(models.Comment)
     
     if status_filter:
         query = query.filter(models.Comment.moderation_status == status_filter)
-    else:
-        # Get comments that need attention (flagged, pending, or rejected)
-        query = query.filter(models.Comment.moderation_status.in_(["flagged", "pending", "rejected"]))
+    # If no status filter, return ALL comments to show complete moderation history
     
     return query.order_by(models.Comment.created_at.desc()).offset(skip).limit(limit).all()
 

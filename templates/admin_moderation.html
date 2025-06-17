@@ -70,12 +70,12 @@
             <ul class="nav nav-tabs mb-4" id="moderationTabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending-pane" type="button" role="tab">
-                        <i class="bi bi-clock-history me-1"></i>În Așteptare
+                        <i class="bi bi-list-check me-1"></i>Tot Conținutul
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link" id="flagged-tab" data-bs-toggle="tab" data-bs-target="#flagged-pane" type="button" role="tab">
-                        <i class="bi bi-flag me-1"></i>Conținut Marcat
+                        <i class="bi bi-flag me-1"></i>Marcat pentru Revizuire
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
@@ -88,26 +88,21 @@
                         <i class="bi bi-graph-up me-1"></i>Analiză
                     </button>
                 </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-pane" type="button" role="tab">
-                        <i class="bi bi-gear me-1"></i>Setări
-                    </button>
-                </li>
             </ul>
 
             <!-- Tab Content -->
             <div class="tab-content" id="moderationTabContent">
-                <!-- Pending Review Tab -->
+                <!-- All Content Tab -->
                 <div class="tab-pane fade show active" id="pending-pane" role="tabpanel">
                     <div class="card">
                         <div class="card-header">
                             <div class="d-flex justify-content-between align-items-center">
-                                <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Content Pending Review</h5>
+                                <h5 class="mb-0"><i class="bi bi-list-check me-2"></i>Tot Conținutul cu Scoruri de Toxicitate</h5>
                                 <div>
                                     <select class="form-select form-select-sm" id="contentTypeFilter">
-                                        <option value="all">All Content</option>
-                                        <option value="comments">Comments Only</option>
-                                        <option value="posts">Posts Only</option>
+                                        <option value="all">Tot Conținutul</option>
+                                        <option value="comments">Doar Comentarii</option>
+                                        <option value="posts">Doar Postări</option>
                                     </select>
                                 </div>
                             </div>
@@ -119,7 +114,7 @@
                                     <div class="spinner-border text-primary" role="status">
                                         <span class="visually-hidden">Loading...</span>
                                     </div>
-                                    <p class="mt-2 text-muted">Loading pending content...</p>
+                                    <p class="mt-2 text-muted">Se încarcă conținutul...</p>
                                 </div>
                             </div>
                         </div>
@@ -130,7 +125,7 @@
                 <div class="tab-pane fade" id="flagged-pane" role="tabpanel">
                     <div class="card">
                         <div class="card-header">
-                            <h5 class="mb-0"><i class="bi bi-flag me-2"></i>Flagged Content (High Toxicity)</h5>
+                            <h5 class="mb-0"><i class="bi bi-flag me-2"></i>Conținut Marcat pentru Revizuire Manuală</h5>
                         </div>
                         <div class="card-body">
                             <div id="flaggedContent" class="moderation-queue">
@@ -202,55 +197,6 @@
                     </div>
                 </div>
 
-                <!-- Settings Tab -->
-                <div class="tab-pane fade" id="settings-pane" role="tabpanel">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Moderation Settings</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="moderationSettings">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="autoApproveThreshold" class="form-label">Auto-Approve Threshold</label>
-                                            <input type="range" class="form-range" id="autoApproveThreshold" min="0" max="1" step="0.1" value="0.3">
-                                            <div class="form-text">Content below this toxicity level will be auto-approved</div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="mb-3">
-                                            <label for="autoRejectThreshold" class="form-label">Auto-Reject Threshold</label>
-                                            <input type="range" class="form-range" id="autoRejectThreshold" min="0" max="1" step="0.1" value="0.8">
-                                            <div class="form-text">Content above this toxicity level will be auto-rejected</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="moderationEnabled" checked>
-                                            <label class="form-check-label" for="moderationEnabled">
-                                                Enable Automated Moderation
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="emailNotifications" checked>
-                                            <label class="form-check-label" for="emailNotifications">
-                                                Email Notifications for Flagged Content
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <button type="submit" class="btn btn-primary mt-3">
-                                    <i class="bi bi-save me-1"></i>Save Settings
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>

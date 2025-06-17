@@ -532,7 +532,12 @@ async def create_post(
         logger.info(f"Post moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
         
     except Exception as e:
-        logger.error(f"Moderation failed for post: {e}. Keeping as approved.")
+        logger.error(f"Moderation failed for post: {e}. Auto-approving due to error.")
+        # If moderation fails, auto-approve to avoid blocking user content
+        db_post.moderation_status = "approved"
+        db_post.moderation_reason = "Auto-approved due to moderation error"
+        db.commit()
+        db.refresh(db_post)
     
     return db_post
 
@@ -604,7 +609,13 @@ async def add_comment_to_post(
         logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
         
     except Exception as e:
-        logger.error(f"Moderation failed for comment: {e}. Keeping as approved.")
+        logger.error(f"Moderation failed for comment: {e}. Auto-approving due to error.")
+        # If moderation fails, auto-approve to avoid blocking user content
+        db_comment.moderation_status = "approved"
+        db_comment.approved = True
+        db_comment.moderation_reason = "Auto-approved due to moderation error"
+        db.commit()
+        db.refresh(db_comment)
     
     return db_comment
 
