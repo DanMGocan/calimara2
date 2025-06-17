@@ -295,6 +295,12 @@ document.addEventListener('DOMContentLoaded', function() {
     loadModerationStats();
     loadPendingContent();
     
+    // Content type filter change
+    const contentTypeFilter = document.getElementById('contentTypeFilter');
+    if (contentTypeFilter) {
+        contentTypeFilter.addEventListener('change', loadPendingContent);
+    }
+    
     // Tab switching
     const tabs = document.querySelectorAll('#moderationTabs button[data-bs-toggle="tab"]');
     tabs.forEach(tab => {
@@ -332,7 +338,7 @@ function loadModerationStats() {
 
 function loadPendingContent() {
     const contentType = document.getElementById('contentTypeFilter')?.value || 'all';
-    fetch(`/api/admin/content/pending?type=${contentType}`)
+    fetch(`/api/admin/content/pending?content_type=${contentType}`)
         .then(response => response.json())
         .then(data => {
             renderContentQueue(data.content, 'pendingContent');
@@ -362,22 +368,30 @@ function renderContentQueue(content, containerId) {
         return;
     }
     
-    const html = content.map(item => `
+    const html = content.map(item => {
+        const toxicityColor = item.toxicity_score > 0.7 ? 'danger' : item.toxicity_score > 0.4 ? 'warning' : 'success';
+        const statusColor = item.moderation_status === 'flagged' ? 'danger' : item.moderation_status === 'pending' ? 'warning' : 'info';
+        
+        return `
         <div class="card mb-3 ${item.toxicity_score > 0.7 ? 'border-danger' : item.toxicity_score > 0.4 ? 'border-warning' : ''}">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
                     <span class="badge bg-${item.type === 'post' ? 'primary' : 'secondary'}">${item.type.toUpperCase()}</span>
                     <span class="text-muted ms-2">by @${item.author}</span>
-                    ${item.toxicity_score ? `<span class="badge bg-${item.toxicity_score > 0.7 ? 'danger' : item.toxicity_score > 0.4 ? 'warning' : 'success'} ms-2">Toxicity: ${(item.toxicity_score * 100).toFixed(1)}%</span>` : ''}
+                    <span class="badge bg-${statusColor} ms-2">${item.moderation_status.toUpperCase()}</span>
+                    ${item.toxicity_score !== null ? `<span class="badge bg-${toxicityColor} ms-2">AI Score: ${(item.toxicity_score * 100).toFixed(1)}%</span>` : ''}
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-success btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'approve')">
+                    <button class="btn btn-success btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'approve')" title="Approve Content">
                         <i class="bi bi-check"></i> Approve
                     </button>
-                    <button class="btn btn-danger btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'reject')">
+                    <button class="btn btn-danger btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'reject')" title="Reject Content">
                         <i class="bi bi-x"></i> Reject
                     </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="viewContent(${item.id}, '${item.type}')">
+                    <button class="btn btn-outline-danger btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'delete')" title="Delete Content">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="viewContent(${item.id}, '${item.type}')" title="View Full Content">
                         <i class="bi bi-eye"></i>
                     </button>
                 </div>
@@ -385,12 +399,14 @@ function renderContentQueue(content, containerId) {
             <div class="card-body">
                 ${item.title ? `<h6 class="card-title">${item.title}</h6>` : ''}
                 <p class="card-text">${item.content.substring(0, 200)}${item.content.length > 200 ? '...' : ''}</p>
+                ${item.moderation_reason ? `<div class="alert alert-light p-2 mt-2"><small><strong>AI Reason:</strong> ${item.moderation_reason}</small></div>` : ''}
                 <small class="text-muted">
                     <i class="bi bi-clock"></i> ${new Date(item.created_at).toLocaleString()}
                 </small>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
     
     container.innerHTML = html;
 }
@@ -418,6 +434,57 @@ function moderateContent(id, type, action) {
         console.error('Error moderating content:', error);
         showToast('Error performing action', 'danger');
     });
+}
+
+function loadUsers() {
+    fetch('/api/admin/users/search?q=')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('usersList');
+            if (!data.users || data.users.length === 0) {
+                container.innerHTML = '<p class="text-muted">No users found.</p>';
+                return;
+            }
+            
+            const html = data.users.slice(0, 20).map(user => `
+                <div class="card mb-2">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="card-title mb-1">${user.username}</h6>
+                                <small class="text-muted">${user.email}</small>
+                                ${user.is_admin ? '<span class="badge bg-danger ms-2">Admin</span>' : ''}
+                                ${user.is_moderator ? '<span class="badge bg-warning ms-2">Moderator</span>' : ''}
+                                ${user.is_suspended ? '<span class="badge bg-secondary ms-2">Suspended</span>' : ''}
+                            </div>
+                            <div>
+                                <small class="text-muted">Joined: ${new Date(user.created_at).toLocaleDateString()}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+        })
+        .catch(error => console.error('Error loading users:', error));
+}
+
+function loadAnalytics() {
+    const container = document.getElementById('recentActions');
+    container.innerHTML = `
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            Analytics and charts will be implemented in a future version.
+            <br><br>
+            For now, you can see moderation statistics in the overview cards above.
+        </div>
+    `;
+}
+
+function viewContent(id, type) {
+    // Simple content viewer - could be enhanced with a modal
+    alert(`Viewing ${type} ID: ${id}. Full content viewer coming soon.`);
 }
 
 function showToast(message, type) {

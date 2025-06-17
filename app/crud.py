@@ -122,18 +122,25 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
     
     # Moderate the post content using Gemini AI
     try:
-        # Skip moderation for now to avoid asyncio issues during startup
-        # TODO: Implement proper async moderation in FastAPI endpoints
-        moderation_status = "approved"
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved - moderation temporarily disabled"
-        logger.info("Post moderation temporarily disabled during development")
+        # Use synchronous moderation for now (will implement async properly in endpoints)
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        moderation_result = loop.run_until_complete(moderation.moderate_post(post.title, post.content))
+        
+        moderation_status = moderation_result.status.value
+        toxicity_score = moderation_result.toxicity_score
+        moderation_reason = moderation_result.reason
+        
+        loop.close()
+        logger.info(f"Post moderation completed: {moderation_status} (toxicity: {toxicity_score:.3f})")
             
     except Exception as e:
-        logger.error(f"Moderation failed for post: {e}. Defaulting to approved.")
-        moderation_status = "approved"
+        logger.error(f"Moderation failed for post: {e}. Defaulting to pending.")
+        moderation_status = "pending"
         toxicity_score = 0.0
-        moderation_reason = "Moderation error - defaulting to approved"
+        moderation_reason = "Moderation error - pending manual review"
     
     db_post = models.Post(
         title=post.title, 
@@ -256,20 +263,29 @@ def delete_post(db: Session, post_id: int):
 def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, user_id: Optional[int] = None):
     # Moderate the comment content using Gemini AI
     try:
-        # Skip moderation for now to avoid asyncio issues during startup
-        # TODO: Implement proper async moderation in FastAPI endpoints
-        moderation_status = "approved"
-        approved = True
-        toxicity_score = 0.0
-        moderation_reason = "Auto-approved - moderation temporarily disabled"
-        logger.info("Comment moderation temporarily disabled during development")
+        # Use synchronous moderation for now (will implement async properly in endpoints)
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        moderation_result = loop.run_until_complete(moderation.moderate_comment(comment.content))
+        
+        moderation_status = moderation_result.status.value
+        toxicity_score = moderation_result.toxicity_score
+        moderation_reason = moderation_result.reason
+        
+        # Set approved flag based on moderation result
+        approved = moderation_result.status.value == "approved"
+        
+        loop.close()
+        logger.info(f"Comment moderation completed: {moderation_status} (toxicity: {toxicity_score:.3f})")
             
     except Exception as e:
         logger.error(f"Moderation failed for comment: {e}. Defaulting to pending.")
         moderation_status = "pending"
         approved = False
         toxicity_score = 0.0
-        moderation_reason = "Moderation error - defaulting to pending review"
+        moderation_reason = "Moderation error - pending manual review"
     
     db_comment = models.Comment(
         post_id=post_id,

@@ -1441,16 +1441,16 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
 @app.get("/admin/moderation", response_class=HTMLResponse)
 async def admin_moderation_panel(
     request: Request, 
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
-    """Admin moderation control panel"""
+    """Admin moderation control panel - accessible to both admins and moderators"""
     context = get_common_context(request, current_user)
     return templates.TemplateResponse("admin_moderation.html", context)
 
 @app.get("/api/admin/stats")
 async def get_moderation_stats(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
     """Get moderation statistics for dashboard"""
     try:
@@ -1498,7 +1498,7 @@ async def get_pending_content(
     request: Request,
     content_type: str = "all",
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
     """Get content pending moderation - visible only to moderators"""
     try:
@@ -1554,7 +1554,7 @@ async def get_pending_content(
 async def get_flagged_content(
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
     """Get flagged content (high toxicity) - visible only to moderators"""
     try:
@@ -1613,7 +1613,7 @@ async def moderate_content_action(
     action_data: dict,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
     """Perform moderation action on content - only moderators can access"""
     try:
