@@ -1,11 +1,15 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-from . import models, schemas
+from . import models, schemas, moderation
 from passlib.context import CryptContext
 from typing import Optional, List
 import random
 import re
 import unicodedata
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -116,13 +120,41 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
     base_slug = generate_slug(post.title)
     unique_slug = ensure_unique_slug(db, base_slug)
     
+    # Moderate the post content using Gemini AI
+    try:
+        # Run moderation asynchronously
+        moderation_result = asyncio.run(moderation.moderate_post(post.title, post.content))
+        
+        # Set moderation status based on AI analysis
+        if moderation.should_auto_approve(moderation_result):
+            moderation_status = "approved"
+            logger.info(f"Post auto-approved: {moderation_result.reason}")
+        elif moderation.should_auto_reject(moderation_result):
+            moderation_status = "rejected"
+            logger.warning(f"Post auto-rejected: {moderation_result.reason}")
+        else:
+            moderation_status = "flagged"
+            logger.info(f"Post flagged for review: {moderation_result.reason}")
+            
+    except Exception as e:
+        logger.error(f"Moderation failed for post: {e}. Defaulting to approved.")
+        moderation_result = moderation.ModerationResult(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="Moderation error - defaulting to approved"
+        )
+        moderation_status = "approved"
+    
     db_post = models.Post(
         title=post.title, 
         slug=unique_slug,
         content=post.content, 
         category=post.category, 
         user_id=user_id,
-        view_count=0
+        view_count=0,
+        moderation_status=moderation_status,
+        moderation_reason=moderation_result.reason,
+        toxicity_score=moderation_result.toxicity_score
     )
     db.add(db_post)
     db.commit()
@@ -136,6 +168,7 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
         db.commit()
         db.refresh(db_post)
     
+    logger.info(f"Post created with moderation status: {moderation_status} (toxicity: {moderation_result.toxicity_score:.3f})")
     return db_post
 
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
@@ -231,16 +264,51 @@ def delete_post(db: Session, post_id: int):
     return db_post
 
 def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, user_id: Optional[int] = None):
+    # Moderate the comment content using Gemini AI
+    try:
+        # Run moderation asynchronously
+        moderation_result = asyncio.run(moderation.moderate_comment(comment.content))
+        
+        # Set moderation status and approval based on AI analysis
+        if moderation.should_auto_approve(moderation_result):
+            moderation_status = "approved"
+            approved = True
+            logger.info(f"Comment auto-approved: {moderation_result.reason}")
+        elif moderation.should_auto_reject(moderation_result):
+            moderation_status = "rejected"
+            approved = False
+            logger.warning(f"Comment auto-rejected: {moderation_result.reason}")
+        else:
+            moderation_status = "flagged"
+            approved = False
+            logger.info(f"Comment flagged for review: {moderation_result.reason}")
+            
+    except Exception as e:
+        logger.error(f"Moderation failed for comment: {e}. Defaulting to pending.")
+        moderation_result = moderation.ModerationResult(
+            status=moderation.ModerationStatus.PENDING,
+            toxicity_score=0.0,
+            reason="Moderation error - defaulting to pending review"
+        )
+        moderation_status = "pending"
+        approved = False
+    
     db_comment = models.Comment(
         post_id=post_id,
         user_id=user_id,
         author_name=comment.author_name,
         author_email=comment.author_email,
-        content=comment.content
+        content=comment.content,
+        approved=approved,
+        moderation_status=moderation_status,
+        moderation_reason=moderation_result.reason,
+        toxicity_score=moderation_result.toxicity_score
     )
     db.add(db_comment)
     db.commit()
     db.refresh(db_comment)
+    
+    logger.info(f"Comment created with moderation status: {moderation_status} (toxicity: {moderation_result.toxicity_score:.3f})")
     return db_comment
 
 def get_comments_for_post(db: Session, post_id: int, approved_only: bool = True):
@@ -254,6 +322,101 @@ def get_unapproved_comments_for_user_posts(db: Session, user_id: int):
         models.Post.user_id == user_id,
         models.Comment.approved == False
     ).order_by(models.Comment.created_at.desc()).all()
+
+def get_posts_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
+    """Get posts that need moderation (flagged or rejected)"""
+    query = db.query(models.Post)
+    
+    if status_filter:
+        query = query.filter(models.Post.moderation_status == status_filter)
+    else:
+        # Get posts that need attention (flagged, pending, or rejected)
+        query = query.filter(models.Post.moderation_status.in_(["flagged", "pending", "rejected"]))
+    
+    return query.order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_comments_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
+    """Get comments that need moderation (flagged or rejected)"""
+    query = db.query(models.Comment)
+    
+    if status_filter:
+        query = query.filter(models.Comment.moderation_status == status_filter)
+    else:
+        # Get comments that need attention (flagged, pending, or rejected)
+        query = query.filter(models.Comment.moderation_status.in_(["flagged", "pending", "rejected"]))
+    
+    return query.order_by(models.Comment.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_moderation_stats(db: Session):
+    """Get statistics for moderation dashboard"""
+    stats = {}
+    
+    # Count posts by moderation status
+    stats['posts_pending'] = db.query(models.Post).filter(models.Post.moderation_status == "pending").count()
+    stats['posts_flagged'] = db.query(models.Post).filter(models.Post.moderation_status == "flagged").count()
+    stats['posts_rejected'] = db.query(models.Post).filter(models.Post.moderation_status == "rejected").count()
+    stats['posts_approved'] = db.query(models.Post).filter(models.Post.moderation_status == "approved").count()
+    
+    # Count comments by moderation status
+    stats['comments_pending'] = db.query(models.Comment).filter(models.Comment.moderation_status == "pending").count()
+    stats['comments_flagged'] = db.query(models.Comment).filter(models.Comment.moderation_status == "flagged").count()
+    stats['comments_rejected'] = db.query(models.Comment).filter(models.Comment.moderation_status == "rejected").count()
+    stats['comments_approved'] = db.query(models.Comment).filter(models.Comment.moderation_status == "approved").count()
+    
+    # Total counts for dashboard
+    stats['total_pending'] = stats['posts_pending'] + stats['comments_pending']
+    stats['total_flagged'] = stats['posts_flagged'] + stats['comments_flagged']
+    stats['total_rejected'] = stats['posts_rejected'] + stats['comments_rejected']
+    
+    return stats
+
+def approve_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
+    """Approve a post or comment"""
+    if content_type == "post":
+        content = db.query(models.Post).filter(models.Post.id == content_id).first()
+    else:
+        content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
+    
+    if content:
+        content.moderation_status = "approved"
+        content.moderated_by = moderator_id
+        content.moderated_at = func.now()
+        if reason:
+            content.moderation_reason = reason
+        
+        # For comments, also set approved flag
+        if content_type == "comment":
+            content.approved = True
+            
+        db.commit()
+        db.refresh(content)
+        logger.info(f"Content {content_type} {content_id} approved by moderator {moderator_id}")
+        return content
+    return None
+
+def reject_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
+    """Reject a post or comment"""
+    if content_type == "post":
+        content = db.query(models.Post).filter(models.Post.id == content_id).first()
+    else:
+        content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
+    
+    if content:
+        content.moderation_status = "rejected"
+        content.moderated_by = moderator_id
+        content.moderated_at = func.now()
+        if reason:
+            content.moderation_reason = reason
+        
+        # For comments, ensure approved flag is False
+        if content_type == "comment":
+            content.approved = False
+            
+        db.commit()
+        db.refresh(content)
+        logger.info(f"Content {content_type} {content_id} rejected by moderator {moderator_id}")
+        return content
+    return None
 
 def approve_comment(db: Session, comment_id: int):
     db_comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()

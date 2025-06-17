@@ -1441,56 +1441,52 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
 @app.get("/admin/moderation", response_class=HTMLResponse)
 async def admin_moderation_panel(
     request: Request, 
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
-    """God admin moderation control panel"""
+    """Admin moderation control panel"""
     context = get_common_context(request, current_user)
     return templates.TemplateResponse("admin_moderation.html", context)
 
 @app.get("/api/admin/stats")
 async def get_moderation_stats(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
     """Get moderation statistics for dashboard"""
     try:
-        # Count pending content
-        pending_posts = db.query(models.Post).filter(
-            models.Post.moderation_status.in_(["pending", "flagged"])
-        ).count()
+        # Use the new CRUD function to get comprehensive stats
+        stats = crud.get_moderation_stats(db)
         
-        pending_comments = db.query(models.Comment).filter(
-            models.Comment.moderation_status.in_(["pending", "flagged"])
-        ).count()
+        # Count suspended users (if the field exists)
+        try:
+            suspended_users = db.query(models.User).filter(
+                models.User.is_suspended == True
+            ).count()
+        except:
+            suspended_users = 0
         
-        # Count flagged content
-        flagged_posts = db.query(models.Post).filter(
-            models.Post.moderation_status == "flagged"
-        ).count()
-        
-        flagged_comments = db.query(models.Comment).filter(
-            models.Comment.moderation_status == "flagged"
-        ).count()
-        
-        # Count suspended users
-        suspended_users = db.query(models.User).filter(
-            models.User.is_suspended == True
-        ).count()
-        
-        # Count today's moderation actions (approximate)
-        from datetime import datetime, timedelta
+        # Count today's moderation actions using the new moderated_at field
+        from datetime import datetime
         today = datetime.now().date()
-        today_actions = db.query(models.Post).filter(
-            models.Post.moderated_at >= today
-        ).count() + db.query(models.Comment).filter(
-            models.Comment.moderated_at >= today
-        ).count()
+        try:
+            today_actions = db.query(models.Post).filter(
+                models.Post.moderated_at >= today
+            ).count() + db.query(models.Comment).filter(
+                models.Comment.moderated_at >= today
+            ).count()
+        except:
+            # Fallback if moderated_at fields don't exist yet
+            today_actions = 0
         
         return {
-            "pending_count": pending_posts + pending_comments,
-            "flagged_count": flagged_posts + flagged_comments,
+            "pending_count": stats['total_pending'],
+            "flagged_count": stats['total_flagged'],
             "suspended_count": suspended_users,
-            "today_actions": today_actions
+            "today_actions": today_actions,
+            "posts_pending": stats['posts_pending'],
+            "posts_flagged": stats['posts_flagged'],
+            "comments_pending": stats['comments_pending'],
+            "comments_flagged": stats['comments_flagged']
         }
         
     except Exception as e:
@@ -1500,17 +1496,20 @@ async def get_moderation_stats(
 @app.get("/api/admin/content/pending")
 async def get_pending_content(
     content_type: str = "all",
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
-    """Get content pending moderation"""
+    """Get content pending moderation - visible only to moderators"""
     try:
+        # Check if user has moderator privileges from session
+        if not request.session.get("is_moderator") and not request.session.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Moderation access required")
+        
         content = []
         
         if content_type in ["all", "posts"]:
-            posts = db.query(models.Post).filter(
-                models.Post.moderation_status.in_(["pending", "flagged"])
-            ).order_by(models.Post.created_at.desc()).limit(50).all()
+            posts = crud.get_posts_for_moderation(db, status_filter=None, limit=50)
             
             for post in posts:
                 content.append({
@@ -1519,15 +1518,14 @@ async def get_pending_content(
                     "title": post.title,
                     "content": post.content,
                     "author": post.owner.username,
-                    "toxicity_score": post.toxicity_score,
-                    "moderation_status": post.moderation_status,
+                    "toxicity_score": getattr(post, 'toxicity_score', 0.0),
+                    "moderation_status": getattr(post, 'moderation_status', 'pending'),
+                    "moderation_reason": getattr(post, 'moderation_reason', ''),
                     "created_at": post.created_at.isoformat()
                 })
         
         if content_type in ["all", "comments"]:
-            comments = db.query(models.Comment).filter(
-                models.Comment.moderation_status.in_(["pending", "flagged"])
-            ).order_by(models.Comment.created_at.desc()).limit(50).all()
+            comments = crud.get_comments_for_moderation(db, status_filter=None, limit=50)
             
             for comment in comments:
                 author = comment.commenter.username if comment.commenter else comment.author_name
@@ -1537,8 +1535,9 @@ async def get_pending_content(
                     "title": None,
                     "content": comment.content,
                     "author": author,
-                    "toxicity_score": comment.toxicity_score,
-                    "moderation_status": comment.moderation_status,
+                    "toxicity_score": getattr(comment, 'toxicity_score', 0.0),
+                    "moderation_status": getattr(comment, 'moderation_status', 'pending'),
+                    "moderation_reason": getattr(comment, 'moderation_reason', ''),
                     "created_at": comment.created_at.isoformat()
                 })
         
@@ -1553,17 +1552,20 @@ async def get_pending_content(
 
 @app.get("/api/admin/content/flagged")
 async def get_flagged_content(
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
-    """Get flagged content (high toxicity)"""
+    """Get flagged content (high toxicity) - visible only to moderators"""
     try:
+        # Check if user has moderator privileges from session
+        if not request.session.get("is_moderator") and not request.session.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Moderation access required")
+        
         content = []
         
         # Get flagged posts
-        posts = db.query(models.Post).filter(
-            models.Post.moderation_status == "flagged"
-        ).order_by(models.Post.toxicity_score.desc()).limit(50).all()
+        posts = crud.get_posts_for_moderation(db, status_filter="flagged", limit=50)
         
         for post in posts:
             content.append({
@@ -1572,15 +1574,14 @@ async def get_flagged_content(
                 "title": post.title,
                 "content": post.content,
                 "author": post.owner.username,
-                "toxicity_score": post.toxicity_score,
-                "moderation_status": post.moderation_status,
+                "toxicity_score": getattr(post, 'toxicity_score', 0.0),
+                "moderation_status": getattr(post, 'moderation_status', 'flagged'),
+                "moderation_reason": getattr(post, 'moderation_reason', ''),
                 "created_at": post.created_at.isoformat()
             })
         
         # Get flagged comments
-        comments = db.query(models.Comment).filter(
-            models.Comment.moderation_status == "flagged"
-        ).order_by(models.Comment.toxicity_score.desc()).limit(50).all()
+        comments = crud.get_comments_for_moderation(db, status_filter="flagged", limit=50)
         
         for comment in comments:
             author = comment.commenter.username if comment.commenter else comment.author_name
@@ -1590,13 +1591,14 @@ async def get_flagged_content(
                 "title": None,
                 "content": comment.content,
                 "author": author,
-                "toxicity_score": comment.toxicity_score,
-                "moderation_status": comment.moderation_status,
+                "toxicity_score": getattr(comment, 'toxicity_score', 0.0),
+                "moderation_status": getattr(comment, 'moderation_status', 'flagged'),
+                "moderation_reason": getattr(comment, 'moderation_reason', ''),
                 "created_at": comment.created_at.isoformat()
             })
         
         # Sort by toxicity score
-        content.sort(key=lambda x: x["toxicity_score"] or 0, reverse=True)
+        content.sort(key=lambda x: x.get("toxicity_score", 0), reverse=True)
         
         return {"content": content}
         
@@ -1609,52 +1611,54 @@ async def moderate_content_action(
     content_type: str,
     content_id: int,
     action_data: dict,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
-    """Perform moderation action on content"""
+    """Perform moderation action on content - only moderators can access"""
     try:
+        # Check if user has moderator privileges from session
+        if not request.session.get("is_moderator") and not request.session.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Moderation access required")
+        
         action = action_data.get("action")
         reason = action_data.get("reason", "")
         
         if action not in ["approve", "reject", "delete"]:
             raise HTTPException(status_code=400, detail="Invalid action")
         
-        if content_type == "post":
-            content = db.query(models.Post).filter(models.Post.id == content_id).first()
-        elif content_type == "comment":
-            content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
-        else:
+        if content_type not in ["post", "comment"]:
             raise HTTPException(status_code=400, detail="Invalid content type")
         
-        if not content:
-            raise HTTPException(status_code=404, detail="Content not found")
-        
-        # Perform action
-        from datetime import datetime
-        
+        # Use the new CRUD functions for approving/rejecting content
         if action == "approve":
-            content.moderation_status = "approved"
-            if content_type == "comment":
-                content.approved = True
+            result = crud.approve_content(db, content_type, content_id, current_user.id, reason)
+            if not result:
+                raise HTTPException(status_code=404, detail="Content not found")
+            logger.info(f"Content {content_type} {content_id} approved by moderator {current_user.username}")
+            return {"success": True, "message": f"{content_type.title()} approved successfully"}
+        
         elif action == "reject":
-            content.moderation_status = "rejected"
-            if content_type == "comment":
-                content.approved = False
+            result = crud.reject_content(db, content_type, content_id, current_user.id, reason)
+            if not result:
+                raise HTTPException(status_code=404, detail="Content not found")
+            logger.info(f"Content {content_type} {content_id} rejected by moderator {current_user.username}")
+            return {"success": True, "message": f"{content_type.title()} rejected successfully"}
+        
         elif action == "delete":
+            # For delete, we still need to handle it manually since it's not in CRUD
+            if content_type == "post":
+                content = db.query(models.Post).filter(models.Post.id == content_id).first()
+            else:
+                content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
+            
+            if not content:
+                raise HTTPException(status_code=404, detail="Content not found")
+            
             db.delete(content)
             db.commit()
-            admin.log_admin_action(current_user, "delete", content_type, content_id, reason)
-            return {"success": True, "message": f"{content_type.title()} deleted"}
-        
-        content.moderation_reason = reason
-        content.moderated_by = current_user.id
-        content.moderated_at = datetime.now()
-        
-        db.commit()
-        admin.log_admin_action(current_user, action, content_type, content_id, reason)
-        
-        return {"success": True, "message": f"{content_type.title()} {action}d successfully"}
+            logger.info(f"Content {content_type} {content_id} deleted by moderator {current_user.username}: {reason}")
+            return {"success": True, "message": f"{content_type.title()} deleted successfully"}
         
     except HTTPException:
         raise
@@ -1666,7 +1670,7 @@ async def moderate_content_action(
 async def search_users_admin(
     q: str = "",
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
     """Search users for admin management"""
     try:
@@ -1683,10 +1687,11 @@ async def search_users_admin(
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "is_suspended": user.is_suspended,
-                "suspension_reason": user.suspension_reason,
+                "is_suspended": getattr(user, 'is_suspended', False),
+                "suspension_reason": getattr(user, 'suspension_reason', ''),
                 "created_at": user.created_at.isoformat(),
-                "is_god_admin": admin.is_god_admin(user)
+                "is_admin": user.is_admin,
+                "is_moderator": user.is_moderator
             })
         
         return {"users": result}
@@ -1700,7 +1705,7 @@ async def suspend_user(
     user_id: int,
     suspension_data: dict,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
     """Suspend a user"""
     try:
@@ -1708,18 +1713,24 @@ async def suspend_user(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        if admin.is_god_admin(user):
-            raise HTTPException(status_code=400, detail="Cannot suspend god admin")
+        if user.is_admin:
+            raise HTTPException(status_code=400, detail="Cannot suspend admin user")
         
         from datetime import datetime
         
-        user.is_suspended = True
-        user.suspension_reason = suspension_data.get("reason", "")
-        user.suspended_at = datetime.now()
-        user.suspended_by = current_user.id
+        # Only proceed if the suspension fields exist in the model
+        try:
+            user.is_suspended = True
+            user.suspension_reason = suspension_data.get("reason", "")
+            user.suspended_at = datetime.now()
+            user.suspended_by = current_user.id
+        except AttributeError:
+            # If suspension fields don't exist, just log the action
+            logger.warning(f"Suspension fields not available in User model for user {user_id}")
+            return {"success": False, "message": "Suspension functionality not available"}
         
         db.commit()
-        admin.log_admin_action(current_user, "suspend", "user", user_id, user.suspension_reason)
+        logger.info(f"User {user.username} suspended by {current_user.username}: {suspension_data.get('reason', '')}")
         
         return {"success": True, "message": f"User {user.username} suspended"}
         
@@ -1733,7 +1744,7 @@ async def suspend_user(
 async def unsuspend_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_god_admin)
+    current_user: models.User = Depends(admin.require_admin)
 ):
     """Unsuspend a user"""
     try:
@@ -1741,13 +1752,19 @@ async def unsuspend_user(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        user.is_suspended = False
-        user.suspension_reason = None
-        user.suspended_at = None
-        user.suspended_by = None
+        # Only proceed if the suspension fields exist in the model
+        try:
+            user.is_suspended = False
+            user.suspension_reason = None
+            user.suspended_at = None
+            user.suspended_by = None
+        except AttributeError:
+            # If suspension fields don't exist, just log the action
+            logger.warning(f"Suspension fields not available in User model for user {user_id}")
+            return {"success": False, "message": "Suspension functionality not available"}
         
         db.commit()
-        admin.log_admin_action(current_user, "unsuspend", "user", user_id)
+        logger.info(f"User {user.username} unsuspended by {current_user.username}")
         
         return {"success": True, "message": f"User {user.username} unsuspended"}
         
