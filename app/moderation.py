@@ -119,36 +119,34 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
         else:
             prompt = ENGLISH_FALLBACK_PROMPT + text
         
-        # Configure safety settings to not interfere with content moderation
-        safety_settings = [
-            genai.types.SafetySetting(
-                category=genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            genai.types.SafetySetting(
-                category=genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            genai.types.SafetySetting(
-                category=genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
-            ),
-            genai.types.SafetySetting(
-                category=genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                threshold=genai.types.HarmBlockThreshold.BLOCK_NONE
+        # Try different approaches for safety settings with Gemini 2.0
+        try:
+            # First try with minimal safety settings
+            response = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    temperature=0.0,  # Deterministic for content moderation
+                    max_output_tokens=1024,
+                    safety_settings={
+                        genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                        genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                        genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+                        genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE
+                    }
+                )
             )
-        ]
-        
-        # Generate content with Gemini
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                temperature=0.0,  # Deterministic for content moderation
-                safety_settings=safety_settings,
-                max_output_tokens=1024
+        except Exception as safety_error:
+            # If safety settings fail, try without them
+            logger.warning(f"Safety settings failed: {safety_error}, trying without safety settings")
+            response = gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=1024
+                )
             )
-        )
         
         # Check if response was blocked by safety filters
         if not response.text or response.text.strip() == "":
@@ -185,9 +183,25 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
             return {"toxicity": 0.0, "overall_assessment": "safe", "reason": "Parsing error - defaulting to safe"}
             
     except Exception as e:
+        error_msg = str(e)
         logger.error(f"Error calling Gemini API: {e}")
-        # Fail safe - approve if API fails
-        return {"toxicity": 0.0, "overall_assessment": "safe", "reason": "API error - defaulting to safe"}
+        
+        # If it's a safety filter error, flag for manual review
+        if "HARM_CATEGORY" in error_msg:
+            logger.warning(f"Gemini safety filter triggered: {error_msg}")
+            return {
+                "toxicity": 0.8, 
+                "harassment": 0.8,
+                "hate_speech": 0.0,
+                "sexually_explicit": 0.0,
+                "dangerous_content": 0.0,
+                "romanian_profanity": 0.0,
+                "overall_assessment": "review", 
+                "reason": f"Blocked by Gemini safety filters ({error_msg}) - requires manual review"
+            }
+        
+        # For other API errors, fail safe - approve
+        return {"toxicity": 0.0, "overall_assessment": "safe", "reason": f"API error ({error_msg}) - defaulting to safe"}
 
 def determine_moderation_status(gemini_scores: Dict[str, float], content_type: str = "comment") -> ModerationResult:
     """
