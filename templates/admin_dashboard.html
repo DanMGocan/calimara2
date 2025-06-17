@@ -28,9 +28,6 @@
                         <a href="/create-post" class="btn btn-primary-custom hover-lift">
                             <i class="bi bi-plus-circle me-2"></i>Postare Nouă
                         </a>
-                        <a href="//{{ current_user.username }}.calimara.ro" class="btn btn-outline-primary-custom hover-lift" target="_blank">
-                            <i class="bi bi-eye me-2"></i>Vezi Blogul
-                        </a>
                     </div>
                 </div>
             </div>
@@ -59,11 +56,11 @@
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 bg-warning text-white hover-lift">
+        <div class="card border-0 bg-success text-white hover-lift">
             <div class="card-body text-center">
                 <i class="bi bi-chat-dots display-4 mb-3"></i>
-                <h3 class="fw-bold">{{ unapproved_comments|length }}</h3>
-                <p class="mb-0">Comentarii de Aprobat</p>
+                <h3 class="fw-bold">{{ user_posts|map(attribute='comments')|map('length')|sum or 0 }}</h3>
+                <p class="mb-0">Comentarii Totale</p>
             </div>
         </div>
     </div>
@@ -524,71 +521,13 @@
                 <a href="/create-post" class="btn btn-primary-custom">
                     <i class="bi bi-plus-circle me-2"></i>Creează Postare
                 </a>
-                <a href="//{{ current_user.username }}.calimara.ro" class="btn btn-outline-primary-custom" target="_blank">
-                    <i class="bi bi-eye me-2"></i>Vezi Blogul Meu
-                </a>
                 <button class="btn btn-outline-secondary" onclick="copyBlogUrl()">
                     <i class="bi bi-link-45deg me-2"></i>Copiază Link Blog
                 </button>
             </div>
         </div>
 
-        <!-- Unapproved Comments -->
-        {% if unapproved_comments %}
-        <div class="card border-0 shadow-sm mb-4">
-            <div class="card-header bg-primary-custom text-white">
-                <button class="btn btn-link text-white text-decoration-none p-0 w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#unapprovedCommentsCollapse" aria-expanded="false" aria-controls="unapprovedCommentsCollapse">
-                    <h5 class="mb-0 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-chat-dots me-2"></i>Comentarii de Aprobat <span class="badge bg-light text-dark ms-2">{{ unapproved_comments|length }}</span></span>
-                        <i class="bi bi-chevron-down collapse-arrow"></i>
-                    </h5>
-                </button>
-            </div>
-            <div class="collapse" id="unapprovedCommentsCollapse">
-                <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <tbody>
-                            {% for comment in unapproved_comments %}
-                            <tr class="align-middle">
-                                <td class="px-3 py-3">
-                                    <div class="d-flex align-items-start">
-                                        <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 2rem; height: 2rem;">
-                                            <i class="bi bi-person fs-6"></i>
-                                        </div>
-                                        <div class="flex-grow-1">
-                                            <h6 class="fw-medium mb-1">
-                                                {{ comment.author_name if comment.author_name else comment.commenter.username }}
-                                            </h6>
-                                            <p class="small text-muted mb-1">
-                                                Pe: <a href="//{{ current_user.username }}.calimara.ro/{{ comment.post.slug }}" 
-                                                       class="text-decoration-none">{{ comment.post.title }}</a>
-                                            </p>
-                                            <p class="small mb-2">{{ comment.content[:80] }}{% if comment.content|length > 80 %}...{% endif %}</p>
-                                            <div class="btn-group btn-group-sm">
-                                                <button class="btn btn-outline-success approve-comment-button" 
-                                                        data-comment-id="{{ comment.id }}"
-                                                        data-bs-toggle="tooltip" title="Aprobă">
-                                                    <i class="bi bi-check"></i>
-                                                </button>
-                                                <button class="btn btn-outline-danger delete-comment-button" 
-                                                        data-comment-id="{{ comment.id }}"
-                                                        data-bs-toggle="tooltip" title="Șterge">
-                                                    <i class="bi bi-trash"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
+        <!-- Comments are now automatically moderated by AI -->
 
         <!-- Blog Statistics - Always Visible -->
         <div class="card border-0 shadow-sm mb-4">

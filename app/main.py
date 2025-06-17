@@ -1292,12 +1292,11 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db), curre
         return RedirectResponse(url=f"https://{current_user.username}{SUBDOMAIN_SUFFIX}/dashboard", status_code=status.HTTP_302_FOUND)
 
     user_posts = crud.get_posts_by_user(db, current_user.id)
-    unapproved_comments = crud.get_unapproved_comments_for_user_posts(db, current_user.id)
+    # Comments are now auto-moderated by AI, no manual approval needed
     
     context = get_common_context(request, current_user)
     context.update({
-        "user_posts": user_posts,
-        "unapproved_comments": unapproved_comments
+        "user_posts": user_posts
     })
     return templates.TemplateResponse("admin_dashboard.html", context)
 

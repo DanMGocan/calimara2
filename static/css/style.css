@@ -718,14 +718,25 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background: url('/static/img/background.svg') center/cover;
-    opacity: 0.1;
+    background: url('/static/img/herocontainer.jpg') center/cover;
+    opacity: 0.3;
     z-index: 1;
 }
 
 .hero-section .container {
     position: relative;
     z-index: 2;
+}
+
+/* Development Warning Styles */
+.development-warning {
+    background-color: #8b0000; /* Dark red */
+    color: white;
+    text-align: center;
+    padding: 1rem 0;
+    margin-bottom: 2rem;
+    border: 4px solid #000000; /* Thick black border */
+    border-radius: 0;
 }
 
 .blog-card {

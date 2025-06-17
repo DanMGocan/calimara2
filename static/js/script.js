@@ -127,14 +127,7 @@ function initializeInteractiveFeatures() {
         button.addEventListener('click', handleDeletePost);
     });
 
-    // Comment management buttons
-    document.querySelectorAll('.approve-comment-button').forEach(button => {
-        button.addEventListener('click', handleApproveComment);
-    });
-
-    document.querySelectorAll('.delete-comment-button').forEach(button => {
-        button.addEventListener('click', handleDeleteComment);
-    });
+    // Comments are now auto-moderated by AI - no manual approval needed
 
     // Auto-save functionality for forms
     initializeAutoSave();
@@ -310,9 +303,14 @@ async function handleCommentSubmission(e) {
         const data = await response.json();
 
         if (response.ok) {
-            showToast('Comentariu trimis cu succes! Va apărea după aprobare.', 'success');
+            showToast('Comentariu trimis cu succes!', 'success');
             form.reset();
             hideError(errorDiv);
+            
+            // Reload page after a short delay to show approved comments immediately
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
         } else {
             showError(errorDiv, data.detail || 'Trimiterea comentariului a eșuat');
         }
@@ -398,47 +396,7 @@ async function handleDeletePost(e) {
     }
 }
 
-async function handleApproveComment(e) {
-    const commentId = e.target.dataset.commentId;
-    
-    if (!confirm('Ești sigur că vrei să aprobi acest comentariu?')) return;
-
-    try {
-        const response = await fetch(`/api/comments/${commentId}/approve`, { method: 'PUT' });
-        
-        if (response.ok) {
-            e.target.closest('tr').remove();
-            showToast('Comentariu aprobat cu succes!', 'success');
-        } else {
-            const data = await response.json();
-            showToast(data.detail || 'Aprobarea comentariului a eșuat', 'error');
-        }
-    } catch (error) {
-        console.error('Approve comment error:', error);
-        showToast('A apărut o eroare neașteptată.', 'error');
-    }
-}
-
-async function handleDeleteComment(e) {
-    const commentId = e.target.dataset.commentId;
-    
-    if (!confirm('Ești sigur că vrei să ștergi acest comentariu?')) return;
-
-    try {
-        const response = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
-        
-        if (response.status === 204) {
-            e.target.closest('tr').remove();
-            showToast('Comentariu șters cu succes!', 'success');
-        } else {
-            const data = await response.json();
-            showToast(data.detail || 'Ștergerea comentariului a eșuat', 'error');
-        }
-    } catch (error) {
-        console.error('Delete comment error:', error);
-        showToast('A apărut o eroare neașteptată.', 'error');
-    }
-}
+// Comment approval functions removed - comments are now auto-moderated by AI
 
 // ===================================
 // UTILITY FUNCTIONS

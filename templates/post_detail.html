@@ -201,11 +201,24 @@
                 {% for comment in post.comments %}
                     <div class="comment-item mb-4 pb-4{% if not loop.last %} border-bottom{% endif %}">
                         <div class="d-flex align-items-start">
-                            <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 2.5rem; height: 2.5rem;">
-                                <i class="bi bi-person text-muted"></i>
-                            </div>
+                            {% if comment.commenter %}
+                                <img src="{{ get_avatar_url(comment.commenter, 40) }}" 
+                                     alt="Avatar {{ comment.commenter.username }}" 
+                                     class="rounded-circle me-3" style="width: 2.5rem; height: 2.5rem;">
+                            {% else %}
+                                <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 2.5rem; height: 2.5rem;">
+                                    <i class="bi bi-person text-muted"></i>
+                                </div>
+                            {% endif %}
                             <div class="flex-grow-1">
-                                <h6 class="mb-1 fw-bold">{{ comment.author_name or 'Anonim' }}</h6>
+                                <h6 class="mb-1 fw-bold">
+                                    {% if comment.commenter %}
+                                        {{ comment.commenter.username }}
+                                        <span class="badge bg-primary ms-1">Utilizator înregistrat</span>
+                                    {% else %}
+                                        {{ comment.author_name or 'Anonim' }}
+                                    {% endif %}
+                                </h6>
                                 <small class="text-muted mb-2 d-block">
                                     {{ comment.created_at.strftime('%d %B %Y, %H:%M') }}
                                 </small>
@@ -224,14 +237,23 @@
             <!-- Comment Form -->
             <div class="mt-4 pt-4 border-top">
                 <h6 class="fw-bold mb-3">Lasă un comentariu</h6>
+                {% if current_user %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-person-check me-2"></i>
+                        Comentezi ca <strong>{{ current_user.username }}</strong>
+                    </div>
+                {% endif %}
                 <form class="comment-form" data-post-id="{{ post.id }}">
                     <div class="row g-3">
-                        <div class="col-md-6">
-                            <input type="text" class="form-control" name="author_name" placeholder="Numele tău" required>
-                        </div>
-                        <div class="col-md-6">
-                            <input type="email" class="form-control" name="author_email" placeholder="Email (opțional)">
-                        </div>
+                        {% if not current_user %}
+                            <!-- Only show name/email fields for anonymous users -->
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" name="author_name" placeholder="Numele tău" required>
+                            </div>
+                            <div class="col-md-6">
+                                <input type="email" class="form-control" name="author_email" placeholder="Email (opțional)">
+                            </div>
+                        {% endif %}
                         <div class="col-12">
                             <textarea class="form-control" name="content" rows="4" placeholder="Scrie comentariul tău aici..." required></textarea>
                         </div>
@@ -239,6 +261,11 @@
                             <button type="submit" class="btn btn-primary-custom">
                                 <i class="bi bi-send me-2"></i>Trimite Comentariu
                             </button>
+                            <div class="comment-error mt-2" style="display: none;"></div>
+                            <small class="text-muted mt-2 d-block">
+                                <i class="bi bi-shield-check me-1 text-success"></i>
+                                Comentariile sunt moderate automat de inteligența artificială pentru siguranța comunității.
+                            </small>
                         </div>
                     </div>
                 </form>
