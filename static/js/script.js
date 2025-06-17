@@ -294,24 +294,28 @@ async function handleCommentSubmission(e) {
     if (authorEmail) commentData.author_email = authorEmail;
 
     try {
+        console.log('Submitting comment:', commentData);
+        
         const response = await fetch(`/api/posts/${postId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(commentData),
         });
 
+        console.log('Comment response status:', response.status);
         const data = await response.json();
+        console.log('Comment response data:', data);
 
         if (response.ok) {
+            console.log('Comment submitted successfully, reloading page...');
             showToast('Comentariu trimis cu succes!', 'success');
-            form.reset();
-            hideError(errorDiv);
             
-            // Reload page after a short delay to show approved comments immediately
+            // Small delay to ensure the toast is seen, then reload
             setTimeout(() => {
                 window.location.reload();
-            }, 1000);
+            }, 500);
         } else {
+            console.error('Comment submission failed:', data);
             showError(errorDiv, data.detail || 'Trimiterea comentariului a eșuat');
         }
     } catch (error) {

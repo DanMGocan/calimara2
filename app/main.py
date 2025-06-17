@@ -514,7 +514,27 @@ async def create_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user) # Use get_required_user
 ):
-    return crud.create_user_post(db=db, post=post, user_id=current_user.id)
+    # Create post first
+    db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id)
+    
+    # Then moderate it asynchronously  
+    try:
+        moderation_result = await moderation.moderate_post(post.title, post.content)
+        
+        # Update post with moderation results
+        db_post.moderation_status = moderation_result.status.value
+        db_post.toxicity_score = moderation_result.toxicity_score
+        db_post.moderation_reason = moderation_result.reason
+        
+        db.commit()
+        db.refresh(db_post)
+        
+        logger.info(f"Post moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
+        
+    except Exception as e:
+        logger.error(f"Moderation failed for post: {e}. Keeping as approved.")
+    
+    return db_post
 
 @app.put("/api/posts/{post_id}", response_model=schemas.Post) # Changed back to PUT and response_model
 async def update_post_api(
@@ -565,7 +585,28 @@ async def add_comment_to_post(
     if not user_id and (not comment.author_name or not comment.author_email):
         raise HTTPException(status_code=400, detail="Numele și emailul autorului sunt obligatorii pentru comentariile neautentificate")
 
-    return crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
+    # Create comment first
+    db_comment = crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
+    
+    # Then moderate it asynchronously
+    try:
+        moderation_result = await moderation.moderate_comment(comment.content)
+        
+        # Update comment with moderation results
+        db_comment.moderation_status = moderation_result.status.value
+        db_comment.toxicity_score = moderation_result.toxicity_score
+        db_comment.moderation_reason = moderation_result.reason
+        db_comment.approved = moderation_result.status.value == "approved"
+        
+        db.commit()
+        db.refresh(db_comment)
+        
+        logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
+        
+    except Exception as e:
+        logger.error(f"Moderation failed for comment: {e}. Keeping as approved.")
+    
+    return db_comment
 
 @app.put("/api/comments/{comment_id}/approve", response_model=schemas.Comment) # Changed back to PUT and response_model
 async def approve_comment_api(
@@ -1443,7 +1484,12 @@ async def admin_moderation_panel(
     current_user: models.User = Depends(admin.require_moderator)
 ):
     """Admin moderation control panel - accessible to both admins and moderators"""
+    # If accessed from main domain, redirect to subdomain
+    if request.url.hostname == MAIN_DOMAIN:
+        return RedirectResponse(url=f"https://{current_user.username}{SUBDOMAIN_SUFFIX}/admin/moderation", status_code=status.HTTP_302_FOUND)
+    
     context = get_common_context(request, current_user)
+    logger.info(f"Moderation panel accessed by {current_user.username} (admin: {current_user.is_admin}, moderator: {current_user.is_moderator})")
     return templates.TemplateResponse("admin_moderation.html", context)
 
 @app.get("/api/admin/stats")

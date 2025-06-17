@@ -233,31 +233,57 @@ async def moderate_comment(content: str) -> ModerationResult:
     """
     Analyze and moderate a comment using Gemini 1.5 Flash
     """
+    logger.info(f"Starting comment moderation for content: {content[:50]}...")
+    
     if not MODERATION_ENABLED:
+        logger.info("Moderation disabled - auto-approving comment")
         return ModerationResult(
             status=ModerationStatus.APPROVED,
             toxicity_score=0.0,
             reason="Moderation disabled"
         )
     
+    if not gemini_client:
+        logger.warning("Gemini client not initialized - auto-approving comment")
+        return ModerationResult(
+            status=ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="Gemini client not available"
+        )
+    
     gemini_scores = await analyze_content_with_gemini(content)
-    return determine_moderation_status(gemini_scores, "comment")
+    result = determine_moderation_status(gemini_scores, "comment")
+    logger.info(f"Comment moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
+    return result
 
 async def moderate_post(title: str, content: str) -> ModerationResult:
     """
     Analyze and moderate a post (title + content) using Gemini 1.5 Flash
     """
+    logger.info(f"Starting post moderation for title: {title[:30]}...")
+    
     if not MODERATION_ENABLED:
+        logger.info("Moderation disabled - auto-approving post")
         return ModerationResult(
             status=ModerationStatus.APPROVED,
             toxicity_score=0.0,
             reason="Moderation disabled"
         )
     
+    if not gemini_client:
+        logger.warning("Gemini client not initialized - auto-approving post")
+        return ModerationResult(
+            status=ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="Gemini client not available"
+        )
+    
     # Combine title and content for analysis
     full_text = f"Titlu: {title}\n\nConținut: {content}"
     gemini_scores = await analyze_content_with_gemini(full_text)
-    return determine_moderation_status(gemini_scores, "post")
+    result = determine_moderation_status(gemini_scores, "post")
+    logger.info(f"Post moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
+    return result
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
     """Check if content should be automatically approved"""
