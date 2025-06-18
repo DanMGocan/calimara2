@@ -200,3 +200,4 @@ Check `request.state.is_subdomain` and `request.state.username` (set by Subdomai
 ## Development Notes
 - do not try to use git, I will do that
 - do not have css or js in the html files, all should be put in the appropriate files, in the static folder
+- use only the latest libraries and APIS

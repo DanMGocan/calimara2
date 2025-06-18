@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import os
+from dotenv import load_dotenv
 
 # Define the application directory on the VM
 APP_DIR = "/home/dangocan_1/calimara2"
@@ -33,9 +34,121 @@ def run_command(command, cwd=None, shell=True):
         print(f"An unexpected error occurred: {e}")
         return False
 
+def check_environment_and_dependencies():
+    """Check environment variables and critical dependencies"""
+    print("\n" + "="*60)
+    print("ENVIRONMENT AND DEPENDENCY CHECKS")
+    print("="*60)
+    
+    # Load environment variables
+    env_file = os.path.join(APP_DIR, ".env")
+    if os.path.exists(env_file):
+        load_dotenv(env_file)
+        print(f"✅ .env file found at: {env_file}")
+    else:
+        print(f"❌ .env file not found at: {env_file}")
+        return False
+    
+    # Check critical environment variables
+    critical_vars = {
+        "GEMINI_API_KEY": "AI Moderation",
+        "GOOGLE_CLIENT_ID": "Google OAuth",
+        "GOOGLE_CLIENT_SECRET": "Google OAuth",
+        "MYSQL_USER": "Database Connection",
+        "MYSQL_PASSWORD": "Database Connection",
+        "SESSION_SECRET_KEY": "Session Security"
+    }
+    
+    print("\n--- Environment Variables ---")
+    all_vars_ok = True
+    for var, purpose in critical_vars.items():
+        value = os.getenv(var)
+        if value:
+            # Mask sensitive values
+            if "SECRET" in var or "PASSWORD" in var or "KEY" in var:
+                display_value = f"{value[:8]}..." if len(value) > 8 else "***"
+            else:
+                display_value = value[:20] + "..." if len(value) > 20 else value
+            print(f"✅ {var}: {display_value} ({purpose})")
+        else:
+            print(f"❌ {var}: NOT SET ({purpose})")
+            all_vars_ok = False
+    
+    # Check Python dependencies
+    print("\n--- Python Dependencies ---")
+    dependencies = [
+        ("fastapi", "Web Framework"),
+        ("google.generativeai", "AI Moderation"),
+        ("sqlalchemy", "Database ORM"),
+        ("authlib", "OAuth Authentication"),
+        ("jinja2", "Template Engine")
+    ]
+    
+    for module, purpose in dependencies:
+        try:
+            __import__(module)
+            print(f"✅ {module}: Available ({purpose})")
+        except ImportError:
+            print(f"❌ {module}: NOT AVAILABLE ({purpose})")
+            all_vars_ok = False
+    
+    # Test AI Moderation Configuration
+    print("\n--- AI Moderation Test ---")
+    try:
+        # Test import with environment loaded
+        from app import moderation
+        
+        # Check configuration
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        moderation_enabled = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
+        
+        if gemini_key and moderation_enabled:
+            print("✅ AI Moderation: Properly configured")
+        elif not gemini_key:
+            print("❌ AI Moderation: Missing GEMINI_API_KEY")
+            all_vars_ok = False
+        elif not moderation_enabled:
+            print("⚠️  AI Moderation: Disabled in configuration")
+        
+    except Exception as e:
+        print(f"❌ AI Moderation: Import failed - {e}")
+        all_vars_ok = False
+    
+    # Test Database Connection
+    print("\n--- Database Connection Test ---")
+    try:
+        from app.database import engine
+        with engine.connect() as conn:
+            result = conn.execute("SELECT 1").fetchone()
+            if result:
+                print("✅ Database: Connection successful")
+            else:
+                print("❌ Database: Connection failed")
+                all_vars_ok = False
+    except Exception as e:
+        print(f"❌ Database: Connection failed - {e}")
+        all_vars_ok = False
+    
+    print("\n" + "="*60)
+    if all_vars_ok:
+        print("✅ ALL CHECKS PASSED - System ready for deployment")
+    else:
+        print("❌ SOME CHECKS FAILED - Review issues above")
+    print("="*60)
+    
+    return all_vars_ok
+
 def deploy_vm():
     """Performs VM-side deployment operations."""
     print("Starting VM deployment automation...")
+
+    # 0. Check environment and dependencies BEFORE deployment
+    print("\n--- Pre-deployment checks ---")
+    if not check_environment_and_dependencies():
+        print("❌ Pre-deployment checks failed. Please fix issues before deploying.")
+        response = input("Continue anyway? (y/N): ")
+        if response.lower() != 'y':
+            sys.exit(1)
 
     # 1. Git pull latest changes
     print("\n--- Performing git pull ---")
@@ -72,6 +185,17 @@ def deploy_vm():
         print("Failed to run initdb.py. Aborting VM deployment.")
         sys.exit(1)
     print("initdb.py executed successfully.")
+
+    # 4. Post-deployment checks
+    print("\n--- Post-deployment checks ---")
+    if check_environment_and_dependencies():
+        print("✅ Post-deployment checks passed!")
+    else:
+        print("⚠️  Some post-deployment checks failed. Service may not work properly.")
+
+    # 5. Check service status
+    print("\n--- Service Status Check ---")
+    run_command(f'sudo systemctl status {GUNICORN_SERVICE} --no-pager -l')
 
     print("\nVM deployment automation completed successfully.")
 
