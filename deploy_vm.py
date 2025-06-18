@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 # Define the application directory on the VM
-APP_DIR = "/home/dangocan_1/calimara2"
+APP_DIR = "/home/danmgocan/calimara2"
 VENV_PYTHON = os.path.join(APP_DIR, "venv", "bin", "python3")
 INITDB_SCRIPT = os.path.join(APP_DIR, "scripts", "initdb.py")
 GUNICORN_SERVICE = "calimara" # Name of the systemd service
@@ -159,13 +159,35 @@ def deploy_vm():
         print("Failed to pull latest changes. Aborting VM deployment.")
         sys.exit(1)
 
-    # 2. Restart Gunicorn service
-    print("\n--- Restarting Gunicorn service ---")
-    # Use sudo for systemctl commands
-    if not run_command(f'sudo systemctl restart {GUNICORN_SERVICE}', shell=True):
-        print(f"Failed to restart {GUNICORN_SERVICE} service. Aborting VM deployment.")
+    # 2. Stop and start Gunicorn service (more reliable than restart)
+    print("\n--- Stopping Gunicorn service ---")
+    run_command(f'sudo systemctl stop {GUNICORN_SERVICE}', shell=True)
+    
+    print("Waiting for service to fully stop...")
+    import time
+    time.sleep(3)
+    
+    # Check if any Python processes are still running
+    print("Checking for remaining Python processes...")
+    run_command('ps aux | grep python | grep calimara || echo "No calimara processes found"', shell=True)
+    
+    print(f"\n--- Starting {GUNICORN_SERVICE} service ---")
+    if not run_command(f'sudo systemctl start {GUNICORN_SERVICE}', shell=True):
+        print(f"Failed to start {GUNICORN_SERVICE} service. Checking logs...")
+        run_command(f'sudo journalctl -u {GUNICORN_SERVICE} -n 20 --no-pager', shell=True)
         sys.exit(1)
-    print(f"{GUNICORN_SERVICE} service restarted.")
+    
+    print("Waiting for service to fully start...")
+    time.sleep(5)
+    
+    # Verify service is actually running
+    print("Verifying service status...")
+    if not run_command(f'sudo systemctl is-active {GUNICORN_SERVICE}', shell=True):
+        print(f"Service {GUNICORN_SERVICE} is not active. Checking status...")
+        run_command(f'sudo systemctl status {GUNICORN_SERVICE} --no-pager', shell=True)
+        sys.exit(1)
+    
+    print(f"✅ {GUNICORN_SERVICE} service restarted and verified active.")
 
     # 3. Reload Systemd daemon and restart Nginx
     print("\n--- Reloading Systemd daemon and restarting Nginx ---")
