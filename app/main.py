@@ -2045,7 +2045,7 @@ async def get_extended_moderation_stats(
 @app.get("/api/admin/test-ai-moderation")
 async def test_ai_moderation_endpoint(
     request: Request,
-    current_user: models.User = Depends(admin.require_admin)
+    current_user: models.User = Depends(admin.require_moderator)
 ):
     """Test AI moderation functionality - God admin only"""
     try:
