@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 # Define the application directory on the VM
-APP_DIR = "/home/danmgocan/calimara2"
+APP_DIR = "/home/dangocan_1/calimara2"
 VENV_PYTHON = os.path.join(APP_DIR, "venv", "bin", "python3")
 INITDB_SCRIPT = os.path.join(APP_DIR, "scripts", "initdb.py")
 GUNICORN_SERVICE = "calimara" # Name of the systemd service
