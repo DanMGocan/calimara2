@@ -18,12 +18,22 @@ ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == 
 
 # Initialize Gemini client
 gemini_client = None
+logger.info(f"Initializing Gemini client... API_KEY exists: {bool(GEMINI_API_KEY)}, MODERATION_ENABLED: {MODERATION_ENABLED}")
+
 if GEMINI_API_KEY and MODERATION_ENABLED:
     try:
+        logger.info("Attempting to create Gemini client...")
         gemini_client = genai.Client(api_key=GEMINI_API_KEY)
         logger.info("Gemini client initialized successfully for content moderation")
     except Exception as e:
         logger.error(f"Failed to initialize Gemini client: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+else:
+    if not GEMINI_API_KEY:
+        logger.warning("Gemini API key not provided - moderation will be disabled")
+    if not MODERATION_ENABLED:
+        logger.warning("Moderation is disabled in configuration")
 
 class ModerationStatus(str, Enum):
     APPROVED = "approved"
@@ -470,22 +480,61 @@ async def moderate_comment_with_logging(content: str, comment_id: int, user_id: 
     """
     Moderate a comment and log the decision to database
     """
+    logger.info(f"moderate_comment_with_logging called for comment {comment_id}")
+    
+    # First do the AI moderation
     result = await moderate_comment(content)
-    log_moderation_decision(db, "comment", comment_id, user_id, result)
+    logger.info(f"AI moderation completed for comment {comment_id}: {result.status.value}")
+    
+    # Then try to log it (but don't fail if logging fails)
+    try:
+        log_moderation_decision(db, "comment", comment_id, user_id, result)
+        logger.info(f"Successfully logged moderation decision for comment {comment_id}")
+    except Exception as e:
+        logger.error(f"Failed to log moderation decision for comment {comment_id}: {e}")
+        # Continue anyway - logging failure shouldn't break moderation
+    
     return result
 
 async def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
     """
     Moderate a post and log the decision to database
     """
+    logger.info(f"moderate_post_with_logging called for post {post_id}")
+    
+    # First do the AI moderation  
     result = await moderate_post(title, content)
-    log_moderation_decision(db, "post", post_id, user_id, result)
+    logger.info(f"AI moderation completed for post {post_id}: {result.status.value}")
+    
+    # Then try to log it (but don't fail if logging fails)
+    try:
+        log_moderation_decision(db, "post", post_id, user_id, result)
+        logger.info(f"Successfully logged moderation decision for post {post_id}")
+    except Exception as e:
+        logger.error(f"Failed to log moderation decision for post {post_id}: {e}")
+        # Continue anyway - logging failure shouldn't break moderation
+    
     return result
 
 async def test_ai_moderation() -> dict:
     """
     Test function to check if AI moderation is working
     """
+    logger.info("=== STARTING AI MODERATION DIAGNOSTIC ===")
+    
+    # Check configuration
+    logger.info(f"MODERATION_ENABLED: {MODERATION_ENABLED}")
+    logger.info(f"GEMINI_API_KEY exists: {bool(GEMINI_API_KEY)}")
+    logger.info(f"GEMINI_MODEL: {GEMINI_MODEL}")
+    logger.info(f"TOXICITY_THRESHOLD_FLAG: {TOXICITY_THRESHOLD_FLAG}")
+    logger.info(f"Gemini client initialized: {gemini_client is not None}")
+    
+    if not MODERATION_ENABLED:
+        return {"error": "Moderation is disabled", "ai_working": False}
+    
+    if not gemini_client:
+        return {"error": "Gemini client not initialized", "ai_working": False}
+    
     test_toxic_content = "Du-te dracului, ești un idiot și îți doresc să mori!"
     test_normal_content = "Aceasta este o poezie frumoasă despre natura din România."
     
@@ -493,14 +542,23 @@ async def test_ai_moderation() -> dict:
     
     try:
         # Test toxic content
+        logger.info("Testing toxic content...")
         toxic_result = await moderate_comment(test_toxic_content)
         logger.info(f"Toxic test result: {toxic_result.status.value}, score: {toxic_result.toxicity_score}")
         
         # Test normal content  
+        logger.info("Testing normal content...")
         normal_result = await moderate_comment(test_normal_content)
         logger.info(f"Normal test result: {normal_result.status.value}, score: {normal_result.toxicity_score}")
         
         return {
+            "configuration": {
+                "moderation_enabled": MODERATION_ENABLED,
+                "gemini_api_key_exists": bool(GEMINI_API_KEY),
+                "gemini_model": GEMINI_MODEL,
+                "toxicity_threshold": TOXICITY_THRESHOLD_FLAG,
+                "client_initialized": gemini_client is not None
+            },
             "toxic_content": {
                 "status": toxic_result.status.value,
                 "score": toxic_result.toxicity_score,
@@ -516,7 +574,10 @@ async def test_ai_moderation() -> dict:
         
     except Exception as e:
         logger.error(f"AI moderation test failed: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         return {
             "error": str(e),
+            "traceback": traceback.format_exc(),
             "ai_working": False
         }
