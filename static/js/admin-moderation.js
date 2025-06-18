@@ -8,6 +8,12 @@ document.addEventListener('DOMContentLoaded', function() {
         contentTypeFilter.addEventListener('change', loadPendingContent);
     }
     
+    // Test AI button
+    const testAIButton = document.getElementById('testAIButton');
+    if (testAIButton) {
+        testAIButton.addEventListener('click', testAIModeration);
+    }
+    
     // Tab switching
     const tabs = document.querySelectorAll('#moderationTabs button[data-bs-toggle="tab"]');
     tabs.forEach(tab => {
@@ -380,7 +386,7 @@ function reviewContent(logId, decision) {
 }
 
 function testAIModeration() {
-    const testButton = document.querySelector('button[onclick="testAIModeration()"]');
+    const testButton = document.getElementById('testAIButton');
     testButton.disabled = true;
     testButton.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Testing...';
     
