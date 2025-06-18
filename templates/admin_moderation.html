@@ -13,8 +13,13 @@
                     <h1 class="h3 mb-0"><i class="bi bi-shield-check text-danger me-2"></i>Panou de Moderare</h1>
                     <p class="text-muted mb-0">Panou de Administrare pentru Moderarea Conținutului și Gestionarea Utilizatorilor</p>
                 </div>
-                <div class="badge bg-danger fs-6">
-                    <i class="bi bi-person-badge me-1"></i>{{ current_user.email }}
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-outline-info btn-sm" onclick="testAIModeration()">
+                        <i class="bi bi-cpu me-1"></i>Test AI
+                    </button>
+                    <div class="badge bg-danger fs-6">
+                        <i class="bi bi-person-badge me-1"></i>{{ current_user.email }}
+                    </div>
                 </div>
             </div>
 
@@ -666,6 +671,32 @@ function reviewContent(logId, decision) {
         console.error('Error reviewing content:', error);
         showToast('Eroare la procesarea acțiunii', 'danger');
     });
+}
+
+function testAIModeration() {
+    const testButton = document.querySelector('button[onclick="testAIModeration()"]');
+    testButton.disabled = true;
+    testButton.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Testing...';
+    
+    fetch('/api/admin/test-ai-moderation')
+        .then(response => response.json())
+        .then(data => {
+            if (data.ai_working) {
+                showToast('AI Moderation is working! Check console for details.', 'success');
+                console.log('AI Moderation Test Results:', data);
+            } else {
+                showToast(`AI Moderation failed: ${data.error}`, 'danger');
+                console.error('AI Moderation Test Failed:', data);
+            }
+        })
+        .catch(error => {
+            console.error('Test failed:', error);
+            showToast('Test request failed. Check if you have admin access.', 'danger');
+        })
+        .finally(() => {
+            testButton.disabled = false;
+            testButton.innerHTML = '<i class="bi bi-cpu me-1"></i>Test AI';
+        });
 }
 
 function showToast(message, type) {
