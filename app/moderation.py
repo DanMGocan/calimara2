@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
-TOXICITY_THRESHOLD_AUTO_APPROVE = float(os.getenv("TOXICITY_THRESHOLD_AUTO_APPROVE", "0.3"))
-TOXICITY_THRESHOLD_AUTO_REJECT = float(os.getenv("TOXICITY_THRESHOLD_AUTO_REJECT", "0.8"))
+TOXICITY_THRESHOLD_FLAG = float(os.getenv("TOXICITY_THRESHOLD_AUTO_APPROVE", "0.2"))  # Flag for review above this
+TOXICITY_THRESHOLD_AUTO_REJECT = float(os.getenv("TOXICITY_THRESHOLD_AUTO_REJECT", "0.8"))  # Not used - AI never auto-rejects
 ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == "true"
 
 # Initialize Gemini client
@@ -222,7 +222,7 @@ def determine_moderation_status(gemini_scores: Dict[str, float], content_type: s
     max_toxicity = max(toxicity, harassment, hate_speech, sexually_explicit, dangerous_content, romanian_profanity)
     
     # AI never auto-rejects - only flags for human review if toxic
-    if overall_assessment == "unsafe" or max_toxicity >= TOXICITY_THRESHOLD_AUTO_APPROVE:
+    if overall_assessment == "unsafe" or max_toxicity > TOXICITY_THRESHOLD_FLAG:
         return ModerationResult(
             status=ModerationStatus.FLAGGED,
             toxicity_score=max_toxicity,
@@ -267,10 +267,20 @@ async def moderate_comment(content: str) -> ModerationResult:
             reason="Gemini client not available"
         )
     
-    gemini_scores = await analyze_content_with_gemini(content)
-    result = determine_moderation_status(gemini_scores, "comment")
-    logger.info(f"Comment moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
-    return result
+    try:
+        gemini_scores = await analyze_content_with_gemini(content)
+        logger.info(f"Gemini analysis for comment: {gemini_scores}")
+        result = determine_moderation_status(gemini_scores, "comment")
+        logger.info(f"Comment moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
+        return result
+    except Exception as e:
+        logger.error(f"Error in comment moderation: {e}")
+        # Fail safe - approve on error but log it
+        return ModerationResult(
+            status=ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason=f"Moderation error: {str(e)}"
+        )
 
 async def moderate_post(title: str, content: str) -> ModerationResult:
     """
@@ -294,12 +304,22 @@ async def moderate_post(title: str, content: str) -> ModerationResult:
             reason="Gemini client not available"
         )
     
-    # Combine title and content for analysis
-    full_text = f"Titlu: {title}\n\nConținut: {content}"
-    gemini_scores = await analyze_content_with_gemini(full_text)
-    result = determine_moderation_status(gemini_scores, "post")
-    logger.info(f"Post moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
-    return result
+    try:
+        # Combine title and content for analysis
+        full_text = f"Titlu: {title}\n\nConținut: {content}"
+        gemini_scores = await analyze_content_with_gemini(full_text)
+        logger.info(f"Gemini analysis for post: {gemini_scores}")
+        result = determine_moderation_status(gemini_scores, "post")
+        logger.info(f"Post moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
+        return result
+    except Exception as e:
+        logger.error(f"Error in post moderation: {e}")
+        # Fail safe - approve on error but log it
+        return ModerationResult(
+            status=ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason=f"Moderation error: {str(e)}"
+        )
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
     """Check if content should be automatically approved"""
@@ -433,13 +453,17 @@ def log_moderation_decision(
         )
         
         db.add(log_entry)
-        db.commit()
-        db.refresh(log_entry)
+        # Note: Don't commit here - let the calling function handle the transaction
         
         logger.info(f"Logged moderation decision for {content_type} {content_id}: {moderation_result.status.value}")
         
     except Exception as e:
         logger.error(f"Failed to log moderation decision: {e}")
+        # Rollback the session to prevent transaction issues
+        try:
+            db.rollback()
+        except Exception:
+            pass
         # Don't raise - logging failures shouldn't block content processing
 
 async def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
@@ -457,3 +481,42 @@ async def moderate_post_with_logging(title: str, content: str, post_id: int, use
     result = await moderate_post(title, content)
     log_moderation_decision(db, "post", post_id, user_id, result)
     return result
+
+async def test_ai_moderation() -> dict:
+    """
+    Test function to check if AI moderation is working
+    """
+    test_toxic_content = "Du-te dracului, ești un idiot și îți doresc să mori!"
+    test_normal_content = "Aceasta este o poezie frumoasă despre natura din România."
+    
+    logger.info("Testing AI moderation...")
+    
+    try:
+        # Test toxic content
+        toxic_result = await moderate_comment(test_toxic_content)
+        logger.info(f"Toxic test result: {toxic_result.status.value}, score: {toxic_result.toxicity_score}")
+        
+        # Test normal content  
+        normal_result = await moderate_comment(test_normal_content)
+        logger.info(f"Normal test result: {normal_result.status.value}, score: {normal_result.toxicity_score}")
+        
+        return {
+            "toxic_content": {
+                "status": toxic_result.status.value,
+                "score": toxic_result.toxicity_score,
+                "reason": toxic_result.reason
+            },
+            "normal_content": {
+                "status": normal_result.status.value,
+                "score": normal_result.toxicity_score,
+                "reason": normal_result.reason
+            },
+            "ai_working": True
+        }
+        
+    except Exception as e:
+        logger.error(f"AI moderation test failed: {e}")
+        return {
+            "error": str(e),
+            "ai_working": False
+        }

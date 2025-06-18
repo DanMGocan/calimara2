@@ -2041,3 +2041,17 @@ async def get_extended_moderation_stats(
     except Exception as e:
         logger.error(f"Error getting extended moderation stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get extended moderation stats")
+
+@app.get("/api/admin/test-ai-moderation")
+async def test_ai_moderation_endpoint(
+    request: Request,
+    current_user: models.User = Depends(admin.require_admin)
+):
+    """Test AI moderation functionality - God admin only"""
+    try:
+        result = await moderation.test_ai_moderation()
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error testing AI moderation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to test AI moderation")
