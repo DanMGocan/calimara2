@@ -4,6 +4,7 @@ import json
 from typing import Dict, Tuple, Optional
 from enum import Enum
 from google import genai
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -398,3 +399,61 @@ async def enhanced_romanian_analysis(text: str) -> Dict[str, float]:
                 f"Romanian patterns: profanity={profanity_score:.3f}, hate={hate_score:.3f}")
     
     return enhanced_scores
+
+def log_moderation_decision(
+    db: Session,
+    content_type: str,
+    content_id: int,
+    user_id: Optional[int],
+    moderation_result: ModerationResult
+) -> None:
+    """
+    Log AI moderation decision to database for tracking and review
+    """
+    try:
+        from .models import ModerationLog
+        
+        # Extract detailed scores from moderation result
+        details = moderation_result.details or {}
+        
+        log_entry = ModerationLog(
+            content_type=content_type,
+            content_id=content_id,
+            user_id=user_id,
+            ai_decision=moderation_result.status.value,
+            toxicity_score=moderation_result.toxicity_score,
+            harassment_score=details.get("harassment", 0.0),
+            hate_speech_score=details.get("hate_speech", 0.0),
+            sexually_explicit_score=details.get("sexually_explicit", 0.0),
+            dangerous_content_score=details.get("dangerous_content", 0.0),
+            romanian_profanity_score=details.get("romanian_profanity", 0.0),
+            ai_reason=moderation_result.reason,
+            ai_details=json.dumps(details) if details else None,
+            human_decision="pending" if moderation_result.status == ModerationStatus.FLAGGED else None
+        )
+        
+        db.add(log_entry)
+        db.commit()
+        db.refresh(log_entry)
+        
+        logger.info(f"Logged moderation decision for {content_type} {content_id}: {moderation_result.status.value}")
+        
+    except Exception as e:
+        logger.error(f"Failed to log moderation decision: {e}")
+        # Don't raise - logging failures shouldn't block content processing
+
+async def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
+    """
+    Moderate a comment and log the decision to database
+    """
+    result = await moderate_comment(content)
+    log_moderation_decision(db, "comment", comment_id, user_id, result)
+    return result
+
+async def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
+    """
+    Moderate a post and log the decision to database
+    """
+    result = await moderate_post(title, content)
+    log_moderation_decision(db, "post", post_id, user_id, result)
+    return result

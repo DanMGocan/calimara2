@@ -79,6 +79,16 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="ai-queue-tab" data-bs-toggle="tab" data-bs-target="#ai-queue-pane" type="button" role="tab">
+                        <i class="bi bi-robot me-1"></i>Coadă Revizuire AI
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="ai-logs-tab" data-bs-toggle="tab" data-bs-target="#ai-logs-pane" type="button" role="tab">
+                        <i class="bi bi-journal-text me-1"></i>Jurnale AI
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button" role="tab">
                         <i class="bi bi-people me-1"></i>Gestionare Utilizatori
                     </button>
@@ -152,6 +162,46 @@
                         <div class="card-body">
                             <div id="usersList">
                                 <!-- Users will be loaded here via JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Review Queue Tab -->
+                <div class="tab-pane fade" id="ai-queue-pane" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-robot me-2"></i>Coadă Revizuire AI - Conținut Marcat</h5>
+                            <small class="text-muted">Conținut marcat de AI care necesită revizuire umană</small>
+                        </div>
+                        <div class="card-body">
+                            <div id="aiQueue">
+                                <!-- AI flagged content will be loaded here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Logs Tab -->
+                <div class="tab-pane fade" id="ai-logs-pane" role="tabpanel">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Jurnale AI Moderare</h5>
+                                    <small class="text-muted">Toate deciziile AI de moderare cu scoruri de toxicitate</small>
+                                </div>
+                                <div class="btn-group" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadAILogs('all')">Toate</button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" onclick="loadAILogs('approved')">Aprobate</button>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="loadAILogs('flagged')">Marcate</button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="loadAILogs('rejected')">Respinse</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="aiLogs">
+                                <!-- AI moderation logs will be loaded here -->
                             </div>
                         </div>
                     </div>
@@ -258,6 +308,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     break;
                 case '#flagged-pane':
                     loadFlaggedContent();
+                    break;
+                case '#ai-queue-pane':
+                    loadAIQueue();
+                    break;
+                case '#ai-logs-pane':
+                    loadAILogs('all');
                     break;
                 case '#users-pane':
                     loadUsers();
@@ -431,6 +487,185 @@ function loadAnalytics() {
 function viewContent(id, type) {
     // Simple content viewer - could be enhanced with a modal
     alert(`Viewing ${type} ID: ${id}. Full content viewer coming soon.`);
+}
+
+function loadAIQueue() {
+    fetch('/api/admin/moderation/queue')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('aiQueue');
+            if (!data.queue || data.queue.length === 0) {
+                container.innerHTML = `
+                    <div class="alert alert-success text-center">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <strong>Nu există conținut marcat pentru revizuire!</strong>
+                        <br><small>Toate postările și comentariile au fost procesate.</small>
+                    </div>
+                `;
+                return;
+            }
+
+            const html = data.queue.map(item => {
+                const content = item.content;
+                const analysis = item.ai_analysis;
+                
+                return `
+                <div class="card mb-3 border-warning">
+                    <div class="card-header bg-warning bg-opacity-10">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-warning text-dark">${item.content_type.toUpperCase()}</span>
+                                <strong>${content.title || (content.post_title ? 'Comment on: ' + content.post_title : 'Comment')}</strong>
+                            </div>
+                            <div>
+                                <span class="badge bg-danger">Toxicitate: ${(analysis.toxicity_score || 0).toFixed(2)}</span>
+                                <button class="btn btn-success btn-sm me-1" onclick="reviewContent(${item.log_id}, 'approved')">
+                                    <i class="bi bi-check"></i> Aprobă
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="reviewContent(${item.log_id}, 'rejected')">
+                                    <i class="bi bi-x"></i> Respinge
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">${content.content}</p>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <small class="text-muted">
+                                    <strong>Autor:</strong> ${content.author}<br>
+                                    <strong>Data:</strong> ${new Date(content.created_at).toLocaleString()}
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="ai-scores">
+                                    <small><strong>AI Analiză:</strong></small><br>
+                                    <small>Toxicitate: ${(analysis.toxicity_score || 0).toFixed(2)}</small><br>
+                                    <small>Hărțuire: ${(analysis.harassment_score || 0).toFixed(2)}</small><br>
+                                    <small>Discurs de ură: ${(analysis.hate_speech_score || 0).toFixed(2)}</small><br>
+                                    <small>Conținut explicit: ${(analysis.sexually_explicit_score || 0).toFixed(2)}</small><br>
+                                    <small>Înjurături românești: ${(analysis.romanian_profanity_score || 0).toFixed(2)}</small>
+                                </div>
+                            </div>
+                        </div>
+                        ${analysis.reason ? `<div class="alert alert-warning p-2 mt-2"><small><strong>Motiv AI:</strong> ${analysis.reason}</small></div>` : ''}
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading AI queue:', error);
+            document.getElementById('aiQueue').innerHTML = '<div class="alert alert-danger">Error loading AI review queue</div>';
+        });
+}
+
+function loadAILogs(decision = 'all') {
+    const url = decision === 'all' ? '/api/admin/moderation/logs' : `/api/admin/moderation/logs?decision=${decision}`;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('aiLogs');
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = `
+                    <div class="alert alert-info text-center">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Nu există jurnale pentru filtrul selectat.
+                    </div>
+                `;
+                return;
+            }
+
+            const html = data.logs.map(log => {
+                let badgeClass = 'secondary';
+                let icon = 'question-circle';
+                
+                switch(log.ai_decision) {
+                    case 'approved':
+                        badgeClass = 'success';
+                        icon = 'check-circle';
+                        break;
+                    case 'flagged':
+                        badgeClass = 'warning';
+                        icon = 'flag';
+                        break;
+                    case 'rejected':
+                        badgeClass = 'danger';
+                        icon = 'x-circle';
+                        break;
+                }
+
+                return `
+                <div class="card mb-2 border-${badgeClass} border-opacity-25">
+                    <div class="card-body py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-1">
+                                    <span class="badge bg-${badgeClass} me-2">
+                                        <i class="bi bi-${icon}"></i> ${log.ai_decision.toUpperCase()}
+                                    </span>
+                                    <span class="badge bg-secondary me-2">${log.content_type.toUpperCase()}</span>
+                                    <strong class="me-2">${log.content_title}</strong>
+                                    ${log.human_decision ? `<span class="badge bg-info">Human: ${log.human_decision}</span>` : ''}
+                                </div>
+                                <p class="mb-1 text-muted small">${log.content_preview}</p>
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <small class="text-muted">
+                                            <strong>Autor:</strong> ${log.content_author} | 
+                                            <strong>Data:</strong> ${new Date(log.created_at).toLocaleString()}
+                                            ${log.moderator ? ` | <strong>Moderat de:</strong> ${log.moderator}` : ''}
+                                        </small>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <small class="text-muted">
+                                            Toxicitate: <strong>${(log.toxicity_score || 0).toFixed(2)}</strong>
+                                        </small>
+                                    </div>
+                                </div>
+                                ${log.ai_reason ? `<div class="mt-1"><small class="text-info"><strong>AI:</strong> ${log.ai_reason}</small></div>` : ''}
+                                ${log.human_reason ? `<div class="mt-1"><small class="text-primary"><strong>Human:</strong> ${log.human_reason}</small></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading AI logs:', error);
+            document.getElementById('aiLogs').innerHTML = '<div class="alert alert-danger">Error loading AI logs</div>';
+        });
+}
+
+function reviewContent(logId, decision) {
+    const reason = prompt(`Motiv pentru ${decision === 'approved' ? 'aprobare' : 'respingere'}:`);
+    if (reason === null) return; // User cancelled
+    
+    fetch(`/api/admin/moderation/review/${logId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, reason })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Conținut ${decision === 'approved' ? 'aprobat' : 'respins'} cu succes`, 'success');
+            loadAIQueue(); // Refresh queue
+            loadModerationStats(); // Refresh stats
+        } else {
+            showToast(data.message || 'Acțiunea a eșuat', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error reviewing content:', error);
+        showToast('Eroare la procesarea acțiunii', 'danger');
+    });
 }
 
 function showToast(message, type) {

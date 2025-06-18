@@ -8,6 +8,7 @@ SET CHARACTER SET utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- Drop tables in reverse order of dependency
+DROP TABLE IF EXISTS moderation_logs;
 DROP TABLE IF EXISTS messages;
 DROP TABLE IF EXISTS conversations;
 DROP TABLE IF EXISTS likes;
@@ -253,6 +254,41 @@ CREATE TABLE messages (
     INDEX idx_created_at (created_at),
     INDEX idx_is_read (is_read),
     INDEX idx_conversation_created (conversation_id, created_at)
+) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- ===================================
+-- MODERATION LOGS TABLE
+-- ===================================
+CREATE TABLE moderation_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    content_type ENUM('post', 'comment') NOT NULL COMMENT 'Type of content moderated',
+    content_id INT NOT NULL COMMENT 'ID of the moderated content',
+    user_id INT COMMENT 'User who created the content',
+    ai_decision ENUM('approved', 'flagged', 'rejected') NOT NULL COMMENT 'AI moderation decision',
+    toxicity_score DECIMAL(3,2) COMMENT 'Overall toxicity score (0-1)',
+    harassment_score DECIMAL(3,2) COMMENT 'Harassment score (0-1)',
+    hate_speech_score DECIMAL(3,2) COMMENT 'Hate speech score (0-1)',
+    sexually_explicit_score DECIMAL(3,2) COMMENT 'Sexually explicit score (0-1)',
+    dangerous_content_score DECIMAL(3,2) COMMENT 'Dangerous content score (0-1)',
+    romanian_profanity_score DECIMAL(3,2) COMMENT 'Romanian profanity score (0-1)',
+    ai_reason TEXT COMMENT 'AI explanation for the decision',
+    ai_details JSON COMMENT 'Full AI analysis response',
+    human_decision ENUM('approved', 'rejected', 'pending') COMMENT 'Human moderator decision',
+    human_reason TEXT COMMENT 'Human moderator reason',
+    moderated_by INT COMMENT 'Human moderator who reviewed this',
+    moderated_at DATETIME COMMENT 'When human moderator reviewed this',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_content_type_id (content_type, content_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_ai_decision (ai_decision),
+    INDEX idx_human_decision (human_decision),
+    INDEX idx_toxicity_score (toxicity_score),
+    INDEX idx_created_at (created_at),
+    INDEX idx_pending_review (ai_decision, human_decision),
+    INDEX idx_moderated_by (moderated_by)
 ) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- ===================================

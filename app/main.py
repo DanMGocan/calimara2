@@ -517,9 +517,11 @@ async def create_post(
     # Create post first
     db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id)
     
-    # Then moderate it asynchronously  
+    # Then moderate it asynchronously with logging
     try:
-        moderation_result = await moderation.moderate_post(post.title, post.content)
+        moderation_result = await moderation.moderate_post_with_logging(
+            post.title, post.content, db_post.id, current_user.id, db
+        )
         
         # Update post with moderation results
         db_post.moderation_status = moderation_result.status.value
@@ -530,6 +532,8 @@ async def create_post(
         db.refresh(db_post)
         
         logger.info(f"Post moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
+        
+        # If flagged, it will be in review queue - user will be notified via UI
         
     except Exception as e:
         logger.error(f"Moderation failed for post: {e}. Auto-approving due to error.")
@@ -593,9 +597,11 @@ async def add_comment_to_post(
     # Create comment first
     db_comment = crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
     
-    # Then moderate it asynchronously
+    # Then moderate it asynchronously with logging
     try:
-        moderation_result = await moderation.moderate_comment(comment.content)
+        moderation_result = await moderation.moderate_comment_with_logging(
+            comment.content, db_comment.id, current_user_id, db
+        )
         
         # Update comment with moderation results
         db_comment.moderation_status = moderation_result.status.value
@@ -608,6 +614,8 @@ async def add_comment_to_post(
         
         logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
         logger.info(f"Comment ID {db_comment.id} status: {db_comment.moderation_status}, approved: {db_comment.approved}")
+        
+        # If flagged, it will be in review queue - user will be notified via UI
         
     except Exception as e:
         logger.error(f"Moderation failed for comment: {e}. Auto-approving due to error.")
@@ -1836,3 +1844,200 @@ async def unsuspend_user(
     except Exception as e:
         logger.error(f"Error unsuspending user: {e}")
         raise HTTPException(status_code=500, detail="Failed to unsuspend user")
+
+# --- Moderation Logs API Endpoints ---
+
+@app.get("/api/admin/moderation/logs")
+async def get_moderation_logs_api(
+    request: Request,
+    decision: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator)
+):
+    """Get moderation logs with optional filtering"""
+    try:
+        if decision:
+            logs = crud.get_moderation_logs_by_decision(db, decision, limit)
+        else:
+            logs = crud.get_moderation_logs(db, limit, offset)
+        
+        result = []
+        for log in logs:
+            # Get content details
+            content_preview = ""
+            content_title = ""
+            content_author = ""
+            
+            if log.content_type == "post":
+                post = db.query(models.Post).filter(models.Post.id == log.content_id).first()
+                if post:
+                    content_title = post.title
+                    content_preview = post.content[:100] + "..." if len(post.content) > 100 else post.content
+                    content_author = post.owner.username if post.owner else "Unknown"
+            elif log.content_type == "comment":
+                comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
+                if comment:
+                    content_title = f"Comment on: {comment.post.title}" if comment.post else "Comment"
+                    content_preview = comment.content[:100] + "..." if len(comment.content) > 100 else comment.content
+                    content_author = comment.commenter.username if comment.commenter else (comment.author_name or "Anonymous")
+            
+            result.append({
+                "id": log.id,
+                "content_type": log.content_type,
+                "content_id": log.content_id,
+                "content_title": content_title,
+                "content_preview": content_preview,
+                "content_author": content_author,
+                "ai_decision": log.ai_decision,
+                "toxicity_score": log.toxicity_score,
+                "harassment_score": log.harassment_score,
+                "hate_speech_score": log.hate_speech_score,
+                "sexually_explicit_score": log.sexually_explicit_score,
+                "dangerous_content_score": log.dangerous_content_score,
+                "romanian_profanity_score": log.romanian_profanity_score,
+                "ai_reason": log.ai_reason,
+                "human_decision": log.human_decision,
+                "human_reason": log.human_reason,
+                "moderator": log.moderator.username if log.moderator else None,
+                "moderated_at": log.moderated_at.isoformat() if log.moderated_at else None,
+                "created_at": log.created_at.isoformat(),
+                "needs_review": log.needs_human_review
+            })
+        
+        return {"logs": result, "total": len(result)}
+        
+    except Exception as e:
+        logger.error(f"Error getting moderation logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get moderation logs")
+
+@app.get("/api/admin/moderation/queue")
+async def get_moderation_queue_api(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator)
+):
+    """Get content flagged by AI that needs human review"""
+    try:
+        logs = crud.get_moderation_logs_for_review(db, 50)
+        
+        result = []
+        for log in logs:
+            # Get full content details for review
+            content_data = None
+            
+            if log.content_type == "post":
+                post = db.query(models.Post).filter(models.Post.id == log.content_id).first()
+                if post:
+                    content_data = {
+                        "id": post.id,
+                        "title": post.title,
+                        "content": post.content,
+                        "author": post.owner.username if post.owner else "Unknown",
+                        "created_at": post.created_at.isoformat(),
+                        "view_count": post.view_count,
+                        "category": post.category
+                    }
+            elif log.content_type == "comment":
+                comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
+                if comment:
+                    content_data = {
+                        "id": comment.id,
+                        "content": comment.content,
+                        "author": comment.commenter.username if comment.commenter else (comment.author_name or "Anonymous"),
+                        "post_title": comment.post.title if comment.post else "Unknown Post",
+                        "post_id": comment.post_id,
+                        "created_at": comment.created_at.isoformat()
+                    }
+            
+            if content_data:
+                result.append({
+                    "log_id": log.id,
+                    "content_type": log.content_type,
+                    "content": content_data,
+                    "ai_analysis": {
+                        "decision": log.ai_decision,
+                        "toxicity_score": log.toxicity_score,
+                        "harassment_score": log.harassment_score,
+                        "hate_speech_score": log.hate_speech_score,
+                        "sexually_explicit_score": log.sexually_explicit_score,
+                        "dangerous_content_score": log.dangerous_content_score,
+                        "romanian_profanity_score": log.romanian_profanity_score,
+                        "reason": log.ai_reason
+                    },
+                    "flagged_at": log.created_at.isoformat()
+                })
+        
+        return {"queue": result, "total": len(result)}
+        
+    except Exception as e:
+        logger.error(f"Error getting moderation queue: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get moderation queue")
+
+@app.post("/api/admin/moderation/review/{log_id}")
+async def review_flagged_content(
+    log_id: int,
+    review_data: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator)
+):
+    """Human moderator review of AI-flagged content"""
+    try:
+        decision = review_data.get("decision")  # "approved" or "rejected"
+        reason = review_data.get("reason", "")
+        
+        if decision not in ["approved", "rejected"]:
+            raise HTTPException(status_code=400, detail="Invalid decision. Must be 'approved' or 'rejected'")
+        
+        # Update the moderation log
+        log = crud.update_moderation_log_human_decision(
+            db, log_id, decision, reason, current_user.id
+        )
+        
+        if not log:
+            raise HTTPException(status_code=404, detail="Moderation log not found")
+        
+        # Update the actual content status based on human decision
+        if log.content_type == "post":
+            post = db.query(models.Post).filter(models.Post.id == log.content_id).first()
+            if post:
+                post.moderation_status = decision
+                post.moderation_reason = f"Human review: {reason}"
+                post.moderated_by = current_user.id
+                post.moderated_at = func.now()
+        elif log.content_type == "comment":
+            comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
+            if comment:
+                comment.moderation_status = decision
+                comment.approved = (decision == "approved")
+                comment.moderation_reason = f"Human review: {reason}"
+                comment.moderated_by = current_user.id
+                comment.moderated_at = func.now()
+        
+        db.commit()
+        
+        logger.info(f"Human review completed by {current_user.username}: {log.content_type} {log.content_id} {decision}")
+        
+        return {"success": True, "message": f"Content {decision} successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reviewing flagged content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to review content")
+
+@app.get("/api/admin/moderation/stats/extended")
+async def get_extended_moderation_stats(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator)
+):
+    """Get extended moderation statistics including AI logs"""
+    try:
+        stats = crud.get_moderation_stats_extended(db)
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Error getting extended moderation stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get extended moderation stats")

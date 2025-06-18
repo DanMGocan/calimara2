@@ -714,3 +714,96 @@ def search_conversations(db: Session, user_id: int, query: str, limit: int = 20)
             matching_conversations.append(conv)
     
     return matching_conversations[:limit]
+
+# --- Moderation Log CRUD Functions ---
+
+def get_moderation_logs(db: Session, limit: int = 100, offset: int = 0):
+    """Get all moderation logs with pagination"""
+    return db.query(models.ModerationLog)\
+        .order_by(models.ModerationLog.created_at.desc())\
+        .offset(offset).limit(limit).all()
+
+def get_moderation_logs_for_review(db: Session, limit: int = 50):
+    """Get moderation logs that need human review (AI flagged content)"""
+    return db.query(models.ModerationLog)\
+        .filter(models.ModerationLog.ai_decision == "flagged")\
+        .filter(or_(
+            models.ModerationLog.human_decision.is_(None),
+            models.ModerationLog.human_decision == "pending"
+        ))\
+        .order_by(models.ModerationLog.created_at.desc())\
+        .limit(limit).all()
+
+def get_moderation_logs_by_decision(db: Session, ai_decision: str, limit: int = 50):
+    """Get moderation logs filtered by AI decision"""
+    return db.query(models.ModerationLog)\
+        .filter(models.ModerationLog.ai_decision == ai_decision)\
+        .order_by(models.ModerationLog.created_at.desc())\
+        .limit(limit).all()
+
+def get_moderation_log_by_content(db: Session, content_type: str, content_id: int):
+    """Get moderation log for specific content"""
+    return db.query(models.ModerationLog)\
+        .filter(models.ModerationLog.content_type == content_type)\
+        .filter(models.ModerationLog.content_id == content_id)\
+        .first()
+
+def update_moderation_log_human_decision(
+    db: Session, 
+    log_id: int, 
+    human_decision: str, 
+    human_reason: str, 
+    moderator_id: int
+):
+    """Update moderation log with human moderator decision"""
+    log = db.query(models.ModerationLog).filter(models.ModerationLog.id == log_id).first()
+    if log:
+        log.human_decision = human_decision
+        log.human_reason = human_reason
+        log.moderated_by = moderator_id
+        log.moderated_at = func.now()
+        db.commit()
+        db.refresh(log)
+    return log
+
+def get_moderation_stats_extended(db: Session):
+    """Get extended moderation statistics including logs"""
+    from datetime import datetime, timedelta
+    
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    
+    # AI decision counts
+    ai_approved = db.query(models.ModerationLog).filter(models.ModerationLog.ai_decision == "approved").count()
+    ai_flagged = db.query(models.ModerationLog).filter(models.ModerationLog.ai_decision == "flagged").count()
+    ai_rejected = db.query(models.ModerationLog).filter(models.ModerationLog.ai_decision == "rejected").count()
+    
+    # Human review counts
+    pending_review = db.query(models.ModerationLog)\
+        .filter(models.ModerationLog.ai_decision == "flagged")\
+        .filter(or_(
+            models.ModerationLog.human_decision.is_(None),
+            models.ModerationLog.human_decision == "pending"
+        )).count()
+    
+    human_approved = db.query(models.ModerationLog).filter(models.ModerationLog.human_decision == "approved").count()
+    human_rejected = db.query(models.ModerationLog).filter(models.ModerationLog.human_decision == "rejected").count()
+    
+    # Today's activity
+    today_logs = db.query(models.ModerationLog)\
+        .filter(func.date(models.ModerationLog.created_at) == today).count()
+    
+    return {
+        "ai_decisions": {
+            "approved": ai_approved,
+            "flagged": ai_flagged,
+            "rejected": ai_rejected
+        },
+        "human_review": {
+            "pending": pending_review,
+            "approved": human_approved,
+            "rejected": human_rejected
+        },
+        "today_activity": today_logs,
+        "total_logs": ai_approved + ai_flagged + ai_rejected
+    }

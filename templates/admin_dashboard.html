@@ -451,6 +451,26 @@
                                                     {{ post.title }}
                                                 </a>
                                             </h6>
+                                            {% if post.moderation_status == 'flagged' %}
+                                            <div class="alert alert-warning alert-sm p-2 mb-1" role="alert">
+                                                <i class="bi bi-flag-fill me-1"></i>
+                                                <strong>Postarea ta a fost marcată de AI pentru revizuire umană.</strong><br>
+                                                <small>Motiv: {{ post.moderation_reason or 'Conținut potențial problematic detectat' }}</small><br>
+                                                <small class="text-muted">Un moderator va revizui postarea în curând.</small>
+                                            </div>
+                                            {% elif post.moderation_status == 'rejected' %}
+                                            <div class="alert alert-danger alert-sm p-2 mb-1" role="alert">
+                                                <i class="bi bi-x-circle-fill me-1"></i>
+                                                <strong>Postarea ta a fost respinsă.</strong><br>
+                                                <small>Motiv: {{ post.moderation_reason or 'Conținut neconform cu ghidul comunității' }}</small>
+                                            </div>
+                                            {% elif post.moderation_status == 'pending' %}
+                                            <div class="alert alert-info alert-sm p-2 mb-1" role="alert">
+                                                <i class="bi bi-clock-fill me-1"></i>
+                                                <strong>Postarea ta este în curs de revizuire.</strong><br>
+                                                <small>Va fi publicată după aprobarea de către un moderator.</small>
+                                            </div>
+                                            {% endif %}
                                             <small class="text-muted">
                                                 {{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}
                                             </small>

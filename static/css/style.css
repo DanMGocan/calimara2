@@ -2675,3 +2675,23 @@ button[aria-expanded="false"] .collapse-arrow {
     margin-bottom: 0;
 }
 
+/* ===================================
+   MODERATION ALERTS
+   ================================== */
+
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25;
+    border-radius: var(--border-radius);
+}
+
+.alert-sm strong {
+    font-size: 0.875rem;
+}
+
+.alert-sm small {
+    font-size: 0.75rem;
+    line-height: 1.2;
+}
+

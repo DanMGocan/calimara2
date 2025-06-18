@@ -239,3 +239,51 @@ class Message(Base):
     # Relationships
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="messages")
     sender: Mapped["User"] = relationship("User", foreign_keys=[sender_id], overlaps="sent_messages")
+
+class ModerationLog(Base):
+    __tablename__ = "moderation_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'post' or 'comment'
+    content_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    
+    # AI decision and scores
+    ai_decision: Mapped[str] = mapped_column(String(20), nullable=False)  # 'approved', 'flagged', 'rejected'
+    toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    harassment_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    hate_speech_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    sexually_explicit_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    dangerous_content_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    romanian_profanity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
+    ai_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
+    
+    # Human review
+    human_decision: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 'approved', 'rejected', 'pending'
+    human_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Relationships
+    content_author: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id])
+    moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
+    
+    @property
+    def content_preview(self) -> str:
+        """Get a preview of the moderated content"""
+        if self.content_type == "post":
+            from .crud import get_post_by_id
+            # This would need a database session - handled in the view layer
+            return f"Post ID {self.content_id}"
+        else:
+            from .crud import get_comment_by_id
+            # This would need a database session - handled in the view layer
+            return f"Comment ID {self.content_id}"
+    
+    @property
+    def needs_human_review(self) -> bool:
+        """Check if this content needs human review"""
+        return self.ai_decision == "flagged" and (self.human_decision is None or self.human_decision == "pending")
