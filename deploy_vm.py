@@ -118,8 +118,9 @@ def check_environment_and_dependencies():
     print("\n--- Database Connection Test ---")
     try:
         from app.database import engine
+        from sqlalchemy import text
         with engine.connect() as conn:
-            result = conn.execute("SELECT 1").fetchone()
+            result = conn.execute(text("SELECT 1")).fetchone()
             if result:
                 print("✅ Database: Connection successful")
             else:
