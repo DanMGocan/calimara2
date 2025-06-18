@@ -3,7 +3,7 @@ import logging
 import json
 from typing import Dict, Tuple, Optional
 from enum import Enum
-from google import genai
+import google.generativeai as genai
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -16,17 +16,16 @@ TOXICITY_THRESHOLD_FLAG = float(os.getenv("TOXICITY_THRESHOLD_AUTO_APPROVE", "0.
 TOXICITY_THRESHOLD_AUTO_REJECT = float(os.getenv("TOXICITY_THRESHOLD_AUTO_REJECT", "0.8"))  # Not used - AI never auto-rejects
 ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == "true"
 
-# Initialize Gemini client
-gemini_client = None
-logger.info(f"Initializing Gemini client... API_KEY exists: {bool(GEMINI_API_KEY)}, MODERATION_ENABLED: {MODERATION_ENABLED}")
+# Initialize Gemini
+logger.info(f"Initializing Gemini... API_KEY exists: {bool(GEMINI_API_KEY)}, MODERATION_ENABLED: {MODERATION_ENABLED}")
 
 if GEMINI_API_KEY and MODERATION_ENABLED:
     try:
-        logger.info("Attempting to create Gemini client...")
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-        logger.info("Gemini client initialized successfully for content moderation")
+        logger.info("Configuring Gemini API...")
+        genai.configure(api_key=GEMINI_API_KEY)
+        logger.info("Gemini API configured successfully for content moderation")
     except Exception as e:
-        logger.error(f"Failed to initialize Gemini client: {e}")
+        logger.error(f"Failed to configure Gemini API: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
 else:
@@ -116,11 +115,11 @@ Text to analyze:
 
 async def analyze_content_with_gemini(text: str, use_romanian_context: bool = True) -> Dict[str, float]:
     """
-    Analyze text using Gemini 1.5 Flash with Romanian-aware prompts
+    Analyze text using Gemini with Romanian-aware prompts
     Returns toxicity scores for different categories
     """
-    if not gemini_client or not MODERATION_ENABLED:
-        logger.warning("Gemini client not configured or moderation disabled")
+    if not GEMINI_API_KEY or not MODERATION_ENABLED:
+        logger.warning("Gemini not configured or moderation disabled")
         return {"toxicity": 0.0, "overall_assessment": "safe"}
     
     try:
@@ -130,33 +129,36 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
         else:
             prompt = ENGLISH_FALLBACK_PROMPT + text
         
-        # Try different approaches for safety settings with Gemini 2.0
+        # Create the model
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        
+        # Configure generation settings
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.0,  # Deterministic for content moderation
+            max_output_tokens=1024,
+        )
+        
+        # Configure safety settings to allow analysis of potentially harmful content
+        safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+        
         try:
-            # First try with minimal safety settings
-            response = gemini_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=genai.types.GenerateContentConfig(
-                    temperature=0.0,  # Deterministic for content moderation
-                    max_output_tokens=1024,
-                    safety_settings={
-                        genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                        genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                        genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: genai.types.HarmBlockThreshold.BLOCK_NONE,
-                        genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE
-                    }
-                )
+            # Generate content with safety settings
+            response = model.generate_content(
+                prompt,
+                generation_config=generation_config,
+                safety_settings=safety_settings
             )
         except Exception as safety_error:
             # If safety settings fail, try without them
             logger.warning(f"Safety settings failed: {safety_error}, trying without safety settings")
-            response = gemini_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=genai.types.GenerateContentConfig(
-                    temperature=0.0,
-                    max_output_tokens=1024
-                )
+            response = model.generate_content(
+                prompt,
+                generation_config=generation_config
             )
         
         # Check if response was blocked by safety filters
@@ -198,7 +200,7 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
         logger.error(f"Error calling Gemini API: {e}")
         
         # If it's a safety filter error, flag for manual review
-        if "HARM_CATEGORY" in error_msg:
+        if "HARM_CATEGORY" in error_msg or "SAFETY" in error_msg.upper():
             logger.warning(f"Gemini safety filter triggered: {error_msg}")
             return {
                 "toxicity": 1.0, 
@@ -269,12 +271,12 @@ async def moderate_comment(content: str) -> ModerationResult:
             reason="Moderation disabled"
         )
     
-    if not gemini_client:
-        logger.warning("Gemini client not initialized - auto-approving comment")
+    if not GEMINI_API_KEY:
+        logger.warning("Gemini API key not configured - auto-approving comment")
         return ModerationResult(
             status=ModerationStatus.APPROVED,
             toxicity_score=0.0,
-            reason="Gemini client not available"
+            reason="Gemini API key not available"
         )
     
     try:
@@ -306,12 +308,12 @@ async def moderate_post(title: str, content: str) -> ModerationResult:
             reason="Moderation disabled"
         )
     
-    if not gemini_client:
-        logger.warning("Gemini client not initialized - auto-approving post")
+    if not GEMINI_API_KEY:
+        logger.warning("Gemini API key not configured - auto-approving post")
         return ModerationResult(
             status=ModerationStatus.APPROVED,
             toxicity_score=0.0,
-            reason="Gemini client not available"
+            reason="Gemini API key not available"
         )
     
     try:
@@ -527,13 +529,13 @@ async def test_ai_moderation() -> dict:
     logger.info(f"GEMINI_API_KEY exists: {bool(GEMINI_API_KEY)}")
     logger.info(f"GEMINI_MODEL: {GEMINI_MODEL}")
     logger.info(f"TOXICITY_THRESHOLD_FLAG: {TOXICITY_THRESHOLD_FLAG}")
-    logger.info(f"Gemini client initialized: {gemini_client is not None}")
+    logger.info(f"Gemini API configured: {bool(GEMINI_API_KEY)}")
     
     if not MODERATION_ENABLED:
         return {"error": "Moderation is disabled", "ai_working": False}
     
-    if not gemini_client:
-        return {"error": "Gemini client not initialized", "ai_working": False}
+    if not GEMINI_API_KEY:
+        return {"error": "Gemini API key not configured", "ai_working": False}
     
     test_toxic_content = "Du-te dracului, ești un idiot și îți doresc să mori!"
     test_normal_content = "Aceasta este o poezie frumoasă despre natura din România."
@@ -557,7 +559,7 @@ async def test_ai_moderation() -> dict:
                 "gemini_api_key_exists": bool(GEMINI_API_KEY),
                 "gemini_model": GEMINI_MODEL,
                 "toxicity_threshold": TOXICITY_THRESHOLD_FLAG,
-                "client_initialized": gemini_client is not None
+                "api_configured": bool(GEMINI_API_KEY)
             },
             "toxic_content": {
                 "status": toxic_result.status.value,
