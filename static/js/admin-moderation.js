@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function loadModerationStats() {
-    fetch('/api/admin/stats')
+    fetch('/api/moderation/stats')
         .then(response => response.json())
         .then(data => {
             document.getElementById('pendingCount').innerHTML = `<i class="bi bi-clock-history"></i> ${data.pending_count}`;
@@ -57,7 +57,7 @@ function loadModerationStats() {
 
 function loadPendingContent() {
     const contentType = document.getElementById('contentTypeFilter')?.value || 'all';
-    fetch(`/api/admin/content/pending?content_type=${contentType}`)
+    fetch(`/api/moderation/content/pending?content_type=${contentType}`)
         .then(response => response.json())
         .then(data => {
             renderContentQueue(data.content, 'pendingContent');
@@ -66,7 +66,7 @@ function loadPendingContent() {
 }
 
 function loadFlaggedContent() {
-    fetch('/api/admin/content/flagged')
+    fetch('/api/moderation/content/flagged')
         .then(response => response.json())
         .then(data => {
             renderContentQueue(data.content, 'flaggedContent');
@@ -133,7 +133,7 @@ function renderContentQueue(content, containerId) {
 function moderateContent(id, type, action) {
     const reason = prompt(`Enter reason for ${action} (optional):`);
     
-    fetch(`/api/admin/moderate/${type}/${id}`, {
+    fetch(`/api/moderation/moderate/${type}/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, reason })
@@ -156,7 +156,7 @@ function moderateContent(id, type, action) {
 }
 
 function loadUsers() {
-    fetch('/api/admin/users/search?q=')
+    fetch('/api/moderation/users/search?q=')
         .then(response => response.json())
         .then(data => {
             const container = document.getElementById('usersList');
@@ -207,7 +207,7 @@ function viewContent(id, type) {
 }
 
 function loadAIQueue() {
-    fetch('/api/admin/moderation/queue')
+    fetch('/api/moderation/queue')
         .then(response => response.json())
         .then(data => {
             const container = document.getElementById('aiQueue');
@@ -280,7 +280,7 @@ function loadAIQueue() {
 }
 
 function loadAILogs(decision = 'all') {
-    const url = decision === 'all' ? '/api/admin/moderation/logs' : `/api/admin/moderation/logs?decision=${decision}`;
+    const url = decision === 'all' ? '/api/moderation/logs' : `/api/moderation/logs?decision=${decision}`;
     
     fetch(url)
         .then(response => response.json())
@@ -364,7 +364,7 @@ function reviewContent(logId, decision) {
     const reason = prompt(`Motiv pentru ${decision === 'approved' ? 'aprobare' : 'respingere'}:`);
     if (reason === null) return; // User cancelled
     
-    fetch(`/api/admin/moderation/review/${logId}`, {
+    fetch(`/api/moderation/review/${logId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, reason })
@@ -390,7 +390,7 @@ function testAIModeration() {
     testButton.disabled = true;
     testButton.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Testing...';
     
-    fetch('/api/admin/test-ai-moderation')
+    fetch('/api/moderation/test-ai-moderation')
         .then(response => response.json())
         .then(data => {
             if (data.ai_working) {

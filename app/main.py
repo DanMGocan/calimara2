@@ -1517,7 +1517,7 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
 # ADMIN & MODERATION ROUTES
 # ===================================
 
-@app.get("/api/admin/stats")
+@app.get("/api/moderation/stats")
 async def get_moderation_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)
@@ -1563,7 +1563,7 @@ async def get_moderation_stats(
         logger.error(f"Error getting moderation stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get moderation stats")
 
-@app.get("/api/admin/content/pending")
+@app.get("/api/moderation/content/pending")
 async def get_pending_content(
     request: Request,
     content_type: str = "all",
@@ -1620,7 +1620,7 @@ async def get_pending_content(
         logger.error(f"Error getting pending content: {e}")
         raise HTTPException(status_code=500, detail="Failed to get pending content")
 
-@app.get("/api/admin/content/flagged")
+@app.get("/api/moderation/content/flagged")
 async def get_flagged_content(
     request: Request,
     db: Session = Depends(get_db),
@@ -1679,7 +1679,7 @@ async def get_flagged_content(
         logger.error(f"Error getting flagged content: {e}")
         raise HTTPException(status_code=500, detail="Failed to get flagged content")
 
-@app.post("/api/admin/moderate/{content_type}/{content_id}")
+@app.post("/api/moderation/moderate/{content_type}/{content_id}")
 async def moderate_content_action(
     content_type: str,
     content_id: int,
@@ -1739,7 +1739,7 @@ async def moderate_content_action(
         logger.error(f"Error moderating content: {e}")
         raise HTTPException(status_code=500, detail="Failed to moderate content")
 
-@app.get("/api/admin/users/search")
+@app.get("/api/moderation/users/search")
 async def search_users_admin(
     q: str = "",
     db: Session = Depends(get_db),
@@ -1773,7 +1773,7 @@ async def search_users_admin(
         logger.error(f"Error searching users: {e}")
         raise HTTPException(status_code=500, detail="Failed to search users")
 
-@app.post("/api/admin/users/{user_id}/suspend")
+@app.post("/api/moderation/users/{user_id}/suspend")
 async def suspend_user(
     user_id: int,
     suspension_data: dict,
@@ -1813,7 +1813,7 @@ async def suspend_user(
         logger.error(f"Error suspending user: {e}")
         raise HTTPException(status_code=500, detail="Failed to suspend user")
 
-@app.post("/api/admin/users/{user_id}/unsuspend")
+@app.post("/api/moderation/users/{user_id}/unsuspend")
 async def unsuspend_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -1847,7 +1847,7 @@ async def unsuspend_user(
 
 # --- Moderation Logs API Endpoints ---
 
-@app.get("/api/admin/moderation/logs")
+@app.get("/api/moderation/logs")
 async def get_moderation_logs_api(
     request: Request,
     decision: Optional[str] = None,
@@ -1912,7 +1912,7 @@ async def get_moderation_logs_api(
         logger.error(f"Error getting moderation logs: {e}")
         raise HTTPException(status_code=500, detail="Failed to get moderation logs")
 
-@app.get("/api/admin/moderation/queue")
+@app.get("/api/moderation/queue")
 async def get_moderation_queue_api(
     request: Request,
     db: Session = Depends(get_db),
@@ -1975,7 +1975,7 @@ async def get_moderation_queue_api(
         logger.error(f"Error getting moderation queue: {e}")
         raise HTTPException(status_code=500, detail="Failed to get moderation queue")
 
-@app.post("/api/admin/moderation/review/{log_id}")
+@app.post("/api/moderation/review/{log_id}")
 async def review_flagged_content(
     log_id: int,
     review_data: dict,
@@ -2027,7 +2027,7 @@ async def review_flagged_content(
         logger.error(f"Error reviewing flagged content: {e}")
         raise HTTPException(status_code=500, detail="Failed to review content")
 
-@app.get("/api/admin/moderation/stats/extended")
+@app.get("/api/moderation/stats/extended")
 async def get_extended_moderation_stats(
     request: Request,
     db: Session = Depends(get_db),
@@ -2042,7 +2042,7 @@ async def get_extended_moderation_stats(
         logger.error(f"Error getting extended moderation stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get extended moderation stats")
 
-@app.get("/api/admin/test-ai-moderation")
+@app.get("/api/moderation/test-ai-moderation")
 async def test_ai_moderation_endpoint(
     request: Request,
     current_user: models.User = Depends(admin.require_moderator)
