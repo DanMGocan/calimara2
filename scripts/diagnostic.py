@@ -48,28 +48,43 @@ def main():
         else:
             print(f"❌ {var}: NOT SET ({purpose})")
     
-    # Test AI Moderation
-    print("\n--- AI Moderation Test ---")
-    try:
-        from app import moderation
-        import asyncio
+    # Test AI Moderation Configuration
+    print("\n--- AI Moderation Configuration ---")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    moderation_enabled = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
+    
+    if not gemini_key:
+        print("❌ AI Moderation: GEMINI_API_KEY not set")
+    elif not moderation_enabled:
+        print("⚠️  AI Moderation: Disabled in configuration")
+    else:
+        print("✅ AI Moderation: Configuration looks good")
         
-        # Run AI test
-        async def test_ai():
-            result = await moderation.test_ai_moderation()
-            return result
-        
-        result = asyncio.run(test_ai())
-        
-        if result.get("ai_working"):
-            print("✅ AI Moderation: Working correctly")
-            print(f"   - Toxic content detection: {result['toxic_content']['status']}")
-            print(f"   - Normal content detection: {result['normal_content']['status']}")
-        else:
-            print(f"❌ AI Moderation: {result.get('error', 'Unknown error')}")
+        # Test actual AI functionality
+        print("\n--- AI Moderation Live Test ---")
+        try:
+            from app import moderation
+            import asyncio
             
-    except Exception as e:
-        print(f"❌ AI Moderation: Failed to test - {e}")
+            # Test if Gemini can be imported and configured
+            import google.generativeai as genai
+            try:
+                genai.configure(api_key=gemini_key)
+                print("✅ Gemini API: Successfully configured")
+                
+                # Try a simple test
+                model = genai.GenerativeModel("gemini-2.0-flash-lite")
+                response = model.generate_content("Test message")
+                if response.text:
+                    print("✅ Gemini API: Successfully responded to test")
+                else:
+                    print("❌ Gemini API: Empty response to test")
+                    
+            except Exception as e:
+                print(f"❌ Gemini API: Configuration failed - {e}")
+                
+        except Exception as e:
+            print(f"❌ AI Moderation: Module import failed - {e}")
     
     # Test Database
     print("\n--- Database Test ---")

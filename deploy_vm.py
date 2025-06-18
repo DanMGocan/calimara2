@@ -142,13 +142,16 @@ def deploy_vm():
     """Performs VM-side deployment operations."""
     print("Starting VM deployment automation...")
 
-    # 0. Check environment and dependencies BEFORE deployment
-    print("\n--- Pre-deployment checks ---")
-    if not check_environment_and_dependencies():
-        print("❌ Pre-deployment checks failed. Please fix issues before deploying.")
-        response = input("Continue anyway? (y/N): ")
+    # 0. Run comprehensive diagnostics BEFORE deployment
+    print("\n--- Pre-deployment diagnostics ---")
+    print("Running comprehensive system diagnostics...")
+    if not run_command(f'{VENV_PYTHON} scripts/diagnostic.py', cwd=APP_DIR):
+        print("❌ Diagnostic script failed. Please check the issues above.")
+        response = input("Continue deployment anyway? (y/N): ")
         if response.lower() != 'y':
             sys.exit(1)
+    else:
+        print("✅ Pre-deployment diagnostics completed.")
 
     # 1. Git pull latest changes
     print("\n--- Performing git pull ---")
@@ -186,12 +189,13 @@ def deploy_vm():
         sys.exit(1)
     print("initdb.py executed successfully.")
 
-    # 4. Post-deployment checks
-    print("\n--- Post-deployment checks ---")
-    if check_environment_and_dependencies():
-        print("✅ Post-deployment checks passed!")
+    # 4. Post-deployment diagnostics
+    print("\n--- Post-deployment diagnostics ---")
+    print("Running post-deployment system diagnostics...")
+    if not run_command(f'{VENV_PYTHON} scripts/diagnostic.py', cwd=APP_DIR):
+        print("⚠️  Post-deployment diagnostics failed. Service may not work properly.")
     else:
-        print("⚠️  Some post-deployment checks failed. Service may not work properly.")
+        print("✅ Post-deployment diagnostics completed.")
 
     # 5. Check service status
     print("\n--- Service Status Check ---")

@@ -6,9 +6,13 @@ from enum import Enum
 import google.generativeai as genai
 from sqlalchemy.orm import Session
 
+# Load environment variables first
+from dotenv import load_dotenv
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
-# Configuration from environment
+# Configuration from environment (after loading .env)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
@@ -18,6 +22,16 @@ ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == 
 
 # Initialize Gemini
 logger.info(f"Initializing Gemini... API_KEY exists: {bool(GEMINI_API_KEY)}, MODERATION_ENABLED: {MODERATION_ENABLED}")
+logger.info(f"API_KEY value (first 10 chars): {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'NONE'}")
+logger.info(f"MODEL: {GEMINI_MODEL}")
+
+# Debug: Print all environment variables that start with GEMINI or contain KEY
+import os
+logger.info("Environment variables containing 'GEMINI' or 'KEY':")
+for key, value in os.environ.items():
+    if 'GEMINI' in key or 'KEY' in key:
+        display_value = value[:10] + "..." if len(value) > 10 else value
+        logger.info(f"  {key} = {display_value}")
 
 if GEMINI_API_KEY and MODERATION_ENABLED:
     try:
