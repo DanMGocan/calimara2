@@ -2055,3 +2055,8 @@ async def test_ai_moderation_endpoint(
     except Exception as e:
         logger.error(f"Error testing AI moderation: {e}")
         raise HTTPException(status_code=500, detail="Failed to test AI moderation")
+
+@app.get("/api/moderation/test-simple")
+async def test_simple_endpoint():
+    """Simple test endpoint without authentication"""
+    return {"status": "success", "message": "Moderation API is working", "routes_working": True}
