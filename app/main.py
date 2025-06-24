@@ -600,7 +600,7 @@ async def add_comment_to_post(
     # Then moderate it asynchronously with logging
     try:
         moderation_result = await moderation.moderate_comment_with_logging(
-            comment.content, db_comment.id, current_user_id, db
+            comment.content, db_comment.id, user_id, db
         )
         
         # Update comment with moderation results
@@ -2057,6 +2057,38 @@ async def test_ai_moderation_endpoint(
         raise HTTPException(status_code=500, detail="Failed to test AI moderation")
 
 @app.get("/api/moderation/test-simple")
+async def test_simple_moderation():
+    """Simple test endpoint for AI moderation (no auth required for testing)"""
+    try:
+        # Test toxic content
+        toxic_test = "Du-te dracului, ești un idiot!"
+        toxic_result = await moderation.moderate_comment(toxic_test)
+        
+        # Test normal content
+        normal_test = "Aceasta este o poezie frumoasă despre natura din România."
+        normal_result = await moderation.moderate_comment(normal_test)
+        
+        return {
+            "moderation_enabled": moderation.MODERATION_ENABLED,
+            "api_key_configured": bool(moderation.GEMINI_API_KEY),
+            "toxic_content_test": {
+                "text": toxic_test,
+                "status": toxic_result.status.value,
+                "score": toxic_result.toxicity_score,
+                "reason": toxic_result.reason
+            },
+            "normal_content_test": {
+                "text": normal_test,
+                "status": normal_result.status.value,
+                "score": normal_result.toxicity_score,
+                "reason": normal_result.reason
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error in simple moderation test: {e}")
+        return {"error": str(e), "moderation_enabled": moderation.MODERATION_ENABLED}
+
+@app.get("/api/moderation/test-create-content")
 async def test_simple_endpoint():
     """Simple test endpoint without authentication"""
     return {"status": "success", "message": "Moderation API is working", "routes_working": True}

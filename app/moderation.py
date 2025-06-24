@@ -127,14 +127,16 @@ Return only a valid JSON with this format:
 Text to analyze:
 """
 
-async def analyze_content_with_gemini(text: str, use_romanian_context: bool = True) -> Dict[str, float]:
+def analyze_content_with_gemini(text: str, use_romanian_context: bool = True) -> Dict[str, float]:
     """
     Analyze text using Gemini with Romanian-aware prompts
     Returns toxicity scores for different categories
     """
     if not GEMINI_API_KEY or not MODERATION_ENABLED:
-        logger.warning("Gemini not configured or moderation disabled")
-        return {"toxicity": 0.0, "overall_assessment": "safe"}
+        logger.warning(f"Gemini not configured or moderation disabled. API_KEY exists: {bool(GEMINI_API_KEY)}, MODERATION_ENABLED: {MODERATION_ENABLED}")
+        return {"toxicity": 0.0, "overall_assessment": "safe", "reason": "Moderation disabled or not configured"}
+    
+    logger.info(f"Starting Gemini content analysis for text: {text[:100]}...")
     
     try:
         # Choose appropriate prompt based on context awareness setting
@@ -160,6 +162,8 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
         
+        logger.info(f"Calling Gemini API with model: {GEMINI_MODEL}")
+        
         try:
             # Generate content with safety settings
             response = model.generate_content(
@@ -167,6 +171,7 @@ async def analyze_content_with_gemini(text: str, use_romanian_context: bool = Tr
                 generation_config=generation_config,
                 safety_settings=safety_settings
             )
+            logger.info("Gemini API call successful")
         except Exception as safety_error:
             # If safety settings fail, try without them
             logger.warning(f"Safety settings failed: {safety_error}, trying without safety settings")
@@ -294,7 +299,7 @@ async def moderate_comment(content: str) -> ModerationResult:
         )
     
     try:
-        gemini_scores = await analyze_content_with_gemini(content)
+        gemini_scores = analyze_content_with_gemini(content)
         logger.info(f"Gemini analysis for comment: {gemini_scores}")
         result = determine_moderation_status(gemini_scores, "comment")
         logger.info(f"Comment moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
@@ -333,7 +338,7 @@ async def moderate_post(title: str, content: str) -> ModerationResult:
     try:
         # Combine title and content for analysis
         full_text = f"Titlu: {title}\n\nConținut: {content}"
-        gemini_scores = await analyze_content_with_gemini(full_text)
+        gemini_scores = analyze_content_with_gemini(full_text)
         logger.info(f"Gemini analysis for post: {gemini_scores}")
         result = determine_moderation_status(gemini_scores, "post")
         logger.info(f"Post moderation result: {result.status.value} (score: {result.toxicity_score:.3f})")
@@ -417,7 +422,7 @@ async def enhanced_romanian_analysis(text: str) -> Dict[str, float]:
     Combine Gemini analysis with Romanian-specific pattern detection
     """
     # Get base analysis from Gemini
-    gemini_scores = await analyze_content_with_gemini(text)
+    gemini_scores = analyze_content_with_gemini(text)
     
     # Enhance with Romanian-specific detection
     has_profanity, profanity_score = contains_romanian_profanity(text)
