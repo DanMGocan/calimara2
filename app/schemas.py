@@ -80,6 +80,9 @@ class Post(PostBase):
     user_id: int
     slug: str
     view_count: int = 0
+    moderation_status: Optional[str] = None
+    moderation_reason: Optional[str] = None
+    toxicity_score: Optional[float] = None
     created_at: datetime
     updated_at: datetime
     tags: List[Tag] = []
@@ -100,6 +103,9 @@ class Comment(CommentBase):
     post_id: int
     user_id: Optional[int] = None
     approved: bool
+    moderation_status: Optional[str] = None
+    moderation_reason: Optional[str] = None
+    toxicity_score: Optional[float] = None
     created_at: datetime
 
     class Config:

@@ -313,13 +313,28 @@ async function handleCommentSubmission(e) {
         console.log('Comment response data:', data);
 
         if (response.ok) {
-            console.log('Comment submitted successfully, reloading page...');
-            showToast('Comentariu trimis cu succes!', 'success');
+            console.log('Comment submitted successfully');
             
-            // Small delay to ensure the toast is seen, then reload
-            setTimeout(() => {
-                window.location.reload();
-            }, 500);
+            // Check if the comment was flagged for moderation
+            if (data.moderation_status === 'flagged') {
+                showToast('Comentariul tău a fost trimis pentru revizuire. Va fi publicat după ce un moderator îl va aproba.', 'warning');
+                
+                // Clear the form
+                form.reset();
+                
+                // Don't reload - the comment won't be visible anyway since it's flagged
+                setTimeout(() => {
+                    hideLoadingState(form);
+                }, 1000);
+            } else {
+                // Comment was approved - show success and reload to display it
+                showToast('Comentariu trimis cu succes!', 'success');
+                
+                // Small delay to ensure the toast is seen, then reload
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+            }
         } else {
             console.error('Comment submission failed:', data);
             showError(errorDiv, data.detail || 'Trimiterea comentariului a eșuat');
