@@ -163,6 +163,13 @@ def deploy_vm():
     if not run_command('git pull', cwd=APP_DIR):
         print("Failed to pull latest changes. Aborting VM deployment.")
         sys.exit(1)
+    
+    # 1.5 Clear Python cache to ensure fresh module loading
+    print("\n--- Clearing Python cache ---")
+    print("Removing __pycache__ directories...")
+    run_command(f'find {APP_DIR} -type d -name "__pycache__" -exec rm -rf {{}} + 2>/dev/null || true', shell=True)
+    run_command(f'find {APP_DIR} -name "*.pyc" -delete 2>/dev/null || true', shell=True)
+    print("✅ Python cache cleared")
 
     # 2. Stop and start Gunicorn service (more reliable than restart)
     print("\n--- Stopping Gunicorn service ---")
@@ -198,10 +205,16 @@ def deploy_vm():
     print("\n--- Reloading Systemd daemon and restarting Nginx ---")
     if not run_command('sudo systemctl daemon-reload', shell=True):
         print("Failed to reload Systemd daemon. Continuing, but may need manual intervention.")
+    
+    # Clear nginx cache if it exists
+    print("Clearing Nginx cache...")
+    run_command('sudo rm -rf /var/cache/nginx/* 2>/dev/null || true', shell=True)
+    
+    # Restart nginx
     if not run_command('sudo systemctl restart nginx', shell=True):
         print("Failed to restart Nginx. Aborting VM deployment.")
         sys.exit(1)
-    print("Nginx restarted.")
+    print("✅ Nginx restarted and cache cleared.")
 
     # 3. Run initdb.py script
     # IMPORTANT: The user has explicitly requested initdb.py to be run on each deploy.
@@ -237,6 +250,13 @@ def deploy_vm():
     print("\n--- Testing API Endpoint ---")
     print("Testing if API is responding...")
     run_command("curl -s http://localhost:8000/api/moderation/test-create-content || echo 'API test failed'", shell=True)
+    
+    # 8. Create deployment timestamp
+    print("\n--- Creating Deployment Timestamp ---")
+    import datetime
+    timestamp = datetime.datetime.now().isoformat()
+    run_command(f'echo "{timestamp}" > {APP_DIR}/last_deployment.txt', shell=True)
+    print(f"✅ Deployment completed at: {timestamp}")
 
     print("\nVM deployment automation completed successfully.")
 

@@ -1519,10 +1519,16 @@ async def catch_all(request: Request, path: str, month: int = None, year: int = 
 
 @app.get("/api/moderation/stats")
 async def get_moderation_stats(
+    response: Response,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)
 ):
     """Get moderation statistics for dashboard"""
+    # Set no-cache headers to prevent caching of dynamic data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     try:
         # Use the new CRUD function to get comprehensive stats
         stats = crud.get_moderation_stats(db)
@@ -2057,8 +2063,13 @@ async def test_ai_moderation_endpoint(
         raise HTTPException(status_code=500, detail="Failed to test AI moderation")
 
 @app.get("/api/moderation/test-simple")
-async def test_simple_moderation():
+async def test_simple_moderation(response: Response):
     """Simple test endpoint for AI moderation (no auth required for testing)"""
+    # Set no-cache headers
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     try:
         # Test toxic content
         toxic_test = "Du-te dracului, ești un idiot!"
