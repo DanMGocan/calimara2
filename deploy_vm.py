@@ -227,6 +227,16 @@ def deploy_vm():
     # 5. Check service status
     print("\n--- Service Status Check ---")
     run_command(f'sudo systemctl status {GUNICORN_SERVICE} --no-pager -l')
+    
+    # 6. Verify moderation endpoints exist
+    print("\n--- Verifying Moderation Endpoints ---")
+    print("Checking if moderation endpoints are registered...")
+    run_command(f"grep -c '@app.*moderation' {APP_DIR}/app/main.py || echo '0 moderation endpoints found'", shell=True)
+    
+    # 7. Test a simple endpoint
+    print("\n--- Testing API Endpoint ---")
+    print("Testing if API is responding...")
+    run_command("curl -s http://localhost:8000/api/moderation/test-create-content || echo 'API test failed'", shell=True)
 
     print("\nVM deployment automation completed successfully.")
 
