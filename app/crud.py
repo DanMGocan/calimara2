@@ -1,8 +1,8 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import func, or_, extract, text
 from . import models, schemas, moderation
-from passlib.context import CryptContext
 from typing import Optional, List
+import bleach
 import random
 import re
 import unicodedata
@@ -11,7 +11,28 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# HTML sanitization: only allow tags produced by Quill editor
+ALLOWED_TAGS = [
+    'p', 'br', 'strong', 'em', 'u', 's', 'ol', 'ul', 'li',
+    'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'img',
+    'span', 'pre', 'code', 'sub', 'sup',
+]
+ALLOWED_ATTRIBUTES = {
+    'a': ['href', 'target', 'rel'],
+    'img': ['src', 'alt', 'width', 'height'],
+    'span': ['class'],
+    'pre': ['class'],
+    'code': ['class'],
+}
+
+def sanitize_html(content: str) -> str:
+    """Sanitize HTML content, allowing only safe tags from the Quill editor."""
+    return bleach.clean(
+        content,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True,
+    )
 
 def generate_slug(title: str) -> str:
     """Generate a URL-friendly slug from a post title"""
@@ -65,12 +86,6 @@ def ensure_unique_slug(db: Session, base_slug: str, post_id: Optional[int] = Non
     
     return slug
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
@@ -101,16 +116,20 @@ def get_post(db: Session, post_id: int):
 
 def get_post_by_slug(db: Session, slug: str):
     """Get a post by its slug"""
-    return db.query(models.Post).filter(models.Post.slug == slug).first()
+    return db.query(models.Post).options(
+        selectinload(models.Post.comments).joinedload(models.Comment.commenter),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.slug == slug).first()
 
 def increment_post_view(db: Session, post_id: int):
-    """Increment the view count for a post"""
-    db_post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    if db_post:
-        db_post.view_count = db_post.view_count + 1
-        db.commit()
-        db.refresh(db_post)
-    return db_post
+    """Increment the view count for a post atomically"""
+    db.query(models.Post).filter(models.Post.id == post_id).update(
+        {models.Post.view_count: models.Post.view_count + 1},
+        synchronize_session="fetch"
+    )
+    db.commit()
+    return db.query(models.Post).filter(models.Post.id == post_id).first()
 
 def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
     return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
@@ -126,10 +145,10 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int):
     moderation_reason = "Awaiting AI moderation"
     
     db_post = models.Post(
-        title=post.title, 
+        title=post.title,
         slug=unique_slug,
-        content=post.content, 
-        category=post.category, 
+        content=sanitize_html(post.content),
+        category=post.category,
         user_id=user_id,
         view_count=0,
         moderation_status=moderation_status,
@@ -162,6 +181,10 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate):
             unique_slug = ensure_unique_slug(db, base_slug, post_id)
             update_data['slug'] = unique_slug
         
+        # Sanitize content if being updated
+        if 'content' in update_data:
+            update_data['content'] = sanitize_html(update_data['content'])
+
         # Update fields
         for key, value in update_data.items():
             if key != 'tags':  # Handle tags separately
@@ -175,7 +198,11 @@ def get_posts_by_category(db: Session, category: str, genre: Optional[str] = Non
     """
     Get posts by category and optionally by genre
     """
-    query = db.query(models.Post).filter(models.Post.category == category)
+    query = db.query(models.Post).options(
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.category == category)
     if genre:
         query = query.filter(models.Post.genre == genre)
     return query.order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
@@ -184,10 +211,14 @@ def get_posts_by_category_sorted(db: Session, category: str, genre: Optional[str
     """
     Get posts by category with sorting options: newest, most_liked, random
     """
-    query = db.query(models.Post).filter(models.Post.category == category)
+    query = db.query(models.Post).options(
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.category == category)
     if genre:
         query = query.filter(models.Post.genre == genre)
-    
+
     if sort_by == "newest":
         query = query.order_by(models.Post.created_at.desc())
     elif sort_by == "most_liked":
@@ -198,7 +229,7 @@ def get_posts_by_category_sorted(db: Session, category: str, genre: Optional[str
     else:
         # Default to newest
         query = query.order_by(models.Post.created_at.desc())
-    
+
     return query.offset(skip).limit(limit).all()
 
 def get_distinct_categories_used(db: Session, user_id: Optional[int] = None):
@@ -255,7 +286,7 @@ def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, us
         user_id=user_id,
         author_name=comment.author_name,
         author_email=comment.author_email,
-        content=comment.content,
+        content=sanitize_html(comment.content),
         approved=approved,
         moderation_status=moderation_status,
         moderation_reason=moderation_reason,
@@ -411,24 +442,40 @@ def get_likes_count_for_post(db: Session, post_id: int):
     return db.query(models.Like).filter(models.Like.post_id == post_id).count()
 
 def get_random_posts(db: Session, limit: int = 10):
-    from sqlalchemy.orm import joinedload
-    return db.query(models.Post).options(joinedload(models.Post.owner)).order_by(func.rand()).limit(limit).all()
+    return db.query(models.Post).options(
+        joinedload(models.Post.owner),
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).order_by(func.random()).limit(limit).all()
 
 def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
     """Get random posts filtered by a specific category"""
-    from sqlalchemy.orm import joinedload
-    return db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.category == category).order_by(func.rand()).limit(limit).all()
+    return db.query(models.Post).options(
+        joinedload(models.Post.owner),
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.category == category).order_by(func.random()).limit(limit).all()
 
 def get_random_posts_by_categories(db: Session, categories: List[str], limit: int = 10):
     """Get random posts filtered by multiple categories (for 'altele')"""
-    from sqlalchemy.orm import joinedload
-    return db.query(models.Post).options(joinedload(models.Post.owner)).filter(models.Post.category.in_(categories)).order_by(func.rand()).limit(limit).all()
+    return db.query(models.Post).options(
+        joinedload(models.Post.owner),
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.category.in_(categories)).order_by(func.random()).limit(limit).all()
 
 def get_random_users(db: Session, limit: int = 10):
-    return db.query(models.User).order_by(func.rand()).limit(limit).all()
+    return db.query(models.User).order_by(func.random()).limit(limit).all()
 
 def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 10):
-    return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).limit(limit).all()
+    return db.query(models.Post).options(
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).limit(limit).all()
 
 def get_post_with_owner(db: Session, post_id: int):
     return db.query(models.Post).filter(models.Post.id == post_id).first()
@@ -457,7 +504,11 @@ def get_tag_suggestions(db: Session, query: str, limit: int = 10):
 
 def get_posts_by_tag(db: Session, tag_name: str, skip: int = 0, limit: int = 20):
     """Get posts that have a specific tag"""
-    return db.query(models.Post).join(models.Tag).filter(
+    return db.query(models.Post).options(
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).join(models.Tag).filter(
         models.Tag.tag_name == tag_name
     ).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
@@ -476,32 +527,40 @@ def get_best_friends_for_user(db: Session, user_id: int):
 # Featured Posts CRUD functions
 def get_featured_posts_for_user(db: Session, user_id: int):
     """Get the featured posts for a specific user, ordered by position"""
-    return db.query(models.FeaturedPost).filter(
+    return db.query(models.FeaturedPost).options(
+        joinedload(models.FeaturedPost.post).selectinload(models.Post.comments),
+        joinedload(models.FeaturedPost.post).selectinload(models.Post.tags),
+        joinedload(models.FeaturedPost.post).selectinload(models.Post.likes)
+    ).filter(
         models.FeaturedPost.user_id == user_id
     ).order_by(models.FeaturedPost.position).all()
 
 def get_posts_by_month_year(db: Session, user_id: int, month: int, year: int, skip: int = 0, limit: int = 20):
     """Get posts for a specific user filtered by month and year"""
-    return db.query(models.Post).filter(
+    return db.query(models.Post).options(
+        selectinload(models.Post.comments),
+        selectinload(models.Post.tags),
+        selectinload(models.Post.likes)
+    ).filter(
         models.Post.user_id == user_id,
-        func.MONTH(models.Post.created_at) == month,
-        func.YEAR(models.Post.created_at) == year
+        extract('month', models.Post.created_at) == month,
+        extract('year', models.Post.created_at) == year
     ).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
 def get_available_months_for_user(db: Session, user_id: int):
     """Get available months/years for a user's posts"""
     result = db.query(
-        func.YEAR(models.Post.created_at).label('year'),
-        func.MONTH(models.Post.created_at).label('month'),
-        func.COUNT(models.Post.id).label('post_count')
+        extract('year', models.Post.created_at).label('year'),
+        extract('month', models.Post.created_at).label('month'),
+        func.count(models.Post.id).label('post_count')
     ).filter(
         models.Post.user_id == user_id
     ).group_by(
-        func.YEAR(models.Post.created_at),
-        func.MONTH(models.Post.created_at)
+        extract('year', models.Post.created_at),
+        extract('month', models.Post.created_at)
     ).order_by(
-        func.YEAR(models.Post.created_at).desc(),
-        func.MONTH(models.Post.created_at).desc()
+        extract('year', models.Post.created_at).desc(),
+        extract('month', models.Post.created_at).desc()
     ).all()
     
     return [{"year": r.year, "month": r.month, "post_count": r.post_count} for r in result]
@@ -807,3 +866,393 @@ def get_moderation_stats_extended(db: Session):
         "today_activity": today_logs,
         "total_logs": ai_approved + ai_flagged + ai_rejected
     }
+
+
+# --- Theme Analysis ---
+
+def get_distinct_themes(db: Session) -> List[str]:
+    """Get all distinct theme values across analyzed posts."""
+    result = db.execute(
+        text("SELECT DISTINCT jsonb_array_elements_text(themes) AS theme FROM posts WHERE theme_analysis_status = 'completed' AND themes != '[]'::jsonb")
+    )
+    return [row[0] for row in result]
+
+
+def get_distinct_feelings(db: Session) -> List[str]:
+    """Get all distinct feeling values across analyzed posts."""
+    result = db.execute(
+        text("SELECT DISTINCT jsonb_array_elements_text(feelings) AS feeling FROM posts WHERE theme_analysis_status = 'completed' AND feelings != '[]'::jsonb")
+    )
+    return [row[0] for row in result]
+
+
+def update_post_theme_analysis(db: Session, post_id: int, themes: list, feelings: list, status: str):
+    """Update a post's theme analysis results."""
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if post:
+        post.themes = themes
+        post.feelings = feelings
+        post.theme_analysis_status = status
+        db.commit()
+
+
+# ===================================
+# DRAMA CRUD FUNCTIONS
+# ===================================
+
+def create_drama(db: Session, title: str, description: Optional[str], slug: str, user_id: int, character_name: str, character_description: Optional[str] = None) -> models.Drama:
+    """Create a new drama and its first character (the creator)"""
+    drama = models.Drama(
+        user_id=user_id,
+        title=title,
+        slug=slug,
+        description=description
+    )
+    db.add(drama)
+    db.flush()  # Get the drama.id
+
+    character = models.DramaCharacter(
+        drama_id=drama.id,
+        user_id=user_id,
+        character_name=character_name,
+        character_description=character_description,
+        is_creator=True
+    )
+    db.add(character)
+    db.commit()
+    db.refresh(drama)
+    return drama
+
+def get_drama_by_slug(db: Session, slug: str) -> Optional[models.Drama]:
+    """Get a drama by slug with all relationships eager-loaded"""
+    return db.query(models.Drama).options(
+        selectinload(models.Drama.characters).joinedload(models.DramaCharacter.user),
+        selectinload(models.Drama.acts).selectinload(models.DramaAct.replies).joinedload(models.DramaReply.character),
+        selectinload(models.Drama.likes),
+        selectinload(models.Drama.comments).joinedload(models.DramaComment.commenter),
+        joinedload(models.Drama.owner)
+    ).filter(models.Drama.slug == slug).first()
+
+def get_drama_by_id(db: Session, drama_id: int) -> Optional[models.Drama]:
+    return db.query(models.Drama).filter(models.Drama.id == drama_id).first()
+
+def get_dramas_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 50) -> List[models.Drama]:
+    return db.query(models.Drama).options(
+        selectinload(models.Drama.characters),
+        selectinload(models.Drama.likes),
+        joinedload(models.Drama.owner)
+    ).filter(models.Drama.user_id == user_id).order_by(models.Drama.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_all_dramas(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 20) -> List[models.Drama]:
+    """Get dramas across the platform for discovery page"""
+    query = db.query(models.Drama).options(
+        selectinload(models.Drama.characters),
+        selectinload(models.Drama.likes),
+        joinedload(models.Drama.owner)
+    )
+    if status_filter:
+        query = query.filter(models.Drama.status == status_filter)
+    return query.order_by(models.Drama.created_at.desc()).offset(skip).limit(limit).all()
+
+def update_drama(db: Session, drama_id: int, update_data: dict) -> Optional[models.Drama]:
+    drama = db.query(models.Drama).filter(models.Drama.id == drama_id).first()
+    if drama:
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(drama, key, value)
+        db.commit()
+        db.refresh(drama)
+    return drama
+
+def delete_drama(db: Session, drama_id: int):
+    drama = db.query(models.Drama).filter(models.Drama.id == drama_id).first()
+    if drama:
+        db.delete(drama)
+        db.commit()
+    return drama
+
+def complete_drama(db: Session, drama_id: int) -> Optional[models.Drama]:
+    """Mark drama as completed and close all active acts"""
+    drama = db.query(models.Drama).filter(models.Drama.id == drama_id).first()
+    if drama:
+        drama.status = "completed"
+        drama.is_open_for_applications = False
+        # Complete any active acts
+        for act in drama.acts:
+            if act.status == "active":
+                act.status = "completed"
+        db.commit()
+        db.refresh(drama)
+    return drama
+
+def increment_drama_view(db: Session, drama_id: int):
+    drama = db.query(models.Drama).filter(models.Drama.id == drama_id).first()
+    if drama:
+        drama.view_count = drama.view_count + 1
+        db.commit()
+
+def ensure_unique_drama_slug(db: Session, base_slug: str, drama_id: Optional[int] = None) -> str:
+    """Ensure the drama slug is unique"""
+    slug = base_slug
+    counter = 1
+    while True:
+        query = db.query(models.Drama).filter(models.Drama.slug == slug)
+        if drama_id:
+            query = query.filter(models.Drama.id != drama_id)
+        if not query.first():
+            return slug
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+        if counter > 100:
+            slug = f"{base_slug}-{random.randint(1000, 9999)}"
+            break
+    return slug
+
+def get_drama_character(db: Session, character_id: int) -> Optional[models.DramaCharacter]:
+    return db.query(models.DramaCharacter).filter(models.DramaCharacter.id == character_id).first()
+
+def get_character_for_user_in_drama(db: Session, drama_id: int, user_id: int) -> Optional[models.DramaCharacter]:
+    return db.query(models.DramaCharacter).filter(
+        models.DramaCharacter.drama_id == drama_id,
+        models.DramaCharacter.user_id == user_id
+    ).first()
+
+def create_drama_character(db: Session, drama_id: int, user_id: int, character_name: str, character_description: Optional[str] = None, is_creator: bool = False) -> models.DramaCharacter:
+    character = models.DramaCharacter(
+        drama_id=drama_id,
+        user_id=user_id,
+        character_name=character_name,
+        character_description=character_description,
+        is_creator=is_creator
+    )
+    db.add(character)
+    db.commit()
+    db.refresh(character)
+    return character
+
+def delete_drama_character(db: Session, character_id: int):
+    character = db.query(models.DramaCharacter).filter(models.DramaCharacter.id == character_id).first()
+    if character:
+        db.delete(character)
+        db.commit()
+    return character
+
+def create_drama_act(db: Session, drama_id: int, title: str, setting: Optional[str] = None) -> models.DramaAct:
+    """Create a new act, auto-calculating act_number"""
+    max_act = db.query(func.max(models.DramaAct.act_number)).filter(
+        models.DramaAct.drama_id == drama_id
+    ).scalar() or 0
+    act = models.DramaAct(
+        drama_id=drama_id,
+        act_number=max_act + 1,
+        title=title,
+        setting=setting
+    )
+    db.add(act)
+    db.commit()
+    db.refresh(act)
+    return act
+
+def get_drama_act(db: Session, drama_id: int, act_number: int) -> Optional[models.DramaAct]:
+    return db.query(models.DramaAct).options(
+        selectinload(models.DramaAct.replies).joinedload(models.DramaReply.character)
+    ).filter(
+        models.DramaAct.drama_id == drama_id,
+        models.DramaAct.act_number == act_number
+    ).first()
+
+def update_drama_act(db: Session, act_id: int, update_data: dict) -> Optional[models.DramaAct]:
+    act = db.query(models.DramaAct).filter(models.DramaAct.id == act_id).first()
+    if act:
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(act, key, value)
+        db.commit()
+        db.refresh(act)
+    return act
+
+def complete_drama_act(db: Session, act_id: int) -> Optional[models.DramaAct]:
+    act = db.query(models.DramaAct).filter(models.DramaAct.id == act_id).first()
+    if act:
+        act.status = "completed"
+        db.commit()
+        db.refresh(act)
+    return act
+
+def create_drama_reply(db: Session, act_id: int, character_id: int, content: str, stage_direction: Optional[str] = None) -> models.DramaReply:
+    """Create a reply with auto-calculated position"""
+    max_position = db.query(func.max(models.DramaReply.position)).filter(
+        models.DramaReply.act_id == act_id
+    ).scalar() or 0
+    reply = models.DramaReply(
+        act_id=act_id,
+        character_id=character_id,
+        content=content,
+        stage_direction=stage_direction,
+        position=max_position + 1
+    )
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    return reply
+
+def get_drama_reply(db: Session, reply_id: int) -> Optional[models.DramaReply]:
+    return db.query(models.DramaReply).options(
+        joinedload(models.DramaReply.character)
+    ).filter(models.DramaReply.id == reply_id).first()
+
+def update_drama_reply(db: Session, reply_id: int, update_data: dict) -> Optional[models.DramaReply]:
+    reply = db.query(models.DramaReply).filter(models.DramaReply.id == reply_id).first()
+    if reply:
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(reply, key, value)
+        db.commit()
+        db.refresh(reply)
+    return reply
+
+def delete_drama_reply(db: Session, reply_id: int):
+    reply = db.query(models.DramaReply).filter(models.DramaReply.id == reply_id).first()
+    if reply:
+        db.delete(reply)
+        db.commit()
+    return reply
+
+def reorder_drama_replies(db: Session, act_id: int, reply_ids: List[int]):
+    """Reorder replies by updating position based on the order of reply_ids"""
+    for index, reply_id in enumerate(reply_ids):
+        reply = db.query(models.DramaReply).filter(
+            models.DramaReply.id == reply_id,
+            models.DramaReply.act_id == act_id
+        ).first()
+        if reply:
+            reply.position = index + 1
+    db.commit()
+
+def create_drama_like(db: Session, drama_id: int, user_id: Optional[int] = None, ip_address: Optional[str] = None) -> Optional[models.DramaLike]:
+    """Create a drama like (checking for duplicates)"""
+    existing_like = None
+    if user_id:
+        existing_like = db.query(models.DramaLike).filter(
+            models.DramaLike.drama_id == drama_id, models.DramaLike.user_id == user_id
+        ).first()
+    elif ip_address:
+        existing_like = db.query(models.DramaLike).filter(
+            models.DramaLike.drama_id == drama_id, models.DramaLike.ip_address == ip_address
+        ).first()
+    if existing_like:
+        return None
+    like = models.DramaLike(drama_id=drama_id, user_id=user_id, ip_address=ip_address)
+    db.add(like)
+    db.commit()
+    db.refresh(like)
+    return like
+
+def create_drama_comment(db: Session, drama_id: int, content: str, user_id: Optional[int] = None, author_name: Optional[str] = None) -> models.DramaComment:
+    comment = models.DramaComment(
+        drama_id=drama_id,
+        user_id=user_id,
+        author_name=author_name,
+        content=content
+    )
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+def create_drama_invitation(db: Session, drama_id: int, from_user_id: int, to_user_id: int, inv_type: str, character_name: Optional[str] = None, message: Optional[str] = None) -> models.DramaInvitation:
+    invitation = models.DramaInvitation(
+        drama_id=drama_id,
+        from_user_id=from_user_id,
+        to_user_id=to_user_id,
+        type=inv_type,
+        character_name=character_name,
+        message=message
+    )
+    db.add(invitation)
+    db.commit()
+    db.refresh(invitation)
+    return invitation
+
+def get_drama_invitation(db: Session, invitation_id: int) -> Optional[models.DramaInvitation]:
+    return db.query(models.DramaInvitation).options(
+        joinedload(models.DramaInvitation.from_user),
+        joinedload(models.DramaInvitation.to_user),
+        joinedload(models.DramaInvitation.drama)
+    ).filter(models.DramaInvitation.id == invitation_id).first()
+
+def get_pending_invitations_for_drama(db: Session, drama_id: int) -> List[models.DramaInvitation]:
+    return db.query(models.DramaInvitation).options(
+        joinedload(models.DramaInvitation.from_user),
+        joinedload(models.DramaInvitation.to_user)
+    ).filter(
+        models.DramaInvitation.drama_id == drama_id,
+        models.DramaInvitation.status == "pending"
+    ).all()
+
+def respond_to_invitation(db: Session, invitation_id: int, status: str) -> Optional[models.DramaInvitation]:
+    invitation = db.query(models.DramaInvitation).filter(models.DramaInvitation.id == invitation_id).first()
+    if invitation:
+        invitation.status = status
+        invitation.responded_at = func.now()
+        db.commit()
+        db.refresh(invitation)
+    return invitation
+
+def get_user_dramas_as_participant(db: Session, user_id: int) -> List[models.Drama]:
+    """Get all dramas where user is a participant (has a character)"""
+    character_drama_ids = db.query(models.DramaCharacter.drama_id).filter(
+        models.DramaCharacter.user_id == user_id
+    ).subquery()
+    return db.query(models.Drama).options(
+        selectinload(models.Drama.characters),
+        selectinload(models.Drama.likes),
+        joinedload(models.Drama.owner)
+    ).filter(models.Drama.id.in_(character_drama_ids)).order_by(models.Drama.updated_at.desc()).all()
+
+# ===================================
+# NOTIFICATION CRUD FUNCTIONS
+# ===================================
+
+def create_notification(db: Session, user_id: int, notif_type: str, title: str, message: Optional[str] = None, link: Optional[str] = None, extra_data: Optional[dict] = None) -> models.Notification:
+    notification = models.Notification(
+        user_id=user_id,
+        type=notif_type,
+        title=title,
+        message=message,
+        link=link,
+        extra_data=extra_data or {}
+    )
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+def get_notifications_for_user(db: Session, user_id: int, skip: int = 0, limit: int = 20) -> List[models.Notification]:
+    return db.query(models.Notification).filter(
+        models.Notification.user_id == user_id
+    ).order_by(models.Notification.created_at.desc()).offset(skip).limit(limit).all()
+
+def get_unread_notification_count(db: Session, user_id: int) -> int:
+    return db.query(func.count(models.Notification.id)).filter(
+        models.Notification.user_id == user_id,
+        models.Notification.is_read == False
+    ).scalar() or 0
+
+def mark_notification_read(db: Session, notification_id: int, user_id: int) -> Optional[models.Notification]:
+    notification = db.query(models.Notification).filter(
+        models.Notification.id == notification_id,
+        models.Notification.user_id == user_id
+    ).first()
+    if notification:
+        notification.is_read = True
+        db.commit()
+        db.refresh(notification)
+    return notification
+
+def mark_all_notifications_read(db: Session, user_id: int):
+    db.query(models.Notification).filter(
+        models.Notification.user_id == user_id,
+        models.Notification.is_read == False
+    ).update({"is_read": True})
+    db.commit()

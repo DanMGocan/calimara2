@@ -96,11 +96,12 @@ document.addEventListener('DOMContentLoaded', function() {
         checkForChanges();
     }
 
-    // Undo changes
+    // Undo changes - restore to last saved values
     undoButton.addEventListener('click', function() {
         if (confirm('Anulezi ultima modificare?')) {
-            // Simple undo - could be enhanced with proper history
-            document.execCommand('undo');
+            titleInput.value = lastSavedValues.title;
+            contentInput.value = lastSavedValues.content;
+            categoriesInput.value = lastSavedValues.categories;
             checkForChanges();
         }
     });

@@ -3,21 +3,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const contactForm = document.getElementById('contactForm');
     if (contactForm) {
         contactForm.addEventListener('submit', handleContactForm);
-    }
 
-    // Form validation
-    const inputs = contactForm.querySelectorAll('input[required], textarea[required]');
-    inputs.forEach(input => {
-        input.addEventListener('blur', function() {
-            if (this.checkValidity()) {
-                this.classList.remove('is-invalid');
-                this.classList.add('is-valid');
-            } else {
-                this.classList.remove('is-valid');
-                this.classList.add('is-invalid');
-            }
+        // Form validation
+        const inputs = contactForm.querySelectorAll('input[required], textarea[required]');
+        inputs.forEach(input => {
+            input.addEventListener('blur', function() {
+                if (this.checkValidity()) {
+                    this.classList.remove('is-invalid');
+                    this.classList.add('is-valid');
+                } else {
+                    this.classList.remove('is-valid');
+                    this.classList.add('is-invalid');
+                }
+            });
         });
-    });
+    }
 
     // Initialize AJAX category filtering
     initializeCategoryFiltering();
@@ -58,7 +58,8 @@ async function handleContactForm(e) {
         form.classList.remove('was-validated');
         
         // Clear validation classes
-        inputs.forEach(input => {
+        const formInputs = form.querySelectorAll('input[required], textarea[required]');
+        formInputs.forEach(input => {
             input.classList.remove('is-valid', 'is-invalid');
         });
 
@@ -68,7 +69,6 @@ async function handleContactForm(e) {
         }, 2000);
 
     } catch (error) {
-        console.error('Contact form error:', error);
         errorDiv.querySelector('.error-message').textContent = 'A apărut o eroare la trimiterea mesajului. Te rugăm să încerci din nou.';
         errorDiv.classList.remove('d-none');
     } finally {
@@ -118,23 +118,16 @@ document.querySelectorAll('.category-item').forEach(categoryItem => {
 // AJAX Category filtering functions
 
 function initializeCategoryFiltering() {
-    console.log('Initializing category filtering...');
     const categoryButtons = document.querySelectorAll('.category-filter-btn');
     const postsContainer = document.getElementById('postsContainer');
-    
-    console.log('Found category buttons:', categoryButtons.length);
-    console.log('Found posts container:', !!postsContainer);
-    
+
     if (!postsContainer) {
-        console.error('Posts container not found!');
         return;
     }
-    
+
     categoryButtons.forEach((button, index) => {
-        console.log(`Adding listener to button ${index}:`, button.dataset.category);
         button.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log('Category button clicked:', this.dataset.category);
             
             const category = this.dataset.category;
             
@@ -153,22 +146,18 @@ function initializeCategoryFiltering() {
 }
 
 async function fetchFilteredPosts(category) {
-    console.log('Fetching posts for category:', category);
     const postsContainer = document.getElementById('postsContainer');
-    
+
     try {
         const url = `/api/posts/random?category=${encodeURIComponent(category)}&limit=10`;
-        console.log('Fetching from URL:', url);
-        
+
         const response = await fetch(url);
-        console.log('Response status:', response.status);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: Failed to fetch posts`);
         }
-        
+
         const data = await response.json();
-        console.log('Received data:', data);
         
         // Animate out current content
         postsContainer.style.transform = 'translateY(20px)';
@@ -184,7 +173,6 @@ async function fetchFilteredPosts(category) {
         
     } catch (error) {
         console.error('Error fetching filtered posts:', error);
-        // Restore opacity on error
         postsContainer.style.opacity = '1';
         postsContainer.style.transform = 'translateY(0)';
     }

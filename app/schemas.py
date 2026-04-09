@@ -170,3 +170,150 @@ class ConversationSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+# ===================================
+# MODERATION & ADMIN SCHEMAS
+# ===================================
+
+class BestFriendsUpdate(BaseModel):
+    friends: List[str] = Field(default=[], max_length=3, description="List of friend usernames (max 3)")
+
+class FeaturedPostsUpdate(BaseModel):
+    post_ids: List[Optional[int]] = Field(default=[], max_length=3, description="List of post IDs (max 3)")
+
+class ModerationActionRequest(BaseModel):
+    action: str
+    reason: str = ""
+
+class SuspendUserRequest(BaseModel):
+    reason: str
+
+# ===================================
+# DRAMA SCHEMAS
+# ===================================
+
+class DramaCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    character_name: str = Field(..., min_length=1, max_length=100)
+    character_description: Optional[str] = None
+
+class DramaUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    is_open_for_applications: Optional[bool] = None
+
+class DramaCharacterResponse(BaseModel):
+    id: int
+    drama_id: int
+    user_id: int
+    character_name: str
+    character_description: Optional[str] = None
+    is_creator: bool
+    joined_at: datetime
+    username: Optional[str] = None
+    avatar_seed: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class DramaReplyResponse(BaseModel):
+    id: int
+    act_id: int
+    character_id: int
+    content: str
+    stage_direction: Optional[str] = None
+    position: int
+    created_at: datetime
+    character_name: Optional[str] = None
+    username: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class DramaActResponse(BaseModel):
+    id: int
+    drama_id: int
+    act_number: int
+    title: str
+    setting: Optional[str] = None
+    status: str
+    created_at: datetime
+    replies: List[DramaReplyResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class DramaResponse(BaseModel):
+    id: int
+    user_id: int
+    title: str
+    slug: str
+    description: Optional[str] = None
+    status: str
+    is_open_for_applications: bool
+    view_count: int
+    likes_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+    owner_username: Optional[str] = None
+    owner_avatar_seed: Optional[str] = None
+    characters: List[DramaCharacterResponse] = []
+    acts: List[DramaActResponse] = []
+
+    class Config:
+        from_attributes = True
+
+class ActCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    setting: Optional[str] = None
+
+class ActUpdate(BaseModel):
+    title: Optional[str] = Field(None, max_length=255)
+    setting: Optional[str] = None
+
+class ReplyCreate(BaseModel):
+    content: str = Field(..., min_length=1)
+    stage_direction: Optional[str] = Field(None, max_length=500)
+
+class ReplyUpdate(BaseModel):
+    content: Optional[str] = None
+    stage_direction: Optional[str] = Field(None, max_length=500)
+
+class ReplyReorder(BaseModel):
+    reply_ids: List[int]
+
+class InvitationCreate(BaseModel):
+    to_username: str
+    character_name: Optional[str] = Field(None, max_length=100)
+    message: Optional[str] = None
+
+class ApplicationCreate(BaseModel):
+    character_name: str = Field(..., min_length=1, max_length=100)
+    character_description: Optional[str] = None
+    message: Optional[str] = None
+
+class InvitationRespond(BaseModel):
+    status: str = Field(..., pattern="^(accepted|rejected)$")
+
+class DramaCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1)
+    author_name: Optional[str] = None
+
+# ===================================
+# NOTIFICATION SCHEMAS
+# ===================================
+
+class NotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    type: str
+    title: str
+    message: Optional[str] = None
+    link: Optional[str] = None
+    is_read: bool
+    metadata: Optional[dict] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

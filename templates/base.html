@@ -18,13 +18,12 @@
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
-    
+
     <!-- Animate.css for animations -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
-    
-    <!-- QuillJS CSS -->
-    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
-    
+
+    {% block extra_head %}{% endblock %}
+
     <!-- Meta tags for SEO and social sharing -->
     <meta name="description" content="{% block description %}Calimara - Platforma ta personală de microblogging pentru scriitori și poeți români{% endblock %}">
     <meta property="og:title" content="{% block og_title %}Calimara - Platformă de Microblogging{% endblock %}">
@@ -33,6 +32,8 @@
     <meta name="twitter:card" content="summary_large_image">
 </head>
 <body class="d-flex flex-column min-vh-100">
+    <a href="#main-content" class="visually-hidden-focusable">Skip to content</a>
+
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary-custom sticky-top shadow-sm">
         <div class="container">
@@ -63,7 +64,17 @@
                             </a>
                         </li>
                         {% endif %}
-                        
+
+                        <!-- Piese (Drama) link -->
+                        <li class="nav-item">
+                            <a class="nav-link text-white hover-accent" href="/piese">
+                                <i class="bi bi-mask me-1"></i>Piese
+                            </a>
+                        </li>
+
+                        <!-- Notifications Dropdown -->
+                        {% include 'includes/notification_dropdown.html' %}
+
                         <!-- Messages link (always visible for logged users) -->
                         <li class="nav-item">
                             {% if current_domain == 'calimara.ro' %}
@@ -82,7 +93,7 @@
                                 </a>
                             {% endif %}
                         </li>
-                        
+
                         {% if current_domain == 'calimara.ro' %}
                             <!-- User is on main domain, show link to their microblog -->
                             <li class="nav-item">
@@ -119,7 +130,7 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="flex-grow-1">
+    <main class="flex-grow-1" id="main-content">
         <div class="container my-4">
             {% block content %}{% endblock %}
         </div>
@@ -153,11 +164,8 @@
     </div>
 
     <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-    
-    <!-- QuillJS JavaScript -->
-    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
+
     <!-- Configuration for JavaScript -->
     <script>
         window.CALIMARA_CONFIG = {
@@ -165,11 +173,15 @@
             SUBDOMAIN_SUFFIX: '{{ subdomain_suffix }}'
         };
     </script>
-    
+
     <!-- Custom JS -->
-    <script src="/static/js/script.js"></script>
-    
-    <!-- Set current year -->
-    
+    <script src="/static/js/script.js" defer></script>
+
+    {% if current_user %}
+    <script src="/static/js/notifications.js" defer></script>
+    {% endif %}
+
+    {% block extra_scripts %}{% endblock %}
+
 </body>
 </html>

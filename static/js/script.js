@@ -2,6 +2,12 @@
 // CALIMARA - ENHANCED JAVASCRIPT
 // ===================================
 
+const DEBUG = window.CALIMARA_CONFIG?.DEBUG || false;
+function debugLog(...args) { if (DEBUG) console.log('[Calimara]', ...args); }
+
+// Track intervals for cleanup on page unload
+const _activeIntervals = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     // Set current year
     const currentYearElement = document.getElementById('currentYear');
@@ -109,12 +115,8 @@ function initializeFormHandlers() {
 
     // Logout Button
     const logoutButton = document.getElementById('logoutButton');
-    console.log('Logout button found:', !!logoutButton);
     if (logoutButton) {
-        console.log('Adding logout event listener');
         logoutButton.addEventListener('click', handleLogout);
-    } else {
-        console.log('Logout button not found (normal if not logged in)');
     }
 }
 
@@ -202,7 +204,7 @@ async function handleCreatePost(e) {
             hideSuccess(successDiv);
         }
     } catch (error) {
-        console.error('Create post error:', error);
+        debugLog('Create post error:', error);
         showError(errorDiv, 'A apărut o eroare neașteptată.');
         hideSuccess(successDiv);
     } finally {
@@ -240,7 +242,7 @@ async function handleEditPost(e) {
             hideSuccess(successDiv);
         }
     } catch (error) {
-        console.error('Edit post error:', error);
+        debugLog('Edit post error:', error);
         showError(errorDiv, 'A apărut o eroare neașteptată.');
         hideSuccess(successDiv);
     } finally {
@@ -276,7 +278,7 @@ async function handleSubtitleUpdate(e) {
             hideSuccess(successDiv);
         }
     } catch (error) {
-        console.error('Subtitle update error:', error);
+        debugLog('Subtitle update error:', error);
         showError(errorDiv, 'A apărut o eroare neașteptată la actualizarea setărilor.');
         hideSuccess(successDiv);
     } finally {
@@ -300,20 +302,15 @@ async function handleCommentSubmission(e) {
     if (authorEmail) commentData.author_email = authorEmail;
 
     try {
-        console.log('Submitting comment:', commentData);
-        
         const response = await fetch(`/api/posts/${postId}/comments`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(commentData),
         });
 
-        console.log('Comment response status:', response.status);
         const data = await response.json();
-        console.log('Comment response data:', data);
 
         if (response.ok) {
-            console.log('Comment submitted successfully');
             
             // Check if the comment was flagged for moderation
             if (data.moderation_status === 'flagged') {
@@ -336,11 +333,10 @@ async function handleCommentSubmission(e) {
                 }, 500);
             }
         } else {
-            console.error('Comment submission failed:', data);
             showError(errorDiv, data.detail || 'Trimiterea comentariului a eșuat');
         }
     } catch (error) {
-        console.error('Comment submission error:', error);
+        debugLog('Comment submission error:', error);
         showError(errorDiv, 'A apărut o eroare neașteptată.');
     } finally {
         hideLoadingState(form);
@@ -379,7 +375,7 @@ async function handleLike(e) {
             showToast(data.detail || 'Aprecierea postării a eșuat', 'error');
         }
     } catch (error) {
-        console.error('Like error:', error);
+        debugLog('Like error:', error);
         showToast('A apărut o eroare neașteptată.', 'error');
     } finally {
         setTimeout(() => {
@@ -391,8 +387,7 @@ async function handleLike(e) {
 
 async function handleLogout(e) {
     e.preventDefault();
-    console.log('=== JavaScript Logout Started ===');
-    
+
     // Since logout endpoint now redirects, we can simply navigate to it
     showToast('Se deconectează...', 'info');
     
@@ -416,7 +411,7 @@ async function handleDeletePost(e) {
             showToast(data.detail || 'Ștergerea postării a eșuat', 'error');
         }
     } catch (error) {
-        console.error('Delete post error:', error);
+        debugLog('Delete post error:', error);
         showToast('A apărut o eroare neașteptată.', 'error');
     }
 }
@@ -448,7 +443,7 @@ function showToast(message, type = 'info') {
         <div class="d-flex">
             <div class="toast-body">
                 <i class="bi ${iconClass} me-2"></i>
-                ${message}
+                ${escapeHtml(message)}
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
@@ -664,8 +659,8 @@ if ('IntersectionObserver' in window) {
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('SW registered'))
-            .catch(registrationError => console.log('SW registration failed'));
+            .then(registration => debugLog('SW registered'))
+            .catch(registrationError => debugLog('SW registration failed'));
     });
 }
 
@@ -691,9 +686,9 @@ function initializeMessagesPage() {
             }
         })
         .catch(error => {
-            console.error('Error getting user info:', error);
+            debugLog('Error getting user info:', error);
         });
-    
+
     // Setup messages event listeners
     setupMessagesEventListeners();
 }
@@ -761,7 +756,7 @@ function loadConversations() {
             }
         })
         .catch(error => {
-            console.error('Error loading conversations:', error);
+            debugLog('Error loading conversations:', error);
             const loadingState = document.getElementById('loadingState');
             if (loadingState) {
                 loadingState.innerHTML = `
@@ -788,7 +783,7 @@ function loadUnreadCount() {
             }
         })
         .catch(error => {
-            console.error('Error loading unread count:', error);
+            debugLog('Error loading unread count:', error);
         });
 }
 
@@ -826,16 +821,16 @@ function renderConversations(conversationList) {
                          style="width: 3rem; height: 3rem; object-fit: cover;">
                     <div class="flex-grow-1">
                         <div class="d-flex justify-content-between align-items-start mb-1">
-                            <h6 class="fw-bold mb-0">@${otherUser.username}${unreadBadge}</h6>
+                            <h6 class="fw-bold mb-0">@${escapeHtml(otherUser.username)}${unreadBadge}</h6>
                             <small class="text-muted">
                                 ${latestMessage ? formatTime(latestMessage.created_at) : ''}
                             </small>
                         </div>
-                        ${otherUser.subtitle ? `<p class="text-muted small mb-1">${otherUser.subtitle}</p>` : ''}
+                        ${otherUser.subtitle ? `<p class="text-muted small mb-1">${escapeHtml(otherUser.subtitle)}</p>` : ''}
                         ${latestMessage ? `
                             <p class="text-muted small mb-0">
                                 <i class="bi bi-${latestMessage.sender_id === currentUser.id ? 'arrow-right' : 'arrow-left'} me-1"></i>
-                                ${latestMessage.content}
+                                ${escapeHtml(latestMessage.content)}
                             </p>
                         ` : '<p class="text-muted small mb-0">Niciun mesaj încă</p>'}
                     </div>
@@ -858,7 +853,7 @@ function searchConversationsFunc(query) {
             renderConversations(data.conversations);
         })
         .catch(error => {
-            console.error('Error searching conversations:', error);
+            debugLog('Error searching conversations:', error);
         });
 }
 
@@ -869,7 +864,7 @@ function searchUsers(query) {
             showUserSuggestions(data);
         })
         .catch(error => {
-            console.error('Error searching users:', error);
+            debugLog('Error searching users:', error);
         });
 }
 
@@ -891,8 +886,8 @@ function showUserSuggestions(users) {
                      class="rounded-circle me-2" 
                      style="width: 2rem; height: 2rem; object-fit: cover;">
                 <div>
-                    <div class="fw-medium">@${user.username}</div>
-                    ${user.subtitle ? `<small class="text-muted">${user.subtitle}</small>` : ''}
+                    <div class="fw-medium">@${escapeHtml(user.username)}</div>
+                    ${user.subtitle ? `<small class="text-muted">${escapeHtml(user.subtitle)}</small>` : ''}
                 </div>
             </div>
         </div>
@@ -959,7 +954,7 @@ function sendNewMessage() {
             }
         })
         .catch(error => {
-            console.error('Error sending message:', error);
+            debugLog('Error sending message:', error);
             showToast('Eroare la trimiterea mesajului', 'danger');
         });
 }
@@ -988,7 +983,7 @@ function initializeConversationPage(convId) {
             }
         })
         .catch(error => {
-            console.error('Error getting user info:', error);
+            debugLog('Error getting user info:', error);
         });
     
     setupConversationEventListeners();
@@ -1054,7 +1049,7 @@ function loadConversation() {
             isLoadingMessages = false;
         })
         .catch(error => {
-            console.error('Error loading conversation:', error);
+            debugLog('Error loading conversation:', error);
             const loadingMessages = document.getElementById('loadingMessages');
             if (loadingMessages) {
                 loadingMessages.innerHTML = `
@@ -1081,8 +1076,8 @@ function renderConversationHeader() {
                  class="rounded-circle me-3" 
                  style="width: 3rem; height: 3rem; object-fit: cover;">
             <div>
-                <h5 class="fw-bold mb-0">@${otherUser.username}</h5>
-                ${otherUser.subtitle ? `<small class="text-muted">${otherUser.subtitle}</small>` : ''}
+                <h5 class="fw-bold mb-0">@${escapeHtml(otherUser.username)}</h5>
+                ${otherUser.subtitle ? `<small class="text-muted">${escapeHtml(otherUser.subtitle)}</small>` : ''}
             </div>
         </div>
     `;
@@ -1174,7 +1169,7 @@ function sendMessage() {
             }
         })
         .catch(error => {
-            console.error('Error sending message:', error);
+            debugLog('Error sending message:', error);
             showToast('Eroare la trimiterea mesajului', 'danger');
         })
         .finally(() => {
@@ -1199,7 +1194,7 @@ function deleteConversation() {
             }, 1000);
         })
         .catch(error => {
-            console.error('Error deleting conversation:', error);
+            debugLog('Error deleting conversation:', error);
             showToast('Eroare la ștergerea conversației', 'danger');
         });
 }
@@ -1327,7 +1322,7 @@ function setupSendMessage() {
                 }
             })
             .catch(error => {
-                console.error('Error sending message:', error);
+                debugLog('Error sending message:', error);
                 showToast('Eroare la trimiterea mesajului', 'danger');
             })
             .finally(() => {
@@ -1398,7 +1393,7 @@ function loadUnreadMessageCount() {
             }
         })
         .catch(error => {
-            console.error('Error loading unread count:', error);
+            debugLog('Error loading unread count:', error);
         });
 }
 
@@ -1437,7 +1432,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Only load messages on main domain or check if this is the user's own subdomain
         if (isMainDomain) {
             loadUnreadMessageCount();
-            setInterval(loadUnreadMessageCount, 30000);
+            _activeIntervals.push(setInterval(loadUnreadMessageCount, 30000));
         } else if (isOwnSubdomain) {
             // For subdomains, we need to verify this is the user's own subdomain
             // We'll check this via an API call to prevent unauthorized access
@@ -1448,13 +1443,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         const subdomain = currentDomain.replace(window.CALIMARA_CONFIG.SUBDOMAIN_SUFFIX, '');
                         if (data.user.username === subdomain) {
                             loadUnreadMessageCount();
-                            setInterval(loadUnreadMessageCount, 30000);
+                            _activeIntervals.push(setInterval(loadUnreadMessageCount, 30000));
                         }
                         // If not their own subdomain, don't load any message data
                     }
                 })
                 .catch(error => {
-                    console.error('Error verifying user subdomain access:', error);
+                    debugLog('Error verifying user subdomain access:', error);
                     // On error, don't load message data for security
                 });
         }
@@ -1472,3 +1467,9 @@ window.openConversation = openConversation;
 window.selectUser = selectUser;
 window.deleteConversation = deleteConversation;
 window.copyToClipboard = copyToClipboard;
+
+// Clean up intervals on page unload to prevent memory leaks
+window.addEventListener('beforeunload', () => {
+    _activeIntervals.forEach(id => clearInterval(id));
+    _activeIntervals.length = 0;
+});

@@ -1,3 +1,9 @@
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     loadModerationStats();
     loadPendingContent();
@@ -52,7 +58,9 @@ function loadModerationStats() {
             document.getElementById('suspendedCount').innerHTML = `<i class="bi bi-person-x"></i> ${data.suspended_count}`;
             document.getElementById('todayActions').innerHTML = `<i class="bi bi-check-circle"></i> ${data.today_actions}`;
         })
-        .catch(error => console.error('Error loading stats:', error));
+        .catch(error => {
+            console.error('Error loading moderation stats:', error);
+        });
 }
 
 function loadPendingContent() {
@@ -62,7 +70,9 @@ function loadPendingContent() {
         .then(data => {
             renderContentQueue(data.content, 'pendingContent');
         })
-        .catch(error => console.error('Error loading pending content:', error));
+        .catch(error => {
+            console.error('Error loading pending content:', error);
+        });
 }
 
 function loadFlaggedContent() {
@@ -71,7 +81,9 @@ function loadFlaggedContent() {
         .then(data => {
             renderContentQueue(data.content, 'flaggedContent');
         })
-        .catch(error => console.error('Error loading flagged content:', error));
+        .catch(error => {
+            console.error('Error loading flagged content:', error);
+        });
 }
 
 function renderContentQueue(content, containerId) {
@@ -96,29 +108,29 @@ function renderContentQueue(content, containerId) {
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
                     <span class="badge bg-${item.type === 'post' ? 'primary' : 'secondary'}">${item.type.toUpperCase()}</span>
-                    <span class="text-muted ms-2">by @${item.author}</span>
-                    <span class="badge bg-${statusColor} ms-2">${item.moderation_status.toUpperCase()}</span>
+                    <span class="text-muted ms-2">by @${escapeHtml(item.author)}</span>
+                    <span class="badge bg-${statusColor} ms-2">${escapeHtml(item.moderation_status.toUpperCase())}</span>
                     ${item.toxicity_score !== null ? `<span class="badge bg-${toxicityColor} ms-2">AI Score: ${(item.toxicity_score * 100).toFixed(1)}%</span>` : ''}
                 </div>
                 <div class="btn-group">
-                    <button class="btn btn-success btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'approve')" title="Approve Content">
+                    <button class="btn btn-success btn-sm" onclick="moderateContent(${item.id}, '${escapeHtml(item.type)}', 'approve')" title="Approve Content">
                         <i class="bi bi-check"></i> Approve
                     </button>
-                    <button class="btn btn-danger btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'reject')" title="Reject Content">
+                    <button class="btn btn-danger btn-sm" onclick="moderateContent(${item.id}, '${escapeHtml(item.type)}', 'reject')" title="Reject Content">
                         <i class="bi bi-x"></i> Reject
                     </button>
-                    <button class="btn btn-outline-danger btn-sm" onclick="moderateContent(${item.id}, '${item.type}', 'delete')" title="Delete Content">
+                    <button class="btn btn-outline-danger btn-sm" onclick="moderateContent(${item.id}, '${escapeHtml(item.type)}', 'delete')" title="Delete Content">
                         <i class="bi bi-trash"></i>
                     </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="viewContent(${item.id}, '${item.type}')" title="View Full Content">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="viewContent(${item.id}, '${escapeHtml(item.type)}')" title="View Full Content">
                         <i class="bi bi-eye"></i>
                     </button>
                 </div>
             </div>
             <div class="card-body">
-                ${item.title ? `<h6 class="card-title">${item.title}</h6>` : ''}
-                <p class="card-text">${item.content.substring(0, 200)}${item.content.length > 200 ? '...' : ''}</p>
-                ${item.moderation_reason ? `<div class="alert alert-light p-2 mt-2"><small><strong>AI Reason:</strong> ${item.moderation_reason}</small></div>` : ''}
+                ${item.title ? `<h6 class="card-title">${escapeHtml(item.title)}</h6>` : ''}
+                <p class="card-text">${escapeHtml(item.content.substring(0, 200))}${item.content.length > 200 ? '...' : ''}</p>
+                ${item.moderation_reason ? `<div class="alert alert-light p-2 mt-2"><small><strong>AI Reason:</strong> ${escapeHtml(item.moderation_reason)}</small></div>` : ''}
                 <small class="text-muted">
                     <i class="bi bi-clock"></i> ${new Date(item.created_at).toLocaleString()}
                 </small>
@@ -150,7 +162,6 @@ function moderateContent(id, type, action) {
         }
     })
     .catch(error => {
-        console.error('Error moderating content:', error);
         showToast('Error performing action', 'danger');
     });
 }
@@ -170,8 +181,8 @@ function loadUsers() {
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <h6 class="card-title mb-1">${user.username}</h6>
-                                <small class="text-muted">${user.email}</small>
+                                <h6 class="card-title mb-1">${escapeHtml(user.username)}</h6>
+                                <small class="text-muted">${escapeHtml(user.email)}</small>
                                 ${user.is_admin ? '<span class="badge bg-danger ms-2">Admin</span>' : ''}
                                 ${user.is_moderator ? '<span class="badge bg-warning ms-2">Moderator</span>' : ''}
                                 ${user.is_suspended ? '<span class="badge bg-secondary ms-2">Suspended</span>' : ''}
@@ -186,7 +197,9 @@ function loadUsers() {
             
             container.innerHTML = html;
         })
-        .catch(error => console.error('Error loading users:', error));
+        .catch(error => {
+            console.error('Error loading users:', error);
+        });
 }
 
 function loadAnalytics() {
@@ -232,7 +245,7 @@ function loadAIQueue() {
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
                                 <span class="badge bg-warning text-dark">${item.content_type.toUpperCase()}</span>
-                                <strong>${content.title || (content.post_title ? 'Comment on: ' + content.post_title : 'Comment')}</strong>
+                                <strong>${escapeHtml(content.title || (content.post_title ? 'Comment on: ' + content.post_title : 'Comment'))}</strong>
                             </div>
                             <div>
                                 <span class="badge bg-danger">Toxicitate: ${(analysis.toxicity_score || 0).toFixed(2)}</span>
@@ -246,11 +259,11 @@ function loadAIQueue() {
                         </div>
                     </div>
                     <div class="card-body">
-                        <p class="card-text">${content.content}</p>
+                        <p class="card-text">${escapeHtml(content.content)}</p>
                         <div class="row mt-3">
                             <div class="col-md-6">
                                 <small class="text-muted">
-                                    <strong>Autor:</strong> ${content.author}<br>
+                                    <strong>Autor:</strong> ${escapeHtml(content.author)}<br>
                                     <strong>Data:</strong> ${new Date(content.created_at).toLocaleString()}
                                 </small>
                             </div>
@@ -265,7 +278,7 @@ function loadAIQueue() {
                                 </div>
                             </div>
                         </div>
-                        ${analysis.reason ? `<div class="alert alert-warning p-2 mt-2"><small><strong>Motiv AI:</strong> ${analysis.reason}</small></div>` : ''}
+                        ${analysis.reason ? `<div class="alert alert-warning p-2 mt-2"><small><strong>Motiv AI:</strong> ${escapeHtml(analysis.reason)}</small></div>` : ''}
                     </div>
                 </div>
                 `;
@@ -274,7 +287,6 @@ function loadAIQueue() {
             container.innerHTML = html;
         })
         .catch(error => {
-            console.error('Error loading AI queue:', error);
             document.getElementById('aiQueue').innerHTML = '<div class="alert alert-danger">Error loading AI review queue</div>';
         });
 }
@@ -325,16 +337,16 @@ function loadAILogs(decision = 'all') {
                                         <i class="bi bi-${icon}"></i> ${log.ai_decision.toUpperCase()}
                                     </span>
                                     <span class="badge bg-secondary me-2">${log.content_type.toUpperCase()}</span>
-                                    <strong class="me-2">${log.content_title}</strong>
-                                    ${log.human_decision ? `<span class="badge bg-info">Human: ${log.human_decision}</span>` : ''}
+                                    <strong class="me-2">${escapeHtml(log.content_title)}</strong>
+                                    ${log.human_decision ? `<span class="badge bg-info">Human: ${escapeHtml(log.human_decision)}</span>` : ''}
                                 </div>
-                                <p class="mb-1 text-muted small">${log.content_preview}</p>
+                                <p class="mb-1 text-muted small">${escapeHtml(log.content_preview)}</p>
                                 <div class="row">
                                     <div class="col-md-8">
                                         <small class="text-muted">
-                                            <strong>Autor:</strong> ${log.content_author} | 
+                                            <strong>Autor:</strong> ${escapeHtml(log.content_author)} |
                                             <strong>Data:</strong> ${new Date(log.created_at).toLocaleString()}
-                                            ${log.moderator ? ` | <strong>Moderat de:</strong> ${log.moderator}` : ''}
+                                            ${log.moderator ? ` | <strong>Moderat de:</strong> ${escapeHtml(log.moderator)}` : ''}
                                         </small>
                                     </div>
                                     <div class="col-md-4 text-end">
@@ -343,8 +355,8 @@ function loadAILogs(decision = 'all') {
                                         </small>
                                     </div>
                                 </div>
-                                ${log.ai_reason ? `<div class="mt-1"><small class="text-info"><strong>AI:</strong> ${log.ai_reason}</small></div>` : ''}
-                                ${log.human_reason ? `<div class="mt-1"><small class="text-primary"><strong>Human:</strong> ${log.human_reason}</small></div>` : ''}
+                                ${log.ai_reason ? `<div class="mt-1"><small class="text-info"><strong>AI:</strong> ${escapeHtml(log.ai_reason)}</small></div>` : ''}
+                                ${log.human_reason ? `<div class="mt-1"><small class="text-primary"><strong>Human:</strong> ${escapeHtml(log.human_reason)}</small></div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -355,7 +367,6 @@ function loadAILogs(decision = 'all') {
             container.innerHTML = html;
         })
         .catch(error => {
-            console.error('Error loading AI logs:', error);
             document.getElementById('aiLogs').innerHTML = '<div class="alert alert-danger">Error loading AI logs</div>';
         });
 }
@@ -380,7 +391,6 @@ function reviewContent(logId, decision) {
         }
     })
     .catch(error => {
-        console.error('Error reviewing content:', error);
         showToast('Eroare la procesarea acțiunii', 'danger');
     });
 }
@@ -394,15 +404,12 @@ function testAIModeration() {
         .then(response => response.json())
         .then(data => {
             if (data.ai_working) {
-                showToast('AI Moderation is working! Check console for details.', 'success');
-                console.log('AI Moderation Test Results:', data);
+                showToast('AI Moderation is working!', 'success');
             } else {
                 showToast(`AI Moderation failed: ${data.error}`, 'danger');
-                console.error('AI Moderation Test Failed:', data);
             }
         })
         .catch(error => {
-            console.error('Test failed:', error);
             showToast('Test request failed. Check if you have admin access.', 'danger');
         })
         .finally(() => {

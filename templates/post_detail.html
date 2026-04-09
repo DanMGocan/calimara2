@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ post.title }} - @{{ blog_owner.username }} - Calimara{% endblock %}
-{% block description %}{{ post.content[:150] }}...{% endblock %}
+{% block description %}{{ post.content|striptags|truncate(150) }}{% endblock %}
 
 {% block content %}
 <!-- Blog Header -->
@@ -49,69 +49,7 @@
                 </div>
             </div>
 
-            <!-- Social Media and Donation Buttons - Always Visible -->
-            <div class="social-donation-section mb-3">
-                <div class="d-flex flex-wrap gap-2 align-items-center">
-                    {% if blog_owner.facebook_url %}
-                        <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn social-icon-btn" style="background-color: #1877F2; border-color: #1877F2; color: white;" data-bs-toggle="tooltip" title="Facebook">
-                            <i class="bi bi-facebook"></i>
-                        </a>
-                    {% else %}
-                        <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                            <i class="bi bi-facebook"></i>
-                        </span>
-                    {% endif %}
-                    {% if blog_owner.tiktok_url %}
-                        <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="TikTok">
-                            <i class="bi bi-tiktok"></i>
-                        </a>
-                    {% else %}
-                        <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                            <i class="bi bi-tiktok"></i>
-                        </span>
-                    {% endif %}
-                    {% if blog_owner.instagram_url %}
-                        <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger social-icon-btn" data-bs-toggle="tooltip" title="Instagram">
-                            <i class="bi bi-instagram"></i>
-                        </a>
-                    {% else %}
-                        <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                            <i class="bi bi-instagram"></i>
-                        </span>
-                    {% endif %}
-                    {% if blog_owner.x_url %}
-                        <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="X">
-                            <i class="bi bi-twitter-x"></i>
-                        </a>
-                    {% else %}
-                        <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                            <i class="bi bi-twitter-x"></i>
-                        </span>
-                    {% endif %}
-                    {% if blog_owner.bluesky_url %}
-                        <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info social-icon-btn" data-bs-toggle="tooltip" title="BlueSky">
-                            <i class="bi bi-bluesky"></i>
-                        </a>
-                    {% else %}
-                        <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                            <i class="bi bi-bluesky"></i>
-                        </span>
-                    {% endif %}
-                    
-                    <!-- Coffee Button - Same line but with text -->
-                    <div class="ms-2">
-                        {% if blog_owner.buymeacoffee_url %}
-                            <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn" data-bs-toggle="tooltip" title="Cumpără-mi o cafea!">
-                                <i class="bi bi-cup-hot"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary coffee-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-cup-hot"></i>
-                            </span>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+            {% include 'includes/_social_buttons.html' %}
         </div>
     </div>
 </div>
@@ -173,7 +111,7 @@
                     </button>
                     <span class="text-muted">
                         <i class="bi bi-chat me-1"></i>
-                        {{ post.comments|length }} comentarii
+                        {{ post.approved_comments|length }} comentarii
                     </span>
                 </div>
                 
@@ -194,17 +132,18 @@
         <div class="blog-card mt-4 animate__animated animate__fadeInUp">
             <h5 class="fw-bold mb-4">
                 <i class="bi bi-chat-dots me-2"></i>
-                Comentarii ({{ post.comments|length }})
+                Comentarii ({{ post.approved_comments|length }})
             </h5>
 
-            {% if post.comments %}
-                {% for comment in post.comments %}
+            {% if post.approved_comments %}
+                {% for comment in post.approved_comments %}
                     <div class="comment-item mb-4 pb-4{% if not loop.last %} border-bottom{% endif %}">
                         <div class="d-flex align-items-start">
                             {% if comment.commenter %}
-                                <img src="{{ get_avatar_url(comment.commenter, 40) }}" 
-                                     alt="Avatar {{ comment.commenter.username }}" 
-                                     class="rounded-circle me-3" style="width: 2.5rem; height: 2.5rem;">
+                                <img src="{{ get_avatar_url(comment.commenter, 40) }}"
+                                     alt="Avatar {{ comment.commenter.username }}"
+                                     class="rounded-circle me-3" style="width: 2.5rem; height: 2.5rem;"
+                                     loading="lazy">
                             {% else %}
                                 <div class="bg-light rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 2.5rem; height: 2.5rem;">
                                     <i class="bi bi-person text-muted"></i>
@@ -222,7 +161,7 @@
                                 <small class="text-muted mb-2 d-block">
                                     {{ comment.created_at.strftime('%d %B %Y, %H:%M') }}
                                 </small>
-                                <p class="mb-0">{{ comment.content }}</p>
+                                <p class="mb-0">{{ comment.content|e }}</p>
                             </div>
                         </div>
                     </div>
@@ -311,8 +250,9 @@
                 {% for other_post in other_authors_posts %}
                     <div class="related-post-item mb-3{% if not loop.last %} pb-3 border-bottom{% endif %}">
                         <div class="d-flex align-items-start">
-                            <img src="{{ get_avatar_url(other_post.owner, 32) }}" 
-                                 alt="Avatar {{ other_post.owner.username }}" class="avatar avatar-sm me-2 mt-1">
+                            <img src="{{ get_avatar_url(other_post.owner, 32) }}"
+                                 alt="Avatar {{ other_post.owner.username }}" class="avatar avatar-sm me-2 mt-1"
+                                 loading="lazy">
                             <div class="flex-grow-1">
                                 <h6 class="mb-1">
                                     <a href="//{{ other_post.owner.username }}.calimara.ro/{{ other_post.slug }}" 
@@ -348,8 +288,9 @@
                 {% for author in other_authors %}
                     <div class="author-item mb-3{% if not loop.last %} pb-3 border-bottom{% endif %}">
                         <div class="d-flex align-items-center">
-                            <img src="{{ get_avatar_url(author, 40) }}" 
-                                 alt="Avatar {{ author.username }}" class="avatar avatar-md me-3">
+                            <img src="{{ get_avatar_url(author, 40) }}"
+                                 alt="Avatar {{ author.username }}" class="avatar avatar-md me-3"
+                                 loading="lazy">
                             <div class="flex-grow-1">
                                 <h6 class="mb-1">
                                     <a href="//{{ author.username }}.calimara.ro" 
@@ -384,7 +325,7 @@
             </div>
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span>Total comentarii:</span>
-                <span class="fw-bold">{{ post.comments|length }}</span>
+                <span class="fw-bold">{{ post.approved_comments|length }}</span>
             </div>
             <div class="d-flex justify-content-between align-items-center">
                 <span>Total aprecieri:</span>

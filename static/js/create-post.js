@@ -41,7 +41,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // Toast notification function
     function showToast(message, type = 'info') {
         // Simple alert fallback - could be enhanced with proper toast UI later
-        console.log(`${type.toUpperCase()}: ${message}`);
     }
     
     // Tags functionality
@@ -219,7 +218,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 window.quill.root.innerHTML = data.content;
                 contentInput.value = data.content;
             } catch (e) {
-                console.error('Error loading saved content:', e);
+                // Failed to load saved content, starting fresh
             }
         }
         

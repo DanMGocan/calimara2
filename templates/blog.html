@@ -62,78 +62,7 @@
                     <p class="lead text-muted mb-3">Bun venit pe microblogul meu!</p>
                 {% endif %}
 
-                <!-- Social Media and Donation Buttons -->
-                <div class="social-donation-section mb-3">
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <!-- Facebook -->
-                        {% if blog_owner.facebook_url %}
-                            <a href="{{ blog_owner.facebook_url }}" target="_blank" class="btn social-icon-btn" style="background-color: #1877F2; border-color: #1877F2; color: white;" data-bs-toggle="tooltip" title="Facebook">
-                                <i class="bi bi-facebook"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-facebook"></i>
-                            </span>
-                        {% endif %}
-                        
-                        <!-- TikTok -->
-                        {% if blog_owner.tiktok_url %}
-                            <a href="{{ blog_owner.tiktok_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="TikTok">
-                                <i class="bi bi-tiktok"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-tiktok"></i>
-                            </span>
-                        {% endif %}
-                        
-                        <!-- Instagram -->
-                        {% if blog_owner.instagram_url %}
-                            <a href="{{ blog_owner.instagram_url }}" target="_blank" class="btn btn-danger social-icon-btn" data-bs-toggle="tooltip" title="Instagram">
-                                <i class="bi bi-instagram"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-instagram"></i>
-                            </span>
-                        {% endif %}
-                        
-                        <!-- X (Twitter) -->
-                        {% if blog_owner.x_url %}
-                            <a href="{{ blog_owner.x_url }}" target="_blank" class="btn btn-dark social-icon-btn" data-bs-toggle="tooltip" title="X">
-                                <i class="bi bi-twitter-x"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-twitter-x"></i>
-                            </span>
-                        {% endif %}
-                        
-                        <!-- BlueSky -->
-                        {% if blog_owner.bluesky_url %}
-                            <a href="{{ blog_owner.bluesky_url }}" target="_blank" class="btn btn-info social-icon-btn" data-bs-toggle="tooltip" title="BlueSky">
-                                <i class="bi bi-bluesky"></i>
-                            </a>
-                        {% else %}
-                            <span class="btn btn-secondary social-icon-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                <i class="bi bi-bluesky"></i>
-                            </span>
-                        {% endif %}
-                        
-                        <!-- Coffee Button -->
-                        <div class="ms-2">
-                            {% if blog_owner.buymeacoffee_url %}
-                                <a href="{{ blog_owner.buymeacoffee_url }}" target="_blank" class="btn btn-warning coffee-btn" data-bs-toggle="tooltip" title="Cumpără-mi o cafea!">
-                                    <i class="bi bi-cup-hot"></i>
-                                </a>
-                            {% else %}
-                                <span class="btn btn-secondary coffee-btn disabled" data-bs-toggle="tooltip" title="Deținătorul de călimară nu a adăugat încă un link pentru această platformă">
-                                    <i class="bi bi-cup-hot"></i>
-                                </span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
+                {% include 'includes/_social_buttons.html' %}
             </div>
         </div>
     </div>
@@ -169,7 +98,7 @@
                                                 <i class="bi bi-heart me-1"></i>{{ post.likes_count }}
                                             </small>
                                             <small class="text-muted">
-                                                <i class="bi bi-chat-dots me-1"></i>{{ post.comments|length }}
+                                                <i class="bi bi-chat-dots me-1"></i>{{ post.approved_comments|length }}
                                             </small>
                                         </div>
                                     </div>
@@ -209,10 +138,11 @@
                         {% for friendship in best_friends %}
                             <a href="//{{ friendship.friend.username }}.calimara.ro" class="text-decoration-none">
                                 <div class="friend-card p-3 rounded border hover-lift d-flex align-items-center">
-                                    <img src="{{ get_avatar_url(friendship.friend, 45) }}" 
-                                         alt="Avatar {{ friendship.friend.username }}" 
-                                         class="rounded-circle me-3" 
-                                         style="width: 2.8rem; height: 2.8rem; object-fit: cover;">
+                                    <img src="{{ get_avatar_url(friendship.friend, 45) }}"
+                                         alt="Avatar {{ friendship.friend.username }}"
+                                         class="rounded-circle me-3"
+                                         style="width: 2.8rem; height: 2.8rem; object-fit: cover;"
+                                         loading="lazy">
                                     <div class="flex-grow-1">
                                         <h6 class="fw-semibold mb-1 text-dark">@{{ friendship.friend.username }}</h6>
                                         {% if friendship.friend.subtitle %}
@@ -319,6 +249,49 @@
         </div>
     </div>
 </div>
+
+<!-- Dramas Section -->
+{% if user_dramas %}
+<div class="blog-card mb-4">
+    <div class="blog-card-header">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-mask me-2 fs-5"></i>
+                <h5 class="fw-bold mb-0">Piese de teatru:</h5>
+            </div>
+            <a href="/piese" class="btn btn-outline-light btn-sm">
+                <i class="bi bi-collection me-1"></i>Vezi toate piesele
+            </a>
+        </div>
+    </div>
+    <div class="blog-card-body">
+        <div class="d-flex flex-column gap-3">
+            {% for drama in user_dramas %}
+            <a href="/piese/{{ drama.slug }}" class="text-decoration-none">
+                <div class="p-3 rounded border hover-lift d-flex align-items-center justify-content-between">
+                    <div>
+                        <h6 class="fw-bold mb-1 text-dark">{{ drama.title }}</h6>
+                        <div class="d-flex align-items-center gap-2">
+                            {% if drama.status == 'in_progress' %}
+                                <span class="badge bg-success" style="font-size: 0.7rem;">In desfasurare</span>
+                            {% elif drama.status == 'completed' %}
+                                <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">Finalizata</span>
+                            {% else %}
+                                <span class="badge bg-secondary" style="font-size: 0.7rem;">Draft</span>
+                            {% endif %}
+                            <small class="text-muted">
+                                <i class="bi bi-people me-1"></i>{{ drama.characters|length }} personaje
+                            </small>
+                        </div>
+                    </div>
+                    <i class="bi bi-arrow-right text-muted"></i>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Posts Table -->
 <div class="blog-card">

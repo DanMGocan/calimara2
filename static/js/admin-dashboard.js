@@ -327,12 +327,20 @@ async function searchFriends(query, resultsDiv, inputElement) {
             return;
         }
         
-        resultsDiv.innerHTML = users.map(user => `
-            <div class="search-result-item" onclick="selectFriend('${user.username}', '${inputElement.id}')">
-                <strong>@${user.username}</strong>
-                ${user.subtitle ? `<br><small class="text-muted">${user.subtitle}</small>` : ''}
+        resultsDiv.innerHTML = users.map(user => {
+            const safeUsername = user.username.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const div = document.createElement('div');
+            div.textContent = user.username;
+            const escapedUsername = div.innerHTML;
+            div.textContent = user.subtitle || '';
+            const escapedSubtitle = div.innerHTML;
+            return `
+            <div class="search-result-item" onclick="selectFriend('${safeUsername}', '${inputElement.id}')">
+                <strong>@${escapedUsername}</strong>
+                ${user.subtitle ? `<br><small class="text-muted">${escapedSubtitle}</small>` : ''}
             </div>
-        `).join('');
+        `;
+        }).join('');
         
     } catch (error) {
         console.error('Error searching friends:', error);

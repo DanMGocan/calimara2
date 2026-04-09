@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if is_discovery %}Piese de Teatru - Calimara{% else %}Piesele lui @{{ blog_owner.username }} - Calimara{% endif %}
+{% endblock %}
+{% block description %}
+{% if is_discovery %}Descopera piese de teatru colaborative pe Calimara{% else %}Piesele de teatru ale lui {{ blog_owner.username }} pe Calimara{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if is_discovery %}
+<!-- Discovery: Main Domain Drama List -->
+<div class="text-center mb-5 animate__animated animate__fadeIn">
+    <div class="bg-primary-custom text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-4" style="width: 5rem; height: 5rem;">
+        <i class="bi bi-mask display-6"></i>
+    </div>
+    <h1 class="display-5 fw-bold mb-3">Piese de Teatru</h1>
+    <p class="lead text-muted">Descopera piese colaborative scrise de comunitatea Calimara</p>
+</div>
+
+<!-- Status Filter Buttons -->
+<div class="d-flex justify-content-center gap-2 mb-5 flex-wrap">
+    <a href="/piese" class="btn btn-sm {% if not status_filter %}btn-primary-custom{% else %}btn-outline-secondary{% endif %}">
+        <i class="bi bi-collection me-1"></i>Toate
+    </a>
+    <a href="/piese?status_filter=in_progress" class="btn btn-sm {% if status_filter == 'in_progress' %}btn-success{% else %}btn-outline-success{% endif %}">
+        <i class="bi bi-play-circle me-1"></i>In desfasurare
+    </a>
+    <a href="/piese?status_filter=completed" class="btn btn-sm {% if status_filter == 'completed' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+        <i class="bi bi-check-circle me-1"></i>Finalizate
+    </a>
+</div>
+
+{% if current_user %}
+<div class="text-center mb-4">
+    <a href="//{{ current_user.username }}{{ SUBDOMAIN_SUFFIX }}/piese/creeaza" class="btn btn-primary-custom btn-lg hover-lift">
+        <i class="bi bi-plus-circle me-2"></i>Creeaza o Piesa Noua
+    </a>
+</div>
+{% endif %}
+
+{% if dramas %}
+<div class="row g-4">
+    {% for drama in dramas %}
+    <div class="col-md-6 col-lg-4 animate__animated animate__fadeInUp">
+        <div class="card border-0 shadow-sm h-100 hover-lift drama-card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="card-title fw-bold mb-0">
+                        <a href="/piese/{{ drama.slug }}" class="text-decoration-none text-dark">
+                            {{ drama.title }}
+                        </a>
+                    </h5>
+                    {% if drama.status == 'in_progress' %}
+                        <span class="badge bg-success ms-2 flex-shrink-0">In desfasurare</span>
+                    {% elif drama.status == 'completed' %}
+                        <span class="badge bg-warning text-dark ms-2 flex-shrink-0">Finalizata</span>
+                    {% else %}
+                        <span class="badge bg-secondary ms-2 flex-shrink-0">Draft</span>
+                    {% endif %}
+                </div>
+
+                {% if drama.description %}
+                <p class="card-text text-muted small mb-3">
+                    {{ drama.description[:120] }}{% if drama.description|length > 120 %}...{% endif %}
+                </p>
+                {% endif %}
+
+                <div class="d-flex align-items-center mb-3">
+                    <img src="{{ get_avatar_url(drama.owner, 32) }}"
+                         alt="Avatar {{ drama.owner.username }}"
+                         class="rounded-circle me-2"
+                         style="width: 2rem; height: 2rem; object-fit: cover;"
+                         loading="lazy">
+                    <a href="//{{ drama.owner.username }}.calimara.ro" class="text-decoration-none text-muted small fw-semibold">
+                        @{{ drama.owner.username }}
+                    </a>
+                </div>
+
+                <div class="d-flex align-items-center gap-3 text-muted small">
+                    <span>
+                        <i class="bi bi-people me-1"></i>{{ drama.characters|length }} personaje
+                    </span>
+                    <span>
+                        <i class="bi bi-heart me-1"></i>{{ drama.likes_count }}
+                    </span>
+                    <span>
+                        <i class="bi bi-eye me-1"></i>{{ drama.view_count }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-0 pt-0 pb-3 px-4">
+                <a href="/piese/{{ drama.slug }}" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-book me-1"></i>Citeste Piesa
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-mask display-1 mb-4"></i>
+    <h4 class="fw-bold mb-3">Nicio piesa gasita</h4>
+    <p class="mb-3">
+        {% if status_filter %}
+            Nu exista piese cu statusul selectat.
+            <a href="/piese" class="ms-1">Vezi toate piesele</a>
+        {% else %}
+            Inca nu a fost creata nicio piesa pe Calimara. Fii primul!
+        {% endif %}
+    </p>
+    {% if current_user %}
+    <a href="//{{ current_user.username }}{{ SUBDOMAIN_SUFFIX }}/piese/creeaza" class="btn btn-primary-custom">
+        <i class="bi bi-plus-circle me-2"></i>Creeaza Prima Piesa
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<!-- Subdomain: Blog Owner's Dramas -->
+<div class="d-flex align-items-center justify-content-between mb-4 animate__animated animate__fadeIn">
+    <div>
+        <h2 class="fw-bold mb-1">
+            <i class="bi bi-mask me-2 text-primary"></i>Piesele lui @{{ blog_owner.username }}
+        </h2>
+        <p class="text-muted mb-0">Piese de teatru create si la care participa {{ blog_owner.username }}</p>
+    </div>
+    {% if current_user and current_user.username == blog_owner.username %}
+    <a href="/piese/creeaza" class="btn btn-primary-custom">
+        <i class="bi bi-plus-circle me-2"></i>Creeaza o Piesa Noua
+    </a>
+    {% endif %}
+</div>
+
+<!-- Own Dramas -->
+{% if dramas %}
+<h5 class="fw-bold mb-3">
+    <i class="bi bi-person-badge me-2"></i>Piese Proprii
+</h5>
+<div class="row g-4 mb-5">
+    {% for drama in dramas %}
+    <div class="col-md-6 col-lg-4 animate__animated animate__fadeInUp">
+        <div class="card border-0 shadow-sm h-100 hover-lift drama-card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="card-title fw-bold mb-0">
+                        <a href="/piese/{{ drama.slug }}" class="text-decoration-none text-dark">
+                            {{ drama.title }}
+                        </a>
+                    </h5>
+                    {% if drama.status == 'in_progress' %}
+                        <span class="badge bg-success ms-2 flex-shrink-0">In desfasurare</span>
+                    {% elif drama.status == 'completed' %}
+                        <span class="badge bg-warning text-dark ms-2 flex-shrink-0">Finalizata</span>
+                    {% else %}
+                        <span class="badge bg-secondary ms-2 flex-shrink-0">Draft</span>
+                    {% endif %}
+                </div>
+
+                {% if drama.description %}
+                <p class="card-text text-muted small mb-3">
+                    {{ drama.description[:100] }}{% if drama.description|length > 100 %}...{% endif %}
+                </p>
+                {% endif %}
+
+                <div class="d-flex align-items-center gap-3 text-muted small">
+                    <span>
+                        <i class="bi bi-people me-1"></i>{{ drama.characters|length }} personaje
+                    </span>
+                    <span>
+                        <i class="bi bi-heart me-1"></i>{{ drama.likes_count }}
+                    </span>
+                    <span>
+                        <i class="bi bi-eye me-1"></i>{{ drama.view_count }}
+                    </span>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-0 pt-0 pb-3 px-4">
+                <div class="d-flex gap-2">
+                    <a href="/piese/{{ drama.slug }}" class="btn btn-outline-primary btn-sm flex-grow-1">
+                        <i class="bi bi-book me-1"></i>Citeste
+                    </a>
+                    {% if current_user and current_user.username == blog_owner.username %}
+                    <a href="/piese/{{ drama.slug }}/gestioneaza" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-gear"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-4 text-muted mb-5">
+    <i class="bi bi-mask display-4 mb-3"></i>
+    <p class="mb-2">
+        {% if current_user and current_user.username == blog_owner.username %}
+            Nu ai creat inca nicio piesa.
+        {% else %}
+            {{ blog_owner.username }} nu a creat inca piese proprii.
+        {% endif %}
+    </p>
+</div>
+{% endif %}
+
+<!-- Participating Dramas -->
+{% if participating_dramas %}
+<h5 class="fw-bold mb-3">
+    <i class="bi bi-people me-2"></i>Piese la Care Participa
+</h5>
+<div class="row g-4">
+    {% for drama in participating_dramas %}
+    <div class="col-md-6 col-lg-4 animate__animated animate__fadeInUp">
+        <div class="card border-0 shadow-sm h-100 hover-lift drama-card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="card-title fw-bold mb-0">
+                        <a href="/piese/{{ drama.slug }}" class="text-decoration-none text-dark">
+                            {{ drama.title }}
+                        </a>
+                    </h5>
+                    {% if drama.status == 'in_progress' %}
+                        <span class="badge bg-success ms-2 flex-shrink-0">In desfasurare</span>
+                    {% elif drama.status == 'completed' %}
+                        <span class="badge bg-warning text-dark ms-2 flex-shrink-0">Finalizata</span>
+                    {% else %}
+                        <span class="badge bg-secondary ms-2 flex-shrink-0">Draft</span>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex align-items-center mb-3">
+                    <img src="{{ get_avatar_url(drama.owner, 28) }}"
+                         alt="Avatar {{ drama.owner.username }}"
+                         class="rounded-circle me-2"
+                         style="width: 1.75rem; height: 1.75rem; object-fit: cover;"
+                         loading="lazy">
+                    <span class="text-muted small">de <a href="//{{ drama.owner.username }}.calimara.ro" class="text-decoration-none fw-semibold">@{{ drama.owner.username }}</a></span>
+                </div>
+
+                <div class="d-flex align-items-center gap-3 text-muted small">
+                    <span><i class="bi bi-people me-1"></i>{{ drama.characters|length }} personaje</span>
+                    <span><i class="bi bi-eye me-1"></i>{{ drama.view_count }}</span>
+                </div>
+            </div>
+            <div class="card-footer bg-transparent border-0 pt-0 pb-3 px-4">
+                <a href="/piese/{{ drama.slug }}" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-book me-1"></i>Citeste Piesa
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not dramas and not participating_dramas %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-mask display-1 mb-4"></i>
+    <h4 class="fw-bold mb-3">Nicio piesa inca</h4>
+    <p class="mb-3">
+        {% if current_user and current_user.username == blog_owner.username %}
+            Creeaza prima ta piesa de teatru colaborativa!
+        {% else %}
+            {{ blog_owner.username }} nu participa inca in nicio piesa.
+        {% endif %}
+    </p>
+    {% if current_user and current_user.username == blog_owner.username %}
+    <a href="/piese/creeaza" class="btn btn-primary-custom">
+        <i class="bi bi-plus-circle me-2"></i>Creeaza Prima Piesa
+    </a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/drama.js" defer></script>
+{% endblock %}

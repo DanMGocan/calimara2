@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: A4;
+            margin: 2.5cm 3cm;
+            @bottom-center {
+                content: counter(page);
+                font-size: 10pt;
+                color: #666;
+            }
+            @top-center {
+                content: "Exportat de pe Calimara.ro";
+                font-size: 8pt;
+                color: #999;
+            }
+        }
+
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .cover-page {
+            text-align: center;
+            padding-top: 30%;
+            page-break-after: always;
+        }
+
+        .cover-brand {
+            font-size: 14pt;
+            color: #999;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            margin-bottom: 3rem;
+        }
+
+        .cover-title {
+            font-size: 28pt;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .cover-author {
+            font-size: 14pt;
+            color: #666;
+            margin-bottom: 2rem;
+        }
+
+        .cover-description {
+            font-size: 11pt;
+            font-style: italic;
+            color: #666;
+            max-width: 70%;
+            margin: 0 auto;
+        }
+
+        .characters-page {
+            page-break-after: always;
+        }
+
+        .characters-page h2 {
+            text-align: center;
+            font-size: 18pt;
+            margin-bottom: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .character-entry {
+            margin-bottom: 1.5rem;
+        }
+
+        .character-entry .name {
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .character-entry .player {
+            font-size: 10pt;
+            color: #999;
+        }
+
+        .character-entry .description {
+            font-style: italic;
+            margin-top: 0.25rem;
+        }
+
+        .act-section {
+            page-break-before: always;
+        }
+
+        .act-title {
+            text-align: center;
+            font-size: 16pt;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 0.5rem;
+        }
+
+        .act-setting {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-bottom: 2rem;
+            padding: 0 2cm;
+        }
+
+        .reply {
+            margin-bottom: 1.5rem;
+        }
+
+        .reply .character-name {
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            font-size: 11pt;
+            letter-spacing: 0.1em;
+        }
+
+        .reply .stage-direction {
+            font-family: 'Courier New', Courier, monospace;
+            font-style: italic;
+            text-align: center;
+            font-size: 10pt;
+            color: #666;
+        }
+
+        .reply .dialogue {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11pt;
+            margin-top: 0.25rem;
+            padding: 0 2cm;
+        }
+    </style>
+</head>
+<body>
+    <!-- Cover Page -->
+    <div class="cover-page">
+        <div class="cover-brand">{{ MAIN_DOMAIN }}</div>
+        <div class="cover-title">{{ drama.title }}</div>
+        <div class="cover-author">de {{ drama.owner.username }}</div>
+        {% if drama.description %}
+        <div class="cover-description">{{ drama.description }}</div>
+        {% endif %}
+    </div>
+
+    <!-- Characters Page -->
+    <div class="characters-page">
+        <h2>Personaje</h2>
+        {% for character in drama.characters %}
+        <div class="character-entry">
+            <span class="name">{{ character.character_name }}</span>
+            <span class="player">({{ character.user.username }})</span>
+            {% if character.character_description %}
+            <div class="description">{{ character.character_description }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Acts -->
+    {% for act in drama.acts | sort(attribute='act_number') %}
+    <div class="act-section">
+        <div class="act-title">Actul {{ act.act_number }}: {{ act.title }}</div>
+        {% if act.setting %}
+        <div class="act-setting">{{ act.setting }}</div>
+        {% endif %}
+
+        {% for reply in act.replies | sort(attribute='position') %}
+        <div class="reply">
+            <div class="character-name">{{ reply.character.character_name }}</div>
+            {% if reply.stage_direction %}
+            <div class="stage-direction">({{ reply.stage_direction }})</div>
+            {% endif %}
+            <div class="dialogue">{{ reply.content }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</body>
+</html>

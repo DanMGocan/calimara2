@@ -93,27 +93,27 @@ body {
     position: relative;
 }
 
-/* Global hyperlink styles */
-a {
-    color: #000000 !important;
-    text-decoration: underline !important;
+/* Global hyperlink styles - using body prefix for specificity over Bootstrap */
+body a {
+    color: #000000;
+    text-decoration: underline;
 }
 
-a:hover {
-    color: #000000 !important;
-    text-decoration: underline !important;
+body a:hover {
+    color: #000000;
+    text-decoration: underline;
 }
 
-/* Remove underlines from buttons */
-.btn, .btn:hover, .btn:focus, .btn:active {
-    text-decoration: none !important;
+/* Remove underlines from buttons - needs !important to override body a rule */
+body .btn, body .btn:hover, body .btn:focus, body .btn:active {
+    text-decoration: none;
 }
 
 /* Remove underlines from card-style links */
-.list-group-item-action, .list-group-item-action:hover, .list-group-item-action:focus,
-.hover-lift, .hover-lift:hover, .hover-lift:focus,
-.text-decoration-none, .text-decoration-none:hover, .text-decoration-none:focus {
-    text-decoration: none !important;
+body .list-group-item-action, body .list-group-item-action:hover, body .list-group-item-action:focus,
+body .hover-lift, body .hover-lift:hover, body .hover-lift:focus,
+body .text-decoration-none, body .text-decoration-none:hover, body .text-decoration-none:focus {
+    text-decoration: none;
 }
 
 /* AJAX transitions for posts container */
@@ -500,7 +500,7 @@ body::before {
 
 /* Primary Color System */
 .bg-primary-custom {
-    background: var(--gradient-primary) !important;
+    background: var(--gradient-primary);
 }
 
 /* Custom button styling preserved but using global hover system */
@@ -803,7 +803,7 @@ body::before {
 
 /* Latest posts with borders */
 .latest-post-card {
-    border: 1px solid var(--color-accent) !important;
+    border: 1px solid var(--color-accent);
 }
 
 /* Archive list styles */
@@ -1292,7 +1292,7 @@ footer {
 .social-btn {
     width: 5rem;
     height: 5rem;
-    border-radius: var(--border-radius) !important;
+    border-radius: var(--border-radius);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1304,7 +1304,7 @@ footer {
 .social-btn-small {
     width: 3.125rem;
     height: 3.125rem;
-    border-radius: var(--border-radius) !important;
+    border-radius: var(--border-radius);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1376,7 +1376,7 @@ footer {
 .social-btn.instagram,
 .social-btn-small.instagram {
     background: linear-gradient(45deg, #F58529, #DD2A7B, #8134AF, #515BD4);
-    border: none !important;
+    border: none;
     color: white;
 }
 
@@ -1524,15 +1524,15 @@ footer {
    LIST GROUP ENHANCEMENTS
    ================================== */
 
-.list-group-item {
-    border: none !important;
-    border-radius: var(--border-radius) !important;
+.list-group .list-group-item {
+    border: none;
+    border-radius: var(--border-radius);
     margin-bottom: 0.5rem;
     background: rgba(255, 255, 255, 0.9);
     transition: all var(--transition-normal);
     position: relative;
     overflow: hidden;
-    padding: 0.75rem 1rem !important;
+    padding: 0.75rem 1rem;
 }
 
 .list-group-item::before {
@@ -1838,17 +1838,17 @@ footer {
     box-shadow: var(--shadow-sm);
 }
 
-.category-filter-btn.active {
-    background: var(--color-accent) !important;
-    color: white !important;
-    border-color: var(--color-accent) !important;
+button.category-filter-btn.active {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
     box-shadow: var(--shadow);
 }
 
-.category-filter-btn.active:hover {
-    background: var(--color-accent-dark) !important;
-    border-color: var(--color-accent-dark) !important;
-    color: white !important;
+button.category-filter-btn.active:hover {
+    background: var(--color-accent-dark);
+    border-color: var(--color-accent-dark);
+    color: white;
 }
 
 /* Responsive adjustments for filter buttons */
@@ -1944,7 +1944,7 @@ footer {
 
 .category-card {
     background: rgba(255, 255, 255, 0.9);
-    border: 0.0625rem solid rgba(27, 94, 32, 0.2) !important;
+    border: 0.0625rem solid rgba(27, 94, 32, 0.2);
     transition: all var(--transition-standard);
     cursor: pointer;
     min-height: 5rem;
@@ -1955,7 +1955,7 @@ footer {
 
 .category-card:hover {
     background: rgba(27, 94, 32, 0.05);
-    border-color: var(--color-accent) !important;
+    border-color: var(--color-accent);
     transform: translateY(-0.125rem);
     box-shadow: var(--shadow);
 }
@@ -1965,12 +1965,12 @@ footer {
 }
 
 .category-card:hover .category-icon i {
-    color: var(--color-accent) !important;
+    color: var(--color-accent);
     transform: scale(1.1);
 }
 
 .category-link:hover h6 {
-    color: var(--color-accent) !important;
+    color: var(--color-accent);
 }
 
 /* Genre Dropdown Styles */
@@ -1979,7 +1979,7 @@ footer {
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    width: 18rem !important;
+    width: 18rem;
     max-width: 20rem;
 }
 
@@ -2000,8 +2000,8 @@ footer {
 
 .genre-dropdown .dropdown-item:hover,
 .hover-bg-light:hover {
-    background-color: rgba(27, 94, 32, 0.1) !important;
-    color: var(--color-accent) !important;
+    background-color: rgba(27, 94, 32, 0.1);
+    color: var(--color-accent);
     transform: translateX(0.125rem);
 }
 
@@ -2023,18 +2023,18 @@ footer {
 
 /* Special styling for "Altele" category */
 .category-navigation .category-card.bg-light {
-    background: linear-gradient(135deg, rgba(27, 94, 32, 0.05), rgba(27, 94, 32, 0.1)) !important;
-    border: 0.125rem solid rgba(27, 94, 32, 0.2) !important;
+    background: linear-gradient(135deg, rgba(27, 94, 32, 0.05), rgba(27, 94, 32, 0.1));
+    border: 0.125rem solid rgba(27, 94, 32, 0.2);
 }
 
 .category-navigation .category-card.bg-light:hover {
-    background: linear-gradient(135deg, rgba(27, 94, 32, 0.1), rgba(27, 94, 32, 0.15)) !important;
-    border-color: var(--color-accent) !important;
+    background: linear-gradient(135deg, rgba(27, 94, 32, 0.1), rgba(27, 94, 32, 0.15));
+    border-color: var(--color-accent);
 }
 
 /* Enhanced subcategories dropdown for "Altele" */
 .genre-dropdown .fw-semibold {
-    color: var(--color-primary) !important;
+    color: var(--color-primary);
     margin-bottom: 0.25rem;
 }
 
@@ -2048,24 +2048,24 @@ footer {
     .category-navigation {
         padding: 1rem;
     }
-    
+
     .category-card {
         min-height: 6rem;
-        padding: 1rem !important;
+        padding: 1rem;
     }
-    
+
     .category-card h5 {
         font-size: 1rem;
     }
-    
+
     .genre-dropdown {
-        width: 16rem !important;
+        width: 16rem;
     }
 }
 
 @media (max-width: 767.98px) {
     .genre-dropdown {
-        width: 17rem !important;
+        width: 17rem;
     }
     
     .category-card {
@@ -2273,11 +2273,11 @@ footer {
 
 /* Hover effects for social platform specific colors */
 .social-btn:not(.disabled):hover {
-    color: white !important;
+    color: white;
 }
 
 .donation-btn:not(.disabled):hover {
-    color: white !important;
+    color: white;
 }
 
 /* ===================================
@@ -2310,14 +2310,14 @@ button[aria-expanded="false"] .collapse-arrow {
 .card-header .btn-link:hover {
     background-color: rgba(255, 255, 255, 0.1);
     border-radius: 0.375rem;
-    padding: 0.5rem !important;
+    padding: 0.5rem;
 }
 
 /* Social Media Icon Buttons - Logo Only */
 .social-icon-btn {
     width: 3rem;
     height: 3rem;
-    border-radius: 50% !important;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2332,13 +2332,13 @@ button[aria-expanded="false"] .collapse-arrow {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.social-icon-btn.disabled {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
+.social-donation-section .social-icon-btn.disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #ffffff;
     opacity: 0.65;
-    cursor: help !important;
-    pointer-events: auto !important;
+    cursor: help;
+    pointer-events: auto;
 }
 
 .social-icon-btn.disabled:hover {
@@ -2349,7 +2349,7 @@ button[aria-expanded="false"] .collapse-arrow {
 /* Coffee Button - Same height as social icons but with text */
 .coffee-btn {
     height: 3rem;
-    border-radius: 1.5rem !important;
+    border-radius: 1.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2367,13 +2367,13 @@ button[aria-expanded="false"] .collapse-arrow {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.coffee-btn.disabled {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
+.social-donation-section .coffee-btn.disabled {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #ffffff;
     opacity: 0.65;
-    cursor: help !important;
-    pointer-events: auto !important;
+    cursor: help;
+    pointer-events: auto;
 }
 
 .coffee-btn.disabled:hover {
@@ -2384,9 +2384,9 @@ button[aria-expanded="false"] .collapse-arrow {
 /* Enhanced disabled button states */
 .social-btn.disabled,
 .donation-btn.disabled {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #ffffff;
     opacity: 0.65;
     cursor: not-allowed;
     pointer-events: none;
@@ -2395,11 +2395,11 @@ button[aria-expanded="false"] .collapse-arrow {
 
 .social-btn.disabled:hover,
 .donation-btn.disabled:hover {
-    transform: none !important;
-    box-shadow: none !important;
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-    color: #ffffff !important;
+    transform: none;
+    box-shadow: none;
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: #ffffff;
 }
 
 /* Improved focus states for accessibility */
@@ -2529,7 +2529,7 @@ button[aria-expanded="false"] .collapse-arrow {
 
 /* Messages page styles */
 .hover-bg-light:hover {
-    background-color: rgba(27, 94, 32, 0.05) !important;
+    background-color: rgba(27, 94, 32, 0.05);
 }
 
 .conversation-item {
@@ -2594,7 +2594,7 @@ button[aria-expanded="false"] .collapse-arrow {
 }
 
 .message-item:last-child {
-    margin-bottom: 0 !important;
+    margin-bottom: 0;
 }
 
 /* ===================================
@@ -2644,17 +2644,17 @@ button[aria-expanded="false"] .collapse-arrow {
 }
 
 /* Avatar Improvements for Sidebar */
-.avatar-sm {
-    width: 2rem !important;
-    height: 2rem !important;
+img.avatar.avatar-sm {
+    width: 2rem;
+    height: 2rem;
     border-radius: 50%;
     border: 0.125rem solid var(--color-light);
     transition: all var(--transition-normal);
 }
 
-.avatar-md {
-    width: 2.5rem !important;
-    height: 2.5rem !important;
+img.avatar.avatar-md {
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: 50%;
     border: 0.125rem solid var(--color-light);
     transition: all var(--transition-normal);
@@ -2695,3 +2695,232 @@ button[aria-expanded="false"] .collapse-arrow {
     line-height: 1.2;
 }
 
+
+/* ===================================
+   DRAMA & SCREENPLAY STYLES
+   ================================== */
+
+/* --- Screenplay Formatting --- */
+
+.screenplay-character-name {
+    font-family: var(--font-family-base);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.screenplay-stage-direction {
+    font-style: italic;
+    color: var(--color-muted);
+    margin-bottom: 0.25rem;
+}
+
+.screenplay-dialogue {
+    margin-bottom: 1rem;
+    padding-left: 1rem;
+    line-height: 1.6;
+}
+
+.screenplay-reply {
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    border-left: 3px solid transparent;
+    transition: border-color 0.2s ease;
+}
+
+.screenplay-reply:hover {
+    border-left-color: var(--color-accent);
+}
+
+/* --- Drama Card Styles --- */
+
+.drama-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.drama-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.drama-status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
+.drama-status-in_progress {
+    background-color: rgba(25, 135, 84, 0.2);
+    color: #198754;
+}
+
+.drama-status-completed {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+/* --- Character Card Styles --- */
+
+.character-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    text-align: center;
+}
+
+.character-card .character-name {
+    font-weight: var(--font-weight-bold);
+    font-size: 0.9rem;
+}
+
+.character-card .character-username {
+    font-size: 0.8rem;
+    color: var(--color-muted);
+}
+
+/* --- Act Section Styles --- */
+
+.drama-act-section {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+
+.drama-act-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem;
+    cursor: pointer;
+}
+
+.drama-act-setting {
+    font-style: italic;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--color-muted);
+}
+
+.drama-act-content {
+    padding: 1.5rem;
+}
+
+/* --- Curtain Animation --- */
+
+.drama-curtain {
+    text-align: center;
+    padding: 3rem 2rem;
+    margin: 2rem 0;
+    background: linear-gradient(135deg, #8B0000 0%, #DC143C 50%, #8B0000 100%);
+    border-radius: 0.5rem;
+    color: white;
+    position: relative;
+    overflow: hidden;
+}
+
+.drama-curtain::before,
+.drama-curtain::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.3), transparent);
+}
+
+.drama-curtain::before {
+    left: 0;
+}
+
+.drama-curtain::after {
+    right: 0;
+    transform: scaleX(-1);
+}
+
+.drama-curtain .curtain-text {
+    position: relative;
+    z-index: 1;
+}
+
+.drama-curtain h2 {
+    font-family: var(--font-family-serif);
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.drama-curtain .curtain-participants {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.drama-curtain .curtain-participants span {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.9rem;
+}
+
+/* --- Notification Styles --- */
+
+.notification-dropdown {
+    background: var(--color-primary-light);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.notification-dropdown .dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    transform: translate(25%, -25%);
+    font-size: 0.65rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+/* --- Drag and Drop Styles --- */
+
+.reply-drag-item {
+    cursor: grab;
+    padding: 0.5rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.25rem;
+    background: var(--color-primary-light);
+    transition: opacity 0.2s;
+}
+
+.reply-drag-item:active {
+    cursor: grabbing;
+}
+
+.reply-drag-item.dragging {
+    opacity: 0.4;
+}
+
+.reply-drag-item.drag-over {
+    border-top: 2px solid var(--color-accent);
+}
+
+/* --- Theater Mask Badge --- */
+
+.theater-mask-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-accent);
+}
