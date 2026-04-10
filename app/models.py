@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, select
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, select
 from sqlalchemy.orm import relationship, Mapped, mapped_column, registry
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
@@ -88,14 +88,17 @@ class User(Base):
     dramas: Mapped[List["Drama"]] = relationship(
         "Drama",
         foreign_keys="Drama.user_id",
+        back_populates="owner",
         cascade="all, delete-orphan"
     )
     drama_characters: Mapped[List["DramaCharacter"]] = relationship(
         "DramaCharacter",
+        back_populates="user",
         cascade="all, delete-orphan"
     )
     notifications: Mapped[List["Notification"]] = relationship(
         "Notification",
+        back_populates="user",
         cascade="all, delete-orphan"
     )
 
@@ -342,7 +345,7 @@ class Drama(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    owner: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    owner: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="dramas")
     moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
     characters: Mapped[List["DramaCharacter"]] = relationship("DramaCharacter", back_populates="drama", cascade="all, delete-orphan")
     acts: Mapped[List["DramaAct"]] = relationship("DramaAct", back_populates="drama", cascade="all, delete-orphan")
@@ -387,7 +390,7 @@ class DramaCharacter(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     drama: Mapped["Drama"] = relationship("Drama", back_populates="characters")
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="drama_characters")
     replies: Mapped[List["DramaReply"]] = relationship("DramaReply", back_populates="character")
 
     @property
@@ -495,4 +498,43 @@ class Notification(Base):
     extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="notifications")
+
+
+class PageView(Base):
+    __tablename__ = "page_views"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    content_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
+    session_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_bot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    bot_reason: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    device_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    referrer_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_duplicate: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    content_owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class DailyStat(Base):
+    __tablename__ = "daily_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    stat_date: Mapped[date_type] = mapped_column(Date, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    content_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    content_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content_owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_views: Mapped[int] = mapped_column(Integer, default=0)
+    unique_views: Mapped[int] = mapped_column(Integer, default=0)
+    bot_views: Mapped[int] = mapped_column(Integer, default=0)
+    logged_in_views: Mapped[int] = mapped_column(Integer, default=0)
+    anonymous_views: Mapped[int] = mapped_column(Integer, default=0)
+    desktop_views: Mapped[int] = mapped_column(Integer, default=0)
+    mobile_views: Mapped[int] = mapped_column(Integer, default=0)
+    tablet_views: Mapped[int] = mapped_column(Integer, default=0)

@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess
 import atexit
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -167,6 +168,11 @@ def init_database():
                 print(f"  {table}: {count} rows")
 
             print(f"  Schema executed ({executed} statements)")
+
+            # Write DB epoch to invalidate stale session cookies
+            epoch_file = PROJECT_ROOT / ".db_epoch"
+            epoch_file.write_text(str(int(time.time())))
+            print(f"  DB epoch updated (stale sessions invalidated)")
 
     except Exception as e:
         print(f"  Database initialization failed: {e}")

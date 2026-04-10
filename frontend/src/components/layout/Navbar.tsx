@@ -1,169 +1,192 @@
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X, PenLine, LayoutDashboard, Mail, Shield, LogOut } from "lucide-react";
+import { useEffect, useCallback } from "react";
+import { Home, User, Menu, X, PenLine, LayoutDashboard, Mail, Bell, Shield, LogOut, Grid3X3, Theater, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { useUiStore } from "@/stores/uiStore";
-import { getAvatarUrl, getBlogUrl, getMainUrl } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { getBlogUrl, getMainUrl } from "@/lib/utils";
 
 export function Navbar() {
   const { user, isAuthenticated } = useAuth();
   const unreadCount = useUnreadCount(isAuthenticated);
-  const { isSubdomain, username } = useSubdomain();
-  const { mobileMenuOpen, toggleMobileMenu, setMobileMenuOpen } = useUiStore();
-  const location = useLocation();
+  const { mobileMenuOpen, setMobileMenuOpen } = useUiStore();
 
   const mainUrl = getMainUrl();
   const blogUrl = user ? getBlogUrl(user.username) : "#";
+
+  const closeMenu = useCallback(() => setMobileMenuOpen(false), [setMobileMenuOpen]);
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
 
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && mobileMenuOpen) closeMenu();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [mobileMenuOpen, closeMenu]);
+
+  // Lock body scroll when menu is open
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileMenuOpen]);
+
   return (
-    <nav className="sticky top-0 z-40 border-b border-border bg-surface-raised/80 backdrop-blur-md">
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
+    <>
+      {/* Home button — top-left, near content */}
+      <div className="fixed top-4 left-4 z-40 md:left-auto md:right-1/2 md:translate-x-[-22rem]">
+        <a
+          href={mainUrl}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/15 bg-cream/80 text-primary backdrop-blur-md transition-all hover:border-primary/40 hover:bg-primary hover:text-cream no-underline"
+          title="Acasă"
+        >
+          <Home className="h-5 w-5" />
+        </a>
+      </div>
+
+      {/* Profile + Burger — top-right, near content */}
+      <div className="fixed top-4 right-4 z-40 flex items-center gap-2 md:right-auto md:left-1/2 md:translate-x-[22rem]">
+        {isAuthenticated && user ? (
           <a
-            href={mainUrl}
-            className="font-display text-2xl font-bold tracking-tight text-primary no-underline"
+            href={`${blogUrl}/dashboard`}
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-green-600/40 bg-green-600 text-white backdrop-blur-md transition-all hover:bg-green-700 hover:border-green-700/40 no-underline"
+            title="Profil"
           >
-            Calimara
+            <User className="h-5 w-5" />
           </a>
-
-          {/* Desktop Nav */}
-          <div className="hidden items-center gap-1 md:flex">
-            {isSubdomain && username && (
-              <NavLink to="/" current={location.pathname === "/"}>
-                Blog
-              </NavLink>
-            )}
-            {!isSubdomain && (
-              <>
-                <NavLink to="/" current={location.pathname === "/"}>
-                  Acasa
-                </NavLink>
-                <NavLink to="/category/poezie" current={location.pathname.startsWith("/category")}>
-                  Categorii
-                </NavLink>
-              </>
-            )}
-
-            {isAuthenticated && user && (
-              <>
-                <a href={`${getBlogUrl(user.username)}/create-post`} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface hover:text-primary no-underline">
-                  <PenLine className="h-4 w-4" />
-                  Scrie
-                </a>
-                <a href={`${getBlogUrl(user.username)}/dashboard`} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface hover:text-primary no-underline">
-                  <LayoutDashboard className="h-4 w-4" />
-                  Panou
-                </a>
-                <a href={`${getBlogUrl(user.username)}/messages`} className="relative flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface hover:text-primary no-underline">
-                  <Mail className="h-4 w-4" />
-                  Mesaje
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
-                      {unreadCount}
-                    </span>
-                  )}
-                </a>
-                {(user.is_admin || user.is_moderator) && (
-                  <a href={`${mainUrl}/admin/moderation`} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface hover:text-primary no-underline">
-                    <Shield className="h-4 w-4" />
-                    Moderare
-                  </a>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Right side */}
-          <div className="hidden items-center gap-3 md:flex">
-            {isAuthenticated && user ? (
-              <div className="flex items-center gap-3">
-                <a href={blogUrl} className="flex items-center gap-2 no-underline">
-                  <img
-                    src={getAvatarUrl(user.avatar_seed, 32)}
-                    alt={user.username}
-                    className="h-8 w-8 rounded-full"
-                  />
-                  <span className="text-sm font-medium text-primary">{user.username}</span>
-                </a>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-lg p-2 text-muted transition-colors hover:bg-surface hover:text-primary cursor-pointer"
-                  title="Deconectare"
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <Button asChild size="sm">
-                <a href="/auth/google" className="no-underline">Autentificare</a>
-              </Button>
-            )}
-          </div>
-
-          {/* Mobile toggle */}
-          <button
-            className="rounded-lg p-2 md:hidden cursor-pointer"
-            onClick={toggleMobileMenu}
+        ) : (
+          <a
+            href="/auth/google"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-red-500/40 bg-red-500 text-white backdrop-blur-md transition-all hover:bg-red-600 hover:border-red-600/40 no-underline"
+            title="Autentificare"
           >
-            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            <User className="h-5 w-5" />
+          </a>
+        )}
+
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-primary/15 bg-cream/80 text-primary backdrop-blur-md transition-all hover:border-primary/40 hover:bg-primary hover:text-cream"
+          aria-label="Meniu"
+          aria-expanded={mobileMenuOpen}
+        >
+          <Menu className="h-5 w-5" />
+          {isAuthenticated && unreadCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-danger" />
+          )}
+        </button>
+      </div>
+
+      {/* Backdrop */}
+      <div
+        className={`menu-overlay-backdrop ${mobileMenuOpen ? "open" : ""}`}
+        onClick={closeMenu}
+      />
+
+      {/* Slide-in overlay menu */}
+      <div className={`menu-overlay ${mobileMenuOpen ? "open" : ""}`}>
+        <div className="mb-8 flex justify-end">
+          <button
+            onClick={closeMenu}
+            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/25 text-white/80 transition-all hover:bg-white hover:text-primary"
+            aria-label="Închide meniul"
+          >
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="border-t border-border py-4 md:hidden">
-            <div className="flex flex-col gap-1">
-              {!isSubdomain && (
+        <nav className="flex flex-col" aria-label="Meniu site">
+          <MenuLink href={mainUrl} icon={<Home className="h-5 w-5" />} onClick={closeMenu}>
+            Acasă
+          </MenuLink>
+          <MenuLink href={`${mainUrl}/category/poezie`} icon={<Grid3X3 className="h-5 w-5" />} onClick={closeMenu}>
+            Categorii
+          </MenuLink>
+          <MenuLink href={`${mainUrl}/piese`} icon={<Theater className="h-5 w-5" />} onClick={closeMenu}>
+            Piese de Teatru
+          </MenuLink>
+
+          {isAuthenticated && user && (
+            <>
+              <hr className="my-3 border-white/15" />
+              <MenuLink href={`${blogUrl}/create-post`} icon={<PenLine className="h-5 w-5" />} onClick={closeMenu}>
+                Scrie
+              </MenuLink>
+              <MenuLink href={`${blogUrl}/dashboard`} icon={<LayoutDashboard className="h-5 w-5" />} onClick={closeMenu}>
+                Panou
+              </MenuLink>
+              <MenuLink href={`${blogUrl}/messages`} icon={<Mail className="h-5 w-5" />} onClick={closeMenu} badge={unreadCount}>
+                Mesaje
+              </MenuLink>
+              <MenuLink href="/notificari" icon={<Bell className="h-5 w-5" />} onClick={closeMenu}>
+                Notificări
+              </MenuLink>
+
+              {(user.is_admin || user.is_moderator) && (
                 <>
-                  <MobileNavLink to="/" onClick={() => setMobileMenuOpen(false)}>Acasa</MobileNavLink>
-                  <MobileNavLink to="/category/poezie" onClick={() => setMobileMenuOpen(false)}>Categorii</MobileNavLink>
+                  <hr className="my-3 border-white/15" />
+                  <MenuLink href={`${mainUrl}/admin/moderation`} icon={<Shield className="h-5 w-5" />} onClick={closeMenu}>
+                    Moderare
+                  </MenuLink>
                 </>
               )}
-              {isAuthenticated && user && (
-                <>
-                  <a href={`${getBlogUrl(user.username)}/create-post`} className="rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface no-underline" onClick={() => setMobileMenuOpen(false)}>Scrie</a>
-                  <a href={`${getBlogUrl(user.username)}/dashboard`} className="rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface no-underline" onClick={() => setMobileMenuOpen(false)}>Panou</a>
-                  <a href={`${getBlogUrl(user.username)}/messages`} className="rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface no-underline" onClick={() => setMobileMenuOpen(false)}>
-                    Mesaje {unreadCount > 0 && `(${unreadCount})`}
-                  </a>
-                  <button onClick={handleLogout} className="rounded-lg px-3 py-2 text-left text-sm text-danger transition-colors hover:bg-surface cursor-pointer">Deconectare</button>
-                </>
-              )}
-              {!isAuthenticated && (
-                <a href="/auth/google" className="rounded-lg px-3 py-2 text-sm font-medium text-accent no-underline">Autentificare</a>
-              )}
-            </div>
-          </div>
-        )}
+
+              <hr className="my-3 border-white/15" />
+              <button
+                onClick={() => { closeMenu(); handleLogout(); }}
+                className="flex w-full cursor-pointer items-center gap-3 border-b border-white/8 py-4 text-base font-medium text-red-400 tracking-wide transition-all hover:pl-2 hover:text-red-300"
+              >
+                <LogOut className="h-5 w-5" />
+                Deconectare
+              </button>
+            </>
+          )}
+
+          {!isAuthenticated && (
+            <>
+              <hr className="my-3 border-white/15" />
+              <MenuLink href="/auth/google" icon={<User className="h-5 w-5" />} onClick={closeMenu}>
+                Autentificare
+              </MenuLink>
+            </>
+          )}
+        </nav>
       </div>
-    </nav>
+    </>
   );
 }
 
-function NavLink({ to, current, children }: { to: string; current: boolean; children: React.ReactNode }) {
+function MenuLink({
+  href,
+  icon,
+  children,
+  onClick,
+  badge,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+  badge?: number;
+}) {
   return (
-    <Link
-      to={to}
-      className={`rounded-lg px-3 py-2 text-sm transition-colors no-underline ${
-        current ? "bg-accent/10 text-accent font-medium" : "text-muted hover:bg-surface hover:text-primary"
-      }`}
+    <a
+      href={href}
+      onClick={onClick}
+      className="flex items-center gap-3 border-b border-white/8 py-4 text-base font-medium tracking-wide text-white/85 transition-all hover:pl-2 hover:text-white no-underline"
     >
+      {icon}
       {children}
-    </Link>
-  );
-}
-
-function MobileNavLink({ to, onClick, children }: { to: string; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <Link to={to} onClick={onClick} className="rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-surface no-underline">
-      {children}
-    </Link>
+      {badge !== undefined && badge > 0 && (
+        <span className="ml-auto rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-white">
+          {badge}
+        </span>
+      )}
+      <ChevronRight className="ml-auto h-4 w-4 opacity-30" />
+    </a>
   );
 }

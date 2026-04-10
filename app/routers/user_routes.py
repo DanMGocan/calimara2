@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, auth, crud
@@ -17,17 +18,24 @@ router = APIRouter(tags=["users"])
 async def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
     """Endpoint to check current user authentication status"""
     if current_user:
-        return {
+        data = {
             "authenticated": True,
             "user": {
                 "id": current_user.id,
                 "username": current_user.username,
                 "email": current_user.email,
-                "subtitle": current_user.subtitle
+                "subtitle": current_user.subtitle,
+                "avatar_seed": current_user.avatar_seed,
+                "is_admin": current_user.is_admin,
+                "is_moderator": current_user.is_moderator,
+                "is_suspended": current_user.is_suspended,
             }
         }
     else:
-        return {"authenticated": False, "user": None}
+        data = {"authenticated": False, "user": None}
+    response = JSONResponse(content=data)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.put("/api/user/me", response_model=schemas.UserInDB)

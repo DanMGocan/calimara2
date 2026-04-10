@@ -31,7 +31,7 @@ export default function CategoryPage() {
 
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-8">
-          <h1 className="font-display text-3xl font-bold text-primary">{data.category_name}</h1>
+          <h1 className="font-display text-3xl font-medium text-primary">{data.category_name}</h1>
           {/* Genre links */}
           {data.genres.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">

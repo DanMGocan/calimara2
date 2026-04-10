@@ -107,7 +107,7 @@ export default function ModerationPage() {
       </Helmet>
 
       <div className="mx-auto max-w-6xl px-4 py-8">
-        <h1 className="font-display text-2xl font-bold text-primary mb-6 flex items-center gap-2">
+        <h1 className="font-display text-2xl font-medium text-primary mb-6 flex items-center gap-2">
           <Shield className="h-6 w-6 text-accent" /> Panou de moderare
         </h1>
 

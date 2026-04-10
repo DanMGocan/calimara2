@@ -41,7 +41,7 @@ export default function BlogHomePage() {
             alt={blog_owner.username}
             className="mx-auto h-24 w-24 rounded-full shadow-md"
           />
-          <h1 className="mt-4 font-display text-3xl font-bold text-primary">{blog_owner.username}</h1>
+          <h1 className="mt-4 font-display text-3xl font-medium text-primary">{blog_owner.username}</h1>
           {blog_owner.subtitle && (
             <p className="mt-2 text-muted">{blog_owner.subtitle}</p>
           )}
@@ -60,7 +60,7 @@ export default function BlogHomePage() {
             {/* Featured Posts */}
             {featured_posts.length > 0 && (
               <div>
-                <h2 className="font-display text-xl font-bold text-primary mb-4">Postari alese</h2>
+                <h2 className="font-display text-xl font-medium text-primary mb-4">Postari alese</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {featured_posts.map((post) => (
                     <a
@@ -79,7 +79,7 @@ export default function BlogHomePage() {
             {/* Latest Posts */}
             {latest_posts.length > 0 && (
               <div>
-                <h2 className="font-display text-xl font-bold text-primary mb-4">Cele mai recente</h2>
+                <h2 className="font-display text-xl font-medium text-primary mb-4">Cele mai recente</h2>
                 <div className="space-y-4">
                   {latest_posts.map((post) => (
                     <Card key={post.id} className="group transition-all hover:shadow-md">
@@ -104,7 +104,7 @@ export default function BlogHomePage() {
             {/* Archive Table */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-xl font-bold text-primary">Arhiva</h2>
+                <h2 className="font-display text-xl font-medium text-primary">Arhiva</h2>
                 {/* Month Filter */}
                 {available_months.length > 0 && (
                   <select

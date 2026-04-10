@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth
+from .. import models, schemas, crud, auth, statistics
 from ..database import get_db
 from ..utils import get_client_ip
 
@@ -113,6 +113,7 @@ async def create_drama(
 
 @router.get("/api/dramas/{slug}")
 async def get_drama(
+    request: Request,
     slug: str,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
@@ -122,7 +123,7 @@ async def get_drama(
     if not drama:
         raise HTTPException(status_code=404, detail="Piesa de teatru nu a fost găsită")
 
-    crud.increment_drama_view(db, drama.id)
+    statistics.record_view(db, request, "drama", drama.id, drama.slug, drama.user_id, current_user)
     return _serialize_drama(drama)
 
 
@@ -805,11 +806,13 @@ async def export_drama_pdf(
         raise HTTPException(status_code=404, detail="Piesa nu a fost gasita")
 
     from weasyprint import HTML
-    from ..utils import templates, MAIN_DOMAIN
+    from jinja2 import Environment, FileSystemLoader
+    from ..utils import MAIN_DOMAIN
     from starlette.responses import Response as StarletteResponse
 
-    # Render the PDF template
-    template = templates.get_template("drama/pdf_template.html")
+    # Render the PDF template (standalone Jinja2 — only template still in use)
+    env = Environment(loader=FileSystemLoader("templates"))
+    template = env.get_template("drama/pdf_template.html")
     html_content = template.render(drama=drama, MAIN_DOMAIN=MAIN_DOMAIN)
 
     # Convert to PDF

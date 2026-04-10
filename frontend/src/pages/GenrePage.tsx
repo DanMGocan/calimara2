@@ -32,7 +32,7 @@ export default function GenrePage() {
           <ArrowLeft className="h-4 w-4" /> {data.category_name}
         </Link>
 
-        <h1 className="font-display text-3xl font-bold text-primary mb-4">{data.genre_name}</h1>
+        <h1 className="font-display text-3xl font-medium text-primary mb-4">{data.genre_name}</h1>
 
         <div className="mb-6 flex items-center gap-2">
           <span className="text-sm text-muted">Sorteaza:</span>

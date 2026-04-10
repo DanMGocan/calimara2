@@ -489,6 +489,59 @@ CREATE INDEX idx_notif_user_read_created ON notifications(user_id, is_read, crea
 CREATE INDEX idx_notif_user_id ON notifications(user_id);
 
 -- ===================================
+-- PAGE VIEWS TABLE (Analytics)
+-- ===================================
+CREATE TABLE page_views (
+    id BIGSERIAL PRIMARY KEY,
+    content_type VARCHAR(20) NOT NULL,
+    content_id INT,
+    content_key VARCHAR(255),
+    user_id INT,
+    ip_address VARCHAR(45) NOT NULL,
+    session_id VARCHAR(255),
+    user_agent TEXT,
+    is_bot BOOLEAN DEFAULT FALSE NOT NULL,
+    bot_reason VARCHAR(100),
+    device_type VARCHAR(10),
+    referrer_url TEXT,
+    is_duplicate BOOLEAN DEFAULT FALSE NOT NULL,
+    content_owner_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_pv_created_at ON page_views(created_at);
+CREATE INDEX idx_pv_content ON page_views(content_type, content_id, created_at);
+CREATE INDEX idx_pv_content_key ON page_views(content_type, content_key, created_at);
+CREATE INDEX idx_pv_owner ON page_views(content_owner_id, created_at);
+CREATE INDEX idx_pv_dedup ON page_views(ip_address, content_type, content_id, created_at);
+CREATE INDEX idx_pv_bot ON page_views(is_bot, created_at);
+
+-- ===================================
+-- DAILY STATS TABLE (Aggregated Analytics)
+-- ===================================
+CREATE TABLE daily_stats (
+    id SERIAL PRIMARY KEY,
+    stat_date DATE NOT NULL,
+    content_type VARCHAR(20) NOT NULL,
+    content_id INT,
+    content_key VARCHAR(255),
+    content_owner_id INT,
+    total_views INT DEFAULT 0,
+    unique_views INT DEFAULT 0,
+    bot_views INT DEFAULT 0,
+    logged_in_views INT DEFAULT 0,
+    anonymous_views INT DEFAULT 0,
+    desktop_views INT DEFAULT 0,
+    mobile_views INT DEFAULT 0,
+    tablet_views INT DEFAULT 0,
+    CONSTRAINT unique_daily_stat UNIQUE (stat_date, content_type, content_key)
+);
+
+CREATE INDEX idx_ds_date ON daily_stats(stat_date);
+CREATE INDEX idx_ds_owner ON daily_stats(content_owner_id, stat_date);
+CREATE INDEX idx_ds_content ON daily_stats(content_type, content_id, stat_date);
+
+-- ===================================
 -- UPDATED_AT TRIGGER FUNCTION
 -- ===================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()

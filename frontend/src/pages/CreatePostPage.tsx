@@ -104,7 +104,7 @@ export default function CreatePostPage() {
       </Helmet>
 
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="font-display text-2xl font-bold text-primary mb-6">Postare noua</h1>
+        <h1 className="font-display text-2xl font-medium text-primary mb-6">Postare noua</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Title */}

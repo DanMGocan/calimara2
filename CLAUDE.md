@@ -70,6 +70,7 @@ The schema includes sample data with 4 users and 10 posts:
 - **DB_PORT**: Database port (default: `5432`)
 - **DB_NAME**: Database name (default: `calimara_db`)
 - **SESSION_SECRET_KEY**: Session encryption key (required, no default)
+- **HTTPS_ONLY**: Set to `False` for local development (HTTP), `True` for production (HTTPS). Controls the Secure flag on session cookies.
 - **MAIN_DOMAIN**: Main domain (e.g., `calimara.ro` or `localhost`)
 - **SUBDOMAIN_SUFFIX**: Subdomain pattern (e.g., `.calimara.ro` or `.localhost`)
 - **GOOGLE_CLIENT_ID**: Google OAuth client ID from Google Cloud Console

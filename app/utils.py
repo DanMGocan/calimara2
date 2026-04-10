@@ -1,18 +1,11 @@
 import os
 import urllib.parse
-from typing import Optional
 
 from fastapi import Request
-from fastapi.templating import Jinja2Templates
-
-from . import models
 
 # Configuration from environment variables
 MAIN_DOMAIN = os.getenv("MAIN_DOMAIN", "calimara.ro")
 SUBDOMAIN_SUFFIX = os.getenv("SUBDOMAIN_SUFFIX", ".calimara.ro")
-
-# Configure Jinja2Templates
-templates = Jinja2Templates(directory="templates")
 
 
 def get_avatar_url(user_or_seed, size=80):
@@ -25,22 +18,6 @@ def get_avatar_url(user_or_seed, size=80):
         seed = str(user_or_seed)
 
     return f"https://api.dicebear.com/7.x/shapes/svg?seed={seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size={size}"
-
-
-# Register template global
-templates.env.globals["get_avatar_url"] = get_avatar_url
-
-
-def get_common_context(request: Request, current_user: Optional[models.User] = None):
-    """Helper function to get common template context.
-    Note: 'request' is no longer included — pass it separately to TemplateResponse.
-    """
-    return {
-        "current_user": current_user,
-        "current_domain": request.url.hostname,
-        "main_domain": MAIN_DOMAIN,
-        "subdomain_suffix": SUBDOMAIN_SUFFIX
-    }
 
 
 def get_client_ip(request: Request):

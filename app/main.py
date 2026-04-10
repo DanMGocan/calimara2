@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, drama_routes, notification_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, drama_routes, notification_routes, stats_routes
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -37,6 +37,8 @@ if not SESSION_SECRET_KEY:
         "SESSION_SECRET_KEY not configured. Set it in your .env file."
     )
 
+HTTPS_ONLY = os.getenv("HTTPS_ONLY", "True").lower() in ("true", "1", "yes")
+
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
@@ -47,7 +49,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://(.*\.calimara\.ro|localhost(:\d+)?)",
+    allow_origin_regex=r"https?://(.*\.calimara\.ro|localhost(:\d+)?|.*\.lvh\.me(:\d+)?|lvh\.me(:\d+)?)",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
@@ -57,10 +59,10 @@ app.add_middleware(
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,
-    session_cookie="session",
+    session_cookie="calimara_sess",
     max_age=14 * 24 * 60 * 60,  # 14 days
     same_site="lax",
-    https_only=True,
+    https_only=HTTPS_ONLY,
     domain=SUBDOMAIN_SUFFIX
 )
 
@@ -94,6 +96,7 @@ app.include_router(moderation_routes.router)
 app.include_router(api_pages.router)
 app.include_router(drama_routes.router)
 app.include_router(notification_routes.router)
+app.include_router(stats_routes.router)
 
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")

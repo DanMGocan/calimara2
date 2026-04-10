@@ -90,7 +90,7 @@ export default function PostDetailPage() {
                   </div>
                 </div>
               </div>
-              <h1 className="font-display text-3xl font-bold text-primary md:text-4xl">{post.title}</h1>
+              <h1 className="font-display text-3xl font-medium text-primary md:text-4xl">{post.title}</h1>
               <div className="mt-3 flex items-center gap-2">
                 <Badge>{post.category}</Badge>
                 {post.genre && <Badge variant="secondary">{post.genre}</Badge>}
@@ -131,7 +131,7 @@ export default function PostDetailPage() {
 
             {/* Comments */}
             <section className="mt-10">
-              <h2 className="font-display text-xl font-bold text-primary flex items-center gap-2">
+              <h2 className="font-display text-xl font-medium text-primary flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
                 Comentarii ({post.approved_comments?.length ?? 0})
               </h2>

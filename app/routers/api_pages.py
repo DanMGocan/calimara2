@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import models, crud, auth
+from .. import models, crud, auth, statistics
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, get_avatar_url
 from ..categories import (
@@ -91,10 +91,13 @@ def serialize_comment(comment):
 
 @router.get("/api/landing")
 async def landing_data(
+    request: Request,
     category: str = "toate",
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     """Landing page data: random posts and users"""
+    statistics.record_view(db, request, "landing", None, "home", None, current_user)
     if category == "toate":
         random_posts = crud.get_random_posts(db, limit=10)
     else:
@@ -129,15 +132,19 @@ async def landing_data(
 
 @router.get("/api/blog/{username}")
 async def blog_data(
+    request: Request,
     username: str,
     month: Optional[int] = None,
     year: Optional[int] = None,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     """Blog homepage data for a specific user"""
     user = crud.get_user_by_username(db, username=username)
     if not user:
         raise HTTPException(status_code=404, detail="Blogul nu a fost gasit")
+
+    statistics.record_view(db, request, "blog", user.id, username, user.id, current_user)
 
     # Featured posts
     featured_posts_data = crud.get_featured_posts_for_user(db, user.id)
@@ -202,9 +209,11 @@ async def blog_data(
 
 @router.get("/api/blog/{username}/post/{slug}")
 async def post_detail_data(
+    request: Request,
     username: str,
     slug: str,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     """Post detail page data"""
     user = crud.get_user_by_username(db, username=username)
@@ -215,8 +224,8 @@ async def post_detail_data(
     if not post or post.user_id != user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
 
-    # Increment view count
-    crud.increment_post_view(db, post.id)
+    # Track view with bot detection and deduplication
+    statistics.record_view(db, request, "post", post.id, post.slug, post.user_id, current_user)
 
     # Related posts from same user
     related_posts = crud.get_posts_by_user(db, user.id, limit=5)
@@ -247,6 +256,7 @@ async def post_detail_data(
 
 @router.get("/api/categories/{category_key}")
 async def category_page_data(
+    request: Request,
     category_key: str,
     sort_by: str = "newest",
     db: Session = Depends(get_db),
@@ -256,6 +266,7 @@ async def category_page_data(
         raise HTTPException(status_code=404, detail="Categoria nu a fost gasita")
 
     posts = crud.get_posts_by_category_sorted(db, category_key, sort_by=sort_by, limit=6)
+    statistics.record_view(db, request, "category", None, category_key, None, None)
 
     return {
         "category_key": category_key,
@@ -268,6 +279,7 @@ async def category_page_data(
 
 @router.get("/api/categories/{category_key}/{genre_key}")
 async def genre_page_data(
+    request: Request,
     category_key: str,
     genre_key: str,
     sort_by: str = "newest",
@@ -278,6 +290,7 @@ async def genre_page_data(
         raise HTTPException(status_code=404, detail="Categoria sau genul nu a fost gasit")
 
     posts = crud.get_posts_by_category_sorted(db, category_key, genre_key, sort_by=sort_by, limit=6)
+    statistics.record_view(db, request, "genre", None, f"{category_key}/{genre_key}", None, None)
 
     return {
         "category_key": category_key,

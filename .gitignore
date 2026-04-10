@@ -45,6 +45,7 @@ Thumbs.db # Windows
 *.db
 *.db-journal
 /data/
+.db_epoch
 
 # Logs
 *.log

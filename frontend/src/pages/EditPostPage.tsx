@@ -98,7 +98,7 @@ export default function EditPostPage() {
         </a>
 
         <div className="flex items-center justify-between mb-6">
-          <h1 className="font-display text-2xl font-bold text-primary">Editeaza postarea</h1>
+          <h1 className="font-display text-2xl font-medium text-primary">Editeaza postarea</h1>
           <Button variant="danger" size="sm" onClick={() => setShowDelete(true)}>
             <Trash2 className="h-4 w-4" /> Sterge
           </Button>

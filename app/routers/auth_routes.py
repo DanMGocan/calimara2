@@ -8,8 +8,9 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from .. import models, schemas, google_oauth, auth
+from ..auth import get_db_epoch
 from ..database import get_db
-from ..utils import templates, get_common_context, SUBDOMAIN_SUFFIX, MAIN_DOMAIN
+from ..utils import SUBDOMAIN_SUFFIX, MAIN_DOMAIN
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             # Existing user - log them in (clear session first to prevent fixation)
             request.session.clear()
             request.session["user_id"] = user.id
+            request.session["db_epoch"] = get_db_epoch()
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
             protocol = "https" if "localhost" not in MAIN_DOMAIN else "http"
             return RedirectResponse(
@@ -72,19 +74,17 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Authentication failed")
 
 
-@router.get("/auth/setup", response_class=HTMLResponse)
+@router.get("/auth/setup")
 async def auth_setup_page(request: Request):
-    """Setup page for new Google OAuth users"""
+    """Setup page for new Google OAuth users — served by React frontend"""
     google_user_data = request.session.get("google_user")
     if not google_user_data:
-        # No Google user data in session, redirect to login
         return RedirectResponse(url="/auth/google", status_code=status.HTTP_302_FOUND)
-
-    context = get_common_context(request)
-    context.update({
-        "google_user": google_user_data
-    })
-    return templates.TemplateResponse(request, "auth_setup.html", context)
+    # React catch-all will serve the frontend for this route
+    from fastapi.responses import FileResponse
+    import os
+    frontend_index = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "frontend", "dist", "index.html")
+    return FileResponse(frontend_index)
 
 
 @router.post("/api/auth/complete-setup")
@@ -108,6 +108,7 @@ async def complete_user_setup(request: Request, setup_data: schemas.UserSetup, d
         # Clear session and set authenticated user
         request.session.clear()
         request.session["user_id"] = new_user.id
+        request.session["db_epoch"] = get_db_epoch()
 
         logger.info(f"User setup completed for: {new_user.username}")
         return {"message": "Setup completed successfully", "username": new_user.username}

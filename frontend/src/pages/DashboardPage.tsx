@@ -79,7 +79,7 @@ export default function DashboardPage() {
 
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="font-display text-2xl font-bold text-primary">Panou de control</h1>
+          <h1 className="font-display text-2xl font-medium text-primary">Panou de control</h1>
           <Button asChild>
             <a href={`${getBlogUrl(user.username)}/create-post`} className="no-underline">
               <PenLine className="h-4 w-4" /> Postare noua
