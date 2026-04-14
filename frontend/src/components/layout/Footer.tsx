@@ -1,35 +1,31 @@
 export function Footer() {
   return (
-    <footer className="relative z-[1] border-t border-primary/10 bg-beige-light py-10 text-center">
-      <div className="mx-auto max-w-6xl px-4">
-        <p className="font-display text-2xl font-medium text-primary">Calimara.ro</p>
-        <p className="mt-1 text-sm text-muted">
-          Platformă românească de microblogging pentru scriitori și poeți
-        </p>
-
-        <nav className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2" aria-label="Linkuri legale">
-          <FooterLink href="/politica-de-confidentialitate">Politica de Confidențialitate</FooterLink>
-          <FooterLink href="/termeni-si-conditii">Termeni și Condiții</FooterLink>
-          <FooterLink href="/politica-de-cookie-uri">Politica de Cookie-uri</FooterLink>
-          <FooterLink href="/contact">Contact</FooterLink>
-          <FooterLink href="/despre-noi">Despre Noi</FooterLink>
-        </nav>
-
-        <p className="mt-6 text-xs text-primary/30">
-          &copy; {new Date().getFullYear()} Calimara.ro. Toate drepturile rezervate.
-        </p>
-      </div>
+    <footer className="relative z-[1] border-t border-primary/8 px-4 py-4 text-center sm:px-6">
+      <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Linkuri legale">
+        <FooterLink href="/politica-de-confidentialitate">Confidențialitate</FooterLink>
+        <Sep />
+        <FooterLink href="/termeni-si-conditii">Termeni</FooterLink>
+        <Sep />
+        <FooterLink href="/politica-de-cookie-uri">Cookie-uri</FooterLink>
+        <Sep />
+        <FooterLink href="/contact">Contact</FooterLink>
+        <Sep />
+        <FooterLink href="/despre-noi">Despre</FooterLink>
+        <Sep />
+        <span className="text-[11px] text-primary/25">&copy; {new Date().getFullYear()} Calimara.ro</span>
+      </nav>
     </footer>
   );
 }
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      className="text-sm text-primary/60 transition-colors hover:text-primary no-underline"
-    >
+    <a href={href} className="text-[11px] text-primary/40 transition-colors hover:text-primary/70 no-underline">
       {children}
     </a>
   );
+}
+
+function Sep() {
+  return <span className="text-primary/15 select-none" aria-hidden="true">·</span>;
 }

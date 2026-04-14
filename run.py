@@ -156,17 +156,6 @@ def init_database():
 
             connection.commit()
 
-            # Verify tables
-            tables = ['users', 'posts', 'comments', 'likes', 'tags',
-                      'best_friends', 'featured_posts', 'user_awards',
-                      'conversations', 'messages', 'moderation_logs',
-                      'dramas', 'drama_characters', 'drama_acts',
-                      'drama_replies', 'drama_likes', 'drama_comments',
-                      'drama_invitations', 'notifications']
-            for table in tables:
-                count = connection.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
-                print(f"  {table}: {count} rows")
-
             print(f"  Schema executed ({executed} statements)")
 
             # Write DB epoch to invalidate stale session cookies

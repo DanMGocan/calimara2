@@ -26,20 +26,39 @@ export interface Message {
   created_at: string;
 }
 
-export function fetchConversations(): Promise<Conversation[]> {
-  return api.get("/api/messages/conversations");
+export interface ConversationDetail {
+  conversation: {
+    id: number;
+    other_user: {
+      id: number;
+      username: string;
+      subtitle: string | null;
+      avatar_seed: string;
+    };
+  };
+  messages: Message[];
 }
 
-export function fetchConversation(id: number, page = 1): Promise<{ messages: Message[]; has_more: boolean }> {
-  return api.get(`/api/messages/conversations/${id}?page=${page}`);
+export async function fetchConversations(): Promise<Conversation[]> {
+  const response = await api.get<{ conversations: Conversation[] }>("/api/messages/conversations");
+  return response.conversations;
+}
+
+export function fetchConversation(id: number, page = 1): Promise<ConversationDetail> {
+  const limit = 50;
+  const offset = (page - 1) * limit;
+  return api.get(`/api/messages/conversations/${id}?limit=${limit}&offset=${offset}`);
 }
 
 export function sendMessageInConversation(id: number, content: string): Promise<Message> {
   return api.post(`/api/messages/conversations/${id}`, { content });
 }
 
-export function sendNewMessage(username: string, content: string): Promise<{ conversation_id: number; message: Message }> {
-  return api.post("/api/messages/send", { username, content });
+export function sendNewMessage(
+  recipientUsername: string,
+  content: string,
+): Promise<{ message: string; conversation_id: number; message_id: number }> {
+  return api.post("/api/messages/send", { recipient_username: recipientUsername, content });
 }
 
 export function fetchUnreadCount(): Promise<{ unread_count: number }> {
@@ -50,6 +69,9 @@ export function deleteConversation(id: number): Promise<void> {
   return api.delete(`/api/messages/conversations/${id}`);
 }
 
-export function searchConversations(q: string): Promise<Conversation[]> {
-  return api.get(`/api/messages/search?q=${encodeURIComponent(q)}`);
+export async function searchConversations(q: string): Promise<Conversation[]> {
+  const response = await api.get<{ conversations: Conversation[] }>(
+    `/api/messages/search?q=${encodeURIComponent(q)}`,
+  );
+  return response.conversations;
 }

@@ -16,7 +16,7 @@ router = APIRouter(tags=["messages"])
 
 
 @router.get("/api/messages/conversations")
-async def get_user_conversations_api(
+def get_user_conversations_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
@@ -64,7 +64,7 @@ async def get_user_conversations_api(
 
 
 @router.get("/api/messages/conversations/{conversation_id}")
-async def get_conversation_messages_api(
+def get_conversation_messages_api(
     conversation_id: int,
     limit: int = 50,
     offset: int = 0,
@@ -121,7 +121,7 @@ async def get_conversation_messages_api(
 
 @router.post("/api/messages/conversations/{conversation_id}")
 @limiter.limit("20/minute")
-async def send_message_api(
+def send_message_api(
     request: Request,
     conversation_id: int,
     message_data: schemas.MessageCreate,
@@ -153,7 +153,7 @@ async def send_message_api(
 
 @router.post("/api/messages/send")
 @limiter.limit("20/minute")
-async def send_message_to_user_api(
+def send_message_to_user_api(
     request: Request,
     message_data: schemas.MessageToUser,
     db: Session = Depends(get_db),
@@ -181,7 +181,7 @@ async def send_message_to_user_api(
 
 
 @router.get("/api/messages/unread-count")
-async def get_unread_count_api(
+def get_unread_count_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
@@ -196,7 +196,7 @@ async def get_unread_count_api(
 
 
 @router.delete("/api/messages/conversations/{conversation_id}")
-async def delete_conversation_api(
+def delete_conversation_api(
     conversation_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -217,7 +217,7 @@ async def delete_conversation_api(
 
 
 @router.get("/api/messages/search")
-async def search_conversations_api(
+def search_conversations_api(
     q: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)

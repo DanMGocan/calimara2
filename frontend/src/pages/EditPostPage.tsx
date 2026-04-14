@@ -8,7 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import TipTapLink from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Quote, Code2, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, ArrowLeft, Trash2 } from "lucide-react";
+import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Quote, Code2, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, ArrowLeft, Trash2, Loader2 } from "lucide-react";
 import { updatePost, deletePost } from "@/api/posts";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubdomain } from "@/hooks/useSubdomain";
@@ -18,7 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { CATEGORIES_AND_GENRES, getGenresForCategory } from "@/lib/categories";
+import { getCategoryName } from "@/lib/categories";
 import { getBlogUrl } from "@/lib/utils";
 import { api } from "@/api/client";
 import type { Post } from "@/api/posts";
@@ -36,8 +36,6 @@ export default function EditPostPage() {
   });
 
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
-  const [genre, setGenre] = useState("");
   const [showDelete, setShowDelete] = useState(false);
 
   const editor = useEditor({
@@ -54,8 +52,6 @@ export default function EditPostPage() {
   useEffect(() => {
     if (post) {
       setTitle(post.title);
-      setCategory(post.category);
-      setGenre(post.genre ?? "");
       if (editor) editor.commands.setContent(post.content);
     }
   }, [post, editor]);
@@ -64,8 +60,6 @@ export default function EditPostPage() {
     mutationFn: () => updatePost(Number(postId), {
       title: title.trim(),
       content: editor?.getHTML() ?? "",
-      category,
-      genre: genre || undefined,
     }),
     onSuccess: (updated) => {
       showToast("Postare actualizata!", "success");
@@ -83,8 +77,6 @@ export default function EditPostPage() {
   });
 
   if (isLoading || !post) return <PageLoader />;
-
-  const genres = category ? getGenresForCategory(category) : [];
 
   return (
     <>
@@ -108,36 +100,6 @@ export default function EditPostPage() {
           <div>
             <label className="block text-sm font-medium text-primary mb-1">Titlu</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-primary mb-1">Categorie</label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm"
-                value={category}
-                onChange={(e) => { setCategory(e.target.value); setGenre(""); }}
-              >
-                {Object.entries(CATEGORIES_AND_GENRES).map(([key, cat]) => (
-                  <option key={key} value={key}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-            {genres.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-primary mb-1">Gen</label>
-                <select
-                  className="flex h-10 w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm"
-                  value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                >
-                  <option value="">Fara gen</option>
-                  {genres.map(([key, name]) => (
-                    <option key={key} value={key}>{name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
 
           <div>
@@ -173,8 +135,15 @@ export default function EditPostPage() {
           </div>
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? "Se salveaza..." : "Salveaza modificarile"}
+            <Button type="submit" disabled={updateMutation.isPending} className="min-w-[160px]">
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analiză AI...
+                </>
+              ) : (
+                "Salvează modificările"
+              )}
             </Button>
           </div>
         </form>

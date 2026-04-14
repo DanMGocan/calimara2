@@ -107,7 +107,7 @@ def extract_themes_from_text(text: str, existing_themes: List[str], existing_fee
 
 # --- Public API ---
 
-async def analyze_post_themes(title: str, content: str, db: Session) -> ThemeAnalysisResult:
+def analyze_post_themes(title: str, content: str, db: Session) -> ThemeAnalysisResult:
     """
     Analyze a post's themes and feelings using Mistral AI.
     Fetches existing terms from DB for consistency.

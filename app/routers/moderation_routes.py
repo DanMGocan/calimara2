@@ -15,7 +15,7 @@ router = APIRouter(tags=["moderation"])
 
 
 @router.get("/api/moderation/stats")
-async def get_moderation_stats(
+def get_moderation_stats(
     response: Response,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)
@@ -58,7 +58,7 @@ async def get_moderation_stats(
 
 
 @router.get("/api/moderation/content/pending")
-async def get_pending_content(
+def get_pending_content(
     request: Request,
     content_type: str = "all",
     db: Session = Depends(get_db),
@@ -72,7 +72,7 @@ async def get_pending_content(
         content = []
 
         if content_type in ["all", "posts"]:
-            posts = crud.get_posts_for_moderation(db, status_filter=None, limit=50)
+            posts = crud.get_posts_for_moderation(db, status_filter="pending", limit=50)
 
             for post in posts:
                 content.append({
@@ -82,13 +82,13 @@ async def get_pending_content(
                     "content": post.content,
                     "author": post.owner.username,
                     "toxicity_score": getattr(post, 'toxicity_score', 0.0),
-                    "moderation_status": getattr(post, 'moderation_status', 'pending'),
+                    "moderation_status": post.moderation_status,
                     "moderation_reason": getattr(post, 'moderation_reason', ''),
                     "created_at": post.created_at.isoformat()
                 })
 
         if content_type in ["all", "comments"]:
-            comments = crud.get_comments_for_moderation(db, status_filter=None, limit=50)
+            comments = crud.get_comments_for_moderation(db, status_filter="pending", limit=50)
 
             for comment in comments:
                 author = comment.commenter.username if comment.commenter else comment.author_name
@@ -99,7 +99,7 @@ async def get_pending_content(
                     "content": comment.content,
                     "author": author,
                     "toxicity_score": getattr(comment, 'toxicity_score', 0.0),
-                    "moderation_status": getattr(comment, 'moderation_status', 'pending'),
+                    "moderation_status": comment.moderation_status,
                     "moderation_reason": getattr(comment, 'moderation_reason', ''),
                     "created_at": comment.created_at.isoformat()
                 })
@@ -115,7 +115,7 @@ async def get_pending_content(
 
 
 @router.get("/api/moderation/content/flagged")
-async def get_flagged_content(
+def get_flagged_content(
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)
@@ -174,7 +174,7 @@ async def get_flagged_content(
 
 
 @router.post("/api/moderation/moderate/{content_type}/{content_id}")
-async def moderate_content_action(
+def moderate_content_action(
     content_type: str,
     content_id: int,
     action_data: schemas.ModerationActionRequest,
@@ -234,7 +234,7 @@ async def moderate_content_action(
 
 
 @router.get("/api/moderation/users/search")
-async def search_users_admin(
+def search_users_admin(
     q: str = "",
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin)
@@ -269,7 +269,7 @@ async def search_users_admin(
 
 
 @router.post("/api/moderation/users/{user_id}/suspend")
-async def suspend_user(
+def suspend_user(
     user_id: int,
     suspension_data: schemas.SuspendUserRequest,
     db: Session = Depends(get_db),
@@ -308,7 +308,7 @@ async def suspend_user(
 
 
 @router.post("/api/moderation/users/{user_id}/unsuspend")
-async def unsuspend_user(
+def unsuspend_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin)
@@ -343,7 +343,7 @@ async def unsuspend_user(
 # --- Moderation Logs API Endpoints ---
 
 @router.get("/api/moderation/logs")
-async def get_moderation_logs_api(
+def get_moderation_logs_api(
     request: Request,
     decision: Optional[str] = None,
     limit: int = 100,
@@ -409,7 +409,7 @@ async def get_moderation_logs_api(
 
 
 @router.get("/api/moderation/queue")
-async def get_moderation_queue_api(
+def get_moderation_queue_api(
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)
@@ -473,7 +473,7 @@ async def get_moderation_queue_api(
 
 
 @router.post("/api/moderation/review/{log_id}")
-async def review_flagged_content(
+def review_flagged_content(
     log_id: int,
     review_data: schemas.ModerationActionRequest,
     db: Session = Depends(get_db),
@@ -495,24 +495,11 @@ async def review_flagged_content(
         if not log:
             raise HTTPException(status_code=404, detail="Moderation log not found")
 
-        # Update the actual content status based on human decision
-        if log.content_type == "post":
-            post = db.query(models.Post).filter(models.Post.id == log.content_id).first()
-            if post:
-                post.moderation_status = decision
-                post.moderation_reason = f"Human review: {reason}"
-                post.moderated_by = current_user.id
-                post.moderated_at = func.now()
-        elif log.content_type == "comment":
-            comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
-            if comment:
-                comment.moderation_status = decision
-                comment.approved = (decision == "approved")
-                comment.moderation_reason = f"Human review: {reason}"
-                comment.moderated_by = current_user.id
-                comment.moderated_at = func.now()
-
-        db.commit()
+        # Use the centralized CRUD functions to update content and send notifications
+        if decision == "approved":
+            crud.approve_content(db, log.content_type, log.content_id, current_user.id, f"Human review: {reason}")
+        else:
+            crud.reject_content(db, log.content_type, log.content_id, current_user.id, f"Human review: {reason}")
 
         logger.info(f"Human review completed by {current_user.username}: {log.content_type} {log.content_id} {decision}")
 
@@ -526,7 +513,7 @@ async def review_flagged_content(
 
 
 @router.get("/api/moderation/stats/extended")
-async def get_extended_moderation_stats(
+def get_extended_moderation_stats(
     request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_moderator)

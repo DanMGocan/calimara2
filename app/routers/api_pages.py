@@ -11,11 +11,7 @@ from sqlalchemy.orm import Session
 from .. import models, crud, auth, statistics
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, get_avatar_url
-from ..categories import (
-    CATEGORIES_AND_GENRES, get_main_categories, get_all_categories,
-    get_genres_for_category, get_category_name, get_genre_name,
-    is_valid_category, is_valid_genre
-)
+from ..categories import CATEGORIES, get_category_name
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +45,7 @@ def serialize_post(post, include_owner=False):
         "slug": post.slug,
         "content": post.content,
         "category": post.category,
-        "genre": post.genre,
+        "category_name": get_category_name(post.category) if post.category else "",
         "view_count": post.view_count,
         "likes_count": post.likes_count,
         "moderation_status": post.moderation_status,
@@ -90,7 +86,7 @@ def serialize_comment(comment):
 
 
 @router.get("/api/landing")
-async def landing_data(
+def landing_data(
     request: Request,
     category: str = "toate",
     db: Session = Depends(get_db),
@@ -101,21 +97,8 @@ async def landing_data(
     if category == "toate":
         random_posts = crud.get_random_posts(db, limit=10)
     else:
-        category_mapping = {
-            "poezie": "poezie",
-            "proza": "proza",
-            "teatru": "teatru",
-            "eseu": "eseu",
-            "critica_literara": "critica_literara",
-            "jurnal": "jurnal",
-            "altele": ["literatura_experimentala", "scrisoare"],
-        }
-        if category in category_mapping:
-            mapped = category_mapping[category]
-            if isinstance(mapped, list):
-                random_posts = crud.get_random_posts_by_categories(db, mapped, limit=10)
-            else:
-                random_posts = crud.get_random_posts_by_category(db, mapped, limit=10)
+        if category in CATEGORIES:
+            random_posts = crud.get_random_posts_by_category(db, category, limit=10)
         else:
             random_posts = []
 
@@ -124,14 +107,13 @@ async def landing_data(
     return {
         "random_posts": [serialize_post(p, include_owner=True) for p in random_posts],
         "random_users": [serialize_user(u) for u in random_users],
-        "categories": CATEGORIES_AND_GENRES,
-        "main_categories": get_main_categories(),
+        "categories": CATEGORIES,
         "selected_category": category,
     }
 
 
 @router.get("/api/blog/{username}")
-async def blog_data(
+def blog_data(
     request: Request,
     username: str,
     month: Optional[int] = None,
@@ -208,7 +190,7 @@ async def blog_data(
 
 
 @router.get("/api/blog/{username}/post/{slug}")
-async def post_detail_data(
+def post_detail_data(
     request: Request,
     username: str,
     slug: str,
@@ -255,14 +237,14 @@ async def post_detail_data(
 
 
 @router.get("/api/categories/{category_key}")
-async def category_page_data(
+def category_page_data(
     request: Request,
     category_key: str,
     sort_by: str = "newest",
     db: Session = Depends(get_db),
 ):
     """Category page data"""
-    if not is_valid_category(category_key):
+    if category_key not in CATEGORIES:
         raise HTTPException(status_code=404, detail="Categoria nu a fost gasita")
 
     posts = crud.get_posts_by_category_sorted(db, category_key, sort_by=sort_by, limit=6)
@@ -271,40 +253,13 @@ async def category_page_data(
     return {
         "category_key": category_key,
         "category_name": get_category_name(category_key),
-        "genres": get_genres_for_category(category_key),
-        "posts": [serialize_post(p, include_owner=True) for p in posts],
-        "sort_by": sort_by,
-    }
-
-
-@router.get("/api/categories/{category_key}/{genre_key}")
-async def genre_page_data(
-    request: Request,
-    category_key: str,
-    genre_key: str,
-    sort_by: str = "newest",
-    db: Session = Depends(get_db),
-):
-    """Genre page data"""
-    if not is_valid_category(category_key) or not is_valid_genre(category_key, genre_key):
-        raise HTTPException(status_code=404, detail="Categoria sau genul nu a fost gasit")
-
-    posts = crud.get_posts_by_category_sorted(db, category_key, genre_key, sort_by=sort_by, limit=6)
-    statistics.record_view(db, request, "genre", None, f"{category_key}/{genre_key}", None, None)
-
-    return {
-        "category_key": category_key,
-        "category_name": get_category_name(category_key),
-        "genre_key": genre_key,
-        "genre_name": get_genre_name(category_key, genre_key),
-        "genres": get_genres_for_category(category_key),
         "posts": [serialize_post(p, include_owner=True) for p in posts],
         "sort_by": sort_by,
     }
 
 
 @router.get("/api/user/{username}/profile")
-async def user_public_profile(
+def user_public_profile(
     username: str,
     db: Session = Depends(get_db),
 ):

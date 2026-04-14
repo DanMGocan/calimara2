@@ -23,7 +23,7 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
 
 
 @router.get("/api/stats/post/{post_id}")
-async def post_stats(
+def post_stats(
     post_id: int,
     db: Session = Depends(get_db),
     from_date: Optional[str] = Query(None, alias="from"),
@@ -38,7 +38,7 @@ async def post_stats(
 
 
 @router.get("/api/stats/author/{username}")
-async def author_stats(
+def author_stats(
     username: str,
     db: Session = Depends(get_db),
     from_date: Optional[str] = Query(None, alias="from"),
@@ -53,7 +53,7 @@ async def author_stats(
 
 
 @router.get("/api/stats/category/{category_key}")
-async def category_stats(
+def category_stats(
     category_key: str,
     db: Session = Depends(get_db),
     from_date: Optional[str] = Query(None, alias="from"),
@@ -64,7 +64,7 @@ async def category_stats(
 
 
 @router.get("/api/stats/tag/{tag_name}")
-async def tag_stats(
+def tag_stats(
     tag_name: str,
     db: Session = Depends(get_db),
     from_date: Optional[str] = Query(None, alias="from"),
@@ -75,7 +75,7 @@ async def tag_stats(
 
 
 @router.get("/api/stats/overview")
-async def overview_stats(
+def overview_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
     from_date: Optional[str] = Query(None, alias="from"),
@@ -86,7 +86,7 @@ async def overview_stats(
 
 
 @router.get("/api/stats/my")
-async def my_stats(
+def my_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
     from_date: Optional[str] = Query(None, alias="from"),

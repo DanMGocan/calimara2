@@ -29,7 +29,7 @@ oauth.register(
     }
 )
 
-async def get_google_auth_url(request: Request) -> str:
+def get_google_auth_url(request: Request) -> str:
     """Generate Google OAuth authorization URL"""
     # Always use manual URL generation to avoid Authlib parameter conflicts
     import urllib.parse

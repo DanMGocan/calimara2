@@ -8,7 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import TipTapLink from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Quote, Code2, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2 } from "lucide-react";
+import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Quote, Code2, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, Loader2 } from "lucide-react";
 import { createPost, type PostCreateData } from "@/api/posts";
 import { useAuth } from "@/hooks/useAuth";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { CATEGORIES_AND_GENRES, getGenresForCategory } from "@/lib/categories";
+import { getCategoryName } from "@/lib/categories";
 import { MAX_TAGS, MAX_TAG_LENGTH } from "@/lib/constants";
 import { getBlogUrl } from "@/lib/utils";
 
@@ -26,8 +26,6 @@ export default function CreatePostPage() {
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState("");
-  const [genre, setGenre] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
@@ -43,7 +41,7 @@ export default function CreatePostPage() {
   });
 
   // Auto-save
-  const formData = { title, category, genre, tags, content: editor?.getHTML() ?? "" };
+  const formData = { title, tags, content: editor?.getHTML() ?? "" };
   const { load, clear } = useAutoSave("calimara_createPost", formData);
 
   // Restore draft
@@ -51,11 +49,9 @@ export default function CreatePostPage() {
     const draft = load();
     if (draft) {
       setTitle(draft.title || "");
-      setCategory(draft.category || "");
-      setGenre(draft.genre || "");
       setTags(draft.tags || []);
       if (editor && draft.content) editor.commands.setContent(draft.content);
-      showToast("Ciorna restaurata!", "info");
+      showToast("Ciornă restaurată!", "info");
     }
   }, [load, editor, showToast]);
 
@@ -64,7 +60,7 @@ export default function CreatePostPage() {
     mutationFn: (data: PostCreateData) => createPost(data),
     onSuccess: (post) => {
       clear();
-      showToast("Postare publicata!", "success");
+      showToast("Postare publicată!", "success");
       if (user) window.location.href = `${getBlogUrl(user.username)}/${post.slug}`;
     },
     onError: (err: Error) => showToast(err.message, "danger"),
@@ -75,14 +71,12 @@ export default function CreatePostPage() {
     if (!editor) return;
     const content = editor.getHTML();
     if (!title.trim() || !content.trim() || content === "<p></p>") {
-      showToast("Titlul si continutul sunt obligatorii.", "danger");
+      showToast("Titlul și conținutul sunt obligatorii.", "danger");
       return;
     }
     mutation.mutate({
       title: title.trim(),
       content,
-      category,
-      genre: genre || undefined,
       tags: tags.length > 0 ? tags : undefined,
     });
   };
@@ -95,16 +89,14 @@ export default function CreatePostPage() {
     }
   };
 
-  const genres = category ? getGenresForCategory(category) : [];
-
   return (
     <>
       <Helmet>
-        <title>Postare noua | Calimara</title>
+        <title>Postare nouă | Calimara</title>
       </Helmet>
 
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <h1 className="font-display text-2xl font-medium text-primary mb-6">Postare noua</h1>
+        <h1 className="font-display text-2xl font-medium text-primary mb-6">Postare nouă</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Title */}
@@ -113,44 +105,11 @@ export default function CreatePostPage() {
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Titlul postarii"
+              placeholder="Titlul postării"
               maxLength={200}
               required
             />
             <p className="mt-1 text-xs text-muted text-right">{title.length}/200</p>
-          </div>
-
-          {/* Category & Genre */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-primary mb-1">Categorie</label>
-              <select
-                className="flex h-10 w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm"
-                value={category}
-                onChange={(e) => { setCategory(e.target.value); setGenre(""); }}
-                required
-              >
-                <option value="">Alege categoria</option>
-                {Object.entries(CATEGORIES_AND_GENRES).map(([key, cat]) => (
-                  <option key={key} value={key}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
-            {genres.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-primary mb-1">Gen</label>
-                <select
-                  className="flex h-10 w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm"
-                  value={genre}
-                  onChange={(e) => setGenre(e.target.value)}
-                >
-                  <option value="">Alege genul (optional)</option>
-                  {genres.map(([key, name]) => (
-                    <option key={key} value={key}>{name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
 
           {/* Tags */}
@@ -169,7 +128,7 @@ export default function CreatePostPage() {
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); addTag(); } }}
-                placeholder="Adauga o eticheta..."
+                placeholder="Adaugă o etichetă..."
                 maxLength={MAX_TAG_LENGTH}
                 disabled={tags.length >= MAX_TAGS}
               />
@@ -179,7 +138,7 @@ export default function CreatePostPage() {
 
           {/* Editor */}
           <div>
-            <label className="block text-sm font-medium text-primary mb-1">Continut</label>
+            <label className="block text-sm font-medium text-primary mb-1">Conținut</label>
             <Card>
               {/* Toolbar */}
               <div className="flex flex-wrap gap-1 border-b border-border p-2">
@@ -212,9 +171,16 @@ export default function CreatePostPage() {
           </div>
 
           <div className="flex items-center justify-between">
-            <Button type="button" variant="ghost" onClick={restoreDraft}>Restaureaza ciorna</Button>
-            <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending ? "Se publica..." : "Publica"}
+            <Button type="button" variant="ghost" onClick={restoreDraft}>Restaurează ciorna</Button>
+            <Button type="submit" disabled={mutation.isPending} className="min-w-[140px]">
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analiză AI...
+                </>
+              ) : (
+                "Publică"
+              )}
             </Button>
           </div>
         </form>

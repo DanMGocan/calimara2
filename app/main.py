@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, drama_routes, notification_routes, stats_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -94,7 +94,6 @@ app.include_router(post_routes.router)
 app.include_router(message_routes.router)
 app.include_router(moderation_routes.router)
 app.include_router(api_pages.router)
-app.include_router(drama_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(stats_routes.router)
 
@@ -107,7 +106,7 @@ if os.path.isdir(FRONTEND_DIST):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="react-assets")
 
     @app.get("/{full_path:path}")
-    async def serve_react(full_path: str):
+    def serve_react(full_path: str):
         """Catch-all: serve React index.html for client-side routing"""
         return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 else:

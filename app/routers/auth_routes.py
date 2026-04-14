@@ -23,7 +23,7 @@ router = APIRouter(tags=["auth"])
 async def google_login(request: Request):
     """Initiate Google OAuth flow"""
     try:
-        auth_url = await google_oauth.get_google_auth_url(request)
+        auth_url = google_oauth.get_google_auth_url(request)
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
         logger.error(f"Error initiating Google OAuth: {e}")
@@ -75,7 +75,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/auth/setup")
-async def auth_setup_page(request: Request):
+def auth_setup_page(request: Request):
     """Setup page for new Google OAuth users — served by React frontend"""
     google_user_data = request.session.get("google_user")
     if not google_user_data:
@@ -88,7 +88,7 @@ async def auth_setup_page(request: Request):
 
 
 @router.post("/api/auth/complete-setup")
-async def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
+def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
     """Complete user setup after Google OAuth"""
     google_user_data = request.session.get("google_user")
     if not google_user_data:
@@ -121,7 +121,7 @@ async def complete_user_setup(request: Request, setup_data: schemas.UserSetup, d
 
 
 @router.get("/api/logout")
-async def logout_user(request: Request):
+def logout_user(request: Request):
     request.session.clear()  # Clear session
     logger.info("Utilizator deconectat. Sesiune stearsa.")
 

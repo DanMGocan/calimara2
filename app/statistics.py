@@ -163,11 +163,6 @@ def record_view(
                 {models.Post.view_count: models.Post.view_count + 1},
                 synchronize_session="fetch"
             )
-        elif content_type == "drama" and content_id:
-            db.query(models.Drama).filter(models.Drama.id == content_id).update(
-                {models.Drama.view_count: models.Drama.view_count + 1},
-                synchronize_session="fetch"
-            )
 
     db.commit()
     return page_view

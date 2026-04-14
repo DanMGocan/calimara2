@@ -6,13 +6,10 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth, moderation, theme_analysis
+from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier
 from ..database import get_db
 from ..utils import get_client_ip, SUBDOMAIN_SUFFIX
-from ..categories import (
-    CATEGORIES_AND_GENRES, get_genres_for_category,
-    is_valid_category
-)
+from ..categories import CATEGORIES
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +20,7 @@ router = APIRouter(tags=["posts"])
 # --- Posts Archive ---
 
 @router.get("/api/posts/archive")
-async def get_posts_archive(
+def get_posts_archive(
     month: int = None,
     year: int = None,
     db: Session = Depends(get_db),
@@ -60,7 +57,7 @@ async def get_posts_archive(
 
 
 @router.get("/api/posts/months")
-async def get_available_months(
+def get_available_months(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
@@ -83,12 +80,19 @@ async def create_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
+    # AI category classification
+    try:
+        category = category_classifier.classify_post(post.title, post.content)
+    except Exception as e:
+        logger.error(f"Category classification failed: {e}")
+        category = "proza_scurta"
+
     # Create post first
-    db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id)
+    db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id, category=category)
 
     # Then moderate it asynchronously with logging
     try:
-        moderation_result = await moderation.moderate_post_with_logging(
+        moderation_result = moderation.moderate_post_with_logging(
             post.title, post.content, db_post.id, current_user.id, db
         )
 
@@ -99,6 +103,16 @@ async def create_post(
 
         db.commit()
         db.refresh(db_post)
+
+        if db_post.moderation_status == "flagged":
+            crud.create_notification(
+                db=db,
+                user_id=current_user.id,
+                notif_type="moderation_queue",
+                title="Postare în curs de moderare",
+                message=f"Postarea '{db_post.title}' a fost trimisă pentru revizuire manuală.",
+                link=None
+            )
 
         logger.info(f"Post moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
 
@@ -112,7 +126,7 @@ async def create_post(
 
     # Theme analysis (non-blocking)
     try:
-        analysis = await theme_analysis.analyze_post_themes(post.title, post.content, db)
+        analysis = theme_analysis.analyze_post_themes(post.title, post.content, db)
         if analysis.success:
             crud.update_post_theme_analysis(db, db_post.id, analysis.themes, analysis.feelings, "completed")
         else:
@@ -126,7 +140,7 @@ async def create_post(
 
 
 @router.put("/api/posts/{post_id}", response_model=schemas.Post)
-async def update_post_api(
+def update_post_api(
     post_id: int,
     post_update: schemas.PostUpdate,
     db: Session = Depends(get_db),
@@ -136,17 +150,26 @@ async def update_post_api(
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
 
+    # Re-classify category based on updated content
+    try:
+        content = post_update.content if post_update.content else db_post.content
+        title = post_update.title if post_update.title else db_post.title
+        category = category_classifier.classify_post(title, content)
+    except Exception as e:
+        logger.error(f"Category re-classification failed: {e}")
+        category = db_post.category or "proza_scurta"
+
     # Delete existing tags and create new ones if tags are provided
     if post_update.tags is not None:
         crud.delete_tags_for_post(db, post_id)
         for tag_name in post_update.tags:
             crud.create_tag(db, post_id, tag_name.strip())
 
-    return crud.update_post(db=db, post_id=post_id, post_update=post_update)
+    return crud.update_post(db=db, post_id=post_id, post_update=post_update, category=category)
 
 
 @router.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_post_api(
+def delete_post_api(
     post_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -162,7 +185,7 @@ async def delete_post_api(
 
 @router.post("/api/posts/{post_id}/comments", response_model=schemas.Comment)
 @limiter.limit("20/minute")
-async def add_comment_to_post(
+def add_comment_to_post(
     post_id: int,
     comment: schemas.CommentCreate,
     request: Request,
@@ -182,7 +205,7 @@ async def add_comment_to_post(
 
     # Then moderate it asynchronously with logging
     try:
-        moderation_result = await moderation.moderate_comment_with_logging(
+        moderation_result = moderation.moderate_comment_with_logging(
             comment.content, db_comment.id, user_id, db
         )
 
@@ -194,6 +217,16 @@ async def add_comment_to_post(
 
         db.commit()
         db.refresh(db_comment)
+
+        if db_comment.moderation_status == "flagged" and user_id:
+            crud.create_notification(
+                db=db,
+                user_id=user_id,
+                notif_type="moderation_queue",
+                title="Comentariu în curs de moderare",
+                message=f"Comentariul tău la postarea '{db_post.title}' a fost trimis pentru revizuire manuală.",
+                link=f"/piese/{db_post.slug}"
+            )
 
         logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
         logger.info(f"Comment ID {db_comment.id} status: {db_comment.moderation_status}, approved: {db_comment.approved}")
@@ -211,7 +244,7 @@ async def add_comment_to_post(
 
 
 @router.put("/api/comments/{comment_id}/approve", response_model=schemas.Comment)
-async def approve_comment_api(
+def approve_comment_api(
     comment_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -229,7 +262,7 @@ async def approve_comment_api(
 
 
 @router.delete("/api/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_comment_api(
+def delete_comment_api(
     comment_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -250,7 +283,7 @@ async def delete_comment_api(
 # --- Likes ---
 
 @router.post("/api/posts/{post_id}/likes", response_model=schemas.Like)
-async def add_like_to_post(
+def add_like_to_post(
     post_id: int,
     request: Request,
     db: Session = Depends(get_db),
@@ -270,7 +303,7 @@ async def add_like_to_post(
 
 
 @router.get("/api/posts/{post_id}/likes/count")
-async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
+def get_likes_count(post_id: int, db: Session = Depends(get_db)):
     count = crud.get_likes_count_for_post(db, post_id)
     return {"post_id": post_id, "likes_count": count}
 
@@ -278,7 +311,7 @@ async def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 # --- Tags ---
 
 @router.get("/api/tags/suggestions")
-async def get_tag_suggestions_api(
+def get_tag_suggestions_api(
     query: str,
     limit: int = 10,
     db: Session = Depends(get_db)
@@ -288,22 +321,13 @@ async def get_tag_suggestions_api(
         return {"suggestions": []}
 
     suggestions = crud.get_tag_suggestions(db, query.strip(), limit)
-    return {"suggestions": [tag[0] for tag in suggestions]}
-
-
-# --- Genres API ---
-
-@router.get("/api/genres/{category_key}")
-async def get_genres_api(category_key: str):
-    if not is_valid_category(category_key):
-        raise HTTPException(status_code=404, detail="Category not found")
-    return {"genres": get_genres_for_category(category_key)}
+    return {"suggestions": suggestions}
 
 
 # --- Random Posts API ---
 
 @router.get("/api/posts/random")
-async def get_random_posts_api(
+def get_random_posts_api(
     category: str = "toate",
     limit: int = 10,
     db: Session = Depends(get_db)
@@ -314,35 +338,15 @@ async def get_random_posts_api(
         if category == "toate":
             random_posts = crud.get_random_posts(db, limit=limit)
         else:
-            # Map category filter names to actual category keys
-            category_mapping = {
-                "poezie": "poezie",
-                "proza": "proza",
-                "teatru": "teatru",
-                "eseu": "eseu",
-                "critica_literara": "critica_literara",
-                "jurnal": "jurnal",
-                "altele": ["literatura_experimentala", "scrisoare"]
-            }
-
-            if category in category_mapping:
-                mapped_category = category_mapping[category]
-                if isinstance(mapped_category, list):
-                    random_posts = crud.get_random_posts_by_categories(db, mapped_category, limit=limit)
-                else:
-                    random_posts = crud.get_random_posts_by_category(db, mapped_category, limit=limit)
+            if category in CATEGORIES:
+                random_posts = crud.get_random_posts_by_category(db, category, limit=limit)
             else:
                 random_posts = []
 
         # Format posts for frontend
         formatted_posts = []
         for post in random_posts:
-            # Get category name for display
-            category_name = ""
-            if post.category and post.category in CATEGORIES_AND_GENRES:
-                category_name = CATEGORIES_AND_GENRES[post.category]["name"]
-                if post.genre and post.genre in CATEGORIES_AND_GENRES[post.category]["genres"]:
-                    category_name += f" - {CATEGORIES_AND_GENRES[post.category]['genres'][post.genre]}"
+            category_name = CATEGORIES.get(post.category, "") if post.category else ""
 
             formatted_posts.append({
                 "id": post.id,

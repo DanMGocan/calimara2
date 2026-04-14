@@ -23,7 +23,7 @@ def get_db_epoch() -> str:
     return _db_epoch_cache
 
 
-async def get_current_user(request: Request, db: Session = Depends(get_db)):
+def get_current_user(request: Request, db: Session = Depends(get_db)):
     # Invalidate sessions from before the last DB reinitialization
     session_epoch = request.session.get("db_epoch")
     current_epoch = get_db_epoch()
@@ -45,7 +45,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     return user
 
 
-async def get_required_user(current_user: models.User = Depends(get_current_user)):
+def get_required_user(current_user: models.User = Depends(get_current_user)):
     if current_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

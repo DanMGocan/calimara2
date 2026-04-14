@@ -1,17 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
+import DOMPurify from "dompurify";
 import { fetchLanding } from "@/api/posts";
 import type { Post } from "@/api/posts";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getBlogUrl } from "@/lib/utils";
 
-type ContentType = "poezie" | "proza" | "piese";
+type ContentType = "poezie" | "proza_scurta";
 
 const TABS: { key: ContentType; label: string }[] = [
   { key: "poezie", label: "Poezie" },
-  { key: "proza", label: "Proză" },
-  { key: "piese", label: "Teatru" },
+  { key: "proza_scurta", label: "Proză scurtă" },
 ];
 
 export default function LandingPage() {
@@ -61,7 +61,7 @@ export default function LandingPage() {
         <meta name="description" content="Calimara este o platformă de microblogging pentru scriitori și poeți români." />
       </Helmet>
 
-      <div>
+      <div className="mx-auto max-w-2xl">
         {/* Inline tabs */}
         <nav className="mb-10 flex flex-wrap items-center gap-y-2" role="tablist" aria-label="Tip conținut">
           {TABS.map(({ key, label }, i) => (
@@ -111,7 +111,7 @@ export default function LandingPage() {
 
               <div
                 className="prose-content mt-8 text-lg leading-relaxed text-primary/80"
-                dangerouslySetInnerHTML={{ __html: displayedPost.content }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(displayedPost.content) }}
               />
             </article>
           ) : (

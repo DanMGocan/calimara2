@@ -15,7 +15,7 @@ router = APIRouter(tags=["users"])
 
 
 @router.get("/api/user/me")
-async def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
+def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
     """Endpoint to check current user authentication status"""
     if current_user:
         data = {
@@ -39,8 +39,8 @@ async def get_current_user_info(current_user: Optional[models.User] = Depends(au
 
 
 @router.put("/api/user/me", response_model=schemas.UserInDB)
-async def update_current_user(
-    user_update: schemas.UserBase,
+def update_current_user(
+    user_update: schemas.UserProfileUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
@@ -51,28 +51,8 @@ async def update_current_user(
         current_user.subtitle = user_update.subtitle
 
     # Update avatar seed
-    if hasattr(user_update, 'avatar_seed') and user_update.avatar_seed is not None:
+    if user_update.avatar_seed is not None:
         current_user.avatar_seed = user_update.avatar_seed
-
-    # Update social media links
-    if hasattr(user_update, 'facebook_url') and user_update.facebook_url is not None:
-        current_user.facebook_url = user_update.facebook_url.strip() or None
-    if hasattr(user_update, 'tiktok_url') and user_update.tiktok_url is not None:
-        current_user.tiktok_url = user_update.tiktok_url.strip() or None
-    if hasattr(user_update, 'instagram_url') and user_update.instagram_url is not None:
-        current_user.instagram_url = user_update.instagram_url.strip() or None
-    if hasattr(user_update, 'x_url') and user_update.x_url is not None:
-        current_user.x_url = user_update.x_url.strip() or None
-    if hasattr(user_update, 'bluesky_url') and user_update.bluesky_url is not None:
-        current_user.bluesky_url = user_update.bluesky_url.strip() or None
-
-    # Update donation links
-    if hasattr(user_update, 'patreon_url') and user_update.patreon_url is not None:
-        current_user.patreon_url = user_update.patreon_url.strip() or None
-    if hasattr(user_update, 'paypal_url') and user_update.paypal_url is not None:
-        current_user.paypal_url = user_update.paypal_url.strip() or None
-    if hasattr(user_update, 'buymeacoffee_url') and user_update.buymeacoffee_url is not None:
-        current_user.buymeacoffee_url = user_update.buymeacoffee_url.strip() or None
 
     db.add(current_user)
     db.commit()
@@ -82,7 +62,7 @@ async def update_current_user(
 
 
 @router.put("/api/user/social-links", response_model=schemas.UserInDB)
-async def update_user_social_links(
+def update_user_social_links(
     social_update: schemas.SocialLinksUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -137,7 +117,7 @@ async def update_user_social_links(
 
 
 @router.put("/api/user/best-friends")
-async def update_best_friends(
+def update_best_friends(
     best_friends_data: schemas.BestFriendsUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -176,7 +156,7 @@ async def update_best_friends(
 
 
 @router.get("/api/users/search")
-async def search_users(
+def search_users(
     q: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -194,7 +174,7 @@ async def search_users(
 
 
 @router.put("/api/user/featured-posts")
-async def update_featured_posts(
+def update_featured_posts(
     featured_posts_data: schemas.FeaturedPostsUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)

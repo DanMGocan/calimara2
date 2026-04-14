@@ -12,7 +12,6 @@ import { PageLoader } from "@/components/layout/LoadingSpinner";
 
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const CategoryPage = lazy(() => import("@/pages/CategoryPage"));
-const GenrePage = lazy(() => import("@/pages/GenrePage"));
 const RegisterPage = lazy(() => import("@/pages/RegisterPage"));
 const AuthCallbackPage = lazy(() => import("@/pages/AuthCallbackPage"));
 const AuthSetupPage = lazy(() => import("@/pages/AuthSetupPage"));
@@ -60,7 +59,6 @@ function AppRoutes() {
       <Route element={<Layout />}>
         <Route index element={<LandingPage />} />
         <Route path="category/:categoryKey" element={<CategoryPage />} />
-        <Route path="category/:categoryKey/:genreKey" element={<GenrePage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="auth/callback" element={<AuthCallbackPage />} />
         <Route path="auth/setup" element={<AuthSetupPage />} />

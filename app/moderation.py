@@ -183,7 +183,7 @@ def review_content_with_llm(text: str, flagged_categories: Dict, romanian_signal
 
 # --- Core two-pass moderation pipeline ---
 
-async def _moderate_text(text: str) -> ModerationResult:
+def _moderate_text(text: str) -> ModerationResult:
     """
     Two-pass moderation pipeline:
       Pass 1 (Mistral Moderation 2): fast classifier
@@ -278,15 +278,15 @@ async def _moderate_text(text: str) -> ModerationResult:
 
 # --- Public API (unchanged interface) ---
 
-async def moderate_comment(content: str) -> ModerationResult:
+def moderate_comment(content: str) -> ModerationResult:
     logger.info(f"Moderating comment ({len(content)} chars)")
-    return await _moderate_text(content)
+    return _moderate_text(content)
 
 
-async def moderate_post(title: str, content: str) -> ModerationResult:
+def moderate_post(title: str, content: str) -> ModerationResult:
     logger.info(f"Moderating post: {title[:30]}...")
     full_text = f"Titlu: {title}\n\nConținut: {content}"
-    return await _moderate_text(full_text)
+    return _moderate_text(full_text)
 
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
@@ -339,12 +339,12 @@ def log_moderation_decision(
         logger.error(f"Failed to log moderation decision: {e}")
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_error:
+            logger.error(f"Database rollback failed: {rollback_error}")
 
 
-async def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
-    result = await moderate_comment(content)
+def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
+    result = moderate_comment(content)
     try:
         log_moderation_decision(db, "comment", comment_id, user_id, result)
     except Exception as e:
@@ -352,8 +352,8 @@ async def moderate_comment_with_logging(content: str, comment_id: int, user_id: 
     return result
 
 
-async def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
-    result = await moderate_post(title, content)
+def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
+    result = moderate_post(title, content)
     try:
         log_moderation_decision(db, "post", post_id, user_id, result)
     except Exception as e:

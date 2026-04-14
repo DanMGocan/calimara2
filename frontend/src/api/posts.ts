@@ -7,7 +7,7 @@ export interface Post {
   slug: string;
   content: string;
   category: string;
-  genre: string | null;
+  category_name?: string;
   view_count: number;
   likes_count: number;
   comments_count?: number;
@@ -54,8 +54,7 @@ export interface Like {
 export interface LandingData {
   random_posts: Post[];
   random_users: BlogUser[];
-  categories: Record<string, { name: string; genres: Record<string, string> }>;
-  main_categories: Record<string, unknown>;
+  categories: Record<string, string>;
   selected_category: string;
 }
 
@@ -126,17 +125,12 @@ export function fetchPostDetail(username: string, slug: string): Promise<PostDet
 export interface CategoryPageData {
   category_key: string;
   category_name: string;
-  genres: [string, string][];
   posts: Post[];
   sort_by: string;
 }
 
 export function fetchCategoryPage(categoryKey: string, sortBy = "newest"): Promise<CategoryPageData> {
   return api.get(`/api/categories/${categoryKey}?sort_by=${sortBy}`);
-}
-
-export function fetchGenrePage(categoryKey: string, genreKey: string, sortBy = "newest"): Promise<CategoryPageData & { genre_key: string; genre_name: string }> {
-  return api.get(`/api/categories/${categoryKey}/${genreKey}?sort_by=${sortBy}`);
 }
 
 // Post CRUD
@@ -157,8 +151,6 @@ export function fetchAvailableMonths(): Promise<{ months: { month: number; year:
 export interface PostCreateData {
   title: string;
   content: string;
-  category: string;
-  genre?: string;
   tags?: string[];
 }
 
@@ -207,7 +199,3 @@ export function fetchTagSuggestions(q: string): Promise<{ suggestions: string[] 
   return api.get(`/api/tags/suggestions?q=${encodeURIComponent(q)}`);
 }
 
-// Genres
-export function fetchGenres(categoryKey: string): Promise<{ genres: Record<string, string> }> {
-  return api.get(`/api/genres/${categoryKey}`);
-}

@@ -1,13 +1,11 @@
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import { Heart, Eye } from "lucide-react";
 import { fetchCategoryPage } from "@/api/posts";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { getCategoryName } from "@/lib/categories";
 import { getAvatarUrl, formatDate, stripHtml, truncate, getBlogUrl } from "@/lib/utils";
 
 export default function CategoryPage() {
@@ -32,21 +30,6 @@ export default function CategoryPage() {
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="mb-8">
           <h1 className="font-display text-3xl font-medium text-primary">{data.category_name}</h1>
-          {/* Genre links */}
-          {data.genres.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {data.genres.map(([key, name]) => (
-                <Link
-                  key={key}
-                  to={`/category/${categoryKey}/${key}`}
-                  className="rounded-full border border-border px-3 py-1 text-sm text-muted transition-colors hover:border-accent hover:text-accent no-underline"
-                >
-                  {name}
-                </Link>
-              ))}
-            </div>
-          )}
-
           {/* Sort */}
           <div className="mt-4 flex items-center gap-2">
             <span className="text-sm text-muted">Sorteaza:</span>
@@ -78,7 +61,6 @@ export default function CategoryPage() {
                 </a>
                 <p className="mt-2 text-sm text-muted line-clamp-3">{truncate(stripHtml(post.content), 200)}</p>
                 <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-                  {post.genre && <Badge variant="secondary">{post.genre}</Badge>}
                   <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {post.likes_count}</span>
                   <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {post.view_count}</span>
                 </div>

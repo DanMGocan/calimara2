@@ -18,13 +18,13 @@ Calimara is a Romanian microblogging platform for writers and poets. Each writer
 - **FastAPI app** with Jinja2 templates and session-based auth (no JWT)
 - **Google OAuth 2.0** authentication using Authlib for secure user login
 - **SQLAlchemy ORM** with modern `Mapped` annotations
-- **Category system** in `app/categories.py` with hierarchical structure (main categories → subcategories → genres)
+- **Category system** with two categories: "Poezie" and "Proză scurtă", auto-classified by AI via `app/category_classifier.py`
 - **Environment-based configuration** via `.env` file with domain variables
 - **Bootstrap + custom CSS** with Inter font
 
 ### Database Architecture
 - **Users Table**: `username` (unique, lowercase), `email`, `google_id` (OAuth unique identifier), `subtitle`, `avatar_seed`, social media URLs (facebook_url, tiktok_url, instagram_url, x_url, bluesky_url), donation URLs (patreon_url, paypal_url, buymeacoffee_url)
-- **Posts Table**: `user_id`, `title`, `slug` (SEO-friendly URLs), `content`, `category`, `genre`, `view_count`
+- **Posts Table**: `user_id`, `title`, `slug` (SEO-friendly URLs), `content`, `category` (AI-classified: "poezie" or "proza_scurta"), `view_count`
 - **Comments Table**: Supports both authenticated and anonymous comments with approval system
 - **Likes Table**: Supports both user-based and IP-based likes
 - **Tags Table**: Post tagging system with autocomplete suggestions
@@ -107,7 +107,7 @@ Use `get_common_context(request, current_user)` for consistent template variable
 - **Main domain**: Shows landing page with random posts/users
 - **Subdomains**: Shows specific user's blog with their latest posts
 - **Admin pages**: Redirect to subdomain if accessed from main domain
-- **Categories**: Hierarchical system with main categories, subcategories, and genres
+- **Categories**: Two categories (Poezie, Proză scurtă) auto-classified by Mistral AI
 
 ### Database Initialization
 - **schema.sql**: PostgreSQL schema with sample data

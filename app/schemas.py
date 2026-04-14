@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, validator, Field
 from datetime import datetime
 from typing import Optional, List
 
@@ -25,6 +25,10 @@ class UserSetup(BaseModel):
     username: str
     subtitle: Optional[str] = None
     avatar_seed: str
+
+class UserProfileUpdate(BaseModel):
+    subtitle: Optional[str] = None
+    avatar_seed: Optional[str] = None
 
 class GoogleUserInfo(BaseModel):
     google_id: str
@@ -62,7 +66,6 @@ class Tag(TagBase):
 class PostBase(BaseModel):
     title: str
     content: str
-    category: Optional[str] = None # Category key
     tags: Optional[List[str]] = Field(default=[], max_items=6, description="List of tags (max 6)")
 
 class PostCreate(PostBase):
@@ -79,6 +82,7 @@ class Post(PostBase):
     id: int
     user_id: int
     slug: str
+    category: Optional[str] = None
     view_count: int = 0
     moderation_status: Optional[str] = None
     moderation_reason: Optional[str] = None
@@ -129,7 +133,11 @@ class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=2000)
 
 class MessageToUser(BaseModel):
-    recipient_username: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    recipient_username: str = Field(
+        validation_alias=AliasChoices("recipient_username", "username")
+    )
     content: str = Field(..., min_length=1, max_length=2000)
 
 class MessageBase(BaseModel):
@@ -187,118 +195,6 @@ class ModerationActionRequest(BaseModel):
 
 class SuspendUserRequest(BaseModel):
     reason: str
-
-# ===================================
-# DRAMA SCHEMAS
-# ===================================
-
-class DramaCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
-    character_name: str = Field(..., min_length=1, max_length=100)
-    character_description: Optional[str] = None
-
-class DramaUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=255)
-    description: Optional[str] = None
-    is_open_for_applications: Optional[bool] = None
-
-class DramaCharacterResponse(BaseModel):
-    id: int
-    drama_id: int
-    user_id: int
-    character_name: str
-    character_description: Optional[str] = None
-    is_creator: bool
-    joined_at: datetime
-    username: Optional[str] = None
-    avatar_seed: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-class DramaReplyResponse(BaseModel):
-    id: int
-    act_id: int
-    character_id: int
-    content: str
-    stage_direction: Optional[str] = None
-    position: int
-    created_at: datetime
-    character_name: Optional[str] = None
-    username: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-class DramaActResponse(BaseModel):
-    id: int
-    drama_id: int
-    act_number: int
-    title: str
-    setting: Optional[str] = None
-    status: str
-    created_at: datetime
-    replies: List[DramaReplyResponse] = []
-
-    class Config:
-        from_attributes = True
-
-class DramaResponse(BaseModel):
-    id: int
-    user_id: int
-    title: str
-    slug: str
-    description: Optional[str] = None
-    status: str
-    is_open_for_applications: bool
-    view_count: int
-    likes_count: int = 0
-    created_at: datetime
-    updated_at: datetime
-    owner_username: Optional[str] = None
-    owner_avatar_seed: Optional[str] = None
-    characters: List[DramaCharacterResponse] = []
-    acts: List[DramaActResponse] = []
-
-    class Config:
-        from_attributes = True
-
-class ActCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
-    setting: Optional[str] = None
-
-class ActUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=255)
-    setting: Optional[str] = None
-
-class ReplyCreate(BaseModel):
-    content: str = Field(..., min_length=1)
-    stage_direction: Optional[str] = Field(None, max_length=500)
-
-class ReplyUpdate(BaseModel):
-    content: Optional[str] = None
-    stage_direction: Optional[str] = Field(None, max_length=500)
-
-class ReplyReorder(BaseModel):
-    reply_ids: List[int]
-
-class InvitationCreate(BaseModel):
-    to_username: str
-    character_name: Optional[str] = Field(None, max_length=100)
-    message: Optional[str] = None
-
-class ApplicationCreate(BaseModel):
-    character_name: str = Field(..., min_length=1, max_length=100)
-    character_description: Optional[str] = None
-    message: Optional[str] = None
-
-class InvitationRespond(BaseModel):
-    status: str = Field(..., pattern="^(accepted|rejected)$")
-
-class DramaCommentCreate(BaseModel):
-    content: str = Field(..., min_length=1)
-    author_name: Optional[str] = None
 
 # ===================================
 # NOTIFICATION SCHEMAS

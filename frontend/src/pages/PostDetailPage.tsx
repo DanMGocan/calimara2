@@ -67,10 +67,10 @@ export default function PostDetailPage() {
         <meta name="description" content={truncate(stripHtml(post.content), 160)} />
       </Helmet>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid gap-8 lg:grid-cols-3">
+      <div className="py-8">
+        <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
           {/* Main Content */}
-          <article className="lg:col-span-2">
+          <article>
             {/* Back link */}
             <a href={getBlogUrl(blog_owner.username)} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-6 no-underline">
               <ArrowLeft className="h-4 w-4" /> Inapoi la {blog_owner.username}
@@ -92,8 +92,7 @@ export default function PostDetailPage() {
               </div>
               <h1 className="font-display text-3xl font-medium text-primary md:text-4xl">{post.title}</h1>
               <div className="mt-3 flex items-center gap-2">
-                <Badge>{post.category}</Badge>
-                {post.genre && <Badge variant="secondary">{post.genre}</Badge>}
+                {post.category_name && <Badge>{post.category_name}</Badge>}
                 {post.tags?.map((tag) => (
                   <Badge key={tag.id} variant="outline">{tag.tag_name}</Badge>
                 ))}

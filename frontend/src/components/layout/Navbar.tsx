@@ -1,8 +1,7 @@
 import { useEffect, useCallback } from "react";
-import { Home, User, Menu, X, PenLine, LayoutDashboard, Mail, Bell, Shield, LogOut, Grid3X3, Theater, ChevronRight } from "lucide-react";
+import { Home, User, Menu, X, PenLine, LayoutDashboard, Mail, Bell, Shield, LogOut, Grid3X3, ChevronRight } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
-import { useSubdomain } from "@/hooks/useSubdomain";
 import { useUiStore } from "@/stores/uiStore";
 import { getBlogUrl, getMainUrl } from "@/lib/utils";
 
@@ -37,48 +36,55 @@ export function Navbar() {
 
   return (
     <>
-      {/* Home button — top-left, near content */}
-      <div className="fixed top-4 left-4 z-40 md:left-auto md:right-1/2 md:translate-x-[-22rem]">
-        <a
-          href={mainUrl}
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/15 bg-cream/80 text-primary backdrop-blur-md transition-all hover:border-primary/40 hover:bg-primary hover:text-cream no-underline"
-          title="Acasă"
-        >
-          <Home className="h-5 w-5" />
-        </a>
-      </div>
+      <div className="sticky top-0 z-40 border-b border-beige/70 bg-white">
+        <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+          {/* Left: Home + Title */}
+          <div className="flex items-center gap-3">
+            <a
+              href={mainUrl}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-beige/70 bg-white text-primary transition-all hover:border-accent hover:bg-cream no-underline"
+              title="Acasă"
+            >
+              <Home className="h-5 w-5" />
+            </a>
+            <a href={mainUrl} className="font-display text-xl font-medium tracking-tight text-primary no-underline">
+              Călimara.ro
+            </a>
+          </div>
 
-      {/* Profile + Burger — top-right, near content */}
-      <div className="fixed top-4 right-4 z-40 flex items-center gap-2 md:right-auto md:left-1/2 md:translate-x-[22rem]">
-        {isAuthenticated && user ? (
-          <a
-            href={`${blogUrl}/dashboard`}
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-green-600/40 bg-green-600 text-white backdrop-blur-md transition-all hover:bg-green-700 hover:border-green-700/40 no-underline"
-            title="Profil"
-          >
-            <User className="h-5 w-5" />
-          </a>
-        ) : (
-          <a
-            href="/auth/google"
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-red-500/40 bg-red-500 text-white backdrop-blur-md transition-all hover:bg-red-600 hover:border-red-600/40 no-underline"
-            title="Autentificare"
-          >
-            <User className="h-5 w-5" />
-          </a>
-        )}
+          {/* Right: Profile + Burger */}
+          <div className="flex items-center gap-1">
+            {isAuthenticated && user ? (
+              <a
+                href={`${blogUrl}/dashboard`}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-green-600/40 bg-green-600 text-white transition-all hover:bg-green-700 hover:border-green-700/40 no-underline"
+                title="Profil"
+              >
+                <User className="h-5 w-5" />
+              </a>
+            ) : (
+              <a
+                href="/auth/google"
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-red-500/40 bg-red-500 text-white transition-all hover:bg-red-600 hover:border-red-600/40 no-underline"
+                title="Autentificare"
+              >
+                <User className="h-5 w-5" />
+              </a>
+            )}
 
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-primary/15 bg-cream/80 text-primary backdrop-blur-md transition-all hover:border-primary/40 hover:bg-primary hover:text-cream"
-          aria-label="Meniu"
-          aria-expanded={mobileMenuOpen}
-        >
-          <Menu className="h-5 w-5" />
-          {isAuthenticated && unreadCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-danger" />
-          )}
-        </button>
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-beige/70 bg-white text-primary transition-all hover:border-accent hover:bg-cream"
+              aria-label="Meniu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <Menu className="h-5 w-5" />
+              {isAuthenticated && unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-danger" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Backdrop */}
@@ -106,10 +112,6 @@ export function Navbar() {
           <MenuLink href={`${mainUrl}/category/poezie`} icon={<Grid3X3 className="h-5 w-5" />} onClick={closeMenu}>
             Categorii
           </MenuLink>
-          <MenuLink href={`${mainUrl}/piese`} icon={<Theater className="h-5 w-5" />} onClick={closeMenu}>
-            Piese de Teatru
-          </MenuLink>
-
           {isAuthenticated && user && (
             <>
               <hr className="my-3 border-white/15" />
