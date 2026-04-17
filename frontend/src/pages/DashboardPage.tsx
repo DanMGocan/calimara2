@@ -1,24 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
-import { PenLine, Eye, Heart, MessageCircle, Trash2, Edit3, Settings, Users, Star, Link as LinkIcon } from "lucide-react";
+import { PenLine, Eye, Heart, Trash2, Edit3, Settings, Link as LinkIcon } from "lucide-react";
 import { fetchArchive, deletePost } from "@/api/posts";
-import { updateUser, updateSocialLinks, updateBestFriends, updateFeaturedPosts, searchUsers, type SocialLinksData } from "@/api/users";
+import { updateUser, updateSocialLinks, type SocialLinksData } from "@/api/users";
 import { useAuth } from "@/hooks/useAuth";
-import { useSubdomain } from "@/hooks/useSubdomain";
+import type { CurrentUser } from "@/api/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { generateAvatarSeeds } from "@/hooks/useDiceBearAvatar";
 import { getAvatarUrl, formatDate, getBlogUrl } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { user, refetch: refetchAuth } = useAuth();
-  const { username } = useSubdomain();
+  if (!user) return <PageLoader />;
+  return <DashboardContent key={user.id} user={user} refetchAuth={refetchAuth} />;
+}
+
+function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAuth: () => void }) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -27,29 +31,25 @@ export default function DashboardPage() {
     queryFn: fetchArchive,
   });
 
-  // Avatar management
   const [avatarSeeds, setAvatarSeeds] = useState(() => generateAvatarSeeds(6));
-  const [selectedSeed, setSelectedSeed] = useState(user?.avatar_seed ?? "");
+  const [selectedSeed, setSelectedSeed] = useState(user.avatar_seed);
   const avatarMutation = useMutation({
     mutationFn: (seed: string) => updateUser({ avatar_seed: seed }),
     onSuccess: () => { refetchAuth(); showToast("Avatar actualizat!", "success"); },
   });
 
-  // Subtitle
-  const [subtitle, setSubtitle] = useState(user?.subtitle ?? "");
+  const [subtitle, setSubtitle] = useState(user.subtitle ?? "");
   const subtitleMutation = useMutation({
     mutationFn: (sub: string) => updateUser({ subtitle: sub }),
     onSuccess: () => { refetchAuth(); showToast("Subtitlu actualizat!", "success"); },
   });
 
-  // Social links
   const [socialLinks, setSocialLinks] = useState<SocialLinksData>({});
   const socialMutation = useMutation({
     mutationFn: (data: SocialLinksData) => updateSocialLinks(data),
     onSuccess: () => showToast("Link-uri sociale actualizate!", "success"),
   });
 
-  // Delete post
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const deleteMutation = useMutation({
     mutationFn: (id: number) => deletePost(id),
@@ -60,14 +60,7 @@ export default function DashboardPage() {
     },
   });
 
-  useEffect(() => {
-    if (user) {
-      setSelectedSeed(user.avatar_seed);
-      setSubtitle(user.subtitle ?? "");
-    }
-  }, [user]);
-
-  if (isLoading || !user) return <PageLoader />;
+  if (isLoading) return <PageLoader />;
 
   const posts = archiveData?.posts ?? [];
 
@@ -102,21 +95,21 @@ export default function DashboardPage() {
                     {posts.map((post) => (
                       <div key={post.id} className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-surface transition-colors">
                         <div className="min-w-0 flex-1">
-                          <a href={`${getBlogUrl(user.username)}/${post.slug}`} className="font-medium text-primary hover:text-accent no-underline text-sm line-clamp-1">
+                          <a href={`${getBlogUrl(user.username)}/${post.slug}`} className="font-medium text-primary hover:underline underline-offset-4 no-underline text-sm line-clamp-1">
                             {post.title}
                           </a>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted">
-                            <Badge variant="default" className="text-[10px]">{post.category}</Badge>
+                            <Badge variant="default" className="text-xs">{post.category}</Badge>
                             <span>{formatDate(post.created_at)}</span>
                             <span className="flex items-center gap-0.5"><Eye className="h-3 w-3" /> {post.view_count}</span>
                             <span className="flex items-center gap-0.5"><Heart className="h-3 w-3" /> {post.likes_count}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
-                          <Button variant="ghost" size="icon" asChild className="h-8 w-8">
+                          <Button variant="ghost" size="icon" asChild className="h-8 w-8" aria-label="Editează postarea">
                             <a href={`${getBlogUrl(user.username)}/edit-post/${post.id}`}><Edit3 className="h-3.5 w-3.5" /></a>
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-danger hover:text-danger" onClick={() => setDeleteId(post.id)}>
+                          <Button variant="ghost" size="icon" aria-label="Șterge postarea" className="h-8 w-8 text-danger hover:text-danger" onClick={() => setDeleteId(post.id)}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -140,6 +133,8 @@ export default function DashboardPage() {
                   {avatarSeeds.map((seed) => (
                     <button
                       key={seed}
+                      type="button"
+                      aria-label={`Alege avatarul ${seed}`}
                       onClick={() => { setSelectedSeed(seed); avatarMutation.mutate(seed); }}
                       className={`rounded-full p-0.5 cursor-pointer ${selectedSeed === seed ? "ring-2 ring-accent" : "hover:ring-2 hover:ring-border"}`}
                     >

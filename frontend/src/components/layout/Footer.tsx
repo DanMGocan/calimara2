@@ -1,6 +1,6 @@
 export function Footer() {
   return (
-    <footer className="relative z-[1] border-t border-primary/8 px-4 py-4 text-center sm:px-6">
+    <footer className="relative z-[1] border-t border-primary bg-white px-4 py-5 text-center sm:px-6">
       <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Linkuri legale">
         <FooterLink href="/politica-de-confidentialitate">Confidențialitate</FooterLink>
         <Sep />
@@ -12,7 +12,7 @@ export function Footer() {
         <Sep />
         <FooterLink href="/despre-noi">Despre</FooterLink>
         <Sep />
-        <span className="text-[11px] text-primary/25">&copy; {new Date().getFullYear()} Calimara.ro</span>
+        <span className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Calimara.ro</span>
       </nav>
     </footer>
   );
@@ -20,12 +20,12 @@ export function Footer() {
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a href={href} className="text-[11px] text-primary/40 transition-colors hover:text-primary/70 no-underline">
+    <a href={href} className="text-xs text-muted transition-colors hover:text-primary no-underline">
       {children}
     </a>
   );
 }
 
 function Sep() {
-  return <span className="text-primary/15 select-none" aria-hidden="true">·</span>;
+  return <span className="text-muted-foreground select-none" aria-hidden="true">·</span>;
 }

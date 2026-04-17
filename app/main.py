@@ -46,10 +46,12 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Middleware
+# CORS Middleware — build origin regex from env-configured domain.
+_main_escaped = MAIN_DOMAIN.replace(".", r"\.")
+_suffix_escaped = SUBDOMAIN_SUFFIX.replace(".", r"\.")
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://(.*\.calimara\.ro|localhost(:\d+)?|.*\.lvh\.me(:\d+)?|lvh\.me(:\d+)?)",
+    allow_origin_regex=rf"https?://(.*{_suffix_escaped}|{_main_escaped})(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],

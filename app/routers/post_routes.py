@@ -46,7 +46,7 @@ def get_posts_archive(
                 "likes_count": post.likes_count,
                 "comments_count": len(post.comments),
                 "created_at": post.created_at.strftime('%d %B %Y'),
-                "url": f"//{current_user.username}.calimara.ro/{post.slug}"
+                "url": f"//{current_user.username}{SUBDOMAIN_SUFFIX}/{post.slug}"
             })
 
         return {"posts": formatted_posts}

@@ -3,6 +3,7 @@ import { Home, User, Menu, X, PenLine, LayoutDashboard, Mail, Bell, Shield, LogO
 import { useAuth } from "@/hooks/useAuth";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { useUiStore } from "@/stores/uiStore";
+import { Button } from "@/components/ui/button";
 import { getBlogUrl, getMainUrl } from "@/lib/utils";
 
 export function Navbar() {
@@ -36,53 +37,52 @@ export function Navbar() {
 
   return (
     <>
-      <div className="sticky top-0 z-40 border-b border-beige/70 bg-white">
+      <div className="sticky top-0 z-40 border-b border-primary bg-white/95 backdrop-blur-sm">
         <div className="flex items-center justify-between px-4 py-3 sm:px-6">
           {/* Left: Home + Title */}
           <div className="flex items-center gap-3">
-            <a
-              href={mainUrl}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-beige/70 bg-white text-primary transition-all hover:border-accent hover:bg-cream no-underline"
-              title="Acasă"
-            >
-              <Home className="h-5 w-5" />
-            </a>
-            <a href={mainUrl} className="font-display text-xl font-medium tracking-tight text-primary no-underline">
-              Călimara.ro
+            <Button asChild variant="iconRound" size="icon" aria-label="Acasă">
+              <a href={mainUrl} className="no-underline">
+                <Home className="h-[18px] w-[18px]" />
+              </a>
+            </Button>
+            <a href={mainUrl} className="font-display text-lg text-primary no-underline">
+              Călimara
             </a>
           </div>
 
           {/* Right: Profile + Burger */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             {isAuthenticated && user ? (
               <a
                 href={`${blogUrl}/dashboard`}
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-green-600/40 bg-green-600 text-white transition-all hover:bg-green-700 hover:border-green-700/40 no-underline"
-                title="Profil"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary-light no-underline"
+                aria-label="Panoul meu"
               >
-                <User className="h-5 w-5" />
+                <User className="h-[18px] w-[18px]" />
               </a>
             ) : (
               <a
                 href="/auth/google"
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-red-500/40 bg-red-500 text-white transition-all hover:bg-red-600 hover:border-red-600/40 no-underline"
-                title="Autentificare"
+                className="flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-primary-light no-underline"
               >
-                <User className="h-5 w-5" />
+                Autentificare
               </a>
             )}
 
-            <button
+            <Button
+              variant="iconRound"
+              size="icon"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="relative flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-beige/70 bg-white text-primary transition-all hover:border-accent hover:bg-cream"
               aria-label="Meniu"
               aria-expanded={mobileMenuOpen}
+              className="relative"
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-[18px] w-[18px]" />
               {isAuthenticated && unreadCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-danger" />
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -93,16 +93,18 @@ export function Navbar() {
         onClick={closeMenu}
       />
 
-      {/* Slide-in overlay menu */}
+      {/* Slide-in overlay menu — light glass */}
       <div className={`menu-overlay ${mobileMenuOpen ? "open" : ""}`}>
         <div className="mb-8 flex justify-end">
-          <button
+          <Button
+            variant="iconRound"
+            size="icon"
             onClick={closeMenu}
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/25 text-white/80 transition-all hover:bg-white hover:text-primary"
             aria-label="Închide meniul"
+            className="text-secondary hover:text-primary"
           >
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <nav className="flex flex-col" aria-label="Meniu site">
@@ -114,7 +116,7 @@ export function Navbar() {
           </MenuLink>
           {isAuthenticated && user && (
             <>
-              <hr className="my-3 border-white/15" />
+              <hr className="my-3 border-border" />
               <MenuLink href={`${blogUrl}/create-post`} icon={<PenLine className="h-5 w-5" />} onClick={closeMenu}>
                 Scrie
               </MenuLink>
@@ -130,17 +132,18 @@ export function Navbar() {
 
               {(user.is_admin || user.is_moderator) && (
                 <>
-                  <hr className="my-3 border-white/15" />
+                  <hr className="my-3 border-border" />
                   <MenuLink href={`${mainUrl}/admin/moderation`} icon={<Shield className="h-5 w-5" />} onClick={closeMenu}>
                     Moderare
                   </MenuLink>
                 </>
               )}
 
-              <hr className="my-3 border-white/15" />
+              <hr className="my-3 border-border" />
               <button
+                type="button"
                 onClick={() => { closeMenu(); handleLogout(); }}
-                className="flex w-full cursor-pointer items-center gap-3 border-b border-white/8 py-4 text-base font-medium text-red-400 tracking-wide transition-all hover:pl-2 hover:text-red-300"
+                className="flex w-full cursor-pointer items-center gap-3 border-b border-border py-4 text-base font-medium tracking-wide text-danger transition-all hover:pl-2"
               >
                 <LogOut className="h-5 w-5" />
                 Deconectare
@@ -150,7 +153,7 @@ export function Navbar() {
 
           {!isAuthenticated && (
             <>
-              <hr className="my-3 border-white/15" />
+              <hr className="my-3 border-border" />
               <MenuLink href="/auth/google" icon={<User className="h-5 w-5" />} onClick={closeMenu}>
                 Autentificare
               </MenuLink>
@@ -179,16 +182,16 @@ function MenuLink({
     <a
       href={href}
       onClick={onClick}
-      className="flex items-center gap-3 border-b border-white/8 py-4 text-base font-medium tracking-wide text-white/85 transition-all hover:pl-2 hover:text-white no-underline"
+      className="flex items-center gap-3 border-b border-border py-4 text-base font-medium tracking-wide text-primary transition-all hover:pl-2 hover:text-primary no-underline"
     >
       {icon}
       {children}
       {badge !== undefined && badge > 0 && (
-        <span className="ml-auto rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-white">
+        <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-white">
           {badge}
         </span>
       )}
-      <ChevronRight className="ml-auto h-4 w-4 opacity-30" />
+      <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
     </a>
   );
 }

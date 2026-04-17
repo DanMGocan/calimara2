@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import { Helmet } from "react-helmet-async";
-import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -15,15 +14,13 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { useToast } from "@/components/ui/toast";
-import { getCategoryName } from "@/lib/categories";
+import { useToast } from "@/components/ui/toast-context";
 import { MAX_TAGS, MAX_TAG_LENGTH } from "@/lib/constants";
 import { getBlogUrl } from "@/lib/utils";
 
 export default function CreatePostPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -68,7 +65,7 @@ export default function CreatePostPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editor) return;
+    if (mutation.isPending || !editor) return;
     const content = editor.getHTML();
     if (!title.trim() || !content.trim() || content === "<p></p>") {
       showToast("Titlul și conținutul sunt obligatorii.", "danger");
@@ -119,7 +116,7 @@ export default function CreatePostPage() {
               {tags.map((tag) => (
                 <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs text-accent">
                   {tag}
-                  <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-danger cursor-pointer">&times;</button>
+                  <button type="button" aria-label={`Elimină eticheta ${tag}`} onClick={() => setTags(tags.filter((t) => t !== tag))} className="hover:text-danger cursor-pointer">&times;</button>
                 </span>
               ))}
             </div>

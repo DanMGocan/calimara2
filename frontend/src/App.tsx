@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HelmetProvider } from "react-helmet-async";
 import { ToastProvider } from "@/components/ui/toast";
 import { Layout } from "@/components/layout/Layout";
+import { ErrorBoundary } from "@/components/layout/ErrorBoundary";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useSubdomain } from "@/hooks/useSubdomain";
 
@@ -75,9 +76,11 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <BrowserRouter>
-            <Suspense fallback={<PageLoader />}>
-              <AppRoutes />
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <AppRoutes />
+              </Suspense>
+            </ErrorBoundary>
           </BrowserRouter>
         </ToastProvider>
       </QueryClientProvider>

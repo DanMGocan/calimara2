@@ -6,12 +6,11 @@ import { Heart, Eye, Calendar, ArrowLeft, Share2, MessageCircle } from "lucide-r
 import { fetchPostDetail, toggleLike, createComment, type CommentCreateData } from "@/api/posts";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatDate, getBlogUrl, stripHtml, truncate } from "@/lib/utils";
 import DOMPurify from "dompurify";
@@ -19,7 +18,7 @@ import DOMPurify from "dompurify";
 export default function PostDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const { username } = useSubdomain();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -58,7 +57,7 @@ export default function PostDetailPage() {
     );
   }
 
-  const { blog_owner, post, related_posts, other_authors_posts, other_authors } = data;
+  const { blog_owner, post, related_posts, other_authors } = data;
 
   return (
     <>
@@ -67,53 +66,57 @@ export default function PostDetailPage() {
         <meta name="description" content={truncate(stripHtml(post.content), 160)} />
       </Helmet>
 
-      <div className="py-8">
-        <div className="grid gap-10 lg:grid-cols-[1fr_280px]">
-          {/* Main Content */}
-          <article>
+      <div className="py-10">
+        <div className="mx-auto grid gap-12 lg:max-w-5xl lg:grid-cols-[minmax(0,680px)_260px]">
+          {/* Main Content — narrow reading column */}
+          <article className="min-w-0">
             {/* Back link */}
-            <a href={getBlogUrl(blog_owner.username)} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-6 no-underline">
-              <ArrowLeft className="h-4 w-4" /> Inapoi la {blog_owner.username}
+            <a href={getBlogUrl(blog_owner.username)} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-primary mb-8 no-underline transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Înapoi la {blog_owner.username}
             </a>
 
             {/* Post Header */}
             <header>
-              <div className="flex items-center gap-3 mb-4">
+              <h1 className="font-display text-3xl font-semibold leading-[1.1] text-primary md:text-4xl">{post.title}</h1>
+
+              <div className="mt-6 flex items-center gap-3">
                 <a href={getBlogUrl(blog_owner.username)}>
-                  <img src={getAvatarUrl(blog_owner.avatar_seed, 48)} alt={blog_owner.username} className="h-12 w-12 rounded-full" />
+                  <img src={getAvatarUrl(blog_owner.avatar_seed, 44)} alt={blog_owner.username} className="h-11 w-11 rounded-full border border-border" />
                 </a>
                 <div>
-                  <a href={getBlogUrl(blog_owner.username)} className="font-medium text-primary hover:text-accent no-underline">{blog_owner.username}</a>
-                  <div className="flex items-center gap-2 text-xs text-muted">
+                  <a href={getBlogUrl(blog_owner.username)} className="text-sm font-medium text-primary hover:underline underline-offset-4 no-underline">{blog_owner.username}</a>
+                  <div className="mt-0.5 flex items-center gap-3 text-xs text-muted">
                     <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDate(post.created_at)}</span>
                     <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {post.view_count}</span>
                   </div>
                 </div>
               </div>
-              <h1 className="font-display text-3xl font-medium text-primary md:text-4xl">{post.title}</h1>
-              <div className="mt-3 flex items-center gap-2">
-                {post.category_name && <Badge>{post.category_name}</Badge>}
-                {post.tags?.map((tag) => (
-                  <Badge key={tag.id} variant="outline">{tag.tag_name}</Badge>
-                ))}
-              </div>
+
+              {(post.category_name || (post.tags && post.tags.length > 0)) && (
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  {post.category_name && <Badge>{post.category_name}</Badge>}
+                  {post.tags?.map((tag) => (
+                    <Badge key={tag.id} variant="outline">{tag.tag_name}</Badge>
+                  ))}
+                </div>
+              )}
             </header>
 
             {/* Post Content */}
             <div
-              className="prose-content mt-8 text-primary/90 leading-relaxed"
+              className="prose-content mt-10 text-primary"
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }}
             />
 
             {/* Actions */}
-            <div className="mt-8 flex items-center gap-4 border-t border-border pt-6">
+            <div className="mt-10 flex items-center gap-3 border-t border-border pt-6">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => likeMutation.mutate()}
                 disabled={likeMutation.isPending}
               >
-                <Heart className={`h-4 w-4 ${likeMutation.isSuccess ? "fill-danger text-danger" : ""}`} />
+                <Heart className={`h-4 w-4 ${likeMutation.isSuccess ? "fill-primary text-primary" : ""}`} />
                 {post.likes_count} aprecieri
               </Button>
               <Button
@@ -129,20 +132,20 @@ export default function PostDetailPage() {
             </div>
 
             {/* Comments */}
-            <section className="mt-10">
-              <h2 className="font-display text-xl font-medium text-primary flex items-center gap-2">
+            <section className="mt-14 border-t border-border pt-10">
+              <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-primary">
                 <MessageCircle className="h-5 w-5" />
                 Comentarii ({post.approved_comments?.length ?? 0})
               </h2>
 
               {/* Comment List */}
-              <div className="mt-4 space-y-4">
+              <div className="mt-6 space-y-3">
                 {post.approved_comments?.map((comment) => (
-                  <div key={comment.id} className="rounded-lg border border-border bg-surface-raised p-4">
+                  <div key={comment.id} className="rounded-lg bg-surface p-4">
                     <div className="flex items-center gap-2 mb-2">
                       {comment.user ? (
                         <>
-                          <img src={getAvatarUrl(comment.user.avatar_seed, 24)} alt="" className="h-6 w-6 rounded-full" />
+                          <img src={getAvatarUrl(comment.user.avatar_seed, 24)} alt={`Avatar ${comment.user.username}`} className="h-6 w-6 rounded-full border border-border" />
                           <span className="text-sm font-medium text-primary">{comment.user.username}</span>
                         </>
                       ) : (
@@ -150,7 +153,7 @@ export default function PostDetailPage() {
                       )}
                       <span className="text-xs text-muted">{formatDate(comment.created_at)}</span>
                     </div>
-                    <p className="text-sm text-primary/80">{comment.content}</p>
+                    <p className="text-sm leading-relaxed text-secondary">{comment.content}</p>
                   </div>
                 ))}
               </div>
@@ -197,41 +200,37 @@ export default function PostDetailPage() {
           </article>
 
           {/* Sidebar */}
-          <aside className="space-y-6">
+          <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
             {/* Related Posts */}
             {related_posts.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Mai mult de la {blog_owner.username}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <div>
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Mai mult de la {blog_owner.username}</h3>
+                <div className="space-y-3 border-t border-border pt-4">
                   {related_posts.map((p) => (
-                    <a key={p.id} href={`${getBlogUrl(blog_owner.username)}/${p.slug}`} className="block text-sm font-medium text-primary hover:text-accent no-underline line-clamp-2">
+                    <a key={p.id} href={`${getBlogUrl(blog_owner.username)}/${p.slug}`} className="block text-sm font-medium leading-snug text-primary hover:underline underline-offset-4 no-underline line-clamp-2">
                       {p.title}
                     </a>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {/* Other Authors */}
             {other_authors.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Descopera si alti scriitori</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <div>
+                <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Descoperă și alți scriitori</h3>
+                <div className="space-y-4 border-t border-border pt-4">
                   {other_authors.map((author) => (
                     <a key={author.id} href={getBlogUrl(author.username)} className="flex items-center gap-3 no-underline group">
-                      <img src={getAvatarUrl(author.avatar_seed, 32)} alt="" className="h-8 w-8 rounded-full" />
+                      <img src={getAvatarUrl(author.avatar_seed, 32)} alt={`Avatar ${author.username}`} className="h-8 w-8 rounded-full border border-border" />
                       <div>
-                        <span className="text-sm font-medium text-primary group-hover:text-accent">{author.username}</span>
+                        <span className="text-sm font-medium text-primary transition-colors group-hover:text-secondary">{author.username}</span>
                         {author.subtitle && <p className="text-xs text-muted">{author.subtitle}</p>}
                       </div>
                     </a>
                   ))}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
           </aside>
         </div>

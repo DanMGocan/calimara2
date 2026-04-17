@@ -173,6 +173,20 @@ def search_users(
     return [{"username": user.username, "subtitle": user.subtitle} for user in users]
 
 
+@router.get("/api/users/random")
+def get_random_user(db: Session = Depends(get_db)):
+    """Return a single random user who has at least one approved post."""
+    user = crud.get_random_user_with_posts(db)
+    if not user:
+        raise HTTPException(status_code=404, detail="No authors available")
+    return {
+        "id": user.id,
+        "username": user.username,
+        "subtitle": user.subtitle,
+        "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+    }
+
+
 @router.put("/api/user/featured-posts")
 def update_featured_posts(
     featured_posts_data: schemas.FeaturedPostsUpdate,

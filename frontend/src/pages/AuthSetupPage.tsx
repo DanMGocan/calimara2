@@ -4,7 +4,7 @@ import { completeSetup } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { generateAvatarSeeds } from "@/hooks/useDiceBearAvatar";
 import { getAvatarUrl, getBlogUrl } from "@/lib/utils";
 
@@ -65,6 +65,8 @@ export default function AuthSetupPage() {
                     <button
                       key={seed}
                       type="button"
+                      aria-label={`Alege avatarul ${seed}`}
+                      aria-pressed={selectedSeed === seed}
                       onClick={() => setSelectedSeed(seed)}
                       className={`rounded-full p-0.5 transition-all cursor-pointer ${
                         selectedSeed === seed

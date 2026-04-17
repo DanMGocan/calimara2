@@ -55,6 +55,17 @@ def update_user(db: Session, user_id: int, user_update: Dict[str, Any]):
 def get_random_users(db: Session, limit: int = 10):
     return db.query(models.User).order_by(func.random()).limit(limit).all()
 
+def get_random_user_with_posts(db: Session):
+    return (
+        db.query(models.User)
+        .join(models.Post, models.Post.user_id == models.User.id)
+        .filter(models.Post.moderation_status == "approved")
+        .distinct()
+        .order_by(func.random())
+        .limit(1)
+        .first()
+    )
+
 # ===================================
 # POST CRUD FUNCTIONS
 # ===================================

@@ -1,23 +1,22 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Navigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import { ArrowLeft, Send, Trash2 } from "lucide-react";
 import { fetchConversation, sendMessageInConversation, deleteConversation } from "@/api/messages";
 import { useAuth } from "@/hooks/useAuth";
-import { useSubdomain } from "@/hooks/useSubdomain";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { getAvatarUrl, formatRelativeTime, getBlogUrl } from "@/lib/utils";
+import { formatRelativeTime, getBlogUrl } from "@/lib/utils";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export default function ConversationPage() {
   const { conversationId } = useParams<{ conversationId: string }>();
   const { user } = useAuth();
-  const { username } = useSubdomain();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -25,10 +24,12 @@ export default function ConversationPage() {
   const [content, setContent] = useState("");
   const [showDelete, setShowDelete] = useState(false);
 
+  const idIsValid = Boolean(conversationId) && !Number.isNaN(Number(conversationId));
+
   const { data, isLoading } = useQuery({
     queryKey: ["conversation", conversationId],
     queryFn: () => fetchConversation(Number(conversationId)),
-    enabled: !!conversationId,
+    enabled: idIsValid,
     refetchInterval: 5000,
   });
 
@@ -53,15 +54,16 @@ export default function ConversationPage() {
   // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [data?.messages]);
+  }, [data?.messages?.length]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && e.ctrlKey && content.trim()) {
+    if (e.key === "Enter" && e.ctrlKey && content.trim() && !sendMutation.isPending) {
       e.preventDefault();
       sendMutation.mutate();
     }
   };
 
+  if (!idIsValid) return <Navigate to={user ? `${getBlogUrl(user.username)}/messages` : "/"} replace />;
   if (isLoading) return <PageLoader />;
 
   const messages = data?.messages ?? [];
@@ -78,24 +80,24 @@ export default function ConversationPage() {
           <a href={`${getBlogUrl(user!.username)}/messages`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary no-underline">
             <ArrowLeft className="h-4 w-4" /> Inapoi la mesaje
           </a>
-          <Button variant="ghost" size="sm" className="text-danger" onClick={() => setShowDelete(true)}>
+          <Button variant="ghost" size="sm" className="text-danger" aria-label="Șterge conversația" onClick={() => setShowDelete(true)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Messages */}
-        <div className="space-y-3 mb-6 min-h-[40vh] max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-surface-raised p-4">
+        <Card className="space-y-3 mb-6 min-h-[40vh] max-h-[60vh] overflow-y-auto p-4">
           {messages.map((msg) => {
             const isMine = msg.sender_id === user?.id;
             return (
               <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
                   isMine
-                    ? "bg-accent text-white rounded-br-md"
+                    ? "bg-primary text-white rounded-br-md"
                     : "bg-surface border border-border text-primary rounded-bl-md"
                 }`}>
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className={`text-[10px] mt-1 ${isMine ? "text-white/60" : "text-muted"}`}>
+                  <p className={`text-xs mt-1 ${isMine ? "text-white/60" : "text-muted"}`}>
                     {formatRelativeTime(msg.created_at)}
                   </p>
                 </div>
@@ -103,7 +105,7 @@ export default function ConversationPage() {
             );
           })}
           <div ref={messagesEndRef} />
-        </div>
+        </Card>
 
         {/* Input */}
         <div className="flex gap-2">
@@ -119,6 +121,7 @@ export default function ConversationPage() {
           <Button
             onClick={() => sendMutation.mutate()}
             disabled={!content.trim() || sendMutation.isPending}
+            aria-label="Trimite mesajul"
             className="self-end"
           >
             <Send className="h-4 w-4" />

@@ -5,20 +5,18 @@ import { Search, Send, Plus } from "lucide-react";
 import { fetchConversations, sendNewMessage, searchConversations } from "@/api/messages";
 import { searchUsers } from "@/api/users";
 import { useAuth } from "@/hooks/useAuth";
-import { useSubdomain } from "@/hooks/useSubdomain";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatRelativeTime, getBlogUrl } from "@/lib/utils";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export default function MessagesPage() {
   const { user } = useAuth();
-  const { username } = useSubdomain();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
 
@@ -26,7 +24,6 @@ export default function MessagesPage() {
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [messageContent, setMessageContent] = useState("");
-  const [userResults, setUserResults] = useState<{ username: string; subtitle: string | null }[]>([]);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ["conversations"],
@@ -37,6 +34,12 @@ export default function MessagesPage() {
     queryKey: ["conversations", "search", searchQuery],
     queryFn: () => searchConversations(searchQuery),
     enabled: searchQuery.length >= 2,
+  });
+
+  const { data: userResults = [] } = useQuery({
+    queryKey: ["users", "search", recipient],
+    queryFn: () => searchUsers(recipient),
+    enabled: showNewMessage && recipient.length >= 2,
   });
 
   const sendMutation = useMutation({
@@ -52,19 +55,10 @@ export default function MessagesPage() {
     onError: (err: Error) => showToast(err.message, "danger"),
   });
 
-  const handleUserSearch = async (q: string) => {
-    setRecipient(q);
-    if (q.length >= 2) {
-      const results = await searchUsers(q);
-      setUserResults(results);
-    } else {
-      setUserResults([]);
-    }
-  };
-
   if (isLoading) return <PageLoader />;
 
   const displayConversations = searchQuery.length >= 2 ? searchResults : conversations;
+  const showUserResults = userResults.length > 0 && recipient.length >= 2 && !userResults.some((u) => u.username === recipient);
 
   return (
     <>
@@ -97,12 +91,12 @@ export default function MessagesPage() {
             <a
               key={conv.id}
               href={`${getBlogUrl(user!.username)}/messages/${conv.id}`}
-              className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised p-4 transition-all hover:shadow-sm hover:border-accent/20 no-underline"
+              className="flex items-center gap-3 rounded-lg border border-border bg-surface-raised p-4 transition-colors hover:border-border-strong hover:bg-surface no-underline"
             >
               <img
                 src={getAvatarUrl(conv.other_user.avatar_seed, 48)}
-                alt={conv.other_user.username}
-                className="h-12 w-12 rounded-full shrink-0"
+                alt={`Avatar ${conv.other_user.username}`}
+                className="h-12 w-12 rounded-full shrink-0 border border-border"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
@@ -116,7 +110,7 @@ export default function MessagesPage() {
                 )}
               </div>
               {conv.unread_count > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-bold text-white">
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-white">
                   {conv.unread_count}
                 </span>
               )}
@@ -124,9 +118,9 @@ export default function MessagesPage() {
           ))}
 
           {(!displayConversations || displayConversations.length === 0) && (
-            <div className="rounded-xl border border-border bg-surface-raised p-12 text-center">
-              <p className="text-muted">Nicio conversatie.</p>
-            </div>
+            <Card className="p-12 text-center">
+              <p className="text-muted">Nicio conversație.</p>
+            </Card>
           )}
         </div>
       </div>
@@ -142,15 +136,16 @@ export default function MessagesPage() {
               <Input
                 placeholder="Cauta utilizator..."
                 value={recipient}
-                onChange={(e) => handleUserSearch(e.target.value)}
+                onChange={(e) => setRecipient(e.target.value)}
               />
-              {userResults.length > 0 && (
+              {showUserResults && (
                 <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-border bg-surface-raised shadow-lg z-10 max-h-40 overflow-y-auto">
                   {userResults.map((u) => (
                     <button
                       key={u.username}
+                      type="button"
                       className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-surface cursor-pointer"
-                      onClick={() => { setRecipient(u.username); setUserResults([]); }}
+                      onClick={() => setRecipient(u.username)}
                     >
                       <span className="font-medium">{u.username}</span>
                       {u.subtitle && <span className="text-xs text-muted">{u.subtitle}</span>}

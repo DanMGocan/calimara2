@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 
@@ -14,8 +15,7 @@ export function ProtectedRoute({ children, requireAdmin, requireModerator }: Pro
   if (isLoading) return <PageLoader />;
 
   if (!isAuthenticated || !user) {
-    window.location.href = "/auth/google";
-    return <PageLoader />;
+    return <Navigate to="/auth/google" replace />;
   }
 
   if (requireAdmin && !user.is_admin) {

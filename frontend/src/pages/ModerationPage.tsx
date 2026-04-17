@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { formatDate } from "@/lib/utils";
 
@@ -231,11 +231,11 @@ export default function ModerationPage() {
                         </div>
                         <p className="text-xs text-muted italic mb-2">"{item.ai_analysis.reason}"</p>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="danger" className="text-[10px] h-5">
+                          <Badge variant="danger" className="text-xs h-5">
                             Toxicitate: {(item.ai_analysis.toxicity_score * 100).toFixed(0)}%
                           </Badge>
                           {(item.ai_analysis.hate_speech_score || 0) > 0.1 && (
-                            <Badge variant="danger" className="text-[10px] h-5">
+                            <Badge variant="danger" className="text-xs h-5">
                               Discurs ură: {((item.ai_analysis.hate_speech_score || 0) * 100).toFixed(0)}%
                             </Badge>
                           )}

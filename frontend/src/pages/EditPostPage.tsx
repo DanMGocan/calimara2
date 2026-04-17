@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useState } from "react";
+import { useParams, Navigate } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -11,14 +11,13 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Quote, Code2, Link as LinkIcon, AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, ArrowLeft, Trash2, Loader2 } from "lucide-react";
 import { updatePost, deletePost } from "@/api/posts";
 import { useAuth } from "@/hooks/useAuth";
-import { useSubdomain } from "@/hooks/useSubdomain";
+import type { CurrentUser } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/toast-context";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { getCategoryName } from "@/lib/categories";
 import { getBlogUrl } from "@/lib/utils";
 import { api } from "@/api/client";
 import type { Post } from "@/api/posts";
@@ -26,16 +25,24 @@ import type { Post } from "@/api/posts";
 export default function EditPostPage() {
   const { postId } = useParams<{ postId: string }>();
   const { user } = useAuth();
-  const { username } = useSubdomain();
-  const { showToast } = useToast();
+
+  const idIsValid = Boolean(postId) && !Number.isNaN(Number(postId));
 
   const { data: post, isLoading } = useQuery({
     queryKey: ["post", "edit", postId],
     queryFn: () => api.get<Post>(`/api/posts/${postId}`),
-    enabled: !!postId,
+    enabled: idIsValid,
   });
 
-  const [title, setTitle] = useState("");
+  if (!idIsValid) return <Navigate to={user ? `${getBlogUrl(user.username)}/dashboard` : "/"} replace />;
+  if (isLoading || !post || !user) return <PageLoader />;
+
+  return <EditPostForm key={post.id} post={post} user={user} />;
+}
+
+function EditPostForm({ post, user }: { post: Post; user: CurrentUser }) {
+  const { showToast } = useToast();
+  const [title, setTitle] = useState(post.title);
   const [showDelete, setShowDelete] = useState(false);
 
   const editor = useEditor({
@@ -46,37 +53,28 @@ export default function EditPostPage() {
       TipTapLink.configure({ openOnClick: false }),
       Placeholder.configure({ placeholder: "Editeaza postarea..." }),
     ],
-    content: "",
+    content: post.content,
   });
 
-  useEffect(() => {
-    if (post) {
-      setTitle(post.title);
-      if (editor) editor.commands.setContent(post.content);
-    }
-  }, [post, editor]);
-
   const updateMutation = useMutation({
-    mutationFn: () => updatePost(Number(postId), {
+    mutationFn: () => updatePost(post.id, {
       title: title.trim(),
       content: editor?.getHTML() ?? "",
     }),
     onSuccess: (updated) => {
       showToast("Postare actualizata!", "success");
-      if (user) window.location.href = `${getBlogUrl(user.username)}/${updated.slug}`;
+      window.location.href = `${getBlogUrl(user.username)}/${updated.slug}`;
     },
     onError: (err: Error) => showToast(err.message, "danger"),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deletePost(Number(postId)),
+    mutationFn: () => deletePost(post.id),
     onSuccess: () => {
       showToast("Postare stearsa!", "success");
-      if (user) window.location.href = `${getBlogUrl(user.username)}/dashboard`;
+      window.location.href = `${getBlogUrl(user.username)}/dashboard`;
     },
   });
-
-  if (isLoading || !post) return <PageLoader />;
 
   return (
     <>
@@ -85,7 +83,7 @@ export default function EditPostPage() {
       </Helmet>
 
       <div className="mx-auto max-w-4xl px-4 py-8">
-        <a href={user ? `${getBlogUrl(user.username)}/dashboard` : "#"} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-6 no-underline">
+        <a href={`${getBlogUrl(user.username)}/dashboard`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-6 no-underline">
           <ArrowLeft className="h-4 w-4" /> Inapoi la panou
         </a>
 
@@ -96,7 +94,7 @@ export default function EditPostPage() {
           </Button>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate(); }} className="space-y-6">
+        <form onSubmit={(e) => { e.preventDefault(); if (!updateMutation.isPending) updateMutation.mutate(); }} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-primary mb-1">Titlu</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required />

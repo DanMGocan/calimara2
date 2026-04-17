@@ -1,4 +1,5 @@
 import { api } from "./client";
+import type { BlogUser } from "./posts";
 
 export interface UserProfile {
   id: number;
@@ -51,4 +52,8 @@ export function updateFeaturedPosts(post_ids: (number | null)[]): Promise<{ mess
 
 export function searchUsers(q: string): Promise<{ username: string; subtitle: string | null }[]> {
   return api.get(`/api/users/search?q=${encodeURIComponent(q)}`);
+}
+
+export function fetchRandomUser(): Promise<BlogUser> {
+  return api.get("/api/users/random");
 }
