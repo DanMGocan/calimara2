@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { formatDate } from "@/lib/utils";
 
@@ -132,13 +133,15 @@ export default function ModerationPage() {
         <title>Moderare | Călimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="relative mx-auto max-w-6xl px-4 py-8">
+        <DebugLabel name="ModerationPage" />
         <h1 className="font-display text-2xl font-medium text-primary mb-6 flex items-center gap-2">
           <Shield className="h-6 w-6 text-accent" /> Panou de moderare
         </h1>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto">
+        <div className="relative flex gap-1 border-b border-border mb-6 overflow-x-auto">
+          <DebugLabel name="ModerationTabs" />
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -156,7 +159,8 @@ export default function ModerationPage() {
 
         {/* Overview */}
         {activeTab === "overview" && stats && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <DebugLabel name="ModerationOverview" />
             <StatCard label="În așteptare" value={stats.pending_count} icon={<Clock className="h-5 w-5 text-warning" />} />
             <StatCard label="Semnalate" value={stats.flagged_count} icon={<AlertTriangle className="h-5 w-5 text-danger" />} />
             <StatCard label="Suspendați" value={stats.suspended_count} icon={<Users className="h-5 w-5 text-muted" />} />
@@ -166,7 +170,8 @@ export default function ModerationPage() {
 
         {/* Pending / Flagged content */}
         {(activeTab === "pending" || activeTab === "flagged") && (
-          <div className="space-y-3">
+          <div className="relative space-y-3">
+            <DebugLabel name={activeTab === "pending" ? "PendingList" : "FlaggedList"} />
             {(activeTab === "pending" ? pending : flagged).map((item: ModerationItem) => (
               <Card key={`${item.type}-${item.id}`}>
                 <CardContent className="p-4">
@@ -209,7 +214,8 @@ export default function ModerationPage() {
 
         {/* AI Queue content */}
         {activeTab === "queue" && (
-          <div className="space-y-3">
+          <div className="relative space-y-3">
+            <DebugLabel name="AIQueueList" />
             {queue.map((item: ModerationQueueItem) => (
               <Card key={`log-${item.log_id}`}>
                 <CardContent className="p-4">
@@ -272,7 +278,8 @@ export default function ModerationPage() {
 
         {/* Logs */}
         {activeTab === "logs" && (
-          <div className="space-y-3">
+          <div className="relative space-y-3">
+            <DebugLabel name="ModerationLogsList" />
             {logs.map((log: ModerationLog) => (
               <Card key={log.id}>
                 <CardContent className="p-4 text-sm">
@@ -296,7 +303,8 @@ export default function ModerationPage() {
 
         {/* Users */}
         {activeTab === "users" && (
-          <div>
+          <div className="relative">
+            <DebugLabel name="ModerationUsersSection" />
             <Input
               placeholder="Caută utilizator..."
               value={userSearch}

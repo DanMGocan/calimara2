@@ -95,9 +95,9 @@ def landing_data(
     """Landing page data: one random post for the selected category."""
     statistics.record_view(db, request, "landing", None, "home", None, current_user)
     if category == "toate":
-        random_posts = crud.get_random_posts(db, limit=1)
+        random_posts = crud.get_weighted_random_posts(db, limit=1)
     elif category in CATEGORIES:
-        random_posts = crud.get_random_posts_by_category(db, category, limit=1)
+        random_posts = crud.get_weighted_random_posts_by_category(db, category, limit=1)
     else:
         random_posts = []
 

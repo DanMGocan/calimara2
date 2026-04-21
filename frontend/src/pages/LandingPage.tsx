@@ -8,6 +8,7 @@ import type { Post } from "@/api/posts";
 import { fetchRandomUser } from "@/api/users";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { getBlogUrl } from "@/lib/utils";
 
 type ContentType = "poezie" | "proza_scurta";
@@ -67,18 +68,22 @@ export default function LandingPage() {
         <meta name="description" content="Calimara este o platformă de microblogging pentru scriitori și poeți români." />
       </Helmet>
 
-      <div className="mx-auto max-w-5xl">
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="relative mx-auto max-w-5xl">
+        <DebugLabel name="LandingPage" />
+        <div className="relative grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <DebugLabel name="LandingGrid" />
           {/* Main content */}
           <div
-            className="min-w-0 transition-all duration-500 ease-in-out"
+            className="relative min-w-0 transition-all duration-500 ease-in-out"
             style={{
               opacity: visible ? 1 : 0,
               transform: visible ? "translateY(0)" : "translateY(12px)",
             }}
           >
+            <DebugLabel name="LandingMainContent" />
             {displayedPost ? (
-              <article>
+              <article className="relative">
+                <DebugLabel name="LandingPostArticle" />
                 <a
                   href={displayedPost.owner ? `${getBlogUrl(displayedPost.owner.username)}/${displayedPost.slug}` : "#"}
                   className="no-underline"
@@ -113,7 +118,8 @@ export default function LandingPage() {
           </div>
 
           {/* Right-side discovery cards */}
-          <aside className="space-y-3 lg:sticky lg:top-20 lg:self-start">
+          <aside className="relative space-y-3 lg:sticky lg:top-20 lg:self-start">
+            <DebugLabel name="LandingDiscoverySidebar" />
             <DiscoverCard
               icon={<Feather className="h-5 w-5 text-primary" />}
               title="Descoperă o poezie la întâmplare"
@@ -160,8 +166,9 @@ function DiscoverCard({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="group block w-full cursor-pointer rounded-lg border border-border bg-surface-raised p-4 text-left transition-colors hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-surface-raised"
+      className="group relative block w-full cursor-pointer rounded-lg border border-border bg-surface-raised p-4 text-left transition-colors hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-surface-raised"
     >
+      <DebugLabel name="DiscoverCard" />
       <div className="flex items-start gap-3">
         <span className="mt-0.5 shrink-0">{icon}</span>
         <div className="min-w-0">

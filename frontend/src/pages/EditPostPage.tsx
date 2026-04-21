@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getBlogUrl } from "@/lib/utils";
 import { api } from "@/api/client";
@@ -82,28 +83,35 @@ function EditPostForm({ post, user }: { post: Post; user: CurrentUser }) {
         <title>Editeaza: {post.title} | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="relative mx-auto max-w-4xl px-4 py-8">
+        <DebugLabel name="EditPostPage" />
         <a href={`${getBlogUrl(user.username)}/dashboard`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary mb-6 no-underline">
           <ArrowLeft className="h-4 w-4" /> Inapoi la panou
         </a>
 
-        <div className="flex items-center justify-between mb-6">
+        <div className="relative flex items-center justify-between mb-6">
+          <DebugLabel name="EditPostHeader" />
           <h1 className="font-display text-2xl font-medium text-primary">Editeaza postarea</h1>
           <Button variant="danger" size="sm" onClick={() => setShowDelete(true)}>
             <Trash2 className="h-4 w-4" /> Sterge
           </Button>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); if (!updateMutation.isPending) updateMutation.mutate(); }} className="space-y-6">
-          <div>
+        <form onSubmit={(e) => { e.preventDefault(); if (!updateMutation.isPending) updateMutation.mutate(); }} className="relative space-y-6">
+          <DebugLabel name="EditPostForm" />
+          <div className="relative">
+            <DebugLabel name="TitleField" />
             <label className="block text-sm font-medium text-primary mb-1">Titlu</label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} required />
           </div>
 
-          <div>
+          <div className="relative">
+            <DebugLabel name="EditorField" />
             <label className="block text-sm font-medium text-primary mb-1">Continut</label>
-            <Card>
-              <div className="flex flex-wrap gap-1 border-b border-border p-2">
+            <Card className="relative">
+              <DebugLabel name="EditorCard" />
+              <div className="relative flex flex-wrap gap-1 border-b border-border p-2">
+                <DebugLabel name="EditorToolbar" />
                 <ToolbarBtn onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} active={editor?.isActive("heading", { level: 1 })}><Heading1 className="h-4 w-4" /></ToolbarBtn>
                 <ToolbarBtn onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} active={editor?.isActive("heading", { level: 2 })}><Heading2 className="h-4 w-4" /></ToolbarBtn>
                 <span className="mx-1 w-px bg-border" />
@@ -132,7 +140,8 @@ function EditPostForm({ post, user }: { post: Post; user: CurrentUser }) {
             </Card>
           </div>
 
-          <div className="flex justify-end">
+          <div className="relative flex justify-end">
+            <DebugLabel name="EditPostActions" />
             <Button type="submit" disabled={updateMutation.isPending} className="min-w-[160px]">
               {updateMutation.isPending ? (
                 <>

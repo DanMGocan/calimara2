@@ -1,7 +1,11 @@
+import { DebugLabel } from "@/components/ui/debug-label";
+
 export function Footer() {
   return (
     <footer className="relative z-[1] border-t border-primary bg-white px-4 py-5 text-center sm:px-6">
-      <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Linkuri legale">
+      <DebugLabel name="Footer" />
+      <nav className="relative flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Linkuri legale">
+        <DebugLabel name="FooterNav" />
         <FooterLink href="/politica-de-confidentialitate">Confidențialitate</FooterLink>
         <Sep />
         <FooterLink href="/termeni-si-conditii">Termeni</FooterLink>

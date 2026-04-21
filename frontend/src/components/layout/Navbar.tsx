@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUnreadCount } from "@/hooks/useUnreadCount";
 import { useUiStore } from "@/stores/uiStore";
 import { Button } from "@/components/ui/button";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { getBlogUrl, getMainUrl } from "@/lib/utils";
 
 export function Navbar() {
@@ -38,9 +39,12 @@ export function Navbar() {
   return (
     <>
       <div className="sticky top-0 z-40 border-b border-primary bg-white/95 backdrop-blur-sm">
-        <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+        <DebugLabel name="Navbar" />
+        <div className="flex items-center justify-between px-4 py-3 sm:px-6 relative">
+          <DebugLabel name="NavbarInner" />
           {/* Left: Home + Title */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 relative">
+            <DebugLabel name="NavbarLeft" />
             <Button asChild variant="iconRound" size="icon" aria-label="Acasă">
               <a href={mainUrl} className="no-underline">
                 <Home className="h-[18px] w-[18px]" />
@@ -52,7 +56,8 @@ export function Navbar() {
           </div>
 
           {/* Right: Profile + Burger */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 relative">
+            <DebugLabel name="NavbarRight" />
             {isAuthenticated && user ? (
               <a
                 href={`${blogUrl}/dashboard`}
@@ -95,6 +100,7 @@ export function Navbar() {
 
       {/* Slide-in overlay menu — light glass */}
       <div className={`menu-overlay ${mobileMenuOpen ? "open" : ""}`}>
+        <DebugLabel name="MobileMenuOverlay" />
         <div className="mb-8 flex justify-end">
           <Button
             variant="iconRound"
@@ -107,7 +113,8 @@ export function Navbar() {
           </Button>
         </div>
 
-        <nav className="flex flex-col" aria-label="Meniu site">
+        <nav className="relative flex flex-col" aria-label="Meniu site">
+          <DebugLabel name="MobileMenuNav" />
           <MenuLink href={mainUrl} icon={<Home className="h-5 w-5" />} onClick={closeMenu}>
             Acasă
           </MenuLink>

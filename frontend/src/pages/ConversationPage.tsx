@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { formatRelativeTime, getBlogUrl } from "@/lib/utils";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
@@ -74,9 +75,11 @@ export default function ConversationPage() {
         <title>Conversatie | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-3xl px-4 py-8">
+      <div className="relative mx-auto max-w-3xl px-4 py-8">
+        <DebugLabel name="ConversationPage" />
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="relative flex items-center justify-between mb-6">
+          <DebugLabel name="ConversationHeader" />
           <a href={`${getBlogUrl(user!.username)}/messages`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-primary no-underline">
             <ArrowLeft className="h-4 w-4" /> Inapoi la mesaje
           </a>
@@ -86,7 +89,8 @@ export default function ConversationPage() {
         </div>
 
         {/* Messages */}
-        <Card className="space-y-3 mb-6 min-h-[40vh] max-h-[60vh] overflow-y-auto p-4">
+        <Card className="relative space-y-3 mb-6 min-h-[40vh] max-h-[60vh] overflow-y-auto p-4">
+          <DebugLabel name="MessagesList" />
           {messages.map((msg) => {
             const isMine = msg.sender_id === user?.id;
             return (
@@ -108,7 +112,8 @@ export default function ConversationPage() {
         </Card>
 
         {/* Input */}
-        <div className="flex gap-2">
+        <div className="relative flex gap-2">
+          <DebugLabel name="MessageInput" />
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}

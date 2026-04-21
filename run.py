@@ -93,25 +93,27 @@ def init_database():
         print(f'    sudo -u postgres psql -c "ALTER USER {DB_USER or "calimara_user"} PASSWORD \'{DB_PASSWORD or "calimara_pass"}\';"')
         sys.exit(1)
 
-    # 2. Create database if it doesn't exist
+    # 2. Drop and recreate the database for a clean state on every run
     try:
         server_engine = create_engine(
             f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/postgres",
             isolation_level="AUTOCOMMIT"
         )
         with server_engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
-                {"dbname": DB_NAME}
+            # Terminate existing connections so DROP DATABASE can proceed
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE datname = :dbname AND pid <> pg_backend_pid()"
+                ),
+                {"dbname": DB_NAME},
             )
-            if not result.fetchone():
-                conn.execute(text(f'CREATE DATABASE "{DB_NAME}"'))
-                print(f"  Database '{DB_NAME}' created.")
-            else:
-                print(f"  Database '{DB_NAME}' exists.")
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{DB_NAME}"'))
+            conn.execute(text(f'CREATE DATABASE "{DB_NAME}"'))
+            print(f"  Database '{DB_NAME}' dropped and recreated.")
         server_engine.dispose()
     except SQLAlchemyError as e:
-        print(f"  Error creating database: {e}")
+        print(f"  Error resetting database: {e}")
         sys.exit(1)
 
     # 3. Execute schema.sql

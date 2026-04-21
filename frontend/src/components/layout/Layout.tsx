@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { Navbar } from "./Navbar";
 import { Footer } from "./Footer";
+import { DebugLabel } from "@/components/ui/debug-label";
 
 export function Layout() {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -31,14 +32,20 @@ export function Layout() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-white">
+      <DebugLabel name="LayoutRoot" />
       <div className="app-shell relative mx-auto flex min-h-screen flex-col overflow-hidden">
+        <DebugLabel name="AppShell" />
         <div className="relative z-[1] flex min-h-screen flex-col">
           <Navbar />
 
           <main className="relative z-[1] flex min-h-0 flex-1 items-center justify-center px-4 sm:px-6">
-            <div className="w-full">
-              <div ref={scrollRef} className="content-container">
-                <div className="py-6">
+            <DebugLabel name="Main" />
+            <div className="w-full relative">
+              <DebugLabel name="MainInner" />
+              <div ref={scrollRef} className="content-container relative">
+                <DebugLabel name="ContentContainer" />
+                <div className="py-6 relative">
+                  <DebugLabel name="PageOutlet" />
                   <Outlet />
                 </div>
               </div>

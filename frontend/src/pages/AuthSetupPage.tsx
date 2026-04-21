@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { generateAvatarSeeds } from "@/hooks/useDiceBearAvatar";
 import { getAvatarUrl, getBlogUrl } from "@/lib/utils";
 
@@ -49,8 +50,10 @@ export default function AuthSetupPage() {
       <Helmet>
         <title>Configureaza-ti contul | Calimara</title>
       </Helmet>
-      <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-lg">
+      <div className="relative flex min-h-[60vh] items-center justify-center px-4 py-12">
+        <DebugLabel name="AuthSetupPage" />
+        <Card className="relative w-full max-w-lg">
+          <DebugLabel name="AuthSetupCard" />
           <CardHeader className="text-center">
             <CardTitle className="font-display text-2xl">Configureaza-ti profilul</CardTitle>
             <p className="text-sm text-muted mt-1">Alege un nume de utilizator si un avatar</p>

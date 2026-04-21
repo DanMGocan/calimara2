@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { generateAvatarSeeds } from "@/hooks/useDiceBearAvatar";
 import { getAvatarUrl, formatDate, getBlogUrl } from "@/lib/utils";
@@ -70,8 +71,10 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
         <title>Panou de control | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
+      <div className="relative mx-auto max-w-6xl px-4 py-8">
+        <DebugLabel name="DashboardPage" />
+        <div className="relative flex items-center justify-between mb-8">
+          <DebugLabel name="DashboardHeader" />
           <h1 className="font-display text-2xl font-medium text-primary">Panou de control</h1>
           <Button asChild>
             <a href={`${getBlogUrl(user.username)}/create-post`} className="no-underline">
@@ -80,10 +83,13 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
           </Button>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
+        <div className="relative grid gap-8 lg:grid-cols-3">
+          <DebugLabel name="DashboardGrid" />
           {/* Posts List */}
-          <div className="lg:col-span-2">
-            <Card>
+          <div className="relative lg:col-span-2">
+            <DebugLabel name="DashboardPostsColumn" />
+            <Card className="relative">
+              <DebugLabel name="PostsListCard" />
               <CardHeader>
                 <CardTitle>Postarile tale ({posts.length})</CardTitle>
               </CardHeader>
@@ -122,9 +128,11 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
           </div>
 
           {/* Sidebar Settings */}
-          <div className="space-y-6">
+          <div className="relative space-y-6">
+            <DebugLabel name="DashboardSidebar" />
             {/* Avatar */}
-            <Card>
+            <Card className="relative">
+              <DebugLabel name="AvatarCard" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2"><Settings className="h-4 w-4" /> Avatar</CardTitle>
               </CardHeader>
@@ -149,7 +157,8 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
             </Card>
 
             {/* Subtitle */}
-            <Card>
+            <Card className="relative">
+              <DebugLabel name="SubtitleCard" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Subtitlu</CardTitle>
               </CardHeader>
@@ -164,7 +173,8 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
             </Card>
 
             {/* Social Links */}
-            <Card>
+            <Card className="relative">
+              <DebugLabel name="SocialLinksCard" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2"><LinkIcon className="h-4 w-4" /> Link-uri sociale</CardTitle>
               </CardHeader>

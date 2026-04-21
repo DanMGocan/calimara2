@@ -6,6 +6,7 @@ import { fetchBlog } from "@/api/posts";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatDate, stripHtml, truncate, getBlogUrl } from "@/lib/utils";
 
@@ -40,8 +41,10 @@ export default function BlogHomePage() {
       </Helmet>
 
       {/* Blog Header */}
-      <section className="border-b border-border bg-white py-14">
-        <div className="mx-auto max-w-4xl px-4 text-center">
+      <section className="relative border-b border-border bg-white py-14">
+        <DebugLabel name="BlogHeader" />
+        <div className="relative mx-auto max-w-4xl px-4 text-center">
+          <DebugLabel name="BlogHeaderInner" />
           <img
             src={getAvatarUrl(blog_owner.avatar_seed, 96)}
             alt={blog_owner.username}
@@ -59,13 +62,17 @@ export default function BlogHomePage() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="grid gap-8 lg:grid-cols-3">
+      <div className="relative mx-auto max-w-6xl px-4 py-8">
+        <DebugLabel name="BlogBody" />
+        <div className="relative grid gap-8 lg:grid-cols-3">
+          <DebugLabel name="BlogGrid" />
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="relative lg:col-span-2 space-y-8">
+            <DebugLabel name="BlogMainColumn" />
             {/* Featured Posts */}
             {featured_posts.length > 0 && (
-              <div>
+              <div className="relative">
+                <DebugLabel name="FeaturedPosts" />
                 <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Postări alese</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {featured_posts.map((post) => (
@@ -84,7 +91,8 @@ export default function BlogHomePage() {
 
             {/* Latest Posts — editorial feed with hairline separators */}
             {latest_posts.length > 0 && (
-              <div>
+              <div className="relative">
+                <DebugLabel name="LatestPosts" />
                 <h2 className="mb-5 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Cele mai recente</h2>
                 <div className="divide-y divide-border">
                   {latest_posts.map((post) => (
@@ -108,7 +116,8 @@ export default function BlogHomePage() {
             )}
 
             {/* Archive Table */}
-            <div>
+            <div className="relative">
+              <DebugLabel name="Archive" />
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Arhivă</h2>
                 {/* Month Filter */}
@@ -170,10 +179,12 @@ export default function BlogHomePage() {
           </div>
 
           {/* Sidebar — sticky on lg+ */}
-          <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
+          <aside className="relative space-y-6 lg:sticky lg:top-20 lg:self-start">
+            <DebugLabel name="BlogSidebar" />
             {/* Best Friends */}
             {best_friends.length > 0 && (
-              <Card>
+              <Card className="relative">
+                <DebugLabel name="BestFriendsCard" />
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-4 w-4 text-secondary" /> Prieteni apropiați
@@ -192,7 +203,8 @@ export default function BlogHomePage() {
 
             {/* Awards */}
             {user_awards.length > 0 && (
-              <Card>
+              <Card className="relative">
+                <DebugLabel name="AwardsCard" />
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2">
                     <Award className="h-4 w-4 text-secondary" /> Premii

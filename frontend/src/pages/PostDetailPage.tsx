@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatDate, getBlogUrl, stripHtml, truncate } from "@/lib/utils";
 import DOMPurify from "dompurify";
@@ -66,17 +67,21 @@ export default function PostDetailPage() {
         <meta name="description" content={truncate(stripHtml(post.content), 160)} />
       </Helmet>
 
-      <div className="py-10">
-        <div className="mx-auto grid gap-12 lg:max-w-5xl lg:grid-cols-[minmax(0,680px)_260px]">
+      <div className="relative py-10">
+        <DebugLabel name="PostDetailPage" />
+        <div className="relative mx-auto grid gap-12 lg:max-w-5xl lg:grid-cols-[minmax(0,680px)_260px]">
+          <DebugLabel name="PostDetailGrid" />
           {/* Main Content — narrow reading column */}
-          <article className="min-w-0">
+          <article className="relative min-w-0">
+            <DebugLabel name="PostArticle" />
             {/* Back link */}
             <a href={getBlogUrl(blog_owner.username)} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-primary mb-8 no-underline transition-colors">
               <ArrowLeft className="h-4 w-4" /> Înapoi la {blog_owner.username}
             </a>
 
             {/* Post Header */}
-            <header>
+            <header className="relative">
+              <DebugLabel name="PostHeader" />
               <h1 className="font-display text-3xl font-semibold leading-[1.1] text-primary md:text-4xl">{post.title}</h1>
 
               <div className="mt-6 flex items-center gap-3">
@@ -109,7 +114,8 @@ export default function PostDetailPage() {
             />
 
             {/* Actions */}
-            <div className="mt-10 flex items-center gap-3 border-t border-border pt-6">
+            <div className="relative mt-10 flex items-center gap-3 border-t border-border pt-6">
+              <DebugLabel name="PostActions" />
               <Button
                 variant="outline"
                 size="sm"
@@ -132,14 +138,16 @@ export default function PostDetailPage() {
             </div>
 
             {/* Comments */}
-            <section className="mt-14 border-t border-border pt-10">
+            <section className="relative mt-14 border-t border-border pt-10">
+              <DebugLabel name="CommentsSection" />
               <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-primary">
                 <MessageCircle className="h-5 w-5" />
                 Comentarii ({post.approved_comments?.length ?? 0})
               </h2>
 
               {/* Comment List */}
-              <div className="mt-6 space-y-3">
+              <div className="relative mt-6 space-y-3">
+                <DebugLabel name="CommentList" />
                 {post.approved_comments?.map((comment) => (
                   <div key={comment.id} className="rounded-lg bg-surface p-4">
                     <div className="flex items-center gap-2 mb-2">
@@ -160,12 +168,13 @@ export default function PostDetailPage() {
 
               {/* Comment Form */}
               <form
-                className="mt-6 space-y-3"
+                className="relative mt-6 space-y-3"
                 onSubmit={(e) => {
                   e.preventDefault();
                   commentMutation.mutate();
                 }}
               >
+                <DebugLabel name="CommentForm" />
                 {!isAuthenticated && (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Input
@@ -200,10 +209,12 @@ export default function PostDetailPage() {
           </article>
 
           {/* Sidebar */}
-          <aside className="space-y-6 lg:sticky lg:top-20 lg:self-start">
+          <aside className="relative space-y-6 lg:sticky lg:top-20 lg:self-start">
+            <DebugLabel name="PostSidebar" />
             {/* Related Posts */}
             {related_posts.length > 0 && (
-              <div>
+              <div className="relative">
+                <DebugLabel name="RelatedPosts" />
                 <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Mai mult de la {blog_owner.username}</h3>
                 <div className="space-y-3 border-t border-border pt-4">
                   {related_posts.map((p) => (
@@ -217,7 +228,8 @@ export default function PostDetailPage() {
 
             {/* Other Authors */}
             {other_authors.length > 0 && (
-              <div>
+              <div className="relative">
+                <DebugLabel name="OtherAuthors" />
                 <h3 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Descoperă și alți scriitori</h3>
                 <div className="space-y-4 border-t border-border pt-4">
                   {other_authors.map((author) => (

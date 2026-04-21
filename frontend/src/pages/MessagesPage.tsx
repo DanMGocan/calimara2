@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatRelativeTime, getBlogUrl } from "@/lib/utils";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
@@ -66,8 +67,10 @@ export default function MessagesPage() {
         <title>Mesaje | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="relative mx-auto max-w-3xl px-4 py-8">
+        <DebugLabel name="MessagesPage" />
+        <div className="relative flex items-center justify-between mb-6">
+          <DebugLabel name="MessagesHeader" />
           <h1 className="font-display text-2xl font-medium text-primary">Mesaje</h1>
           <Button onClick={() => setShowNewMessage(true)}>
             <Plus className="h-4 w-4" /> Mesaj nou
@@ -76,6 +79,7 @@ export default function MessagesPage() {
 
         {/* Search */}
         <div className="relative mb-6">
+          <DebugLabel name="MessagesSearch" />
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             className="pl-9"
@@ -86,7 +90,8 @@ export default function MessagesPage() {
         </div>
 
         {/* Conversation List */}
-        <div className="space-y-2">
+        <div className="relative space-y-2">
+          <DebugLabel name="ConversationList" />
           {displayConversations?.map((conv) => (
             <a
               key={conv.id}

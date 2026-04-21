@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from datetime import datetime, date as date_type
 from typing import List, Optional, Dict, Any
@@ -140,6 +141,37 @@ def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
         models.Post.category == category,
         models.Post.moderation_status == "approved"
     ).order_by(func.random()).limit(limit).all()
+
+def _view_weighted_order_key():
+    # Efraimidis–Spirakis weighted random: LN(RANDOM()) is always negative,
+    # so multiplying by the positive weight POWER(view_count + 1, alpha)
+    # and sorting DESC picks the row with the smallest |LN(R)| / weight —
+    # i.e. sampling probability ∝ 1 / (view_count + 1)^alpha.
+    alpha = float(os.getenv("LANDING_VIEW_DECAY_ALPHA", "0.5"))
+    if alpha == 0:
+        return None
+    return func.ln(func.random()) * func.power(models.Post.view_count + 1, alpha)
+
+def get_weighted_random_posts(db: Session, limit: int = 10):
+    if os.getenv("LANDING_WEIGHTED_RANDOM_ENABLED", "True").lower() != "true":
+        return get_random_posts(db, limit=limit)
+    order_key = _view_weighted_order_key()
+    if order_key is None:
+        return get_random_posts(db, limit=limit)
+    return db.query(models.Post).filter(
+        models.Post.moderation_status == "approved"
+    ).order_by(desc(order_key)).limit(limit).all()
+
+def get_weighted_random_posts_by_category(db: Session, category: str, limit: int = 10):
+    if os.getenv("LANDING_WEIGHTED_RANDOM_ENABLED", "True").lower() != "true":
+        return get_random_posts_by_category(db, category, limit=limit)
+    order_key = _view_weighted_order_key()
+    if order_key is None:
+        return get_random_posts_by_category(db, category, limit=limit)
+    return db.query(models.Post).filter(
+        models.Post.category == category,
+        models.Post.moderation_status == "approved"
+    ).order_by(desc(order_key)).limit(limit).all()
 
 def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5):
     return db.query(models.Post).filter(

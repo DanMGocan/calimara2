@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { Heart, Eye } from "lucide-react";
 import { fetchCategoryPage } from "@/api/posts";
 import { Card, CardContent } from "@/components/ui/card";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { getAvatarUrl, formatDate, stripHtml, truncate, getBlogUrl } from "@/lib/utils";
 
@@ -26,11 +27,14 @@ export default function CategoryPage() {
         <title>{data.category_name} | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="mb-8">
+      <div className="relative mx-auto max-w-6xl px-4 py-8">
+        <DebugLabel name="CategoryPage" />
+        <div className="relative mb-8">
+          <DebugLabel name="CategoryHeader" />
           <h1 className="font-display text-3xl font-semibold text-primary md:text-4xl">{data.category_name}</h1>
           {/* Sort */}
-          <div className="mt-4 flex items-center gap-2">
+          <div className="relative mt-4 flex items-center gap-2">
+            <DebugLabel name="CategorySort" />
             <span className="text-sm text-muted">Sorteaza:</span>
             {(["newest", "popular", "most_liked"] as const).map((s) => (
               <button
@@ -44,9 +48,11 @@ export default function CategoryPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="relative grid gap-6 md:grid-cols-2">
+          <DebugLabel name="CategoryGrid" />
           {data.posts.map((post) => (
-            <Card key={post.id} className="group hover:border-border-strong">
+            <Card key={post.id} className="group relative hover:border-border-strong">
+              <DebugLabel name="CategoryPostCard" />
               <CardContent className="p-5">
                 {post.owner && (
                   <div className="flex items-center gap-2 mb-3">

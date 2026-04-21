@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast-context";
+import { DebugLabel } from "@/components/ui/debug-label";
 import { MAX_TAGS, MAX_TAG_LENGTH } from "@/lib/constants";
 import { getBlogUrl } from "@/lib/utils";
 
@@ -92,12 +93,15 @@ export default function CreatePostPage() {
         <title>Postare nouă | Calimara</title>
       </Helmet>
 
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="relative mx-auto max-w-4xl px-4 py-8">
+        <DebugLabel name="CreatePostPage" />
         <h1 className="font-display text-2xl font-medium text-primary mb-6">Postare nouă</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="relative space-y-6">
+          <DebugLabel name="CreatePostForm" />
           {/* Title */}
-          <div>
+          <div className="relative">
+            <DebugLabel name="TitleField" />
             <label className="block text-sm font-medium text-primary mb-1">Titlu</label>
             <Input
               value={title}
@@ -110,7 +114,8 @@ export default function CreatePostPage() {
           </div>
 
           {/* Tags */}
-          <div>
+          <div className="relative">
+            <DebugLabel name="TagsField" />
             <label className="block text-sm font-medium text-primary mb-1">Etichete ({tags.length}/{MAX_TAGS})</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {tags.map((tag) => (
@@ -134,11 +139,14 @@ export default function CreatePostPage() {
           </div>
 
           {/* Editor */}
-          <div>
+          <div className="relative">
+            <DebugLabel name="EditorField" />
             <label className="block text-sm font-medium text-primary mb-1">Conținut</label>
-            <Card>
+            <Card className="relative">
+              <DebugLabel name="EditorCard" />
               {/* Toolbar */}
-              <div className="flex flex-wrap gap-1 border-b border-border p-2">
+              <div className="relative flex flex-wrap gap-1 border-b border-border p-2">
+                <DebugLabel name="EditorToolbar" />
                 <ToolbarBtn onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} active={editor?.isActive("heading", { level: 1 })}><Heading1 className="h-4 w-4" /></ToolbarBtn>
                 <ToolbarBtn onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} active={editor?.isActive("heading", { level: 2 })}><Heading2 className="h-4 w-4" /></ToolbarBtn>
                 <span className="mx-1 w-px bg-border" />
@@ -167,7 +175,8 @@ export default function CreatePostPage() {
             </Card>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="relative flex items-center justify-between">
+            <DebugLabel name="CreatePostActions" />
             <Button type="button" variant="ghost" onClick={restoreDraft}>Restaurează ciorna</Button>
             <Button type="submit" disabled={mutation.isPending} className="min-w-[140px]">
               {mutation.isPending ? (
