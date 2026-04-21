@@ -92,23 +92,17 @@ def landing_data(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
-    """Landing page data: random posts and users"""
+    """Landing page data: one random post for the selected category."""
     statistics.record_view(db, request, "landing", None, "home", None, current_user)
     if category == "toate":
-        random_posts = crud.get_random_posts(db, limit=10)
+        random_posts = crud.get_random_posts(db, limit=1)
+    elif category in CATEGORIES:
+        random_posts = crud.get_random_posts_by_category(db, category, limit=1)
     else:
-        if category in CATEGORIES:
-            random_posts = crud.get_random_posts_by_category(db, category, limit=10)
-        else:
-            random_posts = []
-
-    random_users = crud.get_random_users(db, limit=10)
+        random_posts = []
 
     return {
         "random_posts": [serialize_post(p, include_owner=True) for p in random_posts],
-        "random_users": [serialize_user(u) for u in random_users],
-        "categories": CATEGORIES,
-        "selected_category": category,
     }
 
 
@@ -213,10 +207,6 @@ def post_detail_data(
     related_posts = crud.get_posts_by_user(db, user.id, limit=5)
     related_posts = [p for p in related_posts if p.id != post.id][:3]
 
-    # Posts from other authors
-    other_authors_posts = crud.get_random_posts(db, limit=10)
-    other_authors_posts = [p for p in other_authors_posts if p.user_id != user.id][:4]
-
     # Random other authors
     other_authors = crud.get_random_users(db, limit=8)
     other_authors = [u for u in other_authors if u.id != user.id][:5]
@@ -231,7 +221,6 @@ def post_detail_data(
         "blog_owner": serialize_user(user),
         "post": post_data,
         "related_posts": [serialize_post(p) for p in related_posts],
-        "other_authors_posts": [serialize_post(p, include_owner=True) for p in other_authors_posts],
         "other_authors": [serialize_user(u) for u in other_authors],
     }
 

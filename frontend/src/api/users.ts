@@ -16,10 +16,6 @@ export interface UserProfile {
   buymeacoffee_url: string | null;
 }
 
-export function fetchUserProfile(username: string): Promise<UserProfile> {
-  return api.get(`/api/user/${username}/profile`);
-}
-
 export interface UserUpdateData {
   subtitle?: string;
   avatar_seed?: string;
@@ -40,14 +36,6 @@ export interface SocialLinksData {
 
 export function updateSocialLinks(data: SocialLinksData): Promise<UserProfile> {
   return api.put("/api/user/social-links", data);
-}
-
-export function updateBestFriends(friends: (string | null)[]): Promise<{ message: string }> {
-  return api.put("/api/user/best-friends", { friends });
-}
-
-export function updateFeaturedPosts(post_ids: (number | null)[]): Promise<{ message: string }> {
-  return api.put("/api/user/featured-posts", { post_ids });
 }
 
 export function searchUsers(q: string): Promise<{ username: string; subtitle: string | null }[]> {

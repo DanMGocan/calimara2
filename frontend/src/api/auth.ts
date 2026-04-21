@@ -29,7 +29,3 @@ export interface SetupData {
 export function completeSetup(data: SetupData): Promise<{ message: string; username: string }> {
   return api.post("/api/auth/complete-setup", data);
 }
-
-export function logout(): Promise<{ success: boolean }> {
-  return api.get("/api/logout");
-}

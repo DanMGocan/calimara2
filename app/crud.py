@@ -15,9 +15,6 @@ logger = logging.getLogger(__name__)
 def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
-def get_user(db: Session, user_id: int):
-    return get_user_by_id(db, user_id)
-
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
@@ -26,19 +23,6 @@ def get_user_by_username(db: Session, username: str):
 
 def get_user_by_google_id(db: Session, google_id: str):
     return db.query(models.User).filter(models.User.google_id == google_id).first()
-
-def create_user(db: Session, user: schemas.UserBase):
-    db_user = models.User(
-        username=user.username,
-        email=user.email,
-        google_id=user.google_id,
-        subtitle=user.subtitle,
-        avatar_seed=user.avatar_seed
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
 
 def create_user_from_google(db: Session, user_data: Dict[str, Any]):
     db_user = models.User(**user_data)

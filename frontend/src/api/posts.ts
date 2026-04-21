@@ -53,9 +53,6 @@ export interface Like {
 // Landing page
 export interface LandingData {
   random_posts: Post[];
-  random_users: BlogUser[];
-  categories: Record<string, string>;
-  selected_category: string;
 }
 
 export interface BlogUser {
@@ -113,7 +110,6 @@ export interface PostDetailData {
   blog_owner: BlogUser;
   post: Post & { approved_comments: Comment[] };
   related_posts: Post[];
-  other_authors_posts: Post[];
   other_authors: BlogUser[];
 }
 
@@ -134,18 +130,8 @@ export function fetchCategoryPage(categoryKey: string, sortBy = "newest"): Promi
 }
 
 // Post CRUD
-export function fetchRandomPosts(category?: string, limit = 10): Promise<{ posts: Post[] }> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (category && category !== "toate") params.set("category", category);
-  return api.get(`/api/posts/random?${params}`);
-}
-
 export function fetchArchive(): Promise<{ posts: Post[] }> {
   return api.get("/api/posts/archive");
-}
-
-export function fetchAvailableMonths(): Promise<{ months: { month: number; year: number }[] }> {
-  return api.get("/api/posts/months");
 }
 
 export interface PostCreateData {
@@ -177,25 +163,7 @@ export function createComment(postId: number, data: CommentCreateData): Promise<
   return api.post(`/api/posts/${postId}/comments`, data);
 }
 
-export function deleteComment(commentId: number): Promise<void> {
-  return api.delete(`/api/comments/${commentId}`);
-}
-
-export function approveComment(commentId: number): Promise<Comment> {
-  return api.put(`/api/comments/${commentId}/approve`);
-}
-
 // Likes
 export function toggleLike(postId: number): Promise<Like> {
   return api.post(`/api/posts/${postId}/likes`);
 }
-
-export function fetchLikeCount(postId: number): Promise<{ post_id: number; likes_count: number }> {
-  return api.get(`/api/posts/${postId}/likes/count`);
-}
-
-// Tags
-export function fetchTagSuggestions(q: string): Promise<{ suggestions: string[] }> {
-  return api.get(`/api/tags/suggestions?q=${encodeURIComponent(q)}`);
-}
-
