@@ -1,35 +1,27 @@
-import { DebugLabel } from "@/components/ui/debug-label";
-
 export function Footer() {
+  const year = new Date().getFullYear();
   return (
-    <footer className="relative z-[1] border-t border-primary bg-white px-4 py-5 text-center sm:px-6">
-      <DebugLabel name="Footer" />
-      <nav className="relative flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Linkuri legale">
-        <DebugLabel name="FooterNav" />
-        <FooterLink href="/politica-de-confidentialitate">Confidențialitate</FooterLink>
-        <Sep />
-        <FooterLink href="/termeni-si-conditii">Termeni</FooterLink>
-        <Sep />
-        <FooterLink href="/politica-de-cookie-uri">Cookie-uri</FooterLink>
-        <Sep />
-        <FooterLink href="/contact">Contact</FooterLink>
-        <Sep />
-        <FooterLink href="/despre-noi">Despre</FooterLink>
-        <Sep />
-        <span className="text-xs text-muted-foreground">&copy; {new Date().getFullYear()} Calimara.ro</span>
-      </nav>
+    <footer className="site-foot">
+      <div className="foot-inner">
+        <nav className="foot-links" aria-label="Linkuri legale">
+          <a href="/politica-de-confidentialitate">Politica de confidențialitate</a>
+          <a href="/termeni-si-conditii">Termeni și condiții</a>
+          <a href="/contact">Contact</a>
+        </nav>
+        <div className="foot-mark">© {year} călimara.ro</div>
+        <div className="foot-social">
+          <a href="#" className="social-btn" aria-label="Facebook">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M13.5 21v-7.5h2.5l.4-3h-2.9V8.6c0-.9.3-1.5 1.5-1.5H16.5V4.4c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8V10.5H8v3h2.6V21h2.9z" />
+            </svg>
+          </a>
+          <a href="#" className="social-btn" aria-label="X">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M17.5 3h3.2l-7 8 8.2 10h-6.4l-5-6.5L4.8 21H1.6l7.5-8.6L1.2 3h6.6l4.5 6 5.2-6zm-1.1 16.2h1.8L7.7 4.7H5.8l10.6 14.5z" />
+            </svg>
+          </a>
+        </div>
+      </div>
     </footer>
   );
-}
-
-function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a href={href} className="text-xs text-muted transition-colors hover:text-primary no-underline">
-      {children}
-    </a>
-  );
-}
-
-function Sep() {
-  return <span className="text-muted-foreground select-none" aria-hidden="true">·</span>;
 }

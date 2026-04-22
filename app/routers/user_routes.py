@@ -29,6 +29,8 @@ def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get
                 "is_admin": current_user.is_admin,
                 "is_moderator": current_user.is_moderator,
                 "is_suspended": current_user.is_suspended,
+                "is_premium": current_user.is_premium,
+                "premium_until": current_user.premium_until.isoformat() if current_user.premium_until else None,
             }
         }
     else:

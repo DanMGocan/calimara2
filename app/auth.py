@@ -24,16 +24,18 @@ def get_db_epoch() -> str:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    # Invalidate sessions from before the last DB reinitialization
+    user_id = request.session.get("user_id")
+
+    if user_id is None:
+        # Session may hold pre-signup state (e.g. google_user during OAuth
+        # setup). Don't touch it — only logged-in sessions are epoch-guarded.
+        return None
+
+    # Invalidate logged-in sessions from before the last DB reinitialization.
     session_epoch = request.session.get("db_epoch")
     current_epoch = get_db_epoch()
     if current_epoch and session_epoch != current_epoch:
         request.session.clear()
-        return None
-
-    user_id = request.session.get("user_id")
-
-    if user_id is None:
         return None
 
     user = crud.get_user_by_id(db, user_id=user_id)
@@ -50,5 +52,14 @@ def get_required_user(current_user: models.User = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Neautentificat",
+        )
+    return current_user
+
+
+def require_premium_user(current_user: models.User = Depends(get_required_user)):
+    if not current_user.is_premium:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Necesită abonament Premium",
         )
     return current_user

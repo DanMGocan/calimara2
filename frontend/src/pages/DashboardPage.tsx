@@ -1,21 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
-import { PenLine, Eye, Heart, Trash2, Edit3, Settings, Link as LinkIcon } from "lucide-react";
 import { fetchArchive, deletePost } from "@/api/posts";
 import { updateUser, updateSocialLinks, type SocialLinksData } from "@/api/users";
 import { useAuth } from "@/hooks/useAuth";
 import type { CurrentUser } from "@/api/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
-import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
 import { generateAvatarSeeds } from "@/hooks/useDiceBearAvatar";
-import { getAvatarUrl, formatDate, getBlogUrl } from "@/lib/utils";
+import { Stage, LeftCol } from "@/components/ui/stage";
+import {
+  ActionRow,
+  ActionsGroup,
+  SideKicker,
+} from "@/components/ui/action-row";
+import { formatDate, getAvatarUrl, getBlogUrl } from "@/lib/utils";
+import { CollectionsSection } from "@/components/collections/CollectionsSection";
+
+type Section = "posts" | "collections" | "profile" | "social" | "new";
 
 export default function DashboardPage() {
   const { user, refetch: refetchAuth } = useAuth();
@@ -23,9 +35,28 @@ export default function DashboardPage() {
   return <DashboardContent key={user.id} user={user} refetchAuth={refetchAuth} />;
 }
 
-function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAuth: () => void }) {
+function DashboardContent({
+  user,
+  refetchAuth,
+}: {
+  user: CurrentUser;
+  refetchAuth: () => void;
+}) {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSection = (searchParams.get("tab") as Section) || "posts";
+  const [section, setSection] = useState<Section>(initialSection);
+
+  useEffect(() => {
+    const current = searchParams.get("tab");
+    if (section !== "posts" && current !== section) {
+      setSearchParams({ tab: section });
+    } else if (section === "posts" && current) {
+      setSearchParams({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
 
   const { data: archiveData, isLoading } = useQuery({
     queryKey: ["posts", "archive"],
@@ -36,19 +67,25 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
   const [selectedSeed, setSelectedSeed] = useState(user.avatar_seed);
   const avatarMutation = useMutation({
     mutationFn: (seed: string) => updateUser({ avatar_seed: seed }),
-    onSuccess: () => { refetchAuth(); showToast("Avatar actualizat!", "success"); },
+    onSuccess: () => {
+      refetchAuth();
+      showToast("Avatar actualizat.", "success");
+    },
   });
 
   const [subtitle, setSubtitle] = useState(user.subtitle ?? "");
   const subtitleMutation = useMutation({
     mutationFn: (sub: string) => updateUser({ subtitle: sub }),
-    onSuccess: () => { refetchAuth(); showToast("Subtitlu actualizat!", "success"); },
+    onSuccess: () => {
+      refetchAuth();
+      showToast("Subtitlu actualizat.", "success");
+    },
   });
 
   const [socialLinks, setSocialLinks] = useState<SocialLinksData>({});
   const socialMutation = useMutation({
     mutationFn: (data: SocialLinksData) => updateSocialLinks(data),
-    onSuccess: () => showToast("Link-uri sociale actualizate!", "success"),
+    onSuccess: () => showToast("Legăturile au fost salvate.", "success"),
   });
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -57,156 +94,337 @@ function DashboardContent({ user, refetchAuth }: { user: CurrentUser; refetchAut
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["posts", "archive"] });
       setDeleteId(null);
-      showToast("Postare stearsa!", "success");
+      showToast("Postare ștearsă.", "success");
     },
   });
 
   if (isLoading) return <PageLoader />;
-
   const posts = archiveData?.posts ?? [];
+  const blogUrl = getBlogUrl(user.username);
 
   return (
     <>
       <Helmet>
-        <title>Panou de control | Calimara</title>
+        <title>Panou — {user.username} | călimara.ro</title>
       </Helmet>
 
-      <div className="relative mx-auto max-w-6xl px-4 py-8">
-        <DebugLabel name="DashboardPage" />
-        <div className="relative flex items-center justify-between mb-8">
-          <DebugLabel name="DashboardHeader" />
-          <h1 className="font-display text-2xl font-medium text-primary">Panou de control</h1>
-          <Button asChild>
-            <a href={`${getBlogUrl(user.username)}/create-post`} className="no-underline">
-              <PenLine className="h-4 w-4" /> Postare noua
-            </a>
-          </Button>
-        </div>
+      <Stage>
+        <LeftCol>
+          <aside className="side-col">
+            <SideKicker>panou</SideKicker>
+            <ActionsGroup>
+              <ActionRow
+                num={1}
+                label="Textele mele"
+                sub={`${posts.length} postări`}
+                active={section === "posts"}
+                onClick={() => setSection("posts")}
+              />
+              <ActionRow
+                num={2}
+                label="Colecții"
+                sub="grupurile tale curate"
+                active={section === "collections"}
+                onClick={() => setSection("collections")}
+              />
+              <ActionRow
+                num={3}
+                label="Profil"
+                sub="avatar și subtitlu"
+                active={section === "profile"}
+                onClick={() => setSection("profile")}
+              />
+              <ActionRow
+                num={4}
+                label="Legături sociale"
+                sub="facebook, instagram…"
+                active={section === "social"}
+                onClick={() => setSection("social")}
+              />
+              <ActionRow
+                num={5}
+                label="Postare nouă"
+                sub="scrie un text"
+                href={`${blogUrl}/create-post`}
+              />
+            </ActionsGroup>
+          </aside>
+        </LeftCol>
 
-        <div className="relative grid gap-8 lg:grid-cols-3">
-          <DebugLabel name="DashboardGrid" />
-          {/* Posts List */}
-          <div className="relative lg:col-span-2">
-            <DebugLabel name="DashboardPostsColumn" />
-            <Card className="relative">
-              <DebugLabel name="PostsListCard" />
-              <CardHeader>
-                <CardTitle>Postarile tale ({posts.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
+        <div className="piece-col">
+          <div className="piece-wrap">
+            {!user.is_premium ? (
+              <div className="premium-banner">
+                <span>Vrei 3 super-aprecieri pe săptămână? </span>
+                <Link to="/premium">Devino Premium</Link>
+              </div>
+            ) : null}
+            {section === "posts" ? (
+              <>
+                <div className="piece-kind-row">
+                  <span className="piece-kind-badge">textele tale</span>
+                  <span className="piece-kind-sep" />
+                  <span className="piece-kind-meta">{posts.length}</span>
+                </div>
+                <h1
+                  className="piece-title"
+                  style={{ fontSize: "clamp(32px, 4vw, 52px)", marginBottom: 24 }}
+                >
+                  Textele mele
+                </h1>
                 {posts.length === 0 ? (
-                  <p className="text-muted text-center py-8">Nu ai nicio postare inca.</p>
+                  <div
+                    style={{
+                      padding: "60px 20px",
+                      border: "1px dashed var(--color-hairline-strong)",
+                      borderRadius: 10,
+                      textAlign: "center",
+                      color: "var(--color-ink-faint)",
+                      fontFamily: "var(--font-serif)",
+                      fontStyle: "italic",
+                      fontSize: 17,
+                    }}
+                  >
+                    Nu ai nicio postare încă.
+                  </div>
                 ) : (
-                  <div className="space-y-3">
-                    {posts.map((post) => (
-                      <div key={post.id} className="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-surface transition-colors">
-                        <div className="min-w-0 flex-1">
-                          <a href={`${getBlogUrl(user.username)}/${post.slug}`} className="font-medium text-primary hover:underline underline-offset-4 no-underline text-sm line-clamp-1">
+                  <div
+                    style={{
+                      border: "1px solid var(--color-hairline)",
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.6)",
+                    }}
+                  >
+                    {posts.map((post, i) => (
+                      <div
+                        key={post.id}
+                        className="grid grid-cols-[1fr_auto] items-start gap-4 px-4 py-4"
+                        style={{
+                          borderBottom:
+                            i < posts.length - 1
+                              ? "1px solid var(--color-hairline)"
+                              : "none",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <Link
+                            to={`/${post.slug}`}
+                            style={{
+                              fontFamily: "var(--font-serif)",
+                              fontSize: 18,
+                              fontWeight: 500,
+                              color: "var(--color-ink)",
+                              letterSpacing: "-0.01em",
+                              textDecoration: "none",
+                            }}
+                          >
                             {post.title}
-                          </a>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-muted">
-                            <Badge variant="default" className="text-xs">{post.category}</Badge>
+                          </Link>
+                          <div
+                            style={{
+                              fontFamily: "var(--font-sans)",
+                              fontSize: 12,
+                              color: "var(--color-ink-faint)",
+                              marginTop: 4,
+                              display: "flex",
+                              gap: 10,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span>{post.category_name ?? post.category}</span>
+                            <span className="piece-meta-dot" />
                             <span>{formatDate(post.created_at)}</span>
-                            <span className="flex items-center gap-0.5"><Eye className="h-3 w-3" /> {post.view_count}</span>
-                            <span className="flex items-center gap-0.5"><Heart className="h-3 w-3" /> {post.likes_count}</span>
+                            <span className="piece-meta-dot" />
+                            <span>{post.view_count} vizualizări</span>
+                            <span className="piece-meta-dot" />
+                            <span>{post.likes_count} aprecieri</span>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 ml-2">
-                          <Button variant="ghost" size="icon" asChild className="h-8 w-8" aria-label="Editează postarea">
-                            <a href={`${getBlogUrl(user.username)}/edit-post/${post.id}`}><Edit3 className="h-3.5 w-3.5" /></a>
+                        <div className="flex items-center gap-2">
+                          <Button asChild size="sm" variant="outline">
+                            <Link to={`/edit-post/${post.id}`}>editează</Link>
                           </Button>
-                          <Button variant="ghost" size="icon" aria-label="Șterge postarea" className="h-8 w-8 text-danger hover:text-danger" onClick={() => setDeleteId(post.id)}>
-                            <Trash2 className="h-3.5 w-3.5" />
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => setDeleteId(post.id)}
+                          >
+                            șterge
                           </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
+              </>
+            ) : null}
 
-          {/* Sidebar Settings */}
-          <div className="relative space-y-6">
-            <DebugLabel name="DashboardSidebar" />
-            {/* Avatar */}
-            <Card className="relative">
-              <DebugLabel name="AvatarCard" />
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><Settings className="h-4 w-4" /> Avatar</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-6 gap-2">
-                  {avatarSeeds.map((seed) => (
-                    <button
-                      key={seed}
-                      type="button"
-                      aria-label={`Alege avatarul ${seed}`}
-                      onClick={() => { setSelectedSeed(seed); avatarMutation.mutate(seed); }}
-                      className={`rounded-full p-0.5 cursor-pointer ${selectedSeed === seed ? "ring-2 ring-accent" : "hover:ring-2 hover:ring-border"}`}
-                    >
-                      <img src={getAvatarUrl(seed, 48)} alt="" className="h-10 w-10 rounded-full" />
-                    </button>
-                  ))}
+            {section === "collections" ? <CollectionsSection /> : null}
+
+            {section === "profile" ? (
+              <>
+                <div className="piece-kind-row">
+                  <span className="piece-kind-badge">profil</span>
+                  <span className="piece-kind-sep" />
+                  <span className="piece-kind-meta">avatar și subtitlu</span>
                 </div>
-                <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={() => setAvatarSeeds(generateAvatarSeeds(6))}>
-                  Genereaza altele
-                </Button>
-              </CardContent>
-            </Card>
+                <h1
+                  className="piece-title"
+                  style={{ fontSize: "clamp(32px, 4vw, 52px)", marginBottom: 32 }}
+                >
+                  Profil
+                </h1>
 
-            {/* Subtitle */}
-            <Card className="relative">
-              <DebugLabel name="SubtitleCard" />
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Subtitlu</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2">
-                  <Input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="Descriere scurta..." maxLength={100} />
-                  <Button size="sm" onClick={() => subtitleMutation.mutate(subtitle)} disabled={subtitleMutation.isPending}>
-                    Salveaza
+                <section style={{ marginBottom: 32 }}>
+                  <label className="auth-field">Avatar</label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(6, 1fr)",
+                      gap: 12,
+                    }}
+                  >
+                    {avatarSeeds.map((seed) => (
+                      <button
+                        key={seed}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSeed(seed);
+                          avatarMutation.mutate(seed);
+                        }}
+                        aria-label={`avatar ${seed}`}
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: "50%",
+                          padding: 3,
+                          border:
+                            selectedSeed === seed
+                              ? "2px solid var(--color-accent)"
+                              : "1px solid var(--color-hairline)",
+                          transition: "all 160ms ease",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <img
+                          src={getAvatarUrl(seed, 48)}
+                          alt=""
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: "50%",
+                          }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => setAvatarSeeds(generateAvatarSeeds(6))}
+                  >
+                    generează alte opțiuni
+                  </Button>
+                </section>
+
+                <section>
+                  <label className="auth-field">Subtitlu</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={subtitle}
+                      onChange={(e) => setSubtitle(e.target.value)}
+                      placeholder="Descriere scurtă…"
+                      maxLength={100}
+                    />
+                    <Button
+                      size="md"
+                      onClick={() => subtitleMutation.mutate(subtitle)}
+                      disabled={subtitleMutation.isPending}
+                    >
+                      salvează
+                    </Button>
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {section === "social" ? (
+              <>
+                <div className="piece-kind-row">
+                  <span className="piece-kind-badge">legături</span>
+                  <span className="piece-kind-sep" />
+                  <span className="piece-kind-meta">rețele sociale</span>
+                </div>
+                <h1
+                  className="piece-title"
+                  style={{ fontSize: "clamp(32px, 4vw, 52px)", marginBottom: 32 }}
+                >
+                  Legături sociale
+                </h1>
+
+                <div className="flex flex-col gap-3">
+                  {(
+                    [
+                      { k: "facebook_url", l: "Facebook" },
+                      { k: "instagram_url", l: "Instagram" },
+                      { k: "tiktok_url", l: "TikTok" },
+                      { k: "x_url", l: "X" },
+                      { k: "bluesky_url", l: "Bluesky" },
+                    ] as const
+                  ).map((f) => (
+                    <div key={f.k}>
+                      <label className="auth-field" style={{ marginTop: 8 }}>
+                        {f.l}
+                      </label>
+                      <Input
+                        placeholder={`https://…`}
+                        value={(socialLinks as Record<string, string>)[f.k] ?? ""}
+                        onChange={(e) =>
+                          setSocialLinks({ ...socialLinks, [f.k]: e.target.value })
+                        }
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    className="mt-4 self-start"
+                    onClick={() => socialMutation.mutate(socialLinks)}
+                    disabled={socialMutation.isPending}
+                  >
+                    salvează legăturile
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Social Links */}
-            <Card className="relative">
-              <DebugLabel name="SocialLinksCard" />
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><LinkIcon className="h-4 w-4" /> Link-uri sociale</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {(["facebook_url", "instagram_url", "tiktok_url", "x_url", "bluesky_url"] as const).map((field) => (
-                  <Input
-                    key={field}
-                    placeholder={field.replace("_url", "").replace("_", " ").replace(/^\w/, c => c.toUpperCase())}
-                    value={(socialLinks as Record<string, string>)[field] ?? ""}
-                    onChange={(e) => setSocialLinks({ ...socialLinks, [field]: e.target.value })}
-                  />
-                ))}
-                <Button size="sm" className="w-full" onClick={() => socialMutation.mutate(socialLinks)} disabled={socialMutation.isPending}>
-                  Salveaza link-urile
-                </Button>
-              </CardContent>
-            </Card>
+              </>
+            ) : null}
           </div>
         </div>
-      </div>
+      </Stage>
 
-      {/* Delete Confirmation */}
       <Dialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Sterge postarea</DialogTitle>
+            <div className="auth-kicker">confirmare</div>
+            <DialogTitle>Șterge postarea</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted">Aceasta actiune este permanenta si nu poate fi anulata.</p>
+          <p
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: 14,
+              color: "var(--color-ink-mute)",
+            }}
+          >
+            Această acțiune este permanentă și nu poate fi anulată.
+          </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)}>Anuleaza</Button>
-            <Button variant="danger" onClick={() => deleteId && deleteMutation.mutate(deleteId)} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? "Se sterge..." : "Sterge"}
+            <Button variant="outline" onClick={() => setDeleteId(null)}>
+              anulează
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "se șterge…" : "șterge"}
             </Button>
           </DialogFooter>
         </DialogContent>

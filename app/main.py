@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -98,6 +98,10 @@ app.include_router(moderation_routes.router)
 app.include_router(api_pages.router)
 app.include_router(notification_routes.router)
 app.include_router(stats_routes.router)
+app.include_router(collection_routes.router)
+app.include_router(club_routes.router)
+app.include_router(super_like_routes.router)
+app.include_router(premium_routes.router)
 
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")

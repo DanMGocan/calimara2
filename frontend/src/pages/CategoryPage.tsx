@@ -1,12 +1,21 @@
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
-import { Heart, Eye } from "lucide-react";
 import { fetchCategoryPage } from "@/api/posts";
-import { Card, CardContent } from "@/components/ui/card";
-import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { getAvatarUrl, formatDate, stripHtml, truncate, getBlogUrl } from "@/lib/utils";
+import { Stage, LeftCol } from "@/components/ui/stage";
+import {
+  ActionRow,
+  ActionsGroup,
+  SideKicker,
+} from "@/components/ui/action-row";
+import { cn, formatDate, getBlogUrl, stripHtml, truncate } from "@/lib/utils";
+
+const SORTS = [
+  { key: "newest", label: "Cele mai recente", sub: "după dată" },
+  { key: "popular", label: "Populare", sub: "după vizualizări" },
+  { key: "most_liked", label: "Apreciate", sub: "după aprecieri" },
+] as const;
 
 export default function CategoryPage() {
   const { categoryKey } = useParams<{ categoryKey: string }>();
@@ -24,62 +33,117 @@ export default function CategoryPage() {
   return (
     <>
       <Helmet>
-        <title>{data.category_name} | Calimara</title>
+        <title>{data.category_name} — călimara.ro</title>
       </Helmet>
 
-      <div className="relative mx-auto max-w-6xl px-4 py-8">
-        <DebugLabel name="CategoryPage" />
-        <div className="relative mb-8">
-          <DebugLabel name="CategoryHeader" />
-          <h1 className="font-display text-3xl font-semibold text-primary md:text-4xl">{data.category_name}</h1>
-          {/* Sort */}
-          <div className="relative mt-4 flex items-center gap-2">
-            <DebugLabel name="CategorySort" />
-            <span className="text-sm text-muted">Sorteaza:</span>
-            {(["newest", "popular", "most_liked"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setSearchParams({ sort_by: s })}
-                className={`rounded-full px-3 py-1 text-sm transition-colors cursor-pointer ${sortBy === s ? "bg-primary text-white" : "text-muted hover:text-primary"}`}
+      <Stage>
+        <LeftCol>
+          <aside className="side-col">
+            <SideKicker>sortează</SideKicker>
+            <ActionsGroup>
+              {SORTS.map((s, i) => (
+                <ActionRow
+                  key={s.key}
+                  num={i + 1}
+                  label={s.label}
+                  sub={s.sub}
+                  active={sortBy === s.key}
+                  onClick={() => setSearchParams({ sort_by: s.key })}
+                />
+              ))}
+            </ActionsGroup>
+            <SideKicker>alte categorii</SideKicker>
+            <div className="flex flex-col gap-2">
+              {[
+                { k: "poezie", n: "Poezie" },
+                { k: "proza_scurta", n: "Proză scurtă" },
+                { k: "toate", n: "Toate textele" },
+              ].map((c) => (
+                <a
+                  key={c.k}
+                  href={`/category/${c.k}`}
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: 13,
+                    color:
+                      c.k === categoryKey
+                        ? "var(--color-accent)"
+                        : "var(--color-ink-mute)",
+                    textDecoration: "none",
+                    padding: "6px 0",
+                    borderBottom: "1px solid var(--color-hairline)",
+                  }}
+                >
+                  {c.n}
+                </a>
+              ))}
+            </div>
+          </aside>
+        </LeftCol>
+
+        <div className="piece-col">
+          <div className="piece-wrap">
+            <div className="piece-kind-row">
+              <span className="piece-kind-badge">{data.category_name}</span>
+              <span className="piece-kind-sep" />
+              <span className="piece-kind-meta">{data.posts.length} texte</span>
+            </div>
+
+            <h1
+              className="piece-title"
+              style={{ fontSize: "clamp(32px, 4vw, 52px)", marginBottom: 32 }}
+            >
+              {data.category_name}
+            </h1>
+
+            {data.posts.length > 0 ? (
+              <div className="grid gap-3">
+                {data.posts.map((post) => (
+                  <a
+                    key={post.id}
+                    href={
+                      post.owner
+                        ? `${getBlogUrl(post.owner.username)}/${post.slug}`
+                        : "#"
+                    }
+                    className={cn("piece-card", post.super_likes_count > 0 && "has-super-like")}
+                  >
+                    <div className="piece-card-kicker">
+                      {post.owner ? `de ${post.owner.username}` : "anonim"}
+                    </div>
+                    <h3 className="piece-card-title">{post.title}</h3>
+                    <p className="piece-card-excerpt">
+                      {truncate(stripHtml(post.content), 220)}
+                    </p>
+                    <div className="piece-card-meta">
+                      <span>{formatDate(post.created_at)}</span>
+                      <span className="piece-meta-dot" />
+                      <span>{post.likes_count} aprecieri</span>
+                      <span className="piece-meta-dot" />
+                      <span>{post.view_count} vizualizări</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "60px 20px",
+                  border: "1px dashed var(--color-hairline-strong)",
+                  borderRadius: 10,
+                  textAlign: "center",
+                  color: "var(--color-ink-faint)",
+                  fontFamily: "var(--font-serif)",
+                  fontStyle: "italic",
+                  fontSize: 17,
+                }}
               >
-                {s === "newest" ? "Recente" : s === "popular" ? "Populare" : "Apreciate"}
-              </button>
-            ))}
+                Nicio postare în această categorie.
+              </div>
+            )}
           </div>
         </div>
-
-        <div className="relative grid gap-6 md:grid-cols-2">
-          <DebugLabel name="CategoryGrid" />
-          {data.posts.map((post) => (
-            <Card key={post.id} className="group relative hover:border-border-strong">
-              <DebugLabel name="CategoryPostCard" />
-              <CardContent className="p-5">
-                {post.owner && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <img src={getAvatarUrl(post.owner.avatar_seed, 32)} alt={`Avatar ${post.owner.username}`} className="h-8 w-8 rounded-full border border-border" />
-                    <a href={getBlogUrl(post.owner.username)} className="text-sm font-medium text-primary hover:underline underline-offset-4 no-underline">{post.owner.username}</a>
-                    <span className="text-xs text-muted">{formatDate(post.created_at)}</span>
-                  </div>
-                )}
-                <a href={post.owner ? `${getBlogUrl(post.owner.username)}/${post.slug}` : "#"} className="no-underline">
-                  <h3 className="text-lg font-semibold tracking-tight text-primary transition-colors group-hover:text-primary-light">{post.title}</h3>
-                </a>
-                <p className="mt-2 text-sm text-muted line-clamp-3">{truncate(stripHtml(post.content), 200)}</p>
-                <div className="mt-3 flex items-center gap-3 text-xs text-muted">
-                  <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {post.likes_count}</span>
-                  <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {post.view_count}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {data.posts.length === 0 && (
-          <Card className="p-12 text-center">
-            <p className="text-muted">Nicio postare în această categorie.</p>
-          </Card>
-        )}
-      </div>
+      </Stage>
     </>
   );
 }

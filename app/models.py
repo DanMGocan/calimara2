@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, select
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, UniqueConstraint, select
 from sqlalchemy.orm import relationship, Mapped, mapped_column, registry
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
@@ -39,13 +39,19 @@ class User(Base):
     suspension_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     suspended_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
+    # Stripe / Premium subscription
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     posts: Mapped[List["Post"]] = relationship("Post", foreign_keys="Post.user_id", back_populates="owner")
     comments: Mapped[List["Comment"]] = relationship("Comment", foreign_keys="Comment.user_id", back_populates="commenter")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="liker")
+    super_likes_given: Mapped[List["SuperLike"]] = relationship("SuperLike", back_populates="user", cascade="all, delete-orphan")
     
     # Best friends relationships
     best_friends: Mapped[List["BestFriend"]] = relationship(
@@ -69,7 +75,31 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
-    
+
+    # Collections owned by this user
+    owned_collections: Mapped[List["Collection"]] = relationship(
+        "Collection",
+        foreign_keys="Collection.owner_id",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+
+    # Clubs owned by this user
+    owned_clubs: Mapped[List["Club"]] = relationship(
+        "Club",
+        foreign_keys="Club.owner_id",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+
+    # Club memberships of this user
+    club_memberships: Mapped[List["ClubMember"]] = relationship(
+        "ClubMember",
+        foreign_keys="ClubMember.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     # User awards
     awards: Mapped[List["UserAward"]] = relationship(
         "UserAward",
@@ -89,6 +119,14 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    @property
+    def is_premium(self) -> bool:
+        if self.premium_until is None:
+            return False
+        from .week_util import utcnow_naive
+        return self.premium_until > utcnow_naive()
+
 
 class Post(Base):
     __tablename__ = "posts"
@@ -121,8 +159,12 @@ class Post(Base):
     moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
+    super_likes: Mapped[List["SuperLike"]] = relationship("SuperLike", back_populates="post", cascade="all, delete-orphan")
     tags: Mapped[List["Tag"]] = relationship("Tag", back_populates="post")
     featured_by: Mapped[List["FeaturedPost"]] = relationship("FeaturedPost", back_populates="post")
+    collection_entries: Mapped[List["CollectionPost"]] = relationship(
+        "CollectionPost", back_populates="post", cascade="all, delete-orphan"
+    )
 
     @hybrid_property
     def likes_count(self) -> int:
@@ -134,6 +176,20 @@ class Post(Base):
         return (
             select(func.count(Like.id))
             .where(Like.post_id == cls.id)
+            .correlate(cls)
+            .scalar_subquery()
+        )
+
+    @hybrid_property
+    def super_likes_count(self) -> int:
+        """Return the number of super-apreciez for this post"""
+        return len(self.super_likes)
+
+    @super_likes_count.expression
+    def super_likes_count(cls):
+        return (
+            select(func.count(SuperLike.id))
+            .where(SuperLike.post_id == cls.id)
             .correlate(cls)
             .scalar_subquery()
         )
@@ -179,6 +235,31 @@ class Like(Base):
     post: Mapped["Post"] = relationship("Post", back_populates="likes")
     liker: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id], back_populates="likes")
 
+
+class SuperLike(Base):
+    __tablename__ = "super_likes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    post: Mapped["Post"] = relationship("Post", back_populates="super_likes")
+    user: Mapped["User"] = relationship("User", back_populates="super_likes_given")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "post_id", name="uq_super_likes_user_post"),
+    )
+
+
+class StripeEvent(Base):
+    __tablename__ = "stripe_events"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    type: Mapped[str] = mapped_column(String(100), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Tag(Base):
     __tablename__ = "tags"
 
@@ -214,6 +295,130 @@ class FeaturedPost(Base):
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="featured_posts")
     post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="featured_by")
+
+class Collection(Base):
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(140), unique=True, index=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id], back_populates="owned_collections")
+    entries: Mapped[List["CollectionPost"]] = relationship(
+        "CollectionPost", back_populates="collection", cascade="all, delete-orphan"
+    )
+
+class CollectionPost(Base):
+    __tablename__ = "collection_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    collection_id: Mapped[int] = mapped_column(Integer, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    initiator_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    position: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    collection: Mapped["Collection"] = relationship("Collection", foreign_keys=[collection_id], back_populates="entries")
+    post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="collection_entries")
+    initiator: Mapped["User"] = relationship("User", foreign_keys=[initiator_id])
+
+
+class Club(Base):
+    __tablename__ = "clubs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(140), unique=True, index=True, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    motto: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    avatar_seed: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    theme: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    speciality: Mapped[str] = mapped_column(String(20), nullable=False)
+    featured_post_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
+    featured_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id], back_populates="owned_clubs")
+    memberships: Mapped[List["ClubMember"]] = relationship(
+        "ClubMember", back_populates="club", cascade="all, delete-orphan"
+    )
+    join_requests: Mapped[List["ClubJoinRequest"]] = relationship(
+        "ClubJoinRequest", back_populates="club", cascade="all, delete-orphan"
+    )
+    board_messages: Mapped[List["ClubBoardMessage"]] = relationship(
+        "ClubBoardMessage", back_populates="club", cascade="all, delete-orphan"
+    )
+    featured_post: Mapped[Optional["Post"]] = relationship("Post", foreign_keys=[featured_post_id])
+
+
+class ClubMember(Base):
+    __tablename__ = "club_members"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    club: Mapped["Club"] = relationship("Club", foreign_keys=[club_id], back_populates="memberships")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="club_memberships")
+
+    __table_args__ = (
+        UniqueConstraint("club_id", "user_id", name="uq_club_member"),
+    )
+
+
+class ClubJoinRequest(Base):
+    __tablename__ = "club_join_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String(20), nullable=False)  # "application" | "invitation"
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    initiator_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    responded_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    club: Mapped["Club"] = relationship("Club", foreign_keys=[club_id], back_populates="join_requests")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    initiator: Mapped["User"] = relationship("User", foreign_keys=[initiator_id])
+    responder: Mapped[Optional["User"]] = relationship("User", foreign_keys=[responded_by])
+
+
+class ClubBoardMessage(Base):
+    __tablename__ = "club_board_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("club_board_messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    club: Mapped["Club"] = relationship("Club", foreign_keys=[club_id], back_populates="board_messages")
+    author: Mapped["User"] = relationship("User", foreign_keys=[author_id])
+    parent: Mapped[Optional["ClubBoardMessage"]] = relationship(
+        "ClubBoardMessage",
+        remote_side="ClubBoardMessage.id",
+        back_populates="replies",
+    )
+    replies: Mapped[List["ClubBoardMessage"]] = relationship(
+        "ClubBoardMessage",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+    )
+
 
 class UserAward(Base):
     __tablename__ = "user_awards"

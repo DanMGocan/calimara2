@@ -52,10 +52,6 @@ def require_moderator(current_user: Optional[models.User] = Depends(auth.get_cur
     
     return current_user
 
-# Backward compatibility aliases
-require_god_admin = require_admin
-is_god_admin = is_admin
-
 def log_admin_action(admin_user: models.User, action: str, target_type: str, target_id: int, details: Optional[str] = None):
     """Log administrative actions for audit trail"""
     log_message = f"ADMIN ACTION: {admin_user.email} performed '{action}' on {target_type} ID {target_id}"
@@ -64,9 +60,9 @@ def log_admin_action(admin_user: models.User, action: str, target_type: str, tar
     logger.info(log_message)
 
 def can_moderate_content(user: Optional[models.User]) -> bool:
-    """Check if user can moderate content (currently only god admin)"""
-    return is_god_admin(user)
+    """Check if user can moderate content (currently only admin)"""
+    return is_admin(user)
 
 def can_suspend_users(user: Optional[models.User]) -> bool:
-    """Check if user can suspend other users (currently only god admin)"""
-    return is_god_admin(user)
+    """Check if user can suspend other users (currently only admin)"""
+    return is_admin(user)

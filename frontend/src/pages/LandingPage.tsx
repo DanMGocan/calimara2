@@ -1,181 +1,235 @@
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import DOMPurify from "dompurify";
-import { Feather, BookOpen, UserRound } from "lucide-react";
-import { fetchLanding } from "@/api/posts";
-import type { Post } from "@/api/posts";
+import { useNavigate } from "react-router-dom";
+import { fetchLanding, type Post } from "@/api/posts";
 import { fetchRandomUser } from "@/api/users";
-import { PageLoader } from "@/components/layout/LoadingSpinner";
+import { fetchRandomClub } from "@/api/clubs";
 import { useToast } from "@/components/ui/toast-context";
-import { DebugLabel } from "@/components/ui/debug-label";
-import { getBlogUrl } from "@/lib/utils";
+import { PageLoader } from "@/components/layout/LoadingSpinner";
+import { Stage, LeftCol, PieceCol } from "@/components/ui/stage";
+import {
+  ActionRow,
+  ActionsGroup,
+  SideHint,
+  SideKicker,
+} from "@/components/ui/action-row";
+import { KindBadge } from "@/components/ui/kind-badge";
+import { RevealText } from "@/components/ui/reveal-text";
+import { PieceScroll } from "@/components/ui/piece-scroll";
+import { cn, formatDateTime, getBlogUrl, stripHtml } from "@/lib/utils";
 
-type ContentType = "poezie" | "proza_scurta";
+type Kind = "poezie" | "proza_scurta";
 
 export default function LandingPage() {
-  const [contentType, setContentType] = useState<ContentType>("poezie");
+  const [kind, setKind] = useState<Kind>("poezie");
   const [refreshKey, setRefreshKey] = useState(0);
-  const [visible, setVisible] = useState(true);
+  const [transitioning, setTransitioning] = useState(false);
   const [displayedPost, setDisplayedPost] = useState<Post | null>(null);
+  const seedRef = useRef(0);
+
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["landing", contentType, refreshKey],
-    queryFn: () => fetchLanding(contentType),
+    queryKey: ["landing", kind, refreshKey],
+    queryFn: () => fetchLanding(kind),
   });
 
   const post = data?.random_posts?.[0] ?? null;
 
-  const refresh = useCallback((type: ContentType) => {
-    setVisible(false);
-    if (type === contentType) {
-      setTimeout(() => setRefreshKey((k) => k + 1), 350);
-    } else {
+  const swap = useCallback(
+    (next: Kind) => {
+      if (transitioning) return;
+      setTransitioning(true);
       setTimeout(() => {
-        setContentType(type);
+        if (next !== kind) setKind(next);
         setRefreshKey((k) => k + 1);
-      }, 350);
-    }
-  }, [contentType]);
-
-  const randomUserMutation = useMutation({
-    mutationFn: fetchRandomUser,
-    onSuccess: (user) => {
-      window.location.href = getBlogUrl(user.username);
+      }, 340);
     },
-    onError: () => {
-      showToast("Nu am putut încărca un autor. Încearcă mai târziu.", "danger");
-    },
-  });
+    [kind, transitioning],
+  );
 
-  // Sync the freshly-fetched post into local display state and fade it in.
-  // react-hooks/set-state-in-effect flags this pattern, but animation
-  // choreography (fade-out before refetch, fade-in after) needs state sync.
   useEffect(() => {
-    if (isFetching || !post) return;
+    if (isFetching) return;
+    if (!post) return;
+    seedRef.current += 1;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplayedPost(post);
-    requestAnimationFrame(() => setVisible(true));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTransitioning(false);
   }, [post, isFetching]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        swap("poezie");
+      }
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        swap("proza_scurta");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [swap]);
+
+  const randomAuthor = useMutation({
+    mutationFn: fetchRandomUser,
+    onSuccess: (u) => {
+      window.location.href = getBlogUrl(u.username);
+    },
+    onError: () => showToast("Nu am putut deschide un autor nou.", "danger"),
+  });
+
+  const randomClub = useMutation({
+    mutationFn: fetchRandomClub,
+    onSuccess: (c) => {
+      navigate(`/cluburi/${c.slug}`);
+    },
+    onError: () => showToast("Nu am găsit niciun club disponibil.", "danger"),
+  });
+
   if (isLoading && !displayedPost) return <PageLoader />;
+
+  const kindLabel = kind === "poezie" ? "Poezie" : "Proză scurtă";
+  const plainBody = displayedPost ? stripHtml(DOMPurify.sanitize(displayedPost.content)) : "";
+  const when = displayedPost ? formatDateTime(displayedPost.created_at) : null;
 
   return (
     <>
       <Helmet>
-        <title>Calimara - Platformă de microblogging pentru scriitori</title>
-        <meta name="description" content="Calimara este o platformă de microblogging pentru scriitori și poeți români." />
+        <title>călimara.ro — poezie și proză</title>
+        <meta
+          name="description"
+          content="călimara.ro — platformă de microblogging pentru scriitori și poeți români."
+        />
       </Helmet>
 
-      <div className="relative mx-auto max-w-5xl">
-        <DebugLabel name="LandingPage" />
-        <div className="relative grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <DebugLabel name="LandingGrid" />
-          {/* Main content */}
-          <div
-            className="relative min-w-0 transition-all duration-500 ease-in-out"
-            style={{
-              opacity: visible ? 1 : 0,
-              transform: visible ? "translateY(0)" : "translateY(12px)",
-            }}
-          >
-            <DebugLabel name="LandingMainContent" />
-            {displayedPost ? (
-              <article className="relative">
-                <DebugLabel name="LandingPostArticle" />
-                <a
-                  href={displayedPost.owner ? `${getBlogUrl(displayedPost.owner.username)}/${displayedPost.slug}` : "#"}
-                  className="no-underline"
-                >
-                  <h2 className="font-display text-3xl font-semibold text-primary leading-[1.15] md:text-4xl">
-                    {displayedPost.title}
-                  </h2>
-                </a>
+      <Stage>
+        <LeftCol>
+          <aside className="side-col">
+            <SideKicker>alege un text</SideKicker>
+            <ActionsGroup>
+              <ActionRow
+                num={1}
+                label="Poezie la întâmplare"
+                active={kind === "poezie"}
+                disabled={transitioning}
+                onClick={() => swap("poezie")}
+              />
+              <ActionRow
+                num={2}
+                label="Proză scurtă la întâmplare"
+                active={kind === "proza_scurta"}
+                disabled={transitioning}
+                onClick={() => swap("proza_scurta")}
+              />
+              <ActionRow
+                num={3}
+                label="Un autor la întâmplare"
+                sub="deschide blogul unui scriitor"
+                disabled={randomAuthor.isPending}
+                onClick={() => randomAuthor.mutate()}
+              />
+              <ActionRow
+                num={4}
+                label="Club la întâmplare"
+                sub="o comunitate aleatorie"
+                disabled={randomClub.isPending}
+                onClick={() => randomClub.mutate()}
+              />
+            </ActionsGroup>
+            <SideHint>
+              <span className="kbd">P</span>
+              <span>poezie</span>
+              <span style={{ width: 8 }} />
+              <span className="kbd">S</span>
+              <span>proză</span>
+            </SideHint>
 
-                {displayedPost.owner && (
-                  <p className="mt-4 text-sm text-muted">
-                    de{" "}
-                    <a
-                      href={getBlogUrl(displayedPost.owner.username)}
-                      className="font-medium text-primary hover:underline underline-offset-4 no-underline"
-                    >
-                      {displayedPost.owner.username}
-                    </a>
-                  </p>
-                )}
-
-                <div
-                  className="prose-content mt-8 text-primary"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(displayedPost.content) }}
-                />
-              </article>
-            ) : (
-              <div className="py-16 text-center">
-                <p className="text-muted">Nu există conținut în această categorie.</p>
+            {data?.stats ? (
+              <div className="rail">
+                <div className="rail-stat">
+                  <span className="rail-label">Texte</span>
+                  <span className="rail-count">
+                    {data.stats.total_posts.toLocaleString("ro-RO")}
+                  </span>
+                  <span className="rail-sub">poezie și proză</span>
+                </div>
+                <div className="rail-stat">
+                  <span className="rail-label">Autori</span>
+                  <span className="rail-count">
+                    {data.stats.total_authors.toLocaleString("ro-RO")}
+                  </span>
+                  <span className="rail-sub">autori activi</span>
+                </div>
               </div>
-            )}
-          </div>
-
-          {/* Right-side discovery cards */}
-          <aside className="relative space-y-3 lg:sticky lg:top-20 lg:self-start">
-            <DebugLabel name="LandingDiscoverySidebar" />
-            <DiscoverCard
-              icon={<Feather className="h-5 w-5 text-primary" />}
-              title="Descoperă o poezie la întâmplare"
-              description="Încarcă o poezie nouă din platformă"
-              onClick={() => refresh("poezie")}
-              disabled={isFetching}
-            />
-            <DiscoverCard
-              icon={<BookOpen className="h-5 w-5 text-primary" />}
-              title="Descoperă proză la întâmplare"
-              description="Încarcă un text de proză scurtă"
-              onClick={() => refresh("proza_scurta")}
-              disabled={isFetching}
-            />
-            <DiscoverCard
-              icon={<UserRound className="h-5 w-5 text-primary" />}
-              title="Descoperă un autor la întâmplare"
-              description="Vizitează blogul unui scriitor aleatoriu"
-              onClick={() => randomUserMutation.mutate()}
-              disabled={randomUserMutation.isPending}
-            />
+            ) : null}
           </aside>
-        </div>
-      </div>
-    </>
-  );
-}
+        </LeftCol>
 
-function DiscoverCard({
-  icon,
-  title,
-  description,
-  onClick,
-  disabled,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="group relative block w-full cursor-pointer rounded-lg border border-border bg-surface-raised p-4 text-left transition-colors hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-border disabled:hover:bg-surface-raised"
-    >
-      <DebugLabel name="DiscoverCard" />
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0">{icon}</span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-primary">{title}</h3>
-          <p className="mt-0.5 text-xs text-muted">{description}</p>
-        </div>
-      </div>
-    </button>
+        <PieceCol transitioning={transitioning}>
+          {displayedPost ? (
+            <>
+              <KindBadge
+                label={kindLabel}
+                meta={
+                  <a
+                    href={
+                      displayedPost.owner
+                        ? `${getBlogUrl(displayedPost.owner.username)}/${displayedPost.slug}`
+                        : "#"
+                    }
+                    style={{ color: "inherit" }}
+                  >
+                    citește pe blog
+                  </a>
+                }
+              />
+              <h1 className={cn("piece-title", displayedPost.super_likes_count > 0 && "has-super-like")}>
+                {displayedPost.title}
+              </h1>
+              <div className="piece-meta">
+                {displayedPost.owner ? (
+                  <a
+                    href={getBlogUrl(displayedPost.owner.username)}
+                    className="piece-author"
+                    style={{ textDecoration: "none" }}
+                  >
+                    {displayedPost.owner.username}
+                  </a>
+                ) : (
+                  <span className="piece-author">anonim</span>
+                )}
+                {when ? (
+                  <>
+                    <span className="piece-meta-dot" />
+                    <span className="piece-year">{when}</span>
+                  </>
+                ) : null}
+              </div>
+              <PieceScroll resetKey={seedRef.current}>
+                <RevealText text={plainBody} keySeed={seedRef.current} />
+                <div className="piece-end">
+                  <span>fin</span>
+                  <span className="piece-end-mark">· · ·</span>
+                </div>
+              </PieceScroll>
+            </>
+          ) : (
+            <div className="py-16 text-center">
+              <p style={{ color: "var(--color-ink-mute)" }}>
+                Nu există conținut în această categorie.
+              </p>
+            </div>
+          )}
+        </PieceCol>
+      </Stage>
+    </>
   );
 }

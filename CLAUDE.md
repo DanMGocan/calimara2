@@ -78,6 +78,14 @@ The schema includes sample data with 4 users and 10 posts:
 - **GOOGLE_REDIRECT_URI**: OAuth callback URL
 - **GEMINI_API_KEY**: Google Gemini API key for content moderation
 - **GOD_ADMIN_EMAIL**: Admin email address
+- **STRIPE_ENABLED**: `True` to enable the Premium subscription feature (Stripe Checkout + webhook). `False` disables all premium endpoints.
+- **STRIPE_SECRET_KEY**: Stripe secret API key (`sk_test_...` for test mode, `sk_live_...` for production). Required when `STRIPE_ENABLED=True`.
+- **STRIPE_PUBLISHABLE_KEY**: Stripe publishable key (`pk_test_...`). Reserved for future client-side use; required when `STRIPE_ENABLED=True`.
+- **STRIPE_WEBHOOK_SECRET**: Stripe webhook signing secret (`whsec_...`). The webhook endpoint at `/api/stripe/webhook` verifies every incoming event against this.
+- **STRIPE_PRICE_ID_PREMIUM_MONTHLY**: Stripe Price ID for the €3.99/month premium plan. Create the Price (EUR, recurring monthly) in the Stripe dashboard and paste the resulting `price_...` ID here.
+- **STRIPE_SUCCESS_URL**: Full URL users are redirected to after successful Checkout. Include the literal placeholder `?session_id={CHECKOUT_SESSION_ID}`, e.g. `https://calimara.ro/premium/success?session_id={CHECKOUT_SESSION_ID}`.
+- **STRIPE_CANCEL_URL**: Full URL users are redirected to if they cancel Checkout, e.g. `https://calimara.ro/premium/cancel`.
+- **STRIPE_CUSTOMER_PORTAL_RETURN_URL**: Return URL from the Stripe Billing Portal (where users manage their subscription), e.g. `https://calimara.ro/dashboard`.
 
 ### Template Context Helper
 Use `get_common_context(request, current_user)` for consistent template variables including domain configuration that's passed to JavaScript via `window.CALIMARA_CONFIG`.

@@ -14,3 +14,4 @@ slowapi>=0.1.9
 weasyprint>=62.0
 Pillow>=11.0.0
 pillow-avif-plugin>=1.4.6
+stripe>=10.0.0

@@ -1,25 +1,42 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
-import { Search, Send, Plus } from "lucide-react";
-import { fetchConversations, sendNewMessage, searchConversations } from "@/api/messages";
+import { Search } from "lucide-react";
+import {
+  fetchConversations,
+  searchConversations,
+  sendNewMessage,
+} from "@/api/messages";
 import { searchUsers } from "@/api/users";
-import { useAuth } from "@/hooks/useAuth";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast-context";
-import { DebugLabel } from "@/components/ui/debug-label";
 import { PageLoader } from "@/components/layout/LoadingSpinner";
-import { getAvatarUrl, formatRelativeTime, getBlogUrl } from "@/lib/utils";
+import { Stage, LeftCol } from "@/components/ui/stage";
+import {
+  ActionRow,
+  ActionsGroup,
+  SideKicker,
+} from "@/components/ui/action-row";
+import {
+  formatRelativeTime,
+  getAvatarUrl,
+} from "@/lib/utils";
 import { MAX_MESSAGE_LENGTH } from "@/lib/constants";
 
 export default function MessagesPage() {
-  const { user } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showNewMessage, setShowNewMessage] = useState(false);
@@ -50,130 +67,294 @@ export default function MessagesPage() {
       setShowNewMessage(false);
       setRecipient("");
       setMessageContent("");
-      showToast("Mesaj trimis!", "success");
-      window.location.href = `${getBlogUrl(user!.username)}/messages/${res.conversation_id}`;
+      showToast("Mesaj trimis.", "success");
+      navigate(`/messages/${res.conversation_id}`);
     },
     onError: (err: Error) => showToast(err.message, "danger"),
   });
 
   if (isLoading) return <PageLoader />;
 
-  const displayConversations = searchQuery.length >= 2 ? searchResults : conversations;
-  const showUserResults = userResults.length > 0 && recipient.length >= 2 && !userResults.some((u) => u.username === recipient);
+  const displayList = searchQuery.length >= 2 ? searchResults : conversations;
+  const unreadTotal =
+    conversations?.reduce((a, c) => a + (c.unread_count ?? 0), 0) ?? 0;
 
   return (
     <>
       <Helmet>
-        <title>Mesaje | Calimara</title>
+        <title>Mesaje | călimara.ro</title>
       </Helmet>
 
-      <div className="relative mx-auto max-w-3xl px-4 py-8">
-        <DebugLabel name="MessagesPage" />
-        <div className="relative flex items-center justify-between mb-6">
-          <DebugLabel name="MessagesHeader" />
-          <h1 className="font-display text-2xl font-medium text-primary">Mesaje</h1>
-          <Button onClick={() => setShowNewMessage(true)}>
-            <Plus className="h-4 w-4" /> Mesaj nou
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="relative mb-6">
-          <DebugLabel name="MessagesSearch" />
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <Input
-            className="pl-9"
-            placeholder="Cauta conversatii..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-
-        {/* Conversation List */}
-        <div className="relative space-y-2">
-          <DebugLabel name="ConversationList" />
-          {displayConversations?.map((conv) => (
-            <a
-              key={conv.id}
-              href={`${getBlogUrl(user!.username)}/messages/${conv.id}`}
-              className="flex items-center gap-3 rounded-lg border border-border bg-surface-raised p-4 transition-colors hover:border-border-strong hover:bg-surface no-underline"
-            >
-              <img
-                src={getAvatarUrl(conv.other_user.avatar_seed, 48)}
-                alt={`Avatar ${conv.other_user.username}`}
-                className="h-12 w-12 rounded-full shrink-0 border border-border"
+      <Stage>
+        <LeftCol>
+          <aside className="side-col">
+            <SideKicker>mesaje</SideKicker>
+            <ActionsGroup>
+              <ActionRow
+                num={1}
+                label="Mesaj nou"
+                sub="către un scriitor"
+                onClick={() => setShowNewMessage(true)}
               />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-primary">{conv.other_user.username}</span>
-                  {conv.latest_message && (
-                    <span className="text-xs text-muted">{formatRelativeTime(conv.latest_message.created_at)}</span>
-                  )}
-                </div>
-                {conv.latest_message && (
-                  <p className="text-sm text-muted line-clamp-1 mt-0.5">{conv.latest_message.content}</p>
-                )}
+              <ActionRow
+                num={2}
+                label="Toate conversațiile"
+                sub={`${conversations?.length ?? 0} în total`}
+                active
+              />
+            </ActionsGroup>
+            {unreadTotal > 0 ? (
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                  color: "var(--color-accent)",
+                  padding: "12px 0",
+                  borderTop: "1px solid var(--color-hairline)",
+                }}
+              >
+                {unreadTotal} mesaj{unreadTotal === 1 ? "" : "e"} necitit
+                {unreadTotal === 1 ? "" : "e"}
               </div>
-              {conv.unread_count > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-white">
-                  {conv.unread_count}
-                </span>
-              )}
-            </a>
-          ))}
+            ) : null}
+          </aside>
+        </LeftCol>
 
-          {(!displayConversations || displayConversations.length === 0) && (
-            <Card className="p-12 text-center">
-              <p className="text-muted">Nicio conversație.</p>
-            </Card>
-          )}
+        <div className="piece-col">
+          <div className="piece-wrap">
+            <div className="piece-kind-row">
+              <span className="piece-kind-badge">mesaje</span>
+              <span className="piece-kind-sep" />
+              <span className="piece-kind-meta">conversații</span>
+            </div>
+            <h1
+              className="piece-title"
+              style={{ fontSize: "clamp(32px, 4vw, 52px)", marginBottom: 28 }}
+            >
+              Mesaje
+            </h1>
+
+            <div
+              className="relative"
+              style={{ marginBottom: 24 }}
+            >
+              <Search
+                className="h-4 w-4"
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--color-ink-faint)",
+                }}
+              />
+              <Input
+                placeholder="caută conversații…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: 36 }}
+              />
+            </div>
+
+            {displayList && displayList.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {displayList.map((conv) => (
+                  <Link
+                    key={conv.id}
+                    to={`/messages/${conv.id}`}
+                    className="piece-card"
+                    style={{ padding: "14px 16px" }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={getAvatarUrl(conv.other_user.avatar_seed, 44)}
+                        alt={conv.other_user.username}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: "50%",
+                          border: "1px solid var(--color-hairline)",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span
+                            style={{
+                              fontFamily: "var(--font-sans)",
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: "var(--color-ink)",
+                            }}
+                          >
+                            {conv.other_user.username}
+                          </span>
+                          {conv.latest_message ? (
+                            <span
+                              style={{
+                                fontFamily: "var(--font-mono)",
+                                fontSize: 10,
+                                letterSpacing: "0.08em",
+                                color: "var(--color-ink-faint)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {formatRelativeTime(conv.latest_message.created_at)}
+                            </span>
+                          ) : null}
+                        </div>
+                        {conv.latest_message ? (
+                          <p
+                            style={{
+                              fontFamily: "var(--font-serif)",
+                              fontSize: 14,
+                              color: "var(--color-ink-mute)",
+                              margin: "4px 0 0",
+                              lineHeight: 1.4,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 1,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {conv.latest_message.content}
+                          </p>
+                        ) : null}
+                      </div>
+                      {conv.unread_count > 0 ? (
+                        <span
+                          style={{
+                            minWidth: 22,
+                            height: 22,
+                            padding: "0 6px",
+                            borderRadius: 999,
+                            background: "var(--color-accent)",
+                            color: "var(--color-paper)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 10,
+                            fontWeight: 500,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {conv.unread_count}
+                        </span>
+                      ) : null}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  padding: "60px 20px",
+                  border: "1px dashed var(--color-hairline-strong)",
+                  borderRadius: 10,
+                  textAlign: "center",
+                  color: "var(--color-ink-faint)",
+                  fontFamily: "var(--font-serif)",
+                  fontStyle: "italic",
+                  fontSize: 17,
+                }}
+              >
+                Nicio conversație.
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </Stage>
 
-      {/* New Message Modal */}
       <Dialog open={showNewMessage} onOpenChange={setShowNewMessage}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Mesaj nou</DialogTitle>
+            <div className="auth-kicker">mesaj nou</div>
+            <DialogTitle>Scrie unui scriitor</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="relative">
+          <div className="flex flex-col gap-3">
+            <div style={{ position: "relative" }}>
               <Input
-                placeholder="Cauta utilizator..."
+                placeholder="@nume utilizator"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
               />
-              {showUserResults && (
-                <div className="absolute top-full left-0 right-0 mt-1 rounded-lg border border-border bg-surface-raised shadow-lg z-10 max-h-40 overflow-y-auto">
+              {userResults.length > 0 &&
+              recipient.length >= 2 &&
+              !userResults.some((u) => u.username === recipient) ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    marginTop: 4,
+                    borderRadius: 10,
+                    border: "1px solid var(--color-hairline)",
+                    background: "var(--color-paper)",
+                    zIndex: 10,
+                    maxHeight: 180,
+                    overflowY: "auto",
+                  }}
+                >
                   {userResults.map((u) => (
                     <button
                       key={u.username}
                       type="button"
-                      className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-surface cursor-pointer"
                       onClick={() => setRecipient(u.username)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        width: "100%",
+                        padding: "8px 12px",
+                        textAlign: "left",
+                        fontFamily: "var(--font-sans)",
+                        fontSize: 13,
+                        color: "var(--color-ink-soft)",
+                        borderBottom: "1px solid var(--color-hairline)",
+                      }}
                     >
-                      <span className="font-medium">{u.username}</span>
-                      {u.subtitle && <span className="text-xs text-muted">{u.subtitle}</span>}
+                      <span style={{ fontWeight: 600 }}>{u.username}</span>
+                      {u.subtitle ? (
+                        <span style={{ color: "var(--color-ink-faint)" }}>
+                          · {u.subtitle}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
-            <div>
-              <Textarea
-                placeholder="Scrie mesajul..."
-                value={messageContent}
-                onChange={(e) => setMessageContent(e.target.value)}
-                maxLength={MAX_MESSAGE_LENGTH}
-                rows={4}
-              />
-              <p className="mt-1 text-xs text-muted text-right">{messageContent.length}/{MAX_MESSAGE_LENGTH}</p>
-            </div>
+            <Textarea
+              placeholder="scrie mesajul…"
+              value={messageContent}
+              onChange={(e) => setMessageContent(e.target.value)}
+              maxLength={MAX_MESSAGE_LENGTH}
+              rows={4}
+            />
+            <p
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                textAlign: "right",
+                color: "var(--color-ink-faint)",
+              }}
+            >
+              {messageContent.length}/{MAX_MESSAGE_LENGTH}
+            </p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewMessage(false)}>Anuleaza</Button>
-            <Button onClick={() => sendMutation.mutate()} disabled={!recipient || !messageContent || sendMutation.isPending}>
-              <Send className="h-4 w-4" /> Trimite
+            <Button variant="outline" onClick={() => setShowNewMessage(false)}>
+              anulează
+            </Button>
+            <Button
+              onClick={() => sendMutation.mutate()}
+              disabled={!recipient || !messageContent || sendMutation.isPending}
+            >
+              trimite
             </Button>
           </DialogFooter>
         </DialogContent>

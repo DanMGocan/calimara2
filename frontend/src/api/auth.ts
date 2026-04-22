@@ -9,6 +9,8 @@ export interface CurrentUser {
   is_admin: boolean;
   is_moderator: boolean;
   is_suspended: boolean;
+  is_premium: boolean;
+  premium_until: string | null;
 }
 
 interface MeResponse {

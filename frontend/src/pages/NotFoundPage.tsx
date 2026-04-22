@@ -1,22 +1,39 @@
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { DebugLabel } from "@/components/ui/debug-label";
+import { Stage } from "@/components/ui/stage";
 
 export default function NotFoundPage() {
   return (
     <>
       <Helmet>
-        <title>404 - Pagina nu a fost gasita | Calimara</title>
+        <title>404 · pagina nu există | călimara.ro</title>
       </Helmet>
-      <div className="relative flex min-h-[60vh] flex-col items-center justify-center px-4">
-        <DebugLabel name="NotFoundPage" />
-        <h1 className="font-display text-6xl font-medium text-primary">404</h1>
-        <p className="mt-4 text-lg text-muted">Pagina nu a fost gasita.</p>
-        <Button asChild className="mt-8">
-          <Link to="/">Inapoi acasa</Link>
-        </Button>
-      </div>
+      <Stage variant="centered">
+        <div style={{ textAlign: "center", maxWidth: 520 }}>
+          <div className="auth-kicker">404</div>
+          <h1
+            className="piece-title"
+            style={{ fontSize: "clamp(44px, 6vw, 72px)" }}
+          >
+            Pagina nu există.
+          </h1>
+          <p
+            style={{
+              fontFamily: "var(--font-serif)",
+              fontStyle: "italic",
+              color: "var(--color-ink-mute)",
+              fontSize: 17,
+              margin: "16px 0 32px",
+            }}
+          >
+            Poate textul a fost retras sau adresa e scrisă greșit.
+          </p>
+          <Button asChild>
+            <Link to="/">înapoi acasă</Link>
+          </Button>
+        </div>
+      </Stage>
     </>
   );
 }

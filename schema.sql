@@ -4,6 +4,8 @@
 -- ===================================
 
 -- Drop tables in reverse order of dependency
+DROP TABLE IF EXISTS stripe_events CASCADE;
+DROP TABLE IF EXISTS super_likes CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS moderation_logs CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
@@ -13,6 +15,12 @@ DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS best_friends CASCADE;
 DROP TABLE IF EXISTS featured_posts CASCADE;
 DROP TABLE IF EXISTS user_awards CASCADE;
+DROP TABLE IF EXISTS club_board_messages CASCADE;
+DROP TABLE IF EXISTS club_join_requests CASCADE;
+DROP TABLE IF EXISTS club_members CASCADE;
+DROP TABLE IF EXISTS clubs CASCADE;
+DROP TABLE IF EXISTS collection_posts CASCADE;
+DROP TABLE IF EXISTS collections CASCADE;
 DROP TABLE IF EXISTS tags CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -41,6 +49,9 @@ CREATE TABLE users (
     suspension_reason TEXT,
     suspended_at TIMESTAMP,
     suspended_by INT,
+    stripe_customer_id VARCHAR(100) UNIQUE,
+    stripe_subscription_id VARCHAR(100) UNIQUE,
+    premium_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -52,6 +63,8 @@ CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_google_id ON users(google_id);
 CREATE INDEX idx_users_created_at ON users(created_at);
 CREATE INDEX idx_users_is_suspended ON users(is_suspended);
+CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
+CREATE INDEX idx_users_premium_until ON users(premium_until);
 
 -- ===================================
 -- POSTS TABLE
@@ -206,6 +219,145 @@ CREATE TABLE featured_posts (
 CREATE INDEX idx_fp_user_id ON featured_posts(user_id);
 CREATE INDEX idx_fp_post_id ON featured_posts(post_id);
 CREATE INDEX idx_fp_position ON featured_posts(position);
+
+-- ===================================
+-- COLLECTIONS TABLE
+-- ===================================
+CREATE TABLE collections (
+    id SERIAL PRIMARY KEY,
+    owner_id INT NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    slug VARCHAR(140) UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_collections_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_collections_owner_id ON collections(owner_id);
+CREATE INDEX idx_collections_slug ON collections(slug);
+CREATE INDEX idx_collections_created_at ON collections(created_at);
+
+-- ===================================
+-- COLLECTION_POSTS TABLE (junction with consent-flow status)
+-- ===================================
+CREATE TABLE collection_posts (
+    id SERIAL PRIMARY KEY,
+    collection_id INT NOT NULL,
+    post_id INT NOT NULL,
+    initiator_id INT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'rejected')),
+    position INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    responded_at TIMESTAMP,
+
+    CONSTRAINT unique_collection_post UNIQUE (collection_id, post_id),
+    CONSTRAINT fk_cp_collection FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cp_initiator FOREIGN KEY (initiator_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_cp_collection_status ON collection_posts(collection_id, status);
+CREATE INDEX idx_cp_post_status ON collection_posts(post_id, status);
+CREATE INDEX idx_cp_initiator ON collection_posts(initiator_id);
+
+-- ===================================
+-- CLUBS TABLE
+-- ===================================
+CREATE TABLE clubs (
+    id SERIAL PRIMARY KEY,
+    owner_id INT NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    slug VARCHAR(140) UNIQUE NOT NULL,
+    description TEXT,
+    motto VARCHAR(200),
+    avatar_seed VARCHAR(100),
+    theme VARCHAR(200),
+    speciality VARCHAR(20) NOT NULL
+        CHECK (speciality IN ('poezie', 'proza_scurta')),
+    featured_post_id INT,
+    featured_until TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_clubs_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_clubs_featured_post FOREIGN KEY (featured_post_id) REFERENCES posts(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_clubs_owner_id ON clubs(owner_id);
+CREATE INDEX idx_clubs_slug ON clubs(slug);
+CREATE INDEX idx_clubs_speciality ON clubs(speciality);
+CREATE INDEX idx_clubs_created_at ON clubs(created_at);
+
+-- ===================================
+-- CLUB MEMBERS TABLE
+-- ===================================
+CREATE TABLE club_members (
+    id SERIAL PRIMARY KEY,
+    club_id INT NOT NULL,
+    user_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'member'
+        CHECK (role IN ('owner', 'admin', 'member')),
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_club_member UNIQUE (club_id, user_id),
+    CONSTRAINT fk_cm_club FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cm_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_cm_club_role ON club_members(club_id, role);
+CREATE INDEX idx_cm_user ON club_members(user_id);
+
+-- ===================================
+-- CLUB JOIN REQUESTS TABLE
+-- (handles both apply-to-join and invitations via the `direction` column)
+-- ===================================
+CREATE TABLE club_join_requests (
+    id SERIAL PRIMARY KEY,
+    club_id INT NOT NULL,
+    user_id INT NOT NULL,
+    direction VARCHAR(20) NOT NULL
+        CHECK (direction IN ('application', 'invitation')),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    initiator_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    responded_at TIMESTAMP,
+    responded_by INT,
+
+    CONSTRAINT fk_cjr_club FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cjr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cjr_initiator FOREIGN KEY (initiator_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cjr_responder FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Only one pending request per (club, user) pair at a time. Approved/rejected
+-- rows are kept for history and don't conflict with future requests.
+CREATE UNIQUE INDEX uq_cjr_pending ON club_join_requests (club_id, user_id) WHERE status = 'pending';
+CREATE INDEX idx_cjr_club_status ON club_join_requests(club_id, status);
+CREATE INDEX idx_cjr_user_status ON club_join_requests(user_id, status);
+
+-- ===================================
+-- CLUB BOARD MESSAGES TABLE
+-- ===================================
+CREATE TABLE club_board_messages (
+    id SERIAL PRIMARY KEY,
+    club_id INT NOT NULL,
+    author_id INT NOT NULL,
+    parent_id INT,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_cbm_club FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cbm_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cbm_parent FOREIGN KEY (parent_id) REFERENCES club_board_messages(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_cbm_club_created ON club_board_messages(club_id, created_at DESC);
+CREATE INDEX idx_cbm_parent ON club_board_messages(parent_id);
 
 -- ===================================
 -- USER AWARDS TABLE
@@ -380,6 +532,32 @@ CREATE INDEX idx_ds_owner ON daily_stats(content_owner_id, stat_date);
 CREATE INDEX idx_ds_content ON daily_stats(content_type, content_id, stat_date);
 
 -- ===================================
+-- SUPER LIKES TABLE
+-- ===================================
+CREATE TABLE super_likes (
+    id SERIAL PRIMARY KEY,
+    post_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_super_likes_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_super_likes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT uq_super_likes_user_post UNIQUE (user_id, post_id)
+);
+
+CREATE INDEX idx_super_likes_user_created_at ON super_likes(user_id, created_at);
+CREATE INDEX idx_super_likes_post ON super_likes(post_id);
+
+-- ===================================
+-- STRIPE EVENTS TABLE (webhook idempotency)
+-- ===================================
+CREATE TABLE stripe_events (
+    id VARCHAR(100) PRIMARY KEY,
+    type VARCHAR(100) NOT NULL,
+    received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===================================
 -- UPDATED_AT TRIGGER FUNCTION
 -- ===================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -397,6 +575,12 @@ CREATE TRIGGER trg_posts_updated_at BEFORE UPDATE ON posts
 CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_collections_updated_at BEFORE UPDATE ON collections
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_clubs_updated_at BEFORE UPDATE ON clubs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_club_board_messages_updated_at BEFORE UPDATE ON club_board_messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_user_awards_updated_at BEFORE UPDATE ON user_awards
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

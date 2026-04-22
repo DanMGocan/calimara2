@@ -7,7 +7,8 @@ const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>
       <input
         type={type}
         className={cn(
-          "flex h-10 w-full rounded-md border border-border bg-surface-raised px-3 py-2 text-sm text-primary placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary focus:border-primary hover:border-border-strong disabled:cursor-not-allowed disabled:opacity-50 transition-colors",
+          "cal-input",
+          "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         ref={ref}

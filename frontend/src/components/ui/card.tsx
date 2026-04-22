@@ -6,7 +6,7 @@ const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border border-border bg-surface-raised transition-colors",
+        "rounded-[10px] border border-[color:var(--color-hairline)] bg-white/60 transition-colors",
         className,
       )}
       {...props}
@@ -17,11 +17,7 @@ Card.displayName = "Card";
 
 const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn("flex flex-col gap-1.5 p-5", className)}
-      {...props}
-    />
+    <div ref={ref} className={cn("flex flex-col gap-1.5 p-5", className)} {...props} />
   ),
 );
 CardHeader.displayName = "CardHeader";
@@ -30,7 +26,10 @@ const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingEleme
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn("text-base font-semibold leading-none tracking-tight text-primary", className)}
+      className={cn(
+        "font-[family-name:var(--font-serif)] text-[20px] font-medium leading-[1.15] tracking-[-0.01em] text-[color:var(--color-ink)]",
+        className,
+      )}
       {...props}
     />
   ),
@@ -41,7 +40,7 @@ const CardDescription = forwardRef<HTMLParagraphElement, HTMLAttributes<HTMLPara
   ({ className, ...props }, ref) => (
     <p
       ref={ref}
-      className={cn("text-sm text-muted", className)}
+      className={cn("text-sm text-[color:var(--color-ink-mute)]", className)}
       {...props}
     />
   ),
@@ -57,11 +56,7 @@ CardContent.displayName = "CardContent";
 
 const CardFooter = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn("flex items-center p-5 pt-0", className)}
-      {...props}
-    />
+    <div ref={ref} className={cn("flex items-center p-5 pt-0", className)} {...props} />
   ),
 );
 CardFooter.displayName = "CardFooter";

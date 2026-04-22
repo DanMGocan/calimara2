@@ -10,6 +10,8 @@ export interface Post {
   category_name?: string;
   view_count: number;
   likes_count: number;
+  super_likes_count: number;
+  viewer_super_liked: boolean;
   comments_count?: number;
   moderation_status: string;
   created_at: string;
@@ -53,6 +55,10 @@ export interface Like {
 // Landing page
 export interface LandingData {
   random_posts: Post[];
+  stats: {
+    total_posts: number;
+    total_authors: number;
+  };
 }
 
 export interface BlogUser {
@@ -87,6 +93,7 @@ export interface BlogData {
   user_awards: Award[];
   total_likes: number;
   total_comments: number;
+  category_counts: { category: string; category_name: string; count: number }[];
 }
 
 export interface Award {

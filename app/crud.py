@@ -1,11 +1,12 @@
 import logging
 import os
 import re
-from datetime import datetime, date as date_type
+from datetime import datetime, date as date_type, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, or_, and_, desc, extract
+from sqlalchemy import func, or_, and_, desc, extract, case
 from . import models, schemas
+from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +42,19 @@ def get_random_users(db: Session, limit: int = 10):
     return db.query(models.User).order_by(func.random()).limit(limit).all()
 
 def get_random_user_with_posts(db: Session):
+    # Postgres rejects `SELECT DISTINCT ... ORDER BY random()` because the
+    # ORDER BY expression isn't in the SELECT list. Use EXISTS instead of
+    # DISTINCT+JOIN so we can order by random() freely.
     return (
         db.query(models.User)
-        .join(models.Post, models.Post.user_id == models.User.id)
-        .filter(models.Post.moderation_status == "approved")
-        .distinct()
+        .filter(
+            db.query(models.Post.id)
+            .filter(
+                models.Post.user_id == models.User.id,
+                models.Post.moderation_status == "approved",
+            )
+            .exists()
+        )
         .order_by(func.random())
         .limit(1)
         .first()
@@ -132,6 +141,13 @@ def update_post_theme_analysis(db: Session, post_id: int, themes: list, feelings
         post.feelings = feelings
         post.theme_analysis_status = status
         db.commit()
+
+def get_platform_stats(db: Session):
+    total_posts = db.query(models.Post).filter(models.Post.moderation_status == "approved").count()
+    total_authors = db.query(models.Post.user_id).filter(
+        models.Post.moderation_status == "approved"
+    ).distinct().count()
+    return {"total_posts": total_posts, "total_authors": total_authors}
 
 def get_random_posts(db: Session, limit: int = 10):
     return db.query(models.Post).filter(models.Post.moderation_status == "approved").order_by(func.random()).limit(limit).all()
@@ -220,6 +236,16 @@ def get_distinct_categories_used(db: Session, user_id: Optional[int] = None):
         query = query.filter(models.Post.user_id == user_id)
     results = query.distinct().all()
     return [r[0] for r in results if r[0]]
+
+def get_user_post_counts_by_category(db: Session, user_id: int):
+    rows = db.query(
+        models.Post.category,
+        func.count(models.Post.id),
+    ).filter(
+        models.Post.user_id == user_id,
+        models.Post.moderation_status == "approved",
+    ).group_by(models.Post.category).all()
+    return {category: count for category, count in rows if category}
 
 def _get_distinct_post_terms(db: Session, field_name: str) -> List[str]:
     posts = db.query(models.Post).filter(
@@ -659,9 +685,6 @@ def create_notification(db: Session, user_id: int, notif_type: str, title: str, 
     db.refresh(notification)
     return notification
 
-def get_notifications(db: Session, user_id: int, limit: int = 20):
-    return get_notifications_for_user(db, user_id, 0, limit)
-
 def get_notifications_for_user(db: Session, user_id: int, skip: int = 0, limit: int = 20):
     return db.query(models.Notification).filter(
         models.Notification.user_id == user_id
@@ -737,6 +760,333 @@ def update_moderation_log_human_decision(db: Session, log_id: int, decision: str
         db.refresh(log)
     return log
 
+# ===================================
+# COLLECTION CRUD FUNCTIONS
+# ===================================
+
+def _generate_collection_slug(title: str) -> str:
+    slug = title.lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
+    return slug or "colectie"
+
+def _ensure_unique_collection_slug(db: Session, base_slug: str) -> str:
+    slug = base_slug
+    counter = 1
+    while db.query(models.Collection).filter(models.Collection.slug == slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+def get_collection(db: Session, collection_id: int):
+    return db.query(models.Collection).filter(models.Collection.id == collection_id).first()
+
+def get_collection_by_slug(db: Session, slug: str):
+    return db.query(models.Collection).options(
+        joinedload(models.Collection.owner)
+    ).filter(models.Collection.slug == slug).first()
+
+def get_collections_by_owner(db: Session, owner_id: int):
+    return db.query(models.Collection).options(
+        joinedload(models.Collection.owner)
+    ).filter(
+        models.Collection.owner_id == owner_id
+    ).order_by(models.Collection.created_at.desc()).all()
+
+def create_collection(db: Session, owner_id: int, data: schemas.CollectionCreate) -> models.Collection:
+    base_slug = _generate_collection_slug(data.title)
+    slug = _ensure_unique_collection_slug(db, base_slug)
+    collection = models.Collection(
+        owner_id=owner_id,
+        title=data.title.strip(),
+        slug=slug,
+        description=(data.description or "").strip() or None,
+    )
+    db.add(collection)
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+def update_collection(db: Session, collection_id: int, data: schemas.CollectionUpdate) -> Optional[models.Collection]:
+    collection = get_collection(db, collection_id)
+    if not collection:
+        return None
+    payload = data.model_dump(exclude_unset=True)
+    if "title" in payload and payload["title"]:
+        collection.title = payload["title"].strip()
+    if "description" in payload:
+        value = payload["description"]
+        collection.description = value.strip() if value else None
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+def delete_collection(db: Session, collection_id: int) -> bool:
+    collection = get_collection(db, collection_id)
+    if not collection:
+        return False
+    db.delete(collection)
+    db.commit()
+    return True
+
+def count_collection_posts(db: Session, collection_id: int, status: str = "accepted") -> int:
+    return db.query(models.CollectionPost).filter(
+        models.CollectionPost.collection_id == collection_id,
+        models.CollectionPost.status == status,
+    ).count()
+
+def get_collection_entries(
+    db: Session,
+    collection_id: int,
+    status: Optional[str] = "accepted",
+    approved_posts_only: bool = True,
+):
+    query = db.query(models.CollectionPost).options(
+        joinedload(models.CollectionPost.post).joinedload(models.Post.owner)
+    ).filter(models.CollectionPost.collection_id == collection_id)
+    if status:
+        query = query.filter(models.CollectionPost.status == status)
+    entries = query.order_by(
+        models.CollectionPost.position.asc().nullslast(),
+        models.CollectionPost.created_at.desc(),
+    ).all()
+    if approved_posts_only and status == "accepted":
+        entries = [e for e in entries if e.post and e.post.moderation_status == "approved"]
+    return entries
+
+def get_collection_entry(db: Session, collection_id: int, post_id: int) -> Optional[models.CollectionPost]:
+    return db.query(models.CollectionPost).filter(
+        models.CollectionPost.collection_id == collection_id,
+        models.CollectionPost.post_id == post_id,
+    ).first()
+
+def add_post_to_collection(
+    db: Session,
+    collection: models.Collection,
+    post: models.Post,
+    initiator_id: int,
+) -> tuple[Optional[models.CollectionPost], Optional[str]]:
+    """Add or re-propose a post in a collection.
+
+    Returns (entry, error). Permission rules:
+      - If initiator is both owner and author: auto-accept.
+      - If initiator is the owner only: pending, author must approve.
+      - If initiator is the author only: pending, owner must approve.
+      - Otherwise: error.
+    """
+    owner_id = collection.owner_id
+    author_id = post.user_id
+    is_owner = initiator_id == owner_id
+    is_author = initiator_id == author_id
+
+    if not is_owner and not is_author:
+        return None, "not_allowed"
+
+    existing = get_collection_entry(db, collection.id, post.id)
+    if existing:
+        if existing.status == "accepted":
+            return existing, "already_in_collection"
+        if existing.status == "pending":
+            return existing, "already_pending"
+        # previously rejected — allow re-initiation by either party by reusing the row
+        existing.initiator_id = initiator_id
+        existing.created_at = func.now()
+        existing.responded_at = None
+        auto_accept = is_owner and is_author
+        existing.status = "accepted" if auto_accept else "pending"
+        db.commit()
+        db.refresh(existing)
+        _notify_collection_counterparty(db, existing, collection, post, action="created")
+        return existing, None
+
+    auto_accept = is_owner and is_author
+    entry = models.CollectionPost(
+        collection_id=collection.id,
+        post_id=post.id,
+        initiator_id=initiator_id,
+        status="accepted" if auto_accept else "pending",
+        responded_at=(func.now() if auto_accept else None),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    _notify_collection_counterparty(db, entry, collection, post, action="created")
+    return entry, None
+
+def respond_to_collection_entry(
+    db: Session,
+    entry: models.CollectionPost,
+    responder_id: int,
+    action: str,
+) -> tuple[Optional[models.CollectionPost], Optional[str]]:
+    if action not in ("accept", "reject"):
+        return None, "bad_action"
+    if entry.status != "pending":
+        return None, "not_pending"
+
+    collection = entry.collection
+    post = entry.post
+    owner_id = collection.owner_id
+    author_id = post.user_id
+
+    # Responder must be the counterparty: if initiator is the owner, responder must be the author, and vice versa.
+    initiator_id = entry.initiator_id
+    if initiator_id == owner_id:
+        expected_responder = author_id
+    elif initiator_id == author_id:
+        expected_responder = owner_id
+    else:
+        return None, "inconsistent_initiator"
+
+    if responder_id != expected_responder:
+        return None, "not_allowed"
+
+    entry.status = "accepted" if action == "accept" else "rejected"
+    entry.responded_at = func.now()
+    db.commit()
+    db.refresh(entry)
+    _notify_collection_counterparty(db, entry, collection, post, action=entry.status)
+    return entry, None
+
+def remove_collection_entry(
+    db: Session,
+    entry: models.CollectionPost,
+    user_id: int,
+) -> tuple[bool, Optional[str]]:
+    collection = entry.collection
+    post = entry.post
+    owner_id = collection.owner_id
+    author_id = post.user_id
+
+    allowed = False
+    if entry.status == "accepted":
+        allowed = user_id in (owner_id, author_id)
+    elif entry.status == "pending":
+        allowed = user_id in (owner_id, author_id, entry.initiator_id)
+    else:  # rejected
+        allowed = user_id in (owner_id, author_id, entry.initiator_id)
+
+    if not allowed:
+        return False, "not_allowed"
+
+    # Notify the other party if the accepted association is being torn down by the non-author
+    if entry.status == "accepted" and user_id == owner_id and author_id != owner_id:
+        create_notification(
+            db=db,
+            user_id=author_id,
+            notif_type="collection_removed",
+            title="Postare scoasă dintr-o colecție",
+            message=f"Postarea ta \"{post.title}\" a fost scoasă din colecția \"{collection.title}\".",
+            link=f"/{post.slug}",
+            extra_data={"collection_id": collection.id, "post_id": post.id},
+        )
+    elif entry.status == "accepted" and user_id == author_id and author_id != owner_id:
+        create_notification(
+            db=db,
+            user_id=owner_id,
+            notif_type="collection_removed",
+            title="Postare retrasă dintr-o colecție",
+            message=f"Autorul a retras postarea \"{post.title}\" din colecția \"{collection.title}\".",
+            link=f"/colectii/{collection.slug}",
+            extra_data={"collection_id": collection.id, "post_id": post.id},
+        )
+
+    db.delete(entry)
+    db.commit()
+    return True, None
+
+def _notify_collection_counterparty(
+    db: Session,
+    entry: models.CollectionPost,
+    collection: models.Collection,
+    post: models.Post,
+    action: str,
+):
+    owner_id = collection.owner_id
+    author_id = post.user_id
+    initiator_id = entry.initiator_id
+
+    if owner_id == author_id:
+        return  # no counterparty to notify when the owner adds their own post
+
+    if action == "created" and entry.status == "pending":
+        counterparty_id = author_id if initiator_id == owner_id else owner_id
+        if initiator_id == owner_id:
+            title = "Invitație într-o colecție"
+            message = f"Postarea ta \"{post.title}\" a fost propusă pentru colecția \"{collection.title}\". Acceptă sau refuză din panou."
+        else:
+            title = "Sugestie pentru colecția ta"
+            message = f"Un autor a sugerat postarea \"{post.title}\" pentru colecția \"{collection.title}\". Acceptă sau refuză din panou."
+        create_notification(
+            db=db,
+            user_id=counterparty_id,
+            notif_type="collection_pending",
+            title=title,
+            message=message,
+            link=f"/panou",
+            extra_data={"collection_id": collection.id, "post_id": post.id, "entry_id": entry.id},
+        )
+        return
+
+    if action in ("accepted", "rejected"):
+        # Notify the initiator of the outcome.
+        if action == "accepted":
+            title = "Postare adăugată într-o colecție"
+            message = f"Postarea \"{post.title}\" face acum parte din colecția \"{collection.title}\"."
+        else:
+            title = "Propunere respinsă"
+            message = f"Propunerea pentru \"{post.title}\" în colecția \"{collection.title}\" a fost respinsă."
+        create_notification(
+            db=db,
+            user_id=initiator_id,
+            notif_type=f"collection_{action}",
+            title=title,
+            message=message,
+            link=f"/colectii/{collection.slug}" if action == "accepted" else "/panou",
+            extra_data={"collection_id": collection.id, "post_id": post.id, "entry_id": entry.id},
+        )
+
+def get_pending_approvals_for_user(db: Session, user_id: int):
+    """Return pending entries where the user is the counterparty.
+
+    Produces two kinds of items:
+      - "invitation": owner initiated, current user is the post author.
+      - "suggestion": author initiated, current user is the collection owner.
+    """
+    entries = db.query(models.CollectionPost).options(
+        joinedload(models.CollectionPost.collection).joinedload(models.Collection.owner),
+        joinedload(models.CollectionPost.post).joinedload(models.Post.owner),
+    ).filter(models.CollectionPost.status == "pending").all()
+
+    results = []
+    for entry in entries:
+        if not entry.collection or not entry.post:
+            continue
+        owner_id = entry.collection.owner_id
+        author_id = entry.post.user_id
+        if owner_id == author_id:
+            continue
+        if entry.initiator_id == owner_id and author_id == user_id:
+            direction = "invitation"
+        elif entry.initiator_id == author_id and owner_id == user_id:
+            direction = "suggestion"
+        else:
+            continue
+        results.append((entry, direction))
+    # Most-recent first
+    results.sort(key=lambda pair: pair[0].created_at, reverse=True)
+    return results
+
+def get_collections_containing_post(db: Session, post_id: int):
+    """Accepted public collections that contain a given post."""
+    entries = db.query(models.CollectionPost).options(
+        joinedload(models.CollectionPost.collection).joinedload(models.Collection.owner)
+    ).filter(
+        models.CollectionPost.post_id == post_id,
+        models.CollectionPost.status == "accepted",
+    ).all()
+    return [e.collection for e in entries if e.collection is not None]
+
+
 def get_moderation_stats_extended(db: Session):
     total_logs = db.query(models.ModerationLog).count()
     pending_review_count = db.query(models.ModerationLog).filter(
@@ -773,3 +1123,846 @@ def get_moderation_stats_extended(db: Session):
             "max_toxicity": float(max_toxicity or 0),
         },
     }
+
+
+# ===================================
+# SUPER-APRECIEZ CRUD
+# ===================================
+
+from .week_util import start_of_iso_week_utc
+
+
+FREE_WEEKLY_QUOTA = 1
+PREMIUM_WEEKLY_QUOTA = 3
+
+
+class SuperLikeError(Exception):
+    """Base class for super-like errors."""
+
+
+class SuperLikePostNotFoundError(SuperLikeError):
+    pass
+
+
+class SuperLikeSelfError(SuperLikeError):
+    pass
+
+
+class SuperLikeDuplicateError(SuperLikeError):
+    pass
+
+
+class SuperLikeQuotaError(SuperLikeError):
+    pass
+
+
+def weekly_quota_for_user(user: models.User) -> int:
+    return PREMIUM_WEEKLY_QUOTA if user.is_premium else FREE_WEEKLY_QUOTA
+
+
+def get_user_weekly_super_like_count(db: Session, user_id: int) -> int:
+    # SQLAlchemy stores naive datetimes on SQLite; strip tzinfo for cross-DB portability.
+    week_start = start_of_iso_week_utc().replace(tzinfo=None)
+    return (
+        db.query(models.SuperLike)
+        .filter(
+            models.SuperLike.user_id == user_id,
+            models.SuperLike.created_at >= week_start,
+        )
+        .count()
+    )
+
+
+def get_super_likes_count_for_post(db: Session, post_id: int) -> int:
+    return db.query(models.SuperLike).filter(models.SuperLike.post_id == post_id).count()
+
+
+def user_super_liked_post(db: Session, user_id: int, post_id: int) -> bool:
+    return (
+        db.query(models.SuperLike.id)
+        .filter(models.SuperLike.user_id == user_id, models.SuperLike.post_id == post_id)
+        .first()
+        is not None
+    )
+
+
+def create_super_like(db: Session, user: models.User, post_id: int) -> models.SuperLike:
+    post = db.query(models.Post).filter(models.Post.id == post_id).first()
+    if not post:
+        raise SuperLikePostNotFoundError()
+    if post.user_id == user.id:
+        raise SuperLikeSelfError()
+    if user_super_liked_post(db, user_id=user.id, post_id=post_id):
+        raise SuperLikeDuplicateError()
+    used = get_user_weekly_super_like_count(db, user.id)
+    if used >= weekly_quota_for_user(user):
+        raise SuperLikeQuotaError()
+    sl = models.SuperLike(user_id=user.id, post_id=post_id)
+    db.add(sl)
+    try:
+        db.commit()
+    except Exception:
+        # Race condition: a concurrent request inserted the same (user_id, post_id).
+        db.rollback()
+        raise SuperLikeDuplicateError()
+    db.refresh(sl)
+    return sl
+
+
+def delete_super_like(db: Session, user: models.User, post_id: int) -> bool:
+    sl = (
+        db.query(models.SuperLike)
+        .filter(models.SuperLike.user_id == user.id, models.SuperLike.post_id == post_id)
+        .first()
+    )
+    if not sl:
+        return False
+    db.delete(sl)
+    db.commit()
+    return True
+
+
+# ===================================
+# STRIPE / PREMIUM CRUD
+# ===================================
+
+def upsert_stripe_customer_id(db: Session, user_id: int, customer_id: str) -> None:
+    db.query(models.User).filter(models.User.id == user_id).update(
+        {"stripe_customer_id": customer_id}
+    )
+    db.commit()
+
+
+def get_user_by_stripe_customer_id(db: Session, customer_id: str) -> Optional[models.User]:
+    return (
+        db.query(models.User)
+        .filter(models.User.stripe_customer_id == customer_id)
+        .first()
+    )
+
+
+def set_premium_from_subscription(
+    db: Session, user_id: int, subscription_id: str, premium_until: datetime
+) -> None:
+    db.query(models.User).filter(models.User.id == user_id).update(
+        {
+            "stripe_subscription_id": subscription_id,
+            "premium_until": premium_until,
+        }
+    )
+    db.commit()
+
+
+def clear_stripe_subscription(db: Session, user_id: int) -> None:
+    db.query(models.User).filter(models.User.id == user_id).update(
+        {"stripe_subscription_id": None}
+    )
+    db.commit()
+
+
+def record_stripe_event(db: Session, event_id: str, event_type: str) -> bool:
+    """Return True if this is a new event; False if already processed."""
+    existing = db.query(models.StripeEvent).filter(models.StripeEvent.id == event_id).first()
+    if existing:
+        return False
+    db.add(models.StripeEvent(id=event_id, type=event_type))
+    db.commit()
+    return True
+
+
+# ===================================
+# CLUB CRUD FUNCTIONS
+# ===================================
+
+CLUB_FEATURED_DURATION = timedelta(days=7)
+CLUB_VALID_SPECIALITIES = ("poezie", "proza_scurta")
+
+
+def _generate_club_slug(title: str) -> str:
+    slug = title.lower()
+    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
+    return slug or "club"
+
+
+def _ensure_unique_club_slug(db: Session, base_slug: str) -> str:
+    slug = base_slug
+    counter = 1
+    while db.query(models.Club).filter(models.Club.slug == slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
+def get_club(db: Session, club_id: int) -> Optional[models.Club]:
+    return db.query(models.Club).filter(models.Club.id == club_id).first()
+
+
+def get_club_by_slug(db: Session, slug: str) -> Optional[models.Club]:
+    return db.query(models.Club).options(
+        joinedload(models.Club.owner)
+    ).filter(models.Club.slug == slug).first()
+
+
+def list_clubs(
+    db: Session,
+    *,
+    speciality: Optional[str] = None,
+    theme_query: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    query = db.query(models.Club).options(joinedload(models.Club.owner))
+    if speciality:
+        query = query.filter(models.Club.speciality == speciality)
+    if theme_query:
+        like = f"%{theme_query.strip()}%"
+        query = query.filter(
+            or_(
+                models.Club.theme.ilike(like),
+                models.Club.title.ilike(like),
+            )
+        )
+    return (
+        query.order_by(models.Club.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+
+def get_random_club(db: Session) -> Optional[models.Club]:
+    """Random club that has at least one member (always at minimum the owner)."""
+    return (
+        db.query(models.Club)
+        .options(joinedload(models.Club.owner))
+        .filter(
+            db.query(models.ClubMember.id)
+            .filter(models.ClubMember.club_id == models.Club.id)
+            .exists()
+        )
+        .order_by(func.random())
+        .limit(1)
+        .first()
+    )
+
+
+def get_random_collection(db: Session) -> Optional[models.Collection]:
+    """Random collection with at least one accepted post (so the random link
+    isn't a dead-end to an empty page)."""
+    return (
+        db.query(models.Collection)
+        .options(joinedload(models.Collection.owner))
+        .filter(
+            db.query(models.CollectionPost.id)
+            .filter(
+                models.CollectionPost.collection_id == models.Collection.id,
+                models.CollectionPost.status == "accepted",
+            )
+            .exists()
+        )
+        .order_by(func.random())
+        .limit(1)
+        .first()
+    )
+
+
+def count_club_members(db: Session, club_id: int) -> int:
+    return db.query(models.ClubMember).filter(models.ClubMember.club_id == club_id).count()
+
+
+def get_club_membership(db: Session, club_id: int, user_id: int) -> Optional[models.ClubMember]:
+    return db.query(models.ClubMember).filter(
+        models.ClubMember.club_id == club_id,
+        models.ClubMember.user_id == user_id,
+    ).first()
+
+
+def list_club_members(db: Session, club_id: int) -> List[models.ClubMember]:
+    role_priority = case(
+        (models.ClubMember.role == "owner", 0),
+        (models.ClubMember.role == "admin", 1),
+        else_=2,
+    )
+    return (
+        db.query(models.ClubMember)
+        .options(joinedload(models.ClubMember.user))
+        .filter(models.ClubMember.club_id == club_id)
+        .order_by(role_priority.asc(), models.ClubMember.joined_at.asc())
+        .all()
+    )
+
+
+def count_member_contributions(db: Session, club_id: int, user_id: int) -> int:
+    return (
+        db.query(models.ClubBoardMessage)
+        .filter(
+            models.ClubBoardMessage.club_id == club_id,
+            models.ClubBoardMessage.author_id == user_id,
+        )
+        .count()
+    )
+
+
+def create_club(db: Session, owner: models.User, data: schemas.ClubCreate) -> models.Club:
+    if data.speciality not in CLUB_VALID_SPECIALITIES:
+        raise ValueError("speciality_invalid")
+    base_slug = _generate_club_slug(data.title)
+    slug = _ensure_unique_club_slug(db, base_slug)
+    club = models.Club(
+        owner_id=owner.id,
+        title=data.title.strip(),
+        slug=slug,
+        description=(data.description or "").strip() or None,
+        motto=(data.motto or "").strip() or None,
+        avatar_seed=(data.avatar_seed or "").strip() or None,
+        theme=(data.theme or "").strip() or None,
+        speciality=data.speciality,
+    )
+    db.add(club)
+    db.flush()
+    db.add(models.ClubMember(club_id=club.id, user_id=owner.id, role="owner"))
+    db.commit()
+    db.refresh(club)
+    return club
+
+
+def update_club(db: Session, club_id: int, data: schemas.ClubUpdate) -> Optional[models.Club]:
+    club = get_club(db, club_id)
+    if not club:
+        return None
+    payload = data.model_dump(exclude_unset=True)
+    if "title" in payload and payload["title"]:
+        club.title = payload["title"].strip()
+    if "speciality" in payload and payload["speciality"]:
+        if payload["speciality"] not in CLUB_VALID_SPECIALITIES:
+            raise ValueError("speciality_invalid")
+        club.speciality = payload["speciality"]
+    for field in ("description", "motto", "avatar_seed", "theme"):
+        if field in payload:
+            value = payload[field]
+            setattr(club, field, value.strip() if isinstance(value, str) and value.strip() else None)
+    db.commit()
+    db.refresh(club)
+    return club
+
+
+def delete_club(db: Session, club_id: int) -> bool:
+    club = get_club(db, club_id)
+    if not club:
+        return False
+    db.delete(club)
+    db.commit()
+    return True
+
+
+def _has_pending_request(db: Session, club_id: int, user_id: int) -> bool:
+    return db.query(models.ClubJoinRequest).filter(
+        models.ClubJoinRequest.club_id == club_id,
+        models.ClubJoinRequest.user_id == user_id,
+        models.ClubJoinRequest.status == "pending",
+    ).first() is not None
+
+
+def get_user_pending_request(db: Session, club_id: int, user_id: int) -> Optional[models.ClubJoinRequest]:
+    return db.query(models.ClubJoinRequest).filter(
+        models.ClubJoinRequest.club_id == club_id,
+        models.ClubJoinRequest.user_id == user_id,
+        models.ClubJoinRequest.status == "pending",
+    ).first()
+
+
+def apply_to_club(
+    db: Session, applicant: models.User, club: models.Club
+) -> tuple[Optional[models.ClubJoinRequest], Optional[str]]:
+    if applicant.is_suspended:
+        return None, "suspended"
+    if get_club_membership(db, club.id, applicant.id):
+        return None, "already_member"
+    if _has_pending_request(db, club.id, applicant.id):
+        return None, "already_pending"
+    request = models.ClubJoinRequest(
+        club_id=club.id,
+        user_id=applicant.id,
+        direction="application",
+        status="pending",
+        initiator_id=applicant.id,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    _notify_club_application_to_admins(db, club, applicant, request)
+    return request, None
+
+
+def invite_to_club(
+    db: Session, inviter: models.User, club: models.Club, target: models.User
+) -> tuple[Optional[models.ClubJoinRequest], Optional[str]]:
+    inviter_membership = get_club_membership(db, club.id, inviter.id)
+    if not inviter_membership or inviter_membership.role not in ("owner", "admin"):
+        return None, "not_allowed"
+    if target.is_suspended:
+        return None, "target_suspended"
+    if get_club_membership(db, club.id, target.id):
+        return None, "already_member"
+    if _has_pending_request(db, club.id, target.id):
+        return None, "already_pending"
+    request = models.ClubJoinRequest(
+        club_id=club.id,
+        user_id=target.id,
+        direction="invitation",
+        status="pending",
+        initiator_id=inviter.id,
+    )
+    db.add(request)
+    db.commit()
+    db.refresh(request)
+    _notify_club_invitation_to_target(db, club, inviter, target, request)
+    return request, None
+
+
+def respond_to_club_request(
+    db: Session,
+    request: models.ClubJoinRequest,
+    responder: models.User,
+    action: str,
+) -> tuple[Optional[models.ClubJoinRequest], Optional[str]]:
+    if action not in ("approve", "reject"):
+        return None, "bad_action"
+    if request.status != "pending":
+        return None, "not_pending"
+
+    club = request.club
+
+    # For applications: counterparty is owner/admin of the club.
+    # For invitations: counterparty is the invited user themselves.
+    if request.direction == "application":
+        membership = get_club_membership(db, club.id, responder.id)
+        if not membership or membership.role not in ("owner", "admin"):
+            return None, "not_allowed"
+    elif request.direction == "invitation":
+        if responder.id != request.user_id:
+            return None, "not_allowed"
+    else:
+        return None, "inconsistent_direction"
+
+    if action == "approve":
+        # If they happen to already be a member (race), just close the request.
+        if not get_club_membership(db, club.id, request.user_id):
+            db.add(models.ClubMember(
+                club_id=club.id,
+                user_id=request.user_id,
+                role="member",
+            ))
+        request.status = "approved"
+    else:
+        request.status = "rejected"
+
+    request.responded_at = utcnow_naive()
+    request.responded_by = responder.id
+    db.commit()
+    db.refresh(request)
+    _notify_club_request_outcome(db, request, action, responder)
+    return request, None
+
+
+def kick_member(
+    db: Session, actor: models.User, club: models.Club, target_user_id: int
+) -> tuple[bool, Optional[str]]:
+    """Remove a member from a club.
+
+    Permission rules:
+      - Owner can kick anyone except themselves (must delete club to leave).
+      - Admin can kick role="member" only.
+      - Any user can leave (kick themselves) unless they are the owner.
+    """
+    actor_membership = get_club_membership(db, club.id, actor.id)
+    target_membership = get_club_membership(db, club.id, target_user_id)
+    if not target_membership:
+        return False, "not_member"
+
+    is_self = actor.id == target_user_id
+    actor_role = actor_membership.role if actor_membership else None
+    target_role = target_membership.role
+
+    if is_self:
+        if target_role == "owner":
+            return False, "owner_cannot_leave"
+    else:
+        if actor_role == "owner":
+            if target_role == "owner":
+                return False, "cannot_kick_self"
+        elif actor_role == "admin":
+            if target_role != "member":
+                return False, "not_allowed"
+        else:
+            return False, "not_allowed"
+
+    db.delete(target_membership)
+    db.commit()
+    if not is_self:
+        create_notification(
+            db=db,
+            user_id=target_user_id,
+            notif_type="club_kicked",
+            title="Ai fost scos dintr-un club",
+            message=f"Nu mai faci parte din clubul „{club.title}\".",
+            link=f"/cluburi/{club.slug}",
+            extra_data={"club_id": club.id, "club_slug": club.slug},
+        )
+    return True, None
+
+
+def update_member_role(
+    db: Session,
+    actor: models.User,
+    club: models.Club,
+    target_user_id: int,
+    role: str,
+) -> tuple[Optional[models.ClubMember], Optional[str]]:
+    if role not in ("admin", "member"):
+        return None, "bad_role"
+    if club.owner_id != actor.id:
+        return None, "not_allowed"
+    if target_user_id == actor.id:
+        return None, "cannot_change_own_role"
+    membership = get_club_membership(db, club.id, target_user_id)
+    if not membership:
+        return None, "not_member"
+    if membership.role == "owner":
+        return None, "cannot_change_owner_role"
+    if membership.role == role:
+        return membership, None
+    membership.role = role
+    db.commit()
+    db.refresh(membership)
+    create_notification(
+        db=db,
+        user_id=target_user_id,
+        notif_type="club_role_changed",
+        title="Rolul tău în club s-a schimbat",
+        message=(
+            f"Ai fost numit administrator în clubul „{club.title}\"."
+            if role == "admin"
+            else f"Nu mai ești administrator în clubul „{club.title}\"."
+        ),
+        link=f"/cluburi/{club.slug}",
+        extra_data={"club_id": club.id, "club_slug": club.slug, "role": role},
+    )
+    return membership, None
+
+
+def set_featured_post(
+    db: Session, actor: models.User, club: models.Club, post_id: int
+) -> tuple[Optional[models.Post], Optional[str]]:
+    if club.owner_id != actor.id:
+        return None, "not_allowed"
+    post = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
+        models.Post.id == post_id
+    ).first()
+    if not post:
+        return None, "post_not_found"
+    if post.moderation_status != "approved":
+        return None, "post_not_approved"
+    if post.category != club.speciality:
+        return None, "speciality_mismatch"
+    if not get_club_membership(db, club.id, post.user_id):
+        return None, "author_not_member"
+    club.featured_post_id = post.id
+    club.featured_until = utcnow_naive() + CLUB_FEATURED_DURATION
+    db.commit()
+    db.refresh(club)
+    if post.user_id != actor.id:
+        create_notification(
+            db=db,
+            user_id=post.user_id,
+            notif_type="club_featured",
+            title="Postarea ta este creația săptămânii",
+            message=(
+                f"Postarea „{post.title}\" a fost aleasă creația săptămânii "
+                f"în clubul „{club.title}\"."
+            ),
+            link=f"/cluburi/{club.slug}",
+            extra_data={"club_id": club.id, "club_slug": club.slug, "post_id": post.id},
+        )
+    return post, None
+
+
+def clear_featured_post(db: Session, actor: models.User, club: models.Club) -> tuple[bool, Optional[str]]:
+    if club.owner_id != actor.id:
+        return False, "not_allowed"
+    club.featured_post_id = None
+    club.featured_until = None
+    db.commit()
+    return True, None
+
+
+def get_active_featured(db: Session, club: models.Club):
+    """Return (post, featured_until) if a featured post is currently active.
+
+    Implements read-time expiry: if featured_until is in the past, lazily
+    clear the columns and return None.
+    """
+    if not club.featured_post_id or not club.featured_until:
+        return None
+    if club.featured_until <= utcnow_naive():
+        # Best-effort cleanup; don't block the read on the write.
+        try:
+            club.featured_post_id = None
+            club.featured_until = None
+            db.commit()
+        except Exception:
+            db.rollback()
+        return None
+    post = db.query(models.Post).options(joinedload(models.Post.owner)).filter(
+        models.Post.id == club.featured_post_id
+    ).first()
+    if not post:
+        return None
+    return post, club.featured_until
+
+
+def list_board_messages(
+    db: Session, club_id: int, *, limit: int = 50, offset: int = 0
+) -> List[models.ClubBoardMessage]:
+    """Return top-level messages newest-first; replies eager-loaded per message."""
+    top_level = (
+        db.query(models.ClubBoardMessage)
+        .options(
+            joinedload(models.ClubBoardMessage.author),
+            joinedload(models.ClubBoardMessage.replies).joinedload(models.ClubBoardMessage.author),
+        )
+        .filter(
+            models.ClubBoardMessage.club_id == club_id,
+            models.ClubBoardMessage.parent_id.is_(None),
+        )
+        .order_by(models.ClubBoardMessage.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return top_level
+
+
+def get_board_message(db: Session, message_id: int) -> Optional[models.ClubBoardMessage]:
+    return (
+        db.query(models.ClubBoardMessage)
+        .options(joinedload(models.ClubBoardMessage.author))
+        .filter(models.ClubBoardMessage.id == message_id)
+        .first()
+    )
+
+
+def post_board_message(
+    db: Session,
+    author: models.User,
+    club: models.Club,
+    content: str,
+    parent_id: Optional[int] = None,
+) -> tuple[Optional[models.ClubBoardMessage], Optional[str]]:
+    if not get_club_membership(db, club.id, author.id):
+        return None, "not_member"
+    if parent_id is not None:
+        parent = get_board_message(db, parent_id)
+        if not parent or parent.club_id != club.id:
+            return None, "bad_parent"
+        # Don't allow nesting beyond one level — replies-of-replies are flattened
+        # to siblings of the original reply (frontend renders as a single thread).
+        if parent.parent_id is not None:
+            parent_id = parent.parent_id
+    msg = models.ClubBoardMessage(
+        club_id=club.id,
+        author_id=author.id,
+        parent_id=parent_id,
+        content=content.strip(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return msg, None
+
+
+def delete_board_message(
+    db: Session, actor: models.User, message: models.ClubBoardMessage
+) -> tuple[bool, Optional[str]]:
+    if actor.id == message.author_id:
+        allowed = True
+    else:
+        membership = get_club_membership(db, message.club_id, actor.id)
+        allowed = bool(membership and membership.role in ("owner", "admin"))
+    if not allowed:
+        return False, "not_allowed"
+    db.delete(message)
+    db.commit()
+    return True, None
+
+
+def list_user_clubs(db: Session, user_id: int) -> List[models.Club]:
+    """All clubs the user belongs to (any role)."""
+    return (
+        db.query(models.Club)
+        .options(joinedload(models.Club.owner))
+        .join(models.ClubMember, models.ClubMember.club_id == models.Club.id)
+        .filter(models.ClubMember.user_id == user_id)
+        .order_by(models.Club.created_at.desc())
+        .all()
+    )
+
+
+def list_user_pending_invitations(db: Session, user_id: int) -> List[models.ClubJoinRequest]:
+    return (
+        db.query(models.ClubJoinRequest)
+        .options(
+            joinedload(models.ClubJoinRequest.club).joinedload(models.Club.owner),
+            joinedload(models.ClubJoinRequest.user),
+        )
+        .filter(
+            models.ClubJoinRequest.user_id == user_id,
+            models.ClubJoinRequest.status == "pending",
+            models.ClubJoinRequest.direction == "invitation",
+        )
+        .order_by(models.ClubJoinRequest.created_at.desc())
+        .all()
+    )
+
+
+def list_club_pending_requests(db: Session, club_id: int) -> List[models.ClubJoinRequest]:
+    return (
+        db.query(models.ClubJoinRequest)
+        .options(
+            joinedload(models.ClubJoinRequest.user),
+            joinedload(models.ClubJoinRequest.initiator),
+        )
+        .filter(
+            models.ClubJoinRequest.club_id == club_id,
+            models.ClubJoinRequest.status == "pending",
+        )
+        .order_by(models.ClubJoinRequest.created_at.desc())
+        .all()
+    )
+
+
+def get_club_join_request(db: Session, request_id: int) -> Optional[models.ClubJoinRequest]:
+    return (
+        db.query(models.ClubJoinRequest)
+        .options(
+            joinedload(models.ClubJoinRequest.club),
+            joinedload(models.ClubJoinRequest.user),
+            joinedload(models.ClubJoinRequest.initiator),
+        )
+        .filter(models.ClubJoinRequest.id == request_id)
+        .first()
+    )
+
+
+def count_pending_requests_for_club(db: Session, club_id: int) -> int:
+    return (
+        db.query(models.ClubJoinRequest)
+        .filter(
+            models.ClubJoinRequest.club_id == club_id,
+            models.ClubJoinRequest.status == "pending",
+        )
+        .count()
+    )
+
+
+# ----- club notification helpers -----
+
+def _notify_club_application_to_admins(
+    db: Session,
+    club: models.Club,
+    applicant: models.User,
+    request: models.ClubJoinRequest,
+) -> None:
+    admin_memberships = (
+        db.query(models.ClubMember)
+        .filter(
+            models.ClubMember.club_id == club.id,
+            models.ClubMember.role.in_(("owner", "admin")),
+        )
+        .all()
+    )
+    for m in admin_memberships:
+        if m.user_id == applicant.id:
+            continue
+        create_notification(
+            db=db,
+            user_id=m.user_id,
+            notif_type="club_application_received",
+            title="Cerere de aderare la club",
+            message=f"{applicant.username} dorește să se alăture clubului „{club.title}\".",
+            link=f"/cluburi/{club.slug}",
+            extra_data={
+                "club_id": club.id,
+                "club_slug": club.slug,
+                "request_id": request.id,
+                "applicant_username": applicant.username,
+            },
+        )
+
+
+def _notify_club_invitation_to_target(
+    db: Session,
+    club: models.Club,
+    inviter: models.User,
+    target: models.User,
+    request: models.ClubJoinRequest,
+) -> None:
+    create_notification(
+        db=db,
+        user_id=target.id,
+        notif_type="club_invitation_received",
+        title="Invitație într-un club",
+        message=f"{inviter.username} te-a invitat în clubul „{club.title}\".",
+        link=f"/cluburi/{club.slug}",
+        extra_data={
+            "club_id": club.id,
+            "club_slug": club.slug,
+            "request_id": request.id,
+            "inviter_username": inviter.username,
+        },
+    )
+
+
+def _notify_club_request_outcome(
+    db: Session,
+    request: models.ClubJoinRequest,
+    action: str,
+    responder: models.User,
+) -> None:
+    club = request.club
+    # Notify the user who initiated the request.
+    target_user_id = request.initiator_id
+    if request.direction == "application":
+        if action == "approve":
+            title = "Cererea ta a fost acceptată"
+            message = f"Faci acum parte din clubul „{club.title}\"."
+            notif_type = "club_application_approved"
+        else:
+            title = "Cererea ta a fost respinsă"
+            message = f"Cererea ta către clubul „{club.title}\" a fost respinsă."
+            notif_type = "club_application_rejected"
+    else:  # invitation
+        # For invitations, notify the original inviter about the invitee's decision.
+        if action == "approve":
+            title = "Invitație acceptată"
+            message = f"{request.user.username} s-a alăturat clubului „{club.title}\"."
+            notif_type = "club_invitation_accepted"
+        else:
+            title = "Invitație refuzată"
+            message = f"{request.user.username} a refuzat invitația în clubul „{club.title}\"."
+            notif_type = "club_invitation_declined"
+
+    create_notification(
+        db=db,
+        user_id=target_user_id,
+        notif_type=notif_type,
+        title=title,
+        message=message,
+        link=f"/cluburi/{club.slug}",
+        extra_data={
+            "club_id": club.id,
+            "club_slug": club.slug,
+            "request_id": request.id,
+        },
+    )
+

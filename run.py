@@ -171,6 +171,13 @@ def init_database():
     finally:
         engine.dispose()
 
+    # Seed sample Romanian content so every page has something to show.
+    try:
+        from scripts.seed import main as seed_main
+        seed_main(quiet=False)
+    except Exception as e:
+        print(f"  Seed step skipped ({e})")
+
 
 def check_node():
     """Check if Node.js and npm are available."""

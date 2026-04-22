@@ -1,25 +1,24 @@
 import { cn } from "@/lib/utils";
 
-interface LoadingSpinnerProps {
+type LoadingSpinnerProps = {
   className?: string;
-  size?: "sm" | "md" | "lg";
-}
+  label?: string;
+};
 
-export function LoadingSpinner({ className, size = "md" }: LoadingSpinnerProps) {
-  const sizeClasses = {
-    sm: "h-4 w-4 border-2",
-    md: "h-8 w-8 border-2",
-    lg: "h-12 w-12 border-3",
-  };
-
+export function LoadingSpinner({ className, label = "se încarcă…" }: LoadingSpinnerProps) {
   return (
-    <div className={cn("flex items-center justify-center", className)}>
-      <div
-        className={cn(
-          "animate-spin rounded-full border-accent border-t-transparent",
-          sizeClasses[size],
-        )}
-      />
+    <div
+      className={cn("flex items-center justify-center", className)}
+      style={{
+        fontFamily: "var(--font-mono)",
+        fontSize: 10,
+        letterSpacing: "0.22em",
+        textTransform: "uppercase",
+        color: "var(--color-ink-faint)",
+        animation: "hintBob 2.2s ease-in-out infinite",
+      }}
+    >
+      {label}
     </div>
   );
 }
@@ -27,7 +26,7 @@ export function LoadingSpinner({ className, size = "md" }: LoadingSpinnerProps) 
 export function PageLoader() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
-      <LoadingSpinner size="lg" />
+      <LoadingSpinner />
     </div>
   );
 }

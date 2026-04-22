@@ -24,6 +24,13 @@ const EditPostPage = lazy(() => import("@/pages/EditPostPage"));
 const MessagesPage = lazy(() => import("@/pages/MessagesPage"));
 const ConversationPage = lazy(() => import("@/pages/ConversationPage"));
 const ModerationPage = lazy(() => import("@/pages/ModerationPage"));
+const CollectionDetailPage = lazy(() => import("@/pages/CollectionDetailPage"));
+const ClubsListPage = lazy(() => import("@/pages/ClubsListPage"));
+const ClubCreatePage = lazy(() => import("@/pages/ClubCreatePage"));
+const ClubDetailPage = lazy(() => import("@/pages/ClubDetailPage"));
+const PremiumPage = lazy(() => import("@/pages/PremiumPage"));
+const PremiumSuccessPage = lazy(() => import("@/pages/PremiumSuccessPage"));
+const PremiumCancelPage = lazy(() => import("@/pages/PremiumCancelPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
 const queryClient = new QueryClient({
@@ -48,6 +55,7 @@ function AppRoutes() {
           <Route path="edit-post/:postId" element={<ProtectedRoute><EditPostPage /></ProtectedRoute>} />
           <Route path="messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
           <Route path="messages/:conversationId" element={<ProtectedRoute><ConversationPage /></ProtectedRoute>} />
+          <Route path="colectii/:slug" element={<CollectionDetailPage />} />
           <Route path=":slug" element={<PostDetailPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
@@ -64,6 +72,12 @@ function AppRoutes() {
         <Route path="auth/callback" element={<AuthCallbackPage />} />
         <Route path="auth/setup" element={<AuthSetupPage />} />
         <Route path="admin/moderation" element={<ProtectedRoute requireModerator><ModerationPage /></ProtectedRoute>} />
+        <Route path="cluburi" element={<ClubsListPage />} />
+        <Route path="cluburi/nou" element={<ProtectedRoute><ClubCreatePage /></ProtectedRoute>} />
+        <Route path="cluburi/:slug" element={<ClubDetailPage />} />
+        <Route path="premium" element={<PremiumPage />} />
+        <Route path="premium/success" element={<PremiumSuccessPage />} />
+        <Route path="premium/cancel" element={<PremiumCancelPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

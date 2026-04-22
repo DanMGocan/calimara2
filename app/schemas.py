@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, validator, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, field_validator, Field
 from datetime import datetime
 from typing import Optional, List
 
@@ -38,12 +38,12 @@ class GoogleUserInfo(BaseModel):
 
 class UserInDB(UserBase):
     id: int
+    is_premium: bool = False
+    premium_until: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class SocialLinksUpdate(BaseModel):
     facebook_url: Optional[str] = None
     tiktok_url: Optional[str] = None
@@ -60,19 +60,21 @@ class Tag(TagBase):
     post_id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class PostBase(BaseModel):
     title: str
     content: str
-    tags: Optional[List[str]] = Field(default=[], max_items=6, description="List of tags (max 6)")
+    tags: Optional[List[str]] = Field(default=[], max_length=6, description="List of tags (max 6)")
 
 class PostCreate(PostBase):
-    @validator('tags', pre=True, each_item=True)
+    @field_validator('tags', mode='before')
+    @classmethod
     def validate_tag_length(cls, v):
-        if len(v) > 12:
-            raise ValueError('Tag must be at most 12 characters long')
+        if v is None:
+            return v
+        for tag in v:
+            if len(tag) > 12:
+                raise ValueError('Tag must be at most 12 characters long')
         return v
 
 class PostUpdate(PostBase):
@@ -87,13 +89,13 @@ class Post(PostBase):
     moderation_status: Optional[str] = None
     moderation_reason: Optional[str] = None
     toxicity_score: Optional[float] = None
+    super_likes_count: int = 0
+    viewer_super_liked: bool = False
     created_at: datetime
     updated_at: datetime
     tags: List[Tag] = []
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class CommentBase(BaseModel):
     content: str
     author_name: Optional[str] = None
@@ -112,9 +114,7 @@ class Comment(CommentBase):
     toxicity_score: Optional[float] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class Like(BaseModel):
     id: int
     post_id: int
@@ -122,9 +122,7 @@ class Like(BaseModel):
     ip_address: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 # ===================================
 # MESSAGE SCHEMAS
 # ===================================
@@ -148,9 +146,7 @@ class MessageBase(BaseModel):
     is_read: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class Message(MessageBase):
     sender: Optional[UserBase] = None
 
@@ -161,9 +157,7 @@ class ConversationBase(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 class Conversation(ConversationBase):
     user1: Optional[UserBase] = None
     user2: Optional[UserBase] = None
@@ -176,9 +170,7 @@ class ConversationSummary(BaseModel):
     unread_count: int = 0
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 # ===================================
 # MODERATION & ADMIN SCHEMAS
 # ===================================
@@ -211,5 +203,250 @@ class NotificationResponse(BaseModel):
     metadata: Optional[dict] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+# ===================================
+# COLLECTION SCHEMAS
+# ===================================
+
+class CollectionAuthor(BaseModel):
+    id: int
+    username: str
+    avatar_seed: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+class CollectionCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    description: Optional[str] = Field(None, max_length=2000)
+
+class CollectionUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=120)
+    description: Optional[str] = Field(None, max_length=2000)
+
+class CollectionSummary(BaseModel):
+    id: int
+    owner_id: int
+    title: str
+    slug: str
+    description: Optional[str] = None
+    owner: Optional[CollectionAuthor] = None
+    post_count: int = 0
+    pending_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+class CollectionPostPostRef(BaseModel):
+    """Subset of Post info needed for collection listings."""
+    id: int
+    title: str
+    slug: str
+    category: Optional[str] = None
+    owner: Optional[CollectionAuthor] = None
+
+    model_config = ConfigDict(from_attributes=True)
+class CollectionPostEntry(BaseModel):
+    id: int
+    collection_id: int
+    post_id: int
+    initiator_id: int
+    status: str
+    position: Optional[int] = None
+    created_at: datetime
+    responded_at: Optional[datetime] = None
+    post: Optional[CollectionPostPostRef] = None
+
+    model_config = ConfigDict(from_attributes=True)
+class CollectionDetail(CollectionSummary):
+    posts: List[CollectionPostEntry] = []
+
+class CollectionAddPostRequest(BaseModel):
+    post_id: int
+
+class CollectionRespondRequest(BaseModel):
+    action: str  # "accept" | "reject"
+
+class PendingApprovalItem(BaseModel):
+    entry: CollectionPostEntry
+    direction: str  # "invitation" (owner invited author) | "suggestion" (author suggested to owner)
+    collection: CollectionSummary
+    post: CollectionPostPostRef
+
+class CollectionMembershipRef(BaseModel):
+    id: int
+    title: str
+    slug: str
+    owner: CollectionAuthor
+
+    model_config = ConfigDict(from_attributes=True)
+# ===================================
+# CLUB SCHEMAS
+# ===================================
+
+# Allowed values mirror Post.category so featured-post enforcement is symmetric.
+ClubSpeciality = str  # "poezie" | "proza_scurta"
+ClubMemberRole = str  # "owner" | "admin" | "member"
+
+
+class ClubOwnerRef(BaseModel):
+    id: int
+    username: str
+    avatar_seed: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+class ClubMemberRef(BaseModel):
+    id: int
+    user_id: int
+    username: str
+    avatar_seed: Optional[str] = None
+    role: str
+    joined_at: datetime
+    contribution_count: int = 0
+
+
+class ClubCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    speciality: str = Field(..., pattern=r"^(poezie|proza_scurta)$")
+    description: Optional[str] = Field(None, max_length=2000)
+    motto: Optional[str] = Field(None, max_length=200)
+    theme: Optional[str] = Field(None, max_length=200)
+    avatar_seed: Optional[str] = Field(None, max_length=100)
+
+
+class ClubUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=120)
+    speciality: Optional[str] = Field(None, pattern=r"^(poezie|proza_scurta)$")
+    description: Optional[str] = Field(None, max_length=2000)
+    motto: Optional[str] = Field(None, max_length=200)
+    theme: Optional[str] = Field(None, max_length=200)
+    avatar_seed: Optional[str] = Field(None, max_length=100)
+
+
+class ClubFeaturedRef(BaseModel):
+    post_id: int
+    post_title: str
+    post_slug: str
+    post_author: Optional[ClubOwnerRef] = None
+    featured_until: datetime
+
+
+class ClubBoardMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+    parent_id: Optional[int] = None
+
+
+class ClubBoardAuthorRef(BaseModel):
+    id: int
+    username: str
+    avatar_seed: Optional[str] = None
+    role: Optional[str] = None  # member role within the club, if known
+
+
+class ClubBoardMessageOut(BaseModel):
+    id: int
+    club_id: int
+    parent_id: Optional[int] = None
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    author: Optional[ClubBoardAuthorRef] = None
+    replies: List["ClubBoardMessageOut"] = []
+
+
+ClubBoardMessageOut.model_rebuild()
+
+
+class ClubSummary(BaseModel):
+    id: int
+    owner_id: int
+    title: str
+    slug: str
+    description: Optional[str] = None
+    motto: Optional[str] = None
+    avatar_seed: Optional[str] = None
+    theme: Optional[str] = None
+    speciality: str
+    member_count: int = 0
+    owner: Optional[ClubOwnerRef] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClubDetail(ClubSummary):
+    members: List[ClubMemberRef] = []
+    featured: Optional[ClubFeaturedRef] = None
+    recent_messages: List[ClubBoardMessageOut] = []
+    my_role: Optional[str] = None
+    my_pending_request_status: Optional[str] = None
+    pending_request_count: Optional[int] = None  # only populated for owner/admin
+
+
+class ClubInviteRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=255)
+
+
+class ClubJoinRespondRequest(BaseModel):
+    action: str = Field(..., pattern=r"^(approve|reject)$")
+
+
+class ClubMemberRoleUpdate(BaseModel):
+    role: str = Field(..., pattern=r"^(admin|member)$")
+
+
+class ClubFeaturedSetRequest(BaseModel):
+    post_id: int
+
+
+class ClubJoinRequestOut(BaseModel):
+    id: int
+    club_id: int
+    user: ClubOwnerRef
+    direction: str
+    status: str
+    initiator_id: int
+    created_at: datetime
+    responded_at: Optional[datetime] = None
+
+
+class ClubPendingItem(BaseModel):
+    request: ClubJoinRequestOut
+    club: ClubSummary
+    direction: str  # mirrors request.direction for convenience
+
+
+# ===================================
+# SUPER-APRECIEZ SCHEMAS
+# ===================================
+
+class SuperLike(BaseModel):
+    id: int
+    post_id: int
+    user_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+class SuperLikeQuota(BaseModel):
+    weekly_quota: int
+    used_this_week: int
+    remaining: int
+    week_resets_at: datetime
+    is_premium: bool
+
+
+# ===================================
+# PREMIUM / STRIPE SCHEMAS
+# ===================================
+
+class PremiumCheckoutResponse(BaseModel):
+    url: str
+
+
+class PremiumPortalResponse(BaseModel):
+    url: str
+
+
+class PremiumStatus(BaseModel):
+    is_premium: bool
+    premium_until: Optional[datetime] = None
+    has_stripe_customer: bool
+    has_active_subscription: bool
+
