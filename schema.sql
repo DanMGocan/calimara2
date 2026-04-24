@@ -21,7 +21,6 @@ DROP TABLE IF EXISTS club_members CASCADE;
 DROP TABLE IF EXISTS clubs CASCADE;
 DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
-DROP TABLE IF EXISTS tags CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
@@ -119,6 +118,7 @@ CREATE TABLE comments (
     author_email VARCHAR(255),
     content TEXT NOT NULL,
     approved BOOLEAN DEFAULT FALSE,
+    is_robot BOOLEAN DEFAULT FALSE NOT NULL,
     moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
         CHECK (moderation_status IN ('approved', 'pending', 'rejected', 'flagged')),
     moderation_reason TEXT,
@@ -138,6 +138,7 @@ CREATE INDEX idx_comments_approved ON comments(approved);
 CREATE INDEX idx_comments_post_approved ON comments(post_id, approved);
 CREATE INDEX idx_comments_moderation_status ON comments(moderation_status);
 CREATE INDEX idx_comments_toxicity_score ON comments(toxicity_score);
+CREATE INDEX idx_comments_is_robot ON comments(post_id, is_robot);
 
 -- ===================================
 -- LIKES TABLE
@@ -158,22 +159,6 @@ CREATE TABLE likes (
 CREATE INDEX idx_likes_post_id ON likes(post_id);
 CREATE INDEX idx_likes_user_id ON likes(user_id);
 CREATE INDEX idx_likes_ip_address ON likes(ip_address);
-
--- ===================================
--- TAGS TABLE
--- ===================================
-CREATE TABLE tags (
-    id SERIAL PRIMARY KEY,
-    post_id INT NOT NULL,
-    tag_name VARCHAR(12) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_tags_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_tags_post_id ON tags(post_id);
-CREATE INDEX idx_tags_tag_name ON tags(tag_name);
-CREATE INDEX idx_tags_tag_search ON tags(tag_name, post_id);
 
 -- ===================================
 -- BEST FRIENDS TABLE

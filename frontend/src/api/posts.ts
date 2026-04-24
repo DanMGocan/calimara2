@@ -16,7 +16,6 @@ export interface Post {
   moderation_status: string;
   created_at: string;
   updated_at: string;
-  tags?: Tag[];
   owner?: PostOwner;
 }
 
@@ -27,11 +26,6 @@ export interface PostOwner {
   subtitle: string | null;
 }
 
-export interface Tag {
-  id: number;
-  tag_name: string;
-}
-
 export interface Comment {
   id: number;
   post_id: number;
@@ -40,6 +34,7 @@ export interface Comment {
   author_email: string | null;
   content: string;
   approved: boolean;
+  is_robot: boolean;
   moderation_status: string;
   created_at: string;
   user?: { username: string; avatar_seed: string } | null;
@@ -144,7 +139,7 @@ export function fetchArchive(): Promise<{ posts: Post[] }> {
 export interface PostCreateData {
   title: string;
   content: string;
-  tags?: string[];
+  ai_critic?: boolean;
 }
 
 export function createPost(data: PostCreateData): Promise<Post> {

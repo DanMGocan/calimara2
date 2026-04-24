@@ -780,6 +780,67 @@ html { scroll-behavior: smooth; }
   color: var(--color-ink-soft);
 }
 
+.comment--robot {
+  border-color: var(--color-hairline-strong);
+  background: rgba(245, 240, 230, 0.55);
+  border-left: 3px solid var(--color-ink);
+}
+.comment-robot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+.comment-robot-badge::before {
+  content: "▣";
+  font-size: 11px;
+  line-height: 1;
+}
+.comment--robot .comment-body {
+  font-style: italic;
+  color: var(--color-ink);
+}
+
+/* ─── AI critic toggle on the create-post form ─── */
+.ai-critic-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-ink);
+}
+.ai-critic-toggle input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--color-ink);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.ai-critic-toggle strong {
+  display: block;
+  font-weight: 600;
+}
+.ai-critic-toggle-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--color-ink-faint);
+}
+
 /* ═════════════════════════════════════════════════════════════
    Piece list cards (Blog home, Category, Messages)
    ═════════════════════════════════════════════════════════════ */

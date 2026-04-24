@@ -27,7 +27,6 @@ Calimara is a Romanian microblogging platform for writers and poets. Each writer
 - **Posts Table**: `user_id`, `title`, `slug` (SEO-friendly URLs), `content`, `category` (AI-classified: "poezie" or "proza_scurta"), `view_count`
 - **Comments Table**: Supports both authenticated and anonymous comments with approval system
 - **Likes Table**: Supports both user-based and IP-based likes
-- **Tags Table**: Post tagging system with autocomplete suggestions
 - **Key Relationship**: Post model has `@property likes_count` that auto-calculates from relationship
 
 ## Development Commands

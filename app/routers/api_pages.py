@@ -62,7 +62,6 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
         "moderation_status": post.moderation_status,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "updated_at": post.updated_at.isoformat() if post.updated_at else None,
-        "tags": [{"id": t.id, "tag_name": t.tag_name} for t in (post.tags or [])],
     }
     if include_owner and post.owner:
         result["owner"] = {
@@ -128,6 +127,7 @@ def serialize_comment(comment):
         "author_email": comment.author_email,
         "content": comment.content,
         "approved": comment.approved,
+        "is_robot": getattr(comment, "is_robot", False),
         "moderation_status": comment.moderation_status,
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
         "user": None,

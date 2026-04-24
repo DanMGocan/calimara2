@@ -354,51 +354,6 @@ def get_category_stats(
     }
 
 
-def get_tag_stats(
-    db: Session, tag_name: str,
-    from_date: Optional[date] = None, to_date: Optional[date] = None,
-) -> dict:
-    date_f = _date_filter(from_date, to_date)
-
-    # Join page_views -> posts -> tags
-    query_base = db.query(func.count(models.PageView.id)).join(
-        models.Post,
-        and_(models.PageView.content_type == "post", models.PageView.content_id == models.Post.id),
-    ).join(
-        models.Tag, models.Tag.post_id == models.Post.id,
-    ).filter(
-        func.lower(models.Tag.tag_name) == tag_name.lower(),
-        *date_f,
-    )
-
-    total = query_base.scalar()
-    unique = query_base.filter(_real_views_filter()).scalar()
-
-    # Top posts with this tag
-    top_posts = db.query(
-        models.PageView.content_id,
-        models.PageView.content_key,
-        func.count(models.PageView.id).label("views"),
-    ).join(
-        models.Post,
-        and_(models.PageView.content_type == "post", models.PageView.content_id == models.Post.id),
-    ).join(
-        models.Tag, models.Tag.post_id == models.Post.id,
-    ).filter(
-        func.lower(models.Tag.tag_name) == tag_name.lower(),
-        *date_f, _real_views_filter(),
-    ).group_by(
-        models.PageView.content_id, models.PageView.content_key,
-    ).order_by(func.count(models.PageView.id).desc()).limit(10).all()
-
-    return {
-        "tag": tag_name,
-        "total_views": total,
-        "unique_views": unique,
-        "top_posts": [{"id": r.content_id, "slug": r.content_key, "views": r.views} for r in top_posts],
-    }
-
-
 def get_overview_stats(
     db: Session,
     from_date: Optional[date] = None, to_date: Optional[date] = None,

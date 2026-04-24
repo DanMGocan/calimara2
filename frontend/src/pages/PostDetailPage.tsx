@@ -333,17 +333,31 @@ export default function PostDetailPage() {
             <div className="piece-comments-inner">
               {approvedComments.length > 0 ? (
                 <ul className="comment-list">
-                  {approvedComments.map((c) => (
-                    <li key={c.id} className="comment">
-                      <div className="comment-head">
-                        <span className="comment-author">
-                          {c.user?.username ?? c.author_name ?? "anonim"}
-                        </span>
-                        <span className="comment-time">{formatRelativeTime(c.created_at)}</span>
-                      </div>
-                      <p className="comment-body">{c.content}</p>
-                    </li>
-                  ))}
+                  {approvedComments.map((c) =>
+                    c.is_robot ? (
+                      <li key={c.id} className="comment comment--robot">
+                        <div className="comment-head">
+                          <span className="comment-robot-badge">Ce zice robotul?</span>
+                          <span className="comment-time">
+                            {formatRelativeTime(c.created_at)}
+                          </span>
+                        </div>
+                        <p className="comment-body">{c.content}</p>
+                      </li>
+                    ) : (
+                      <li key={c.id} className="comment">
+                        <div className="comment-head">
+                          <span className="comment-author">
+                            {c.user?.username ?? c.author_name ?? "anonim"}
+                          </span>
+                          <span className="comment-time">
+                            {formatRelativeTime(c.created_at)}
+                          </span>
+                        </div>
+                        <p className="comment-body">{c.content}</p>
+                      </li>
+                    )
+                  )}
                 </ul>
               ) : (
                 <p

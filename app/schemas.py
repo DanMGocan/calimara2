@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, field_validator, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 from datetime import datetime
 from typing import Optional, List
 
@@ -52,30 +52,12 @@ class SocialLinksUpdate(BaseModel):
     bluesky_url: Optional[str] = None
     buymeacoffee_url: Optional[str] = None
 
-class TagBase(BaseModel):
-    tag_name: str = Field(..., max_length=12, description="Tag name (max 12 characters)")
-
-class Tag(TagBase):
-    id: int
-    post_id: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 class PostBase(BaseModel):
     title: str
     content: str
-    tags: Optional[List[str]] = Field(default=[], max_length=6, description="List of tags (max 6)")
 
 class PostCreate(PostBase):
-    @field_validator('tags', mode='before')
-    @classmethod
-    def validate_tag_length(cls, v):
-        if v is None:
-            return v
-        for tag in v:
-            if len(tag) > 12:
-                raise ValueError('Tag must be at most 12 characters long')
-        return v
+    ai_critic: bool = False
 
 class PostUpdate(PostBase):
     pass
@@ -93,7 +75,6 @@ class Post(PostBase):
     viewer_super_liked: bool = False
     created_at: datetime
     updated_at: datetime
-    tags: List[Tag] = []
 
     model_config = ConfigDict(from_attributes=True)
 class CommentBase(BaseModel):
@@ -109,6 +90,7 @@ class Comment(CommentBase):
     post_id: int
     user_id: Optional[int] = None
     approved: bool
+    is_robot: bool = False
     moderation_status: Optional[str] = None
     moderation_reason: Optional[str] = None
     toxicity_score: Optional[float] = None

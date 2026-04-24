@@ -63,17 +63,6 @@ def category_stats(
     return statistics.get_category_stats(db, category_key, _parse_date(from_date), _parse_date(to_date))
 
 
-@router.get("/api/stats/tag/{tag_name}")
-def tag_stats(
-    tag_name: str,
-    db: Session = Depends(get_db),
-    from_date: Optional[str] = Query(None, alias="from"),
-    to_date: Optional[str] = Query(None, alias="to"),
-):
-    """Statistics for a specific tag."""
-    return statistics.get_tag_stats(db, tag_name, _parse_date(from_date), _parse_date(to_date))
-
-
 @router.get("/api/stats/overview")
 def overview_stats(
     db: Session = Depends(get_db),

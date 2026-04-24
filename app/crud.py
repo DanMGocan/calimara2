@@ -94,7 +94,7 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int, catego
     slug = ensure_unique_slug(db, base_slug)
     
     db_post = models.Post(
-        **post.model_dump(exclude={"tags"}),
+        **post.model_dump(exclude={"ai_critic"}),
         user_id=user_id,
         slug=slug,
         category=category,
@@ -103,11 +103,7 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int, catego
     db.add(db_post)
     db.commit()
     db.refresh(db_post)
-    
-    if post.tags:
-        for tag_name in post.tags:
-            create_tag(db, db_post.id, tag_name.strip())
-            
+
     return db_post
 
 def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, category: Optional[str] = None):
@@ -115,7 +111,7 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, cate
     if not db_post:
         return None
     
-    update_data = post_update.model_dump(exclude_unset=True, exclude={"tags"})
+    update_data = post_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_post, key, value)
     
@@ -285,6 +281,23 @@ def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, us
     db.refresh(db_comment)
     return db_comment
 
+
+def create_robot_comment(db: Session, post_id: int, content: str):
+    db_comment = models.Comment(
+        post_id=post_id,
+        user_id=None,
+        author_name="Robotul Călimara",
+        author_email=None,
+        content=content,
+        approved=True,
+        is_robot=True,
+        moderation_status="approved",
+    )
+    db.add(db_comment)
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment
+
 def get_comments_for_post(db: Session, post_id: int, approved_only: bool = True):
     query = db.query(models.Comment).filter(models.Comment.post_id == post_id)
     if approved_only:
@@ -440,42 +453,6 @@ def reject_content(db: Session, content_type: str, content_id: int, moderator_id
             )
         return content
     return None
-
-# ===================================
-# TAG CRUD FUNCTIONS
-# ===================================
-
-def create_tag(db: Session, post_id: int, tag_name: str):
-    db_tag = models.Tag(post_id=post_id, tag_name=tag_name)
-    db.add(db_tag)
-    db.commit()
-    db.refresh(db_tag)
-    return db_tag
-
-def delete_tags_for_post(db: Session, post_id: int):
-    db.query(models.Tag).filter(models.Tag.post_id == post_id).delete()
-    db.commit()
-
-def get_tag_suggestions(db: Session, query: str, limit: int = 10):
-    normalized_query = query.strip().lower()
-    if len(normalized_query) < 2:
-        return []
-
-    normalized_tag = func.lower(models.Tag.tag_name)
-    usage_count = func.count(models.Tag.id)
-    suggestions = db.query(
-        normalized_tag.label("tag_name"),
-        usage_count.label("usage_count"),
-    ).filter(
-        normalized_tag.like(f"{normalized_query}%")
-    ).group_by(
-        normalized_tag
-    ).order_by(
-        usage_count.desc(),
-        normalized_tag.asc(),
-    ).limit(limit).all()
-
-    return [row.tag_name for row in suggestions]
 
 # ===================================
 # LIKE CRUD FUNCTIONS

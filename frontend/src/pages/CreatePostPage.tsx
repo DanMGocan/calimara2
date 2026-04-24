@@ -11,19 +11,16 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { createPost, type PostCreateData } from "@/api/posts";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast-context";
 import { EditorToolbar } from "@/components/ui/editor-toolbar";
 import { Stage } from "@/components/ui/stage";
-import { MAX_TAGS, MAX_TAG_LENGTH } from "@/lib/constants";
 
 export default function CreatePostPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [title, setTitle] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
+  const [aiCritic, setAiCritic] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -36,14 +33,14 @@ export default function CreatePostPage() {
     content: "",
   });
 
-  const formData = { title, tags, content: editor?.getHTML() ?? "" };
+  const formData = { title, aiCritic, content: editor?.getHTML() ?? "" };
   const { load, clear } = useAutoSave("calimara_createPost", formData);
 
   const restoreDraft = useCallback(() => {
     const draft = load();
     if (draft) {
       setTitle(draft.title || "");
-      setTags(draft.tags || []);
+      setAiCritic(Boolean(draft.aiCritic));
       if (editor && draft.content) editor.commands.setContent(draft.content);
       showToast("Ciornă restaurată.", "info");
     }
@@ -59,14 +56,6 @@ export default function CreatePostPage() {
     onError: (err: Error) => showToast(err.message, "danger"),
   });
 
-  const addTag = () => {
-    const t = tagInput.trim().toLowerCase();
-    if (t && tags.length < MAX_TAGS && t.length <= MAX_TAG_LENGTH && !tags.includes(t)) {
-      setTags([...tags, t]);
-      setTagInput("");
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mutation.isPending || !editor) return;
@@ -78,7 +67,7 @@ export default function CreatePostPage() {
     mutation.mutate({
       title: title.trim(),
       content,
-      tags: tags.length > 0 ? tags : undefined,
+      ai_critic: aiCritic,
     });
   };
 
@@ -130,69 +119,6 @@ export default function CreatePostPage() {
             </div>
 
             <div>
-              <label className="auth-field">
-                Etichete ({tags.length}/{MAX_TAGS})
-              </label>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "4px 10px",
-                      border: "1px solid var(--color-hairline-strong)",
-                      borderRadius: 999,
-                      background: "var(--color-paper-2)",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      letterSpacing: "0.06em",
-                      color: "var(--color-ink-soft)",
-                    }}
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      aria-label={`elimină ${tag}`}
-                      onClick={() => setTags(tags.filter((t) => t !== tag))}
-                      style={{
-                        color: "var(--color-ink-faint)",
-                        fontSize: 14,
-                        lineHeight: 1,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      addTag();
-                    }
-                  }}
-                  placeholder="adaugă o etichetă…"
-                  maxLength={MAX_TAG_LENGTH}
-                  disabled={tags.length >= MAX_TAGS}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addTag}
-                  disabled={tags.length >= MAX_TAGS}
-                >
-                  adaugă
-                </Button>
-              </div>
-            </div>
-
-            <div>
               <label className="auth-field">Conținut</label>
               <div
                 style={{
@@ -205,6 +131,20 @@ export default function CreatePostPage() {
                 <EditorContent editor={editor} className="min-h-[320px]" />
               </div>
             </div>
+
+            <label className="ai-critic-toggle">
+              <input
+                type="checkbox"
+                checked={aiCritic}
+                onChange={(e) => setAiCritic(e.target.checked)}
+              />
+              <span>
+                <strong>Ce zice robotul?</strong>
+                <span className="ai-critic-toggle-hint">
+                  primește o opinie scurtă de la AI după publicare
+                </span>
+              </span>
+            </label>
 
             <div className="flex items-center justify-between">
               <Button type="button" variant="ghost" onClick={restoreDraft}>

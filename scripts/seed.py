@@ -89,7 +89,6 @@ POSTS = [
             "poate-o frunză, poate-o amintire\n"
             "care nu ştie că s-a dus."
         ),
-        "tags": ["iarnă", "absenţă"],
     },
     {
         "author": "mireasufletului",
@@ -107,7 +106,6 @@ POSTS = [
             "miros a tine\n"
             "şi atât."
         ),
-        "tags": ["iubire", "cafea"],
     },
     {
         "author": "mireasufletului",
@@ -127,7 +125,6 @@ POSTS = [
             "ţi-ar spune în sfârşit\n"
             "că e bine aşa."
         ),
-        "tags": ["scrisori"],
     },
     # ── vanatordecuvinte — poezie ───────────────────────────
     {
@@ -147,7 +144,6 @@ POSTS = [
             "cu grija copiilor\n"
             "care trec pe lângă câinii străzii."
         ),
-        "tags": ["oraş"],
     },
     {
         "author": "vanatordecuvinte",
@@ -167,7 +163,6 @@ POSTS = [
             "pe care n-am scris-o\n"
             "niciodată."
         ),
-        "tags": ["tăcere"],
     },
     {
         "author": "vanatordecuvinte",
@@ -188,7 +183,6 @@ POSTS = [
             "Restul —\n"
             "tăcere dactilografiată."
         ),
-        "tags": ["ars poetica"],
     },
     # ── filedintramvai — proză ──────────────────────────────
     {
@@ -211,7 +205,6 @@ POSTS = [
             "În geam, pentru o clipă, cineva îmi face semn cu mâna. Nu ştiu "
             "dacă sunt eu — sau cine altcineva."
         ),
-        "tags": ["tramvai", "iarnă"],
     },
     {
         "author": "filedintramvai",
@@ -230,7 +223,6 @@ POSTS = [
             "pur şi simplu îşi poartă geamantanul prin oraş, ca alţii îşi "
             "poartă câinele, ca să nu rămână singuri cu ei înşişi."
         ),
-        "tags": ["oameni", "gară"],
     },
     {
         "author": "filedintramvai",
@@ -250,7 +242,6 @@ POSTS = [
             "I-am răspuns că îmi pare rău. A dat din cap — şi şi-a văzut, "
             "liniştită, de pagină."
         ),
-        "tags": ["oameni"],
     },
     # ── noaptedetarziu — amestec ────────────────────────────
     {
@@ -270,7 +261,6 @@ POSTS = [
             "apoi plecăm amândoi\n"
             "fără să ne mai datorăm nimic."
         ),
-        "tags": ["noapte"],
     },
     {
         "author": "noaptedetarziu",
@@ -291,7 +281,6 @@ POSTS = [
             "nimănui. Am ieşit oricum — pentru că liftul, ca multe altele în "
             "oraşul ăsta, nu te aşteaptă să fii pregătit."
         ),
-        "tags": ["oraş", "singurătate"],
     },
     {
         "author": "noaptedetarziu",
@@ -308,7 +297,6 @@ POSTS = [
             "sau nimic,\n"
             "dacă nimic are nevoie, la rândul lui, de un cui."
         ),
-        "tags": ["ars poetica"],
     },
 ]
 
@@ -575,11 +563,6 @@ def seed(session: Session, *, quiet: bool = False) -> None:
         posts_by_slug[row["slug"]] = p
     session.flush()
 
-    # Tags (max 12 chars per schema)
-    for row in POSTS:
-        post = posts_by_slug[row["slug"]]
-        for tag in row.get("tags", []):
-            session.add(models.Tag(post_id=post.id, tag_name=tag[:12]))
     log(f"  Seed: {len(posts_by_slug)} posts")
 
     # ── Comments ───────────────────────────────────────────

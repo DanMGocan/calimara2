@@ -160,7 +160,6 @@ class Post(Base):
     comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
     super_likes: Mapped[List["SuperLike"]] = relationship("SuperLike", back_populates="post", cascade="all, delete-orphan")
-    tags: Mapped[List["Tag"]] = relationship("Tag", back_populates="post")
     featured_by: Mapped[List["FeaturedPost"]] = relationship("FeaturedPost", back_populates="post")
     collection_entries: Mapped[List["CollectionPost"]] = relationship(
         "CollectionPost", back_populates="post", cascade="all, delete-orphan"
@@ -209,14 +208,15 @@ class Comment(Base):
     author_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, default=False)
-    
+    is_robot: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Moderation fields
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
     moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    
+
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     post: Mapped["Post"] = relationship("Post", back_populates="comments")
@@ -259,16 +259,6 @@ class StripeEvent(Base):
     type: Mapped[str] = mapped_column(String(100), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-
-class Tag(Base):
-    __tablename__ = "tags"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
-    tag_name: Mapped[str] = mapped_column(String(12), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    post: Mapped["Post"] = relationship("Post", back_populates="tags")
 
 class BestFriend(Base):
     __tablename__ = "best_friends"

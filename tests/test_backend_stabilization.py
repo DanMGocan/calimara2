@@ -132,9 +132,9 @@ class BackendStabilizationTests(unittest.TestCase):
             "https://accounts.google.com/o/oauth2/auth?client_id=test",
         )
 
-    def test_theme_and_tag_helpers_return_normalized_deduplicated_values(self):
+    def test_theme_helpers_return_normalized_deduplicated_values(self):
         author = self.make_user("writer")
-        post = self.make_post(
+        self.make_post(
             author,
             "Themes",
             themes=["Dor", "timp", "dor"],
@@ -148,14 +148,8 @@ class BackendStabilizationTests(unittest.TestCase):
             feelings=["should-not-appear"],
         )
 
-        crud.create_tag(self.db, post.id, "dragoste")
-        crud.create_tag(self.db, post.id, "Dragoste")
-        crud.create_tag(self.db, post.id, "drama")
-        crud.create_tag(self.db, post.id, "dor")
-
         self.assertEqual(crud.get_distinct_themes(self.db), ["dor", "timp"])
         self.assertEqual(crud.get_distinct_feelings(self.db), ["bucurie", "nostalgie"])
-        self.assertEqual(crud.get_tag_suggestions(self.db, "dr"), ["dragoste", "drama"])
 
     def test_comment_helpers_approve_and_delete_comments(self):
         author = self.make_user("author")

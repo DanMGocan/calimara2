@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier
+from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier, ai_critic
 from ..database import get_db
 from ..utils import get_client_ip, SUBDOMAIN_SUFFIX
 from ..categories import CATEGORIES
@@ -136,6 +136,17 @@ async def create_post(
         logger.error(f"Theme analysis failed for post {db_post.id}: {e}")
         crud.update_post_theme_analysis(db, db_post.id, [], [], "failed")
 
+    # "Ce zice robotul?" — optional AI critique (non-blocking)
+    if post.ai_critic and db_post.moderation_status == "approved":
+        try:
+            critique = ai_critic.generate_critique(
+                db_post.title, db_post.content, current_user.is_premium
+            )
+            if critique:
+                crud.create_robot_comment(db, post_id=db_post.id, content=critique)
+        except Exception as e:
+            logger.error(f"AI critique failed for post {db_post.id}: {e}")
+
     return db_post
 
 
@@ -158,12 +169,6 @@ def update_post_api(
     except Exception as e:
         logger.error(f"Category re-classification failed: {e}")
         category = db_post.category or "proza_scurta"
-
-    # Delete existing tags and create new ones if tags are provided
-    if post_update.tags is not None:
-        crud.delete_tags_for_post(db, post_id)
-        for tag_name in post_update.tags:
-            crud.create_tag(db, post_id, tag_name.strip())
 
     return crud.update_post(db=db, post_id=post_id, post_update=post_update, category=category)
 
@@ -306,22 +311,6 @@ def add_like_to_post(
 def get_likes_count(post_id: int, db: Session = Depends(get_db)):
     count = crud.get_likes_count_for_post(db, post_id)
     return {"post_id": post_id, "likes_count": count}
-
-
-# --- Tags ---
-
-@router.get("/api/tags/suggestions")
-def get_tag_suggestions_api(
-    query: str,
-    limit: int = 10,
-    db: Session = Depends(get_db)
-):
-    """Get tag suggestions for autocomplete based on partial query"""
-    if not query or len(query.strip()) < 2:
-        return {"suggestions": []}
-
-    suggestions = crud.get_tag_suggestions(db, query.strip(), limit)
-    return {"suggestions": suggestions}
 
 
 # --- Random Posts API ---
