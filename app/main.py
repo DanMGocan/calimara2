@@ -4,22 +4,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+from .error_logging import configure_error_logging
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes
 
 # Configure logging
+configure_error_logging()
 logger = logging.getLogger(__name__)
 
-if not logger.hasHandlers():
+if not logger.handlers:
     LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logs")
     LOG_FILE = os.path.join(LOG_DIR, "calimara_app_python.log")
 
@@ -45,6 +49,37 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _request_context(request: Request) -> str:
+    client = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "-")
+    return f"{request.method} {request.url.path} client={client} user_agent={user_agent!r}"
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code >= 500:
+        logger.error(
+            "HTTP %s while handling %s: %s",
+            exc.status_code,
+            _request_context(request),
+            exc.detail,
+            exc_info=True,
+        )
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning("Validation error while handling %s: %s", _request_context(request), exc)
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception while handling %s", _request_context(request))
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # CORS Middleware — build origin regex from env-configured domain.
 _main_escaped = MAIN_DOMAIN.replace(".", r"\.")
@@ -102,6 +137,8 @@ app.include_router(collection_routes.router)
 app.include_router(club_routes.router)
 app.include_router(super_like_routes.router)
 app.include_router(premium_routes.router)
+app.include_router(audio_routes.router)
+app.include_router(forum_routes.router)
 
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")

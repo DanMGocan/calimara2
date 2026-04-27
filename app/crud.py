@@ -119,6 +119,13 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, cate
         db_post.category = category
         
     db_post.moderation_status = "pending"
+    db.query(models.PostAudio).filter(models.PostAudio.post_id == post_id).update(
+        {
+            "status": "rejected",
+            "moderation_status": "rejected",
+            "moderation_reason": "Post was edited after this audio was created",
+        }
+    )
     db.commit()
     db.refresh(db_post)
     return db_post
@@ -153,6 +160,114 @@ def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
         models.Post.category == category,
         models.Post.moderation_status == "approved"
     ).order_by(func.random()).limit(limit).all()
+
+
+def get_best_audio_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
+    author_audio = (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post_id,
+            models.PostAudio.source == "author",
+            models.PostAudio.status == "ready",
+        )
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+    if author_audio:
+        return author_audio
+    return (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post_id,
+            models.PostAudio.source == "tts",
+            models.PostAudio.status == "ready",
+        )
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+
+
+def get_latest_audio_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
+    return (
+        db.query(models.PostAudio)
+        .filter(models.PostAudio.post_id == post_id)
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+
+
+def create_post_audio(
+    db: Session,
+    post_id: int,
+    source: str,
+    status: str = "pending",
+    **fields,
+) -> models.PostAudio:
+    audio = models.PostAudio(post_id=post_id, source=source, status=status, **fields)
+    db.add(audio)
+    db.commit()
+    db.refresh(audio)
+    return audio
+
+
+def update_post_audio(db: Session, audio_id: int, **fields) -> Optional[models.PostAudio]:
+    audio = db.query(models.PostAudio).filter(models.PostAudio.id == audio_id).first()
+    if not audio:
+        return None
+    for key, value in fields.items():
+        setattr(audio, key, value)
+    db.commit()
+    db.refresh(audio)
+    return audio
+
+
+def get_pending_tts_audio_jobs(db: Session, limit: int = 10) -> List[models.PostAudio]:
+    return (
+        db.query(models.PostAudio)
+        .join(models.Post)
+        .filter(
+            models.PostAudio.source == "tts",
+            models.PostAudio.status == "pending",
+            models.Post.moderation_status == "approved",
+        )
+        .order_by(models.PostAudio.created_at.asc(), models.PostAudio.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+
+def enqueue_tts_audio_for_post(db: Session, post: models.Post) -> Optional[models.PostAudio]:
+    if post.moderation_status != "approved":
+        return None
+    existing = (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post.id,
+            models.PostAudio.source == "tts",
+            models.PostAudio.status.in_(["pending", "processing", "ready"]),
+        )
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+    if existing:
+        return existing
+    return create_post_audio(db, post_id=post.id, source="tts", status="pending")
+
+
+def get_random_ready_audio(
+    db: Session, category: Optional[str] = None
+) -> Optional[models.PostAudio]:
+    query = (
+        db.query(models.PostAudio)
+        .join(models.Post)
+        .filter(
+            models.PostAudio.status == "ready",
+            models.Post.moderation_status == "approved",
+        )
+    )
+    if category:
+        query = query.filter(models.Post.category == category)
+    return query.order_by(func.random()).first()
 
 def _view_weighted_order_key():
     # Efraimidis–Spirakis weighted random: LN(RANDOM()) is always negative,
@@ -351,28 +466,69 @@ def get_moderation_stats(db: Session):
     stats['comments_rejected'] = db.query(models.Comment).filter(models.Comment.moderation_status == "rejected").count()
     stats['comments_approved'] = db.query(models.Comment).filter(models.Comment.moderation_status == "approved").count()
     
-    stats['total_pending'] = stats['posts_pending'] + stats['comments_pending']
-    stats['total_flagged'] = stats['posts_flagged'] + stats['comments_flagged']
-    stats['total_rejected'] = stats['posts_rejected'] + stats['comments_rejected']
+    stats['forum_threads_pending'] = db.query(models.ForumThread).filter(models.ForumThread.moderation_status == "pending").count()
+    stats['forum_threads_flagged'] = db.query(models.ForumThread).filter(models.ForumThread.moderation_status == "flagged").count()
+    stats['forum_threads_rejected'] = db.query(models.ForumThread).filter(models.ForumThread.moderation_status == "rejected").count()
+    stats['forum_threads_approved'] = db.query(models.ForumThread).filter(models.ForumThread.moderation_status == "approved").count()
+    stats['forum_replies_pending'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "pending").count()
+    stats['forum_replies_flagged'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "flagged").count()
+    stats['forum_replies_rejected'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "rejected").count()
+    stats['forum_replies_approved'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "approved").count()
+
+    stats['total_pending'] = (
+        stats['posts_pending'] + stats['comments_pending'] +
+        stats['forum_threads_pending'] + stats['forum_replies_pending']
+    )
+    stats['total_flagged'] = (
+        stats['posts_flagged'] + stats['comments_flagged'] +
+        stats['forum_threads_flagged'] + stats['forum_replies_flagged']
+    )
+    stats['total_rejected'] = (
+        stats['posts_rejected'] + stats['comments_rejected'] +
+        stats['forum_threads_rejected'] + stats['forum_replies_rejected']
+    )
     return stats
 
 def approve_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
     if content_type == "post":
         content = db.query(models.Post).filter(models.Post.id == content_id).first()
+    elif content_type == "audio":
+        content = db.query(models.PostAudio).filter(models.PostAudio.id == content_id).first()
+    elif content_type == "forum_thread":
+        content = db.query(models.ForumThread).filter(models.ForumThread.id == content_id).first()
+    elif content_type == "forum_reply":
+        content = db.query(models.ForumReply).options(
+            joinedload(models.ForumReply.thread),
+            joinedload(models.ForumReply.author),
+        ).filter(models.ForumReply.id == content_id).first()
     else:
         content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
     
     if content:
+        was_forum_reply_approved = (
+            content_type == "forum_reply" and content.moderation_status == "approved"
+        )
         content.moderation_status = "approved"
-        content.moderated_by = moderator_id
-        content.moderated_at = func.now()
+        if hasattr(content, "moderated_by"):
+            content.moderated_by = moderator_id
+        if hasattr(content, "moderated_at"):
+            content.moderated_at = func.now()
         if reason:
             content.moderation_reason = reason
         if content_type == "comment":
             content.approved = True
+        if content_type == "audio":
+            content.status = "ready"
+        if content_type == "forum_thread":
+            content.last_activity_at = func.now()
+        if content_type == "forum_reply" and content.thread:
+            content.thread.last_activity_at = func.now()
             
         db.commit()
         db.refresh(content)
+
+        if content_type == "forum_reply" and not was_forum_reply_approved:
+            _notify_forum_reply_approved(db, content)
 
         # Update journal
         log_entry = db.query(models.ModerationLog).filter(
@@ -387,7 +543,12 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
         else:
             log_entry = models.ModerationLog(
                 content_type=content_type, content_id=content_id,
-                user_id=content.user_id, ai_decision="approved",
+                user_id=(
+                    content.post.user_id if content_type == "audio"
+                    else content.author_id if content_type in ("forum_thread", "forum_reply")
+                    else content.user_id
+                ),
+                ai_decision="approved",
                 human_decision="approved", human_reason=reason,
                 moderated_by=moderator_id, moderated_at=func.now()
             )
@@ -395,30 +556,63 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
         db.commit()
 
         # Notify
-        if content.user_id:
-            create_notification(
-                db=db, user_id=content.user_id, notif_type="moderation_approved",
-                title="Conținut aprobat",
-                message=f"{'Postarea' if content_type == 'post' else 'Comentariul'} tău a fost aprobat și publicat. {reason}",
-                link=f"/piese/{content.slug}" if content_type == "post" else None
+        notification_user_id = (
+            content.post.user_id if content_type == "audio" and content.post
+            else getattr(content, "author_id", None) if content_type in ("forum_thread", "forum_reply")
+            else getattr(content, "user_id", None)
+        )
+        if notification_user_id:
+            content_label = (
+                "Postarea" if content_type == "post"
+                else "Înregistrarea audio" if content_type == "audio"
+                else "Discuția" if content_type == "forum_thread"
+                else "Răspunsul din forum" if content_type == "forum_reply"
+                else "Comentariul"
             )
+            link = None
+            if content_type == "post":
+                link = f"/piese/{content.slug}"
+            elif content_type == "forum_thread":
+                link = f"/discutii/{content.slug}"
+            elif content_type == "forum_reply" and content.thread:
+                link = f"/discutii/{content.thread.slug}"
+            create_notification(
+                db=db, user_id=notification_user_id, notif_type="moderation_approved",
+                title="Conținut aprobat",
+                message=f"{content_label} ta a fost aprobată și publicată. {reason}",
+                link=link
+            )
+        if content_type == "post":
+            enqueue_tts_audio_for_post(db, content)
         return content
     return None
 
 def reject_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
     if content_type == "post":
         content = db.query(models.Post).filter(models.Post.id == content_id).first()
+    elif content_type == "audio":
+        content = db.query(models.PostAudio).filter(models.PostAudio.id == content_id).first()
+    elif content_type == "forum_thread":
+        content = db.query(models.ForumThread).filter(models.ForumThread.id == content_id).first()
+    elif content_type == "forum_reply":
+        content = db.query(models.ForumReply).options(
+            joinedload(models.ForumReply.thread),
+        ).filter(models.ForumReply.id == content_id).first()
     else:
         content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
     
     if content:
         content.moderation_status = "rejected"
-        content.moderated_by = moderator_id
-        content.moderated_at = func.now()
+        if hasattr(content, "moderated_by"):
+            content.moderated_by = moderator_id
+        if hasattr(content, "moderated_at"):
+            content.moderated_at = func.now()
         if reason:
             content.moderation_reason = reason
         if content_type == "comment":
             content.approved = False
+        if content_type == "audio":
+            content.status = "rejected"
             
         db.commit()
         db.refresh(content)
@@ -436,7 +630,12 @@ def reject_content(db: Session, content_type: str, content_id: int, moderator_id
         else:
             log_entry = models.ModerationLog(
                 content_type=content_type, content_id=content_id,
-                user_id=content.user_id, ai_decision="approved",
+                user_id=(
+                    content.post.user_id if content_type == "audio"
+                    else content.author_id if content_type in ("forum_thread", "forum_reply")
+                    else content.user_id
+                ),
+                ai_decision="approved",
                 human_decision="rejected", human_reason=reason,
                 moderated_by=moderator_id, moderated_at=func.now()
             )
@@ -444,11 +643,23 @@ def reject_content(db: Session, content_type: str, content_id: int, moderator_id
         db.commit()
 
         # Notify
-        if content.user_id:
+        notification_user_id = (
+            content.post.user_id if content_type == "audio" and content.post
+            else getattr(content, "author_id", None) if content_type in ("forum_thread", "forum_reply")
+            else getattr(content, "user_id", None)
+        )
+        if notification_user_id:
+            content_label = (
+                "Postarea" if content_type == "post"
+                else "Înregistrarea audio" if content_type == "audio"
+                else "Discuția" if content_type == "forum_thread"
+                else "Răspunsul din forum" if content_type == "forum_reply"
+                else "Comentariul"
+            )
             create_notification(
-                db=db, user_id=content.user_id, notif_type="moderation_rejected",
+                db=db, user_id=notification_user_id, notif_type="moderation_rejected",
                 title="Conținut respins",
-                message=f"{'Postarea' if content_type == 'post' else 'Comentariul'} tău a fost respins. Motiv: {reason}",
+                message=f"{content_label} ta a fost respinsă. Motiv: {reason}",
                 link=None
             )
         return content
@@ -500,6 +711,274 @@ def get_best_friends_for_user(db: Session, user_id: int):
 
 def get_user_awards(db: Session, user_id: int):
     return db.query(models.UserAward).filter(models.UserAward.user_id == user_id).order_by(models.UserAward.award_date.desc()).all()
+
+
+# ===================================
+# FORUM CRUD FUNCTIONS
+# ===================================
+
+FORUM_SECTIONS = ("general", "poezie", "proza_scurta", "feedback", "anunturi")
+
+
+def is_forum_section(section: str) -> bool:
+    return section in FORUM_SECTIONS
+
+
+def _forum_status_value(moderation_result) -> str:
+    status = getattr(moderation_result, "status", "approved")
+    return getattr(status, "value", status)
+
+
+def _ensure_unique_forum_slug(db: Session, base_slug: str) -> str:
+    normalized = base_slug or "discutie"
+    slug = normalized
+    counter = 1
+    while db.query(models.ForumThread).filter(models.ForumThread.slug == slug).first():
+        slug = f"{normalized}-{counter}"
+        counter += 1
+    return slug
+
+
+def get_forum_thread(db: Session, thread_id: int) -> Optional[models.ForumThread]:
+    return (
+        db.query(models.ForumThread)
+        .options(joinedload(models.ForumThread.author))
+        .filter(models.ForumThread.id == thread_id)
+        .first()
+    )
+
+
+def get_forum_thread_by_slug(db: Session, slug: str) -> Optional[models.ForumThread]:
+    return (
+        db.query(models.ForumThread)
+        .options(
+            joinedload(models.ForumThread.author),
+            joinedload(models.ForumThread.replies).joinedload(models.ForumReply.author),
+        )
+        .filter(models.ForumThread.slug == slug)
+        .first()
+    )
+
+
+def can_view_forum_thread(user: models.User, thread: models.ForumThread) -> bool:
+    return (
+        thread.moderation_status == "approved"
+        or thread.author_id == user.id
+        or user.is_admin
+        or user.is_moderator
+    )
+
+
+def can_moderate_forum(user: models.User) -> bool:
+    return user.is_admin or user.is_moderator
+
+
+def list_forum_threads(
+    db: Session,
+    section: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 30,
+    offset: int = 0,
+) -> List[models.ForumThread]:
+    query = (
+        db.query(models.ForumThread)
+        .options(joinedload(models.ForumThread.author))
+        .filter(models.ForumThread.moderation_status == "approved")
+    )
+    if section and is_forum_section(section):
+        query = query.filter(models.ForumThread.section == section)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                models.ForumThread.title.ilike(pattern),
+                models.ForumThread.content.ilike(pattern),
+            )
+        )
+    return (
+        query.order_by(
+            models.ForumThread.is_pinned.desc(),
+            models.ForumThread.last_activity_at.desc(),
+            models.ForumThread.id.desc(),
+        )
+        .offset(max(0, offset))
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+
+
+def create_forum_thread(
+    db: Session, author: models.User, data: schemas.ForumThreadCreate
+) -> models.ForumThread:
+    if not is_forum_section(data.section):
+        raise ValueError("invalid_section")
+    base_slug = generate_slug(data.title.strip()) or "discutie"
+    thread = models.ForumThread(
+        author_id=author.id,
+        section=data.section,
+        title=data.title.strip(),
+        slug=_ensure_unique_forum_slug(db, base_slug),
+        content=data.content.strip(),
+        moderation_status="pending",
+    )
+    db.add(thread)
+    db.commit()
+    db.refresh(thread)
+    return thread
+
+
+def list_forum_replies_for_thread(
+    db: Session, thread_id: int, viewer: models.User
+) -> List[models.ForumReply]:
+    query = (
+        db.query(models.ForumReply)
+        .options(joinedload(models.ForumReply.author))
+        .filter(models.ForumReply.thread_id == thread_id)
+    )
+    if not can_moderate_forum(viewer):
+        query = query.filter(
+            or_(
+                models.ForumReply.moderation_status == "approved",
+                models.ForumReply.author_id == viewer.id,
+            )
+        )
+    return query.order_by(models.ForumReply.created_at.asc(), models.ForumReply.id.asc()).all()
+
+
+def create_forum_reply(
+    db: Session,
+    author: models.User,
+    thread: models.ForumThread,
+    data: schemas.ForumReplyCreate,
+) -> tuple[Optional[models.ForumReply], Optional[str]]:
+    if not can_view_forum_thread(author, thread):
+        return None, "not_found"
+    if thread.moderation_status != "approved":
+        return None, "thread_not_approved"
+    if thread.is_locked and not can_moderate_forum(author):
+        return None, "locked"
+    reply = models.ForumReply(
+        thread_id=thread.id,
+        author_id=author.id,
+        content=data.content.strip(),
+        moderation_status="pending",
+    )
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    return reply, None
+
+
+def _notify_forum_reply_approved(db: Session, reply: models.ForumReply) -> None:
+    thread = reply.thread or get_forum_thread(db, reply.thread_id)
+    if not thread or thread.author_id == reply.author_id:
+        return
+    author = reply.author or get_user_by_id(db, reply.author_id)
+    create_notification(
+        db=db,
+        user_id=thread.author_id,
+        notif_type="forum_reply",
+        title="Răspuns nou în discuția ta",
+        message=f"{author.username if author else 'Un utilizator'} a răspuns în „{thread.title}\".",
+        link=f"/discutii/{thread.slug}",
+        extra_data={"thread_id": thread.id, "reply_id": reply.id, "thread_slug": thread.slug},
+    )
+
+
+def apply_forum_thread_moderation_result(db: Session, thread: models.ForumThread, moderation_result) -> models.ForumThread:
+    thread.moderation_status = _forum_status_value(moderation_result)
+    thread.toxicity_score = getattr(moderation_result, "toxicity_score", None)
+    thread.moderation_reason = getattr(moderation_result, "reason", None)
+    if thread.moderation_status == "approved":
+        thread.last_activity_at = func.now()
+    db.commit()
+    db.refresh(thread)
+    return thread
+
+
+def apply_forum_reply_moderation_result(db: Session, reply: models.ForumReply, moderation_result) -> models.ForumReply:
+    was_approved = reply.moderation_status == "approved"
+    reply.moderation_status = _forum_status_value(moderation_result)
+    reply.toxicity_score = getattr(moderation_result, "toxicity_score", None)
+    reply.moderation_reason = getattr(moderation_result, "reason", None)
+    if reply.moderation_status == "approved":
+        thread = reply.thread or get_forum_thread(db, reply.thread_id)
+        if thread:
+            thread.last_activity_at = func.now()
+    db.commit()
+    db.refresh(reply)
+    if reply.moderation_status == "approved" and not was_approved:
+        _notify_forum_reply_approved(db, reply)
+    return reply
+
+
+def delete_forum_thread(db: Session, actor: models.User, thread: models.ForumThread) -> bool:
+    if thread.author_id != actor.id and not can_moderate_forum(actor):
+        return False
+    db.delete(thread)
+    db.commit()
+    return True
+
+
+def get_forum_reply(db: Session, reply_id: int) -> Optional[models.ForumReply]:
+    return (
+        db.query(models.ForumReply)
+        .options(
+            joinedload(models.ForumReply.author),
+            joinedload(models.ForumReply.thread),
+        )
+        .filter(models.ForumReply.id == reply_id)
+        .first()
+    )
+
+
+def delete_forum_reply(db: Session, actor: models.User, reply: models.ForumReply) -> bool:
+    if reply.author_id != actor.id and not can_moderate_forum(actor):
+        return False
+    db.delete(reply)
+    db.commit()
+    return True
+
+
+def update_forum_thread_state(
+    db: Session, actor: models.User, thread: models.ForumThread, action: str
+) -> tuple[Optional[models.ForumThread], Optional[str]]:
+    if not can_moderate_forum(actor):
+        return None, "not_allowed"
+    if action == "lock":
+        thread.is_locked = True
+    elif action == "unlock":
+        thread.is_locked = False
+    elif action == "pin":
+        thread.is_pinned = True
+    elif action == "unpin":
+        thread.is_pinned = False
+    else:
+        return None, "bad_action"
+    db.commit()
+    db.refresh(thread)
+    return thread, None
+
+
+def get_forum_threads_for_moderation(
+    db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50
+) -> List[models.ForumThread]:
+    query = db.query(models.ForumThread).options(joinedload(models.ForumThread.author))
+    if status_filter:
+        query = query.filter(models.ForumThread.moderation_status == status_filter)
+    return query.order_by(models.ForumThread.created_at.desc()).offset(skip).limit(limit).all()
+
+
+def get_forum_replies_for_moderation(
+    db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50
+) -> List[models.ForumReply]:
+    query = db.query(models.ForumReply).options(
+        joinedload(models.ForumReply.author),
+        joinedload(models.ForumReply.thread),
+    )
+    if status_filter:
+        query = query.filter(models.ForumReply.moderation_status == status_filter)
+    return query.order_by(models.ForumReply.created_at.desc()).offset(skip).limit(limit).all()
 
 
 # ===================================
@@ -1219,11 +1698,12 @@ def get_user_by_stripe_customer_id(db: Session, customer_id: str) -> Optional[mo
 
 
 def set_premium_from_subscription(
-    db: Session, user_id: int, subscription_id: str, premium_until: datetime
+    db: Session, user_id: int, subscription_id: str, premium_until: datetime, premium_tier: str = "premium"
 ) -> None:
     db.query(models.User).filter(models.User.id == user_id).update(
         {
             "stripe_subscription_id": subscription_id,
+            "premium_tier": premium_tier,
             "premium_until": premium_until,
         }
     )
@@ -1942,4 +2422,3 @@ def _notify_club_request_outcome(
             "request_id": request.id,
         },
     )
-

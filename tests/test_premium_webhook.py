@@ -12,6 +12,8 @@ os.environ["STRIPE_ENABLED"] = "True"
 os.environ["STRIPE_SECRET_KEY"] = "sk_test_dummy"
 os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_dummy"
 os.environ["STRIPE_PRICE_ID_PREMIUM_MONTHLY"] = "price_dummy"
+os.environ["STRIPE_PRICE_ID_AUDIO_MONTHLY"] = "price_audio_dummy"
+os.environ["STRIPE_PRICE_ID_AUTHOR_AUDIO_MONTHLY"] = "price_author_audio_dummy"
 os.environ["STRIPE_SUCCESS_URL"] = "http://x/success"
 os.environ["STRIPE_CANCEL_URL"] = "http://x/cancel"
 os.environ["STRIPE_CUSTOMER_PORTAL_RETURN_URL"] = "http://x/dashboard"
@@ -20,7 +22,12 @@ from app import crud, models
 from app.week_util import utcnow_naive
 
 
-def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None):
+def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, tier="premium"):
+    price_id = {
+        "premium": "price_dummy",
+        "audio": "price_audio_dummy",
+        "author_audio": "price_author_audio_dummy",
+    }.get(tier, "price_dummy")
     return {
         "id": event_id,
         "type": event_type,
@@ -28,6 +35,8 @@ def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_
             "object": {
                 "id": sub_id,
                 "customer": customer_id,
+                "metadata": {"tier": tier},
+                "items": {"data": [{"price": {"id": price_id}}]},
                 "current_period_end": period_end_ts
                 or int((utcnow_naive() + timedelta(days=30)).timestamp()),
             }
@@ -75,6 +84,27 @@ class WebhookIdempotencyTests(unittest.TestCase):
         self.db.refresh(self.user)
         self.assertIsNotNone(self.user.premium_until)
         self.assertEqual(self.user.stripe_subscription_id, "sub_1")
+        self.assertEqual(self.user.premium_tier, "premium")
+
+    def test_process_audio_subscription_sets_audio_tier(self):
+        from app.routers.premium_routes import _apply_subscription_event
+
+        event = _mk_event("evt_audio", "customer.subscription.updated", tier="audio")
+        _apply_subscription_event(self.db, event)
+        self.db.refresh(self.user)
+        self.assertEqual(self.user.premium_tier, "audio")
+        self.assertTrue(self.user.has_audio_access)
+        self.assertFalse(self.user.has_author_audio_access)
+
+    def test_process_author_audio_subscription_sets_author_audio_tier(self):
+        from app.routers.premium_routes import _apply_subscription_event
+
+        event = _mk_event("evt_author_audio", "customer.subscription.updated", tier="author_audio")
+        _apply_subscription_event(self.db, event)
+        self.db.refresh(self.user)
+        self.assertEqual(self.user.premium_tier, "author_audio")
+        self.assertTrue(self.user.has_audio_access)
+        self.assertTrue(self.user.has_author_audio_access)
 
     def test_process_subscription_deleted_clears_subscription_keeps_premium_until(self):
         from app.routers.premium_routes import _apply_subscription_event

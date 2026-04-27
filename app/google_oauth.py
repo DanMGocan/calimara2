@@ -4,6 +4,7 @@ from datetime import datetime
 from authlib.integrations.starlette_client import OAuth
 from authlib.integrations.starlette_client import OAuthError
 from fastapi import HTTPException, Request
+import httpx
 from sqlalchemy.orm import Session
 from . import crud, models, schemas
 
@@ -115,8 +116,6 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         auth_code = query_params['code']
         
         # Manual token exchange to avoid Authlib issues
-        import httpx
-        
         token_data = {
             'client_id': GOOGLE_CLIENT_ID,
             'client_secret': GOOGLE_CLIENT_SECRET,
@@ -156,6 +155,8 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         logger.info(f"Successfully authenticated Google user: {google_user.email}")
         return google_user
         
+    except HTTPException:
+        raise
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error during Google OAuth: {e}")
         raise HTTPException(status_code=400, detail="OAuth authentication failed")

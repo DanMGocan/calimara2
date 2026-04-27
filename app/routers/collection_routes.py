@@ -87,6 +87,14 @@ def create_collection_api(
     return _collection_summary_payload(collection, db, include_pending=True)
 
 
+@router.get("/api/collections/random")
+def random_collection_api(db: Session = Depends(get_db)):
+    collection = crud.get_random_collection(db)
+    if not collection:
+        raise HTTPException(status_code=404, detail="Nicio colecție disponibilă")
+    return _collection_summary_payload(collection, db, include_pending=False)
+
+
 @router.get("/api/collections/{slug}")
 def get_collection_by_slug_api(
     slug: str,

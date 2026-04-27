@@ -198,21 +198,6 @@ def random_club_api(db: Session = Depends(get_db)):
     return _club_summary_payload(db, club)
 
 
-@router.get("/api/collections/random")
-def random_collection_api(db: Session = Depends(get_db)):
-    """Random collection — added here for proximity to /api/clubs/random."""
-    collection = crud.get_random_collection(db)
-    if not collection:
-        raise HTTPException(status_code=404, detail="Nicio colecție disponibilă")
-    return {
-        "id": collection.id,
-        "title": collection.title,
-        "slug": collection.slug,
-        "description": collection.description,
-        "owner": _owner_payload(collection.owner),
-    }
-
-
 @router.get("/api/clubs/{slug}")
 def get_club_api(
     slug: str,

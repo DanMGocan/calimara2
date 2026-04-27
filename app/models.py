@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, UniqueConstraint, select
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, Date, Boolean, ForeignKey, JSON, Numeric, UniqueConstraint, select, Float
 from sqlalchemy.orm import relationship, Mapped, mapped_column, registry
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
@@ -43,6 +43,7 @@ class User(Base):
     # Stripe / Premium subscription
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
+    premium_tier: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
     premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -119,6 +120,18 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    forum_threads: Mapped[List["ForumThread"]] = relationship(
+        "ForumThread",
+        foreign_keys="ForumThread.author_id",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
+    forum_replies: Mapped[List["ForumReply"]] = relationship(
+        "ForumReply",
+        foreign_keys="ForumReply.author_id",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def is_premium(self) -> bool:
@@ -126,6 +139,14 @@ class User(Base):
             return False
         from .week_util import utcnow_naive
         return self.premium_until > utcnow_naive()
+
+    @property
+    def has_audio_access(self) -> bool:
+        return self.is_premium and self.premium_tier in {"audio", "author_audio"}
+
+    @property
+    def has_author_audio_access(self) -> bool:
+        return self.is_premium and self.premium_tier == "author_audio"
 
 
 class Post(Base):
@@ -164,6 +185,9 @@ class Post(Base):
     collection_entries: Mapped[List["CollectionPost"]] = relationship(
         "CollectionPost", back_populates="post", cascade="all, delete-orphan"
     )
+    audio_versions: Mapped[List["PostAudio"]] = relationship(
+        "PostAudio", back_populates="post", cascade="all, delete-orphan"
+    )
 
     @hybrid_property
     def likes_count(self) -> int:
@@ -197,6 +221,32 @@ class Post(Base):
     def approved_comments(self):
         """Return only approved comments from the eager-loaded comments relationship"""
         return [c for c in self.comments if c.approved]
+
+
+class PostAudio(Base):
+    __tablename__ = "post_audio"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # "tts" | "author"
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    storage_backend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    byte_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    voice_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    language_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    transcript: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    transcript_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    transcript_match_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    moderation_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="audio_versions")
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -423,6 +473,77 @@ class UserAward(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="awards")
+
+
+class ForumThread(Base):
+    __tablename__ = "forum_threads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    section: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    slug: Mapped[str] = mapped_column(String(220), unique=True, index=True, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    toxicity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+    author: Mapped["User"] = relationship("User", foreign_keys=[author_id], back_populates="forum_threads")
+    moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
+    replies: Mapped[List["ForumReply"]] = relationship(
+        "ForumReply",
+        back_populates="thread",
+        cascade="all, delete-orphan",
+    )
+
+    @hybrid_property
+    def approved_reply_count(self) -> int:
+        return len([reply for reply in self.replies if reply.moderation_status == "approved"])
+
+    @approved_reply_count.expression
+    def approved_reply_count(cls):
+        return (
+            select(func.count(ForumReply.id))
+            .where(
+                ForumReply.thread_id == cls.id,
+                ForumReply.moderation_status == "approved",
+            )
+            .correlate(cls)
+            .scalar_subquery()
+        )
+
+
+class ForumReply(Base):
+    __tablename__ = "forum_replies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    thread_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    toxicity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    thread: Mapped["ForumThread"] = relationship("ForumThread", foreign_keys=[thread_id], back_populates="replies")
+    author: Mapped["User"] = relationship("User", foreign_keys=[author_id], back_populates="forum_replies")
+    moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
+
 
 class Conversation(Base):
     __tablename__ = "conversations"

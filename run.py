@@ -25,6 +25,9 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "calimara_db")
+DEV_PREMIUM_USER_EMAIL = "gocandan@gmail.com"
+DEV_PREMIUM_USER_USERNAME = "gocandan"
+DEV_PREMIUM_USER_GOOGLE_ID = "seed-google-gocandan"
 # Track child processes for cleanup
 child_processes = []
 
@@ -70,6 +73,55 @@ def check_env():
         print(f"Missing required environment variables: {', '.join(missing)}")
         print("Please configure them in your .env file.")
         sys.exit(1)
+
+
+def seed_dev_premium_user(database_url: str):
+    """Seed a local test user with the top paid tier enabled."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO users (
+                        username,
+                        email,
+                        google_id,
+                        subtitle,
+                        avatar_seed,
+                        premium_tier,
+                        premium_until
+                    )
+                    VALUES (
+                        :username,
+                        :email,
+                        :google_id,
+                        :subtitle,
+                        :avatar_seed,
+                        'author_audio',
+                        CURRENT_TIMESTAMP + INTERVAL '10 years'
+                    )
+                    ON CONFLICT (email) DO UPDATE SET
+                        premium_tier = 'author_audio',
+                        premium_until = CURRENT_TIMESTAMP + INTERVAL '10 years',
+                        subtitle = EXCLUDED.subtitle,
+                        avatar_seed = EXCLUDED.avatar_seed,
+                        updated_at = CURRENT_TIMESTAMP
+                    """
+                ),
+                {
+                    "username": DEV_PREMIUM_USER_USERNAME,
+                    "email": DEV_PREMIUM_USER_EMAIL,
+                    "google_id": DEV_PREMIUM_USER_GOOGLE_ID,
+                    "subtitle": "cont local pentru testarea abonamentelor",
+                    "avatar_seed": "gocandan-premium",
+                },
+            )
+        print(f"  Seed: {DEV_PREMIUM_USER_EMAIL} La cenaclu' Flacara account")
+    finally:
+        engine.dispose()
 
 
 def init_database():
@@ -177,6 +229,11 @@ def init_database():
         seed_main(quiet=False)
     except Exception as e:
         print(f"  Seed step skipped ({e})")
+
+    try:
+        seed_dev_premium_user(database_url)
+    except Exception as e:
+        print(f"  Dev premium user seed skipped ({e})")
 
 
 def check_node():

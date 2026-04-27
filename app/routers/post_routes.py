@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier, ai_critic
+from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier, ai_critic, audio_service
 from ..database import get_db
 from ..utils import get_client_ip, SUBDOMAIN_SUFFIX
 from ..categories import CATEGORIES
@@ -146,6 +146,12 @@ async def create_post(
                 crud.create_robot_comment(db, post_id=db_post.id, content=critique)
         except Exception as e:
             logger.error(f"AI critique failed for post {db_post.id}: {e}")
+
+    if db_post.moderation_status == "approved":
+        try:
+            audio_service.enqueue_tts_for_post(db, db_post)
+        except Exception as e:
+            logger.error(f"Failed to enqueue TTS audio for post {db_post.id}: {e}")
 
     return db_post
 

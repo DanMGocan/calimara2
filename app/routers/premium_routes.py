@@ -20,6 +20,7 @@ def _require_user(current_user: Optional[models.User]) -> models.User:
 
 @router.post("/api/premium/checkout", response_model=schemas.PremiumCheckoutResponse)
 def create_checkout(
+    body: schemas.PremiumCheckoutRequest = schemas.PremiumCheckoutRequest(),
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
@@ -34,7 +35,12 @@ def create_checkout(
         raise HTTPException(status_code=503, detail=str(exc))
     if not user.stripe_customer_id:
         crud.upsert_stripe_customer_id(db, user_id=user.id, customer_id=customer_id)
-    url = stripe_service.create_checkout_session(customer_id=customer_id, user_id=user.id)
+    try:
+        url = stripe_service.create_checkout_session(
+            customer_id=customer_id, user_id=user.id, tier=body.tier
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return schemas.PremiumCheckoutResponse(url=url)
 
 
@@ -96,11 +102,13 @@ def _apply_subscription_event(db: Session, event) -> None:
     if period_end_ts is None:
         return
     premium_until = datetime.fromtimestamp(int(period_end_ts), tz=timezone.utc).replace(tzinfo=None)
+    premium_tier = stripe_service.subscription_tier_from_event_object(data)
     crud.set_premium_from_subscription(
         db,
         user_id=user.id,
         subscription_id=data.get("id"),
         premium_until=premium_until,
+        premium_tier=premium_tier,
     )
 
 
@@ -117,7 +125,7 @@ def _handle_payment_failed(db: Session, event) -> None:
             user_id=user.id,
             type="payment_failed",
             title="Plata abonamentului a eșuat",
-            message="Ultima încercare de încasare a abonamentului Premium a eșuat. Actualizează metoda de plată în portalul de facturare.",
+            message="Ultima încercare de încasare a abonamentului a eșuat. Actualizează metoda de plată în portalul de facturare.",
             link="/premium",
         )
     )

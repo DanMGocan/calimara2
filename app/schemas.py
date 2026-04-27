@@ -1,6 +1,6 @@
 from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Literal, Optional, List
 
 class UserBase(BaseModel):
     username: str
@@ -39,6 +39,9 @@ class GoogleUserInfo(BaseModel):
 class UserInDB(UserBase):
     id: int
     is_premium: bool = False
+    has_audio_access: bool = False
+    has_author_audio_access: bool = False
+    premium_tier: str = "free"
     premium_until: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -186,6 +189,71 @@ class NotificationResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# ===================================
+# FORUM SCHEMAS
+# ===================================
+
+ForumSection = Literal["general", "poezie", "proza_scurta", "feedback", "anunturi"]
+ForumModerationStatus = Literal["pending", "approved", "flagged", "rejected"]
+
+
+class ForumAuthorRef(BaseModel):
+    id: int
+    username: str
+    avatar_seed: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ForumThreadCreate(BaseModel):
+    section: ForumSection
+    title: str = Field(..., min_length=1, max_length=160)
+    content: str = Field(..., min_length=1, max_length=8000)
+
+
+class ForumReplyCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class ForumThreadModerationAction(BaseModel):
+    action: Literal["lock", "unlock", "pin", "unpin"]
+
+
+class ForumThreadSummary(BaseModel):
+    id: int
+    section: ForumSection
+    title: str
+    slug: str
+    author: Optional[ForumAuthorRef] = None
+    reply_count: int = 0
+    view_count: int = 0
+    is_locked: bool
+    is_pinned: bool
+    moderation_status: ForumModerationStatus
+    created_at: datetime
+    updated_at: datetime
+    last_activity_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ForumReplyOut(BaseModel):
+    id: int
+    thread_id: int
+    content: str
+    author: Optional[ForumAuthorRef] = None
+    moderation_status: ForumModerationStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ForumThreadDetail(ForumThreadSummary):
+    content: str
+    moderation_reason: Optional[str] = None
+    replies: List[ForumReplyOut] = Field(default_factory=list)
 # ===================================
 # COLLECTION SCHEMAS
 # ===================================
@@ -422,13 +490,54 @@ class PremiumCheckoutResponse(BaseModel):
     url: str
 
 
+class PremiumCheckoutRequest(BaseModel):
+    tier: Literal["premium", "audio", "author_audio"] = "premium"
+
+
 class PremiumPortalResponse(BaseModel):
     url: str
 
 
 class PremiumStatus(BaseModel):
     is_premium: bool
+    has_audio_access: bool = False
+    has_author_audio_access: bool = False
+    premium_tier: str = "free"
     premium_until: Optional[datetime] = None
     has_stripe_customer: bool
     has_active_subscription: bool
 
+
+# ===================================
+# AUDIO SCHEMAS
+# ===================================
+
+class PostAudioStatus(BaseModel):
+    available: bool
+    can_listen: bool
+    requires_audio_tier: bool
+    status: Optional[str] = None
+    source: Optional[str] = None
+    audio_id: Optional[int] = None
+    playback_url: Optional[str] = None
+    content_type: Optional[str] = None
+    title: Optional[str] = None
+    author_username: Optional[str] = None
+    message: Optional[str] = None
+
+
+class AudioTrack(BaseModel):
+    audio_id: int
+    post_id: int
+    title: str
+    slug: str
+    author_username: str
+    source: str
+    playback_url: str
+    content_type: Optional[str] = None
+
+
+class CollectionAudioPlaylist(BaseModel):
+    collection_id: int
+    title: str
+    tracks: List[AudioTrack]

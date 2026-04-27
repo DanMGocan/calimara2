@@ -30,6 +30,9 @@ def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get
                 "is_moderator": current_user.is_moderator,
                 "is_suspended": current_user.is_suspended,
                 "is_premium": current_user.is_premium,
+                "has_audio_access": current_user.has_audio_access,
+                "has_author_audio_access": current_user.has_author_audio_access,
+                "premium_tier": current_user.premium_tier,
                 "premium_until": current_user.premium_until.isoformat() if current_user.premium_until else None,
             }
         }

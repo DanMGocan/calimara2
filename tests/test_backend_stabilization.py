@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -10,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
-from app import auth, crud, models, schemas
+from app import auth, crud, models, moderation, schemas
 from app.routers import auth_routes
 
 
@@ -211,6 +212,133 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertTrue(crud.delete_conversation(self.db, conversation.id, alice.id))
         self.assertEqual(self.db.query(models.Conversation).count(), 0)
         self.assertEqual(self.db.query(models.Message).count(), 0)
+
+    def test_forum_crud_supports_thread_reply_lifecycle_and_permissions(self):
+        alice = self.make_user("alice")
+        bob = self.make_user("bob")
+        carol = self.make_user("carol")
+        moderator_user = self.make_user("moderator")
+        moderator_user.is_moderator = True
+        self.db.commit()
+
+        approved = SimpleNamespace(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="ok",
+        )
+
+        thread = crud.create_forum_thread(
+            self.db,
+            alice,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Atelier de metafore",
+                content="Cum lucrăm cu metaforele fără să le forțăm?",
+            ),
+        )
+        duplicate = crud.create_forum_thread(
+            self.db,
+            bob,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Atelier de metafore",
+                content="Altă discuție cu același titlu.",
+            ),
+        )
+
+        self.assertEqual(thread.moderation_status, "pending")
+        self.assertNotEqual(thread.slug, duplicate.slug)
+        self.assertEqual(crud.list_forum_threads(self.db), [])
+
+        crud.apply_forum_thread_moderation_result(self.db, thread, approved)
+        visible_threads = crud.list_forum_threads(self.db)
+        self.assertEqual([item.id for item in visible_threads], [thread.id])
+
+        reply, error = crud.create_forum_reply(
+            self.db,
+            bob,
+            thread,
+            schemas.ForumReplyCreate(content="Aș porni de la imagine, nu de la explicație."),
+        )
+        self.assertIsNone(error)
+        self.assertEqual(reply.moderation_status, "pending")
+        self.assertEqual(crud.get_unread_notification_count(self.db, alice.id), 0)
+
+        crud.apply_forum_reply_moderation_result(self.db, reply, approved)
+        replies = crud.list_forum_replies_for_thread(self.db, thread.id, alice)
+        self.assertEqual([item.id for item in replies], [reply.id])
+        self.assertEqual(crud.get_unread_notification_count(self.db, alice.id), 1)
+
+        updated, error = crud.update_forum_thread_state(self.db, alice, thread, "lock")
+        self.assertIsNone(updated)
+        self.assertEqual(error, "not_allowed")
+
+        updated, error = crud.update_forum_thread_state(self.db, moderator_user, thread, "lock")
+        self.assertIsNone(error)
+        self.assertTrue(updated.is_locked)
+
+        locked_reply, error = crud.create_forum_reply(
+            self.db,
+            bob,
+            updated,
+            schemas.ForumReplyCreate(content="Nu pot răspunde într-o discuție închisă."),
+        )
+        self.assertIsNone(locked_reply)
+        self.assertEqual(error, "locked")
+
+        self.assertFalse(crud.delete_forum_reply(self.db, carol, reply))
+        self.assertTrue(crud.delete_forum_reply(self.db, bob, reply))
+        self.assertEqual(self.db.query(models.ForumReply).count(), 0)
+
+    def test_forum_content_integrates_with_moderation_helpers(self):
+        alice = self.make_user("alice")
+        bob = self.make_user("bob")
+        moderator_user = self.make_user("moderator")
+        moderator_user.is_moderator = True
+        self.db.commit()
+
+        flagged = SimpleNamespace(
+            status=moderation.ModerationStatus.FLAGGED,
+            toxicity_score=0.8,
+            reason="needs review",
+        )
+        approved = SimpleNamespace(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="human approved",
+        )
+
+        thread = crud.create_forum_thread(
+            self.db,
+            alice,
+            schemas.ForumThreadCreate(
+                section="feedback",
+                title="Critică pentru un fragment",
+                content="Aș vrea feedback pe ritm.",
+            ),
+        )
+        crud.apply_forum_thread_moderation_result(self.db, thread, flagged)
+        self.assertEqual(thread.moderation_status, "flagged")
+        self.assertEqual(crud.get_moderation_stats(self.db)["forum_threads_flagged"], 1)
+
+        crud.approve_content(self.db, "forum_thread", thread.id, moderator_user.id, "ok")
+        self.db.refresh(thread)
+        self.assertEqual(thread.moderation_status, "approved")
+
+        reply, error = crud.create_forum_reply(
+            self.db,
+            bob,
+            thread,
+            schemas.ForumReplyCreate(content="Fragmentul are un final puternic."),
+        )
+        self.assertIsNone(error)
+        crud.apply_forum_reply_moderation_result(self.db, reply, flagged)
+        self.assertEqual(reply.moderation_status, "flagged")
+
+        crud.approve_content(self.db, "forum_reply", reply.id, moderator_user.id, "ok")
+        self.db.refresh(reply)
+        self.assertEqual(reply.moderation_status, "approved")
+        self.assertEqual(crud.get_unread_notification_count(self.db, alice.id), 2)
 
     def test_notifications_and_moderation_helpers_support_pagination_and_stats(self):
         user = self.make_user("moderated")

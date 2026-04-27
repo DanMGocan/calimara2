@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .. import models, schemas, crud, admin, moderation
 from ..database import get_db
@@ -39,6 +39,10 @@ def get_moderation_stats(
             models.Post.moderated_at >= today
         ).count() + db.query(models.Comment).filter(
             models.Comment.moderated_at >= today
+        ).count() + db.query(models.ForumThread).filter(
+            models.ForumThread.moderated_at >= today
+        ).count() + db.query(models.ForumReply).filter(
+            models.ForumReply.moderated_at >= today
         ).count()
 
         return {
@@ -49,7 +53,11 @@ def get_moderation_stats(
             "posts_pending": stats['posts_pending'],
             "posts_flagged": stats['posts_flagged'],
             "comments_pending": stats['comments_pending'],
-            "comments_flagged": stats['comments_flagged']
+            "comments_flagged": stats['comments_flagged'],
+            "forum_threads_pending": stats['forum_threads_pending'],
+            "forum_threads_flagged": stats['forum_threads_flagged'],
+            "forum_replies_pending": stats['forum_replies_pending'],
+            "forum_replies_flagged": stats['forum_replies_flagged'],
         }
 
     except Exception as e:
@@ -102,6 +110,36 @@ def get_pending_content(
                     "moderation_status": comment.moderation_status,
                     "moderation_reason": getattr(comment, 'moderation_reason', ''),
                     "created_at": comment.created_at.isoformat()
+                })
+
+        if content_type in ["all", "forum_threads"]:
+            threads = crud.get_forum_threads_for_moderation(db, status_filter="pending", limit=50)
+            for thread in threads:
+                content.append({
+                    "id": thread.id,
+                    "type": "forum_thread",
+                    "title": thread.title,
+                    "content": thread.content,
+                    "author": thread.author.username if thread.author else "Unknown",
+                    "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
+                    "moderation_status": thread.moderation_status,
+                    "moderation_reason": getattr(thread, "moderation_reason", ""),
+                    "created_at": thread.created_at.isoformat()
+                })
+
+        if content_type in ["all", "forum_replies"]:
+            replies = crud.get_forum_replies_for_moderation(db, status_filter="pending", limit=50)
+            for reply in replies:
+                content.append({
+                    "id": reply.id,
+                    "type": "forum_reply",
+                    "title": reply.thread.title if reply.thread else None,
+                    "content": reply.content,
+                    "author": reply.author.username if reply.author else "Unknown",
+                    "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
+                    "moderation_status": reply.moderation_status,
+                    "moderation_reason": getattr(reply, "moderation_reason", ""),
+                    "created_at": reply.created_at.isoformat()
                 })
 
         # Sort by creation date
@@ -162,6 +200,55 @@ def get_flagged_content(
                 "created_at": comment.created_at.isoformat()
             })
 
+        audio_items = db.query(models.PostAudio).options(
+            joinedload(models.PostAudio.post).joinedload(models.Post.owner)
+        ).filter(models.PostAudio.status == "flagged").limit(50).all()
+        logger.info(f"Found {len(audio_items)} flagged audio recordings")
+
+        for audio in audio_items:
+            post = audio.post
+            content.append({
+                "id": audio.id,
+                "type": "audio",
+                "title": post.title if post else None,
+                "content": audio.transcript or audio.moderation_reason or "Înregistrare audio fără transcriere",
+                "author": post.owner.username if post and post.owner else None,
+                "toxicity_score": 0.0,
+                "moderation_status": audio.status,
+                "moderation_reason": audio.moderation_reason or "",
+                "created_at": audio.created_at.isoformat()
+            })
+
+        forum_threads = crud.get_forum_threads_for_moderation(db, status_filter="flagged", limit=50)
+        logger.info(f"Found {len(forum_threads)} flagged forum threads")
+        for thread in forum_threads:
+            content.append({
+                "id": thread.id,
+                "type": "forum_thread",
+                "title": thread.title,
+                "content": thread.content,
+                "author": thread.author.username if thread.author else "Unknown",
+                "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
+                "moderation_status": getattr(thread, "moderation_status", "flagged"),
+                "moderation_reason": getattr(thread, "moderation_reason", ""),
+                "created_at": thread.created_at.isoformat()
+            })
+
+        forum_replies = crud.get_forum_replies_for_moderation(db, status_filter="flagged", limit=50)
+        logger.info(f"Found {len(forum_replies)} flagged forum replies")
+        for reply in forum_replies:
+            content.append({
+                "id": reply.id,
+                "type": "forum_reply",
+                "title": reply.thread.title if reply.thread else None,
+                "content": reply.content,
+                "author": reply.author.username if reply.author else "Unknown",
+                "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
+                "moderation_status": getattr(reply, "moderation_status", "flagged"),
+                "moderation_reason": getattr(reply, "moderation_reason", ""),
+                "created_at": reply.created_at.isoformat()
+            })
+
         # Sort by toxicity score
         content.sort(key=lambda x: x.get("toxicity_score", 0), reverse=True)
 
@@ -193,7 +280,7 @@ def moderate_content_action(
         if action not in ["approve", "reject", "delete"]:
             raise HTTPException(status_code=400, detail="Invalid action")
 
-        if content_type not in ["post", "comment"]:
+        if content_type not in ["post", "comment", "audio", "forum_thread", "forum_reply"]:
             raise HTTPException(status_code=400, detail="Invalid content type")
 
         # Use the new CRUD functions for approving/rejecting content
@@ -215,6 +302,12 @@ def moderate_content_action(
             # For delete, we still need to handle it manually since it's not in CRUD
             if content_type == "post":
                 content = db.query(models.Post).filter(models.Post.id == content_id).first()
+            elif content_type == "audio":
+                content = db.query(models.PostAudio).filter(models.PostAudio.id == content_id).first()
+            elif content_type == "forum_thread":
+                content = db.query(models.ForumThread).filter(models.ForumThread.id == content_id).first()
+            elif content_type == "forum_reply":
+                content = db.query(models.ForumReply).filter(models.ForumReply.id == content_id).first()
             else:
                 content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
 
@@ -377,6 +470,21 @@ def get_moderation_logs_api(
                     content_title = f"Comment on: {comment.post.title}" if comment.post else "Comment"
                     content_preview = comment.content[:100] + "..." if len(comment.content) > 100 else comment.content
                     content_author = comment.commenter.username if comment.commenter else (comment.author_name or "Anonymous")
+            elif log.content_type == "forum_thread":
+                thread = db.query(models.ForumThread).filter(models.ForumThread.id == log.content_id).first()
+                if thread:
+                    content_title = thread.title
+                    content_preview = thread.content[:100] + "..." if len(thread.content) > 100 else thread.content
+                    content_author = thread.author.username if thread.author else "Unknown"
+            elif log.content_type == "forum_reply":
+                reply = db.query(models.ForumReply).options(
+                    joinedload(models.ForumReply.thread),
+                    joinedload(models.ForumReply.author),
+                ).filter(models.ForumReply.id == log.content_id).first()
+                if reply:
+                    content_title = f"Reply in: {reply.thread.title}" if reply.thread else "Forum reply"
+                    content_preview = reply.content[:100] + "..." if len(reply.content) > 100 else reply.content
+                    content_author = reply.author.username if reply.author else "Unknown"
 
             result.append({
                 "id": log.id,
@@ -445,6 +553,47 @@ def get_moderation_queue_api(
                         "post_title": comment.post.title if comment.post else "Unknown Post",
                         "post_id": comment.post_id,
                         "created_at": comment.created_at.isoformat()
+                    }
+            elif log.content_type == "audio":
+                audio = db.query(models.PostAudio).options(
+                    joinedload(models.PostAudio.post).joinedload(models.Post.owner)
+                ).filter(models.PostAudio.id == log.content_id).first()
+                if audio:
+                    content_data = {
+                        "id": audio.id,
+                        "content": audio.transcript or audio.moderation_reason or "Înregistrare audio",
+                        "author": audio.post.owner.username if audio.post and audio.post.owner else "Unknown",
+                        "post_title": audio.post.title if audio.post else "Unknown Post",
+                        "post_id": audio.post_id,
+                        "created_at": audio.created_at.isoformat(),
+                        "match_score": audio.transcript_match_score,
+                    }
+            elif log.content_type == "forum_thread":
+                thread = db.query(models.ForumThread).options(
+                    joinedload(models.ForumThread.author)
+                ).filter(models.ForumThread.id == log.content_id).first()
+                if thread:
+                    content_data = {
+                        "id": thread.id,
+                        "title": thread.title,
+                        "content": thread.content,
+                        "author": thread.author.username if thread.author else "Unknown",
+                        "created_at": thread.created_at.isoformat(),
+                        "section": thread.section,
+                    }
+            elif log.content_type == "forum_reply":
+                reply = db.query(models.ForumReply).options(
+                    joinedload(models.ForumReply.author),
+                    joinedload(models.ForumReply.thread),
+                ).filter(models.ForumReply.id == log.content_id).first()
+                if reply:
+                    content_data = {
+                        "id": reply.id,
+                        "title": reply.thread.title if reply.thread else None,
+                        "content": reply.content,
+                        "author": reply.author.username if reply.author else "Unknown",
+                        "thread_id": reply.thread_id,
+                        "created_at": reply.created_at.isoformat(),
                     }
 
             if content_data:
@@ -526,5 +675,3 @@ def get_extended_moderation_stats(
     except Exception as e:
         logger.error(f"Error getting extended moderation stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to get extended moderation stats")
-
-

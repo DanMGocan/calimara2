@@ -289,6 +289,17 @@ def moderate_post(title: str, content: str) -> ModerationResult:
     return _moderate_text(full_text)
 
 
+def moderate_forum_thread(title: str, content: str) -> ModerationResult:
+    logger.info(f"Moderating forum thread: {title[:30]}...")
+    full_text = f"Titlu discuție: {title}\n\nConținut: {content}"
+    return _moderate_text(full_text)
+
+
+def moderate_forum_reply(content: str) -> ModerationResult:
+    logger.info(f"Moderating forum reply ({len(content)} chars)")
+    return _moderate_text(content)
+
+
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
     return moderation_result.status == ModerationStatus.APPROVED
 
@@ -358,4 +369,22 @@ def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: 
         log_moderation_decision(db, "post", post_id, user_id, result)
     except Exception as e:
         logger.error(f"Failed to log moderation for post {post_id}: {e}")
+    return result
+
+
+def moderate_forum_thread_with_logging(title: str, content: str, thread_id: int, user_id: int, db: Session) -> ModerationResult:
+    result = moderate_forum_thread(title, content)
+    try:
+        log_moderation_decision(db, "forum_thread", thread_id, user_id, result)
+    except Exception as e:
+        logger.error(f"Failed to log moderation for forum thread {thread_id}: {e}")
+    return result
+
+
+def moderate_forum_reply_with_logging(content: str, reply_id: int, user_id: int, db: Session) -> ModerationResult:
+    result = moderate_forum_reply(content)
+    try:
+        log_moderation_decision(db, "forum_reply", reply_id, user_id, result)
+    except Exception as e:
+        logger.error(f"Failed to log moderation for forum reply {reply_id}: {e}")
     return result

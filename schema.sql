@@ -15,12 +15,15 @@ DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS best_friends CASCADE;
 DROP TABLE IF EXISTS featured_posts CASCADE;
 DROP TABLE IF EXISTS user_awards CASCADE;
+DROP TABLE IF EXISTS forum_replies CASCADE;
+DROP TABLE IF EXISTS forum_threads CASCADE;
 DROP TABLE IF EXISTS club_board_messages CASCADE;
 DROP TABLE IF EXISTS club_join_requests CASCADE;
 DROP TABLE IF EXISTS club_members CASCADE;
 DROP TABLE IF EXISTS clubs CASCADE;
 DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
+DROP TABLE IF EXISTS post_audio CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
@@ -50,6 +53,7 @@ CREATE TABLE users (
     suspended_by INT,
     stripe_customer_id VARCHAR(100) UNIQUE,
     stripe_subscription_id VARCHAR(100) UNIQUE,
+    premium_tier VARCHAR(20) DEFAULT 'free' NOT NULL,
     premium_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +67,7 @@ CREATE INDEX idx_users_google_id ON users(google_id);
 CREATE INDEX idx_users_created_at ON users(created_at);
 CREATE INDEX idx_users_is_suspended ON users(is_suspended);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
+CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
 
 -- ===================================
@@ -106,6 +111,38 @@ CREATE INDEX idx_posts_toxicity_score ON posts(toxicity_score);
 CREATE INDEX idx_posts_themes ON posts USING GIN (themes);
 CREATE INDEX idx_posts_feelings ON posts USING GIN (feelings);
 CREATE INDEX idx_posts_theme_analysis_status ON posts(theme_analysis_status);
+
+-- ===================================
+-- POST AUDIO TABLE
+-- ===================================
+CREATE TABLE post_audio (
+    id SERIAL PRIMARY KEY,
+    post_id INT NOT NULL,
+    source VARCHAR(20) NOT NULL CHECK (source IN ('tts', 'author')),
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (status IN ('pending', 'processing', 'ready', 'flagged', 'rejected', 'failed')),
+    storage_backend VARCHAR(20),
+    storage_key VARCHAR(500),
+    content_type VARCHAR(100),
+    duration_seconds DOUBLE PRECISION,
+    byte_size INT,
+    voice_name VARCHAR(120),
+    language_code VARCHAR(20),
+    transcript TEXT,
+    transcript_confidence DOUBLE PRECISION,
+    transcript_match_score DOUBLE PRECISION,
+    moderation_status VARCHAR(20),
+    moderation_reason TEXT,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_post_audio_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_post_audio_post_id ON post_audio(post_id);
+CREATE INDEX idx_post_audio_status ON post_audio(status);
+CREATE INDEX idx_post_audio_source_status ON post_audio(source, status);
 
 -- ===================================
 -- COMMENTS TABLE
@@ -345,6 +382,66 @@ CREATE INDEX idx_cbm_club_created ON club_board_messages(club_id, created_at DES
 CREATE INDEX idx_cbm_parent ON club_board_messages(parent_id);
 
 -- ===================================
+-- FORUM THREADS TABLE
+-- ===================================
+CREATE TABLE forum_threads (
+    id SERIAL PRIMARY KEY,
+    author_id INT NOT NULL,
+    section VARCHAR(40) NOT NULL
+        CHECK (section IN ('general', 'poezie', 'proza_scurta', 'feedback', 'anunturi')),
+    title VARCHAR(160) NOT NULL,
+    slug VARCHAR(220) UNIQUE NOT NULL,
+    content TEXT NOT NULL,
+    view_count INT DEFAULT 0 NOT NULL,
+    is_locked BOOLEAN DEFAULT FALSE NOT NULL,
+    is_pinned BOOLEAN DEFAULT FALSE NOT NULL,
+    moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
+    moderation_reason TEXT,
+    toxicity_score FLOAT,
+    moderated_by INT,
+    moderated_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_forum_threads_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_threads_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_forum_threads_author ON forum_threads(author_id);
+CREATE INDEX idx_forum_threads_section_activity ON forum_threads(section, last_activity_at DESC);
+CREATE INDEX idx_forum_threads_status_activity ON forum_threads(moderation_status, is_pinned DESC, last_activity_at DESC);
+CREATE INDEX idx_forum_threads_last_activity ON forum_threads(last_activity_at DESC);
+CREATE INDEX idx_forum_threads_slug ON forum_threads(slug);
+
+-- ===================================
+-- FORUM REPLIES TABLE
+-- ===================================
+CREATE TABLE forum_replies (
+    id SERIAL PRIMARY KEY,
+    thread_id INT NOT NULL,
+    author_id INT NOT NULL,
+    content TEXT NOT NULL,
+    moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
+    moderation_reason TEXT,
+    toxicity_score FLOAT,
+    moderated_by INT,
+    moderated_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_forum_replies_thread FOREIGN KEY (thread_id) REFERENCES forum_threads(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_replies_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_replies_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_forum_replies_thread_created ON forum_replies(thread_id, created_at ASC);
+CREATE INDEX idx_forum_replies_author ON forum_replies(author_id);
+CREATE INDEX idx_forum_replies_status ON forum_replies(moderation_status);
+
+-- ===================================
 -- USER AWARDS TABLE
 -- ===================================
 CREATE TABLE user_awards (
@@ -412,7 +509,7 @@ CREATE INDEX idx_msg_conversation_created ON messages(conversation_id, created_a
 -- ===================================
 CREATE TABLE moderation_logs (
     id SERIAL PRIMARY KEY,
-    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('post', 'comment')),
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('post', 'comment', 'audio', 'forum_thread', 'forum_reply')),
     content_id INT NOT NULL,
     user_id INT,
     ai_decision VARCHAR(20) NOT NULL CHECK (ai_decision IN ('approved', 'flagged', 'rejected')),
@@ -557,6 +654,8 @@ CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_posts_updated_at BEFORE UPDATE ON posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_post_audio_updated_at BEFORE UPDATE ON post_audio
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
@@ -567,8 +666,11 @@ CREATE TRIGGER trg_clubs_updated_at BEFORE UPDATE ON clubs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_club_board_messages_updated_at BEFORE UPDATE ON club_board_messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_forum_threads_updated_at BEFORE UPDATE ON forum_threads
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_forum_replies_updated_at BEFORE UPDATE ON forum_replies
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_user_awards_updated_at BEFORE UPDATE ON user_awards
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_conversations_updated_at BEFORE UPDATE ON conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-

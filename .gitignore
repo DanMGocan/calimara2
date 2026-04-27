@@ -27,6 +27,7 @@ venv/
 # Environment variables
 .env
 .flaskenv
+keys/
 
 # IDEs and editors
 .vscode/
@@ -46,8 +47,10 @@ Thumbs.db # Windows
 *.db-journal
 /data/
 .db_epoch
+temp/
 
 # Logs
 *.log
+error.txt
 
 .claude
