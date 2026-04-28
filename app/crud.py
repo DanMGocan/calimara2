@@ -5,10 +5,16 @@ from datetime import datetime, date as date_type, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, and_, desc, extract, case
+from sqlalchemy.exc import IntegrityError
 from . import models, schemas
 from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
+
+AUDIO_TTS_MONTHLY_QUOTAS = {
+    "audio": 100_000,
+    "author_audio": 250_000,
+}
 
 # ===================================
 # USER CRUD FUNCTIONS
@@ -98,6 +104,7 @@ def create_user_post(db: Session, post: schemas.PostCreate, user_id: int, catego
         user_id=user_id,
         slug=slug,
         category=category,
+        ai_critic_requested=post.ai_critic,
         moderation_status="pending"
     )
     db.add(db_post)
@@ -119,6 +126,10 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, cate
         db_post.category = category
         
     db_post.moderation_status = "pending"
+    db_post.theme_analysis_status = "pending"
+    db_post.themes = []
+    db_post.feelings = []
+    db_post.ai_critic_requested = False
     db.query(models.PostAudio).filter(models.PostAudio.post_id == post_id).update(
         {
             "status": "rejected",
@@ -146,10 +157,18 @@ def update_post_theme_analysis(db: Session, post_id: int, themes: list, feelings
         db.commit()
 
 def get_platform_stats(db: Session):
-    total_posts = db.query(models.Post).filter(models.Post.moderation_status == "approved").count()
-    total_authors = db.query(models.Post.user_id).filter(
-        models.Post.moderation_status == "approved"
-    ).distinct().count()
+    try:
+        total_posts = db.query(func.count(models.Post.id)).filter(
+            models.Post.moderation_status == "approved"
+        ).scalar() or 0
+        total_authors = db.query(func.count(func.distinct(models.Post.user_id))).filter(
+            models.Post.moderation_status == "approved",
+            models.Post.user_id.isnot(None),
+        ).scalar() or 0
+    except Exception:
+        logger.exception("Failed to load platform stats")
+        db.rollback()
+        return {"total_posts": 0, "total_authors": 0}
     return {"total_posts": total_posts, "total_authors": total_authors}
 
 def get_random_posts(db: Session, limit: int = 10):
@@ -228,12 +247,55 @@ def get_pending_tts_audio_jobs(db: Session, limit: int = 10) -> List[models.Post
         .filter(
             models.PostAudio.source == "tts",
             models.PostAudio.status == "pending",
+            models.PostAudio.requester_user_id.isnot(None),
             models.Post.moderation_status == "approved",
         )
         .order_by(models.PostAudio.created_at.asc(), models.PostAudio.id.asc())
         .limit(limit)
         .all()
     )
+
+
+def get_active_or_ready_tts_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
+    return (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post_id,
+            models.PostAudio.source == "tts",
+            or_(
+                models.PostAudio.status == "ready",
+                and_(
+                    models.PostAudio.status.in_(["pending", "processing"]),
+                    models.PostAudio.requester_user_id.isnot(None),
+                ),
+            ),
+        )
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+
+
+def cancel_legacy_pending_tts_for_post(db: Session, post_id: int) -> int:
+    updated = (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post_id,
+            models.PostAudio.source == "tts",
+            models.PostAudio.requester_user_id.is_(None),
+            models.PostAudio.status.in_(["pending", "processing"]),
+        )
+        .update(
+            {
+                "status": "cancelled",
+                "moderation_status": "cancelled",
+                "moderation_reason": "Automatic TTS generation was disabled",
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated:
+        db.commit()
+    return updated
 
 
 def enqueue_tts_audio_for_post(db: Session, post: models.Post) -> Optional[models.PostAudio]:
@@ -252,6 +314,165 @@ def enqueue_tts_audio_for_post(db: Session, post: models.Post) -> Optional[model
     if existing:
         return existing
     return create_post_audio(db, post_id=post.id, source="tts", status="pending")
+
+
+def audio_tts_quota_limit_for_user(user: models.User) -> int:
+    if not user or not user.is_premium:
+        return 0
+    return AUDIO_TTS_MONTHLY_QUOTAS.get(user.premium_tier, 0)
+
+
+def audio_tts_quota_period_for_user(user: models.User) -> tuple[Optional[datetime], Optional[datetime]]:
+    if not user or not user.is_premium or not user.premium_until:
+        return None, None
+    period_end = user.premium_until
+    period_start = user.premium_period_start or (period_end - timedelta(days=30))
+    return period_start, period_end
+
+
+def get_user_audio_tts_character_usage(
+    db: Session,
+    user_id: int,
+    period_start: datetime,
+    period_end: datetime,
+) -> int:
+    used = (
+        db.query(func.coalesce(func.sum(models.PostAudio.tts_character_count), 0))
+        .filter(
+            models.PostAudio.source == "tts",
+            models.PostAudio.requester_user_id == user_id,
+            models.PostAudio.quota_period_start == period_start,
+            models.PostAudio.quota_period_end == period_end,
+        )
+        .scalar()
+    )
+    return int(used or 0)
+
+
+def create_tts_audio_request(
+    db: Session,
+    *,
+    post_id: int,
+    requester_user_id: int,
+    tts_character_count: int,
+    quota_period_start: datetime,
+    quota_period_end: datetime,
+) -> models.PostAudio:
+    return create_post_audio(
+        db,
+        post_id=post_id,
+        requester_user_id=requester_user_id,
+        source="tts",
+        status="pending",
+        tts_character_count=tts_character_count,
+        quota_period_start=quota_period_start,
+        quota_period_end=quota_period_end,
+    )
+
+
+AI_JOB_ACTIVE_STATUSES = ("pending", "processing")
+
+
+def enqueue_ai_job(
+    db: Session,
+    *,
+    job_type: str,
+    target_type: str,
+    target_id: int,
+    payload: Optional[dict] = None,
+    max_attempts: int = 3,
+    dedupe: bool = True,
+) -> models.AIJob:
+    if dedupe:
+        existing = (
+            db.query(models.AIJob)
+            .filter(
+                models.AIJob.job_type == job_type,
+                models.AIJob.target_type == target_type,
+                models.AIJob.target_id == target_id,
+                models.AIJob.status.in_(AI_JOB_ACTIVE_STATUSES),
+            )
+            .order_by(models.AIJob.id.desc())
+            .first()
+        )
+        if existing:
+            return existing
+    job = models.AIJob(
+        job_type=job_type,
+        target_type=target_type,
+        target_id=target_id,
+        payload=payload or {},
+        max_attempts=max_attempts,
+        status="pending",
+        run_after=utcnow_naive(),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def claim_pending_ai_jobs(
+    db: Session,
+    *,
+    limit: int = 10,
+    worker_id: Optional[str] = None,
+) -> List[models.AIJob]:
+    now = utcnow_naive()
+    query = (
+        db.query(models.AIJob)
+        .filter(
+            models.AIJob.status == "pending",
+            models.AIJob.run_after <= now,
+        )
+        .order_by(models.AIJob.run_after.asc(), models.AIJob.id.asc())
+    )
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        query = query.with_for_update(skip_locked=True)
+    jobs = query.limit(max(1, limit)).all()
+    for job in jobs:
+        job.status = "processing"
+        job.locked_at = now
+        job.locked_by = worker_id
+        job.attempts = int(job.attempts or 0) + 1
+        job.error_message = None
+    if jobs:
+        db.commit()
+        for job in jobs:
+            db.refresh(job)
+    return jobs
+
+
+def complete_ai_job(db: Session, job: models.AIJob) -> models.AIJob:
+    job.status = "completed"
+    job.locked_at = None
+    job.locked_by = None
+    job.error_message = None
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def fail_ai_job(
+    db: Session,
+    job: models.AIJob,
+    error_message: str,
+    *,
+    retry: bool = True,
+) -> models.AIJob:
+    message = error_message[:2000] if error_message else "AI job failed"
+    if retry and int(job.attempts or 0) < int(job.max_attempts or 1):
+        delay_seconds = min(300, 10 * (2 ** max(0, int(job.attempts or 1) - 1)))
+        job.status = "pending"
+        job.run_after = utcnow_naive() + timedelta(seconds=delay_seconds)
+    else:
+        job.status = "failed"
+    job.locked_at = None
+    job.locked_by = None
+    job.error_message = message
+    db.commit()
+    db.refresh(job)
+    return job
 
 
 def get_random_ready_audio(
@@ -300,29 +521,41 @@ def get_weighted_random_posts_by_category(db: Session, category: str, limit: int
         models.Post.moderation_status == "approved"
     ).order_by(desc(order_key)).limit(limit).all()
 
-def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5):
-    return db.query(models.Post).filter(
-        models.Post.user_id == user_id,
-        models.Post.moderation_status == "approved"
-    ).order_by(models.Post.created_at.desc()).limit(limit).all()
+def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5, include_unapproved: bool = False):
+    query = db.query(models.Post).filter(models.Post.user_id == user_id)
+    if not include_unapproved:
+        query = query.filter(models.Post.moderation_status == "approved")
+    return query.order_by(models.Post.created_at.desc()).limit(limit).all()
 
-def get_posts_by_month_year(db: Session, user_id: int, month: int, year: int, limit: int = 50):
-    return db.query(models.Post).filter(
+def get_posts_by_month_year(
+    db: Session,
+    user_id: int,
+    month: int,
+    year: int,
+    limit: int = 50,
+    include_unapproved: bool = False,
+):
+    query = db.query(models.Post).filter(
         models.Post.user_id == user_id,
-        models.Post.moderation_status == "approved",
         extract('month', models.Post.created_at) == month,
         extract('year', models.Post.created_at) == year
-    ).order_by(models.Post.created_at.desc()).limit(limit).all()
+    )
+    if not include_unapproved:
+        query = query.filter(models.Post.moderation_status == "approved")
+    return query.order_by(models.Post.created_at.desc()).limit(limit).all()
 
-def get_available_months_for_user(db: Session, user_id: int):
-    results = db.query(
+def get_available_months_for_user(db: Session, user_id: int, include_unapproved: bool = False):
+    query = db.query(
         extract('month', models.Post.created_at).label('month'),
         extract('year', models.Post.created_at).label('year'),
         func.count(models.Post.id).label('post_count')
     ).filter(
         models.Post.user_id == user_id,
-        models.Post.moderation_status == "approved"
-    ).group_by('year', 'month').order_by(desc('year'), desc('month')).all()
+    )
+    if not include_unapproved:
+        query = query.filter(models.Post.moderation_status == "approved")
+
+    results = query.group_by('year', 'month').order_by(desc('year'), desc('month')).all()
     
     return [{"month": int(r.month), "year": int(r.year), "post_count": r.post_count} for r in results]
 
@@ -422,10 +655,13 @@ def get_comments_for_post(db: Session, post_id: int, approved_only: bool = True)
 def approve_comment(db: Session, comment_id: int):
     comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
     if comment:
+        was_approved = comment.moderation_status == "approved"
         comment.approved = True
         comment.moderation_status = "approved"
         db.commit()
         db.refresh(comment)
+        if not was_approved:
+            award_content_approved(db, "comment", comment)
     return comment
 
 def delete_comment(db: Session, comment_id: int):
@@ -505,6 +741,7 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
         content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
     
     if content:
+        was_content_approved = getattr(content, "moderation_status", None) == "approved"
         was_forum_reply_approved = (
             content_type == "forum_reply" and content.moderation_status == "approved"
         )
@@ -526,6 +763,9 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
             
         db.commit()
         db.refresh(content)
+
+        if not was_content_approved:
+            award_content_approved(db, content_type, content)
 
         if content_type == "forum_reply" and not was_forum_reply_approved:
             _notify_forum_reply_approved(db, content)
@@ -582,8 +822,6 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
                 message=f"{content_label} ta a fost aprobată și publicată. {reason}",
                 link=link
             )
-        if content_type == "post":
-            enqueue_tts_audio_for_post(db, content)
         return content
     return None
 
@@ -683,6 +921,8 @@ def create_like(db: Session, post_id: int, user_id: Optional[int] = None, ip_add
     db.add(db_like)
     db.commit()
     db.refresh(db_like)
+    award_like_created(db, db_like)
+    db.refresh(db_like)
     return db_like
 
 def get_likes_count_for_post(db: Session, post_id: int):
@@ -711,6 +951,378 @@ def get_best_friends_for_user(db: Session, user_id: int):
 
 def get_user_awards(db: Session, user_id: int):
     return db.query(models.UserAward).filter(models.UserAward.user_id == user_id).order_by(models.UserAward.award_date.desc()).all()
+
+
+# ===================================
+# GOLOGANI / SHOP
+# ===================================
+
+GOLOGANI_REWARDS = {
+    "post_approved": 25,
+    "comment_approved": 8,
+    "like_given": 1,
+    "like_received": 2,
+    "super_like_given": 5,
+    "super_like_received": 15,
+    "forum_thread_approved": 15,
+    "forum_reply_approved": 8,
+}
+
+DEFAULT_SHOP_ITEMS = [
+    {
+        "slug": "manuscrisul-scrisorii-a-iii-a",
+        "name": "Manuscrisul Scrisorii a III-a",
+        "description": "Un manuscris de vitrină pentru profilul tău.",
+        "price": 120,
+        "slot": "profile_badge",
+        "sort_order": 10,
+    },
+    {
+        "slug": "costumul-de-nunta-al-lui-nichita-stanescu",
+        "name": "Costumul de nuntă al lui Nichita Stănescu",
+        "description": "Un costum literar pentru apariții de cenaclu.",
+        "price": 250,
+        "slot": "costume",
+        "sort_order": 20,
+    },
+]
+
+
+class EconomyError(Exception):
+    """Base class for Gologani/shop errors."""
+
+
+class InsufficientGologaniError(EconomyError):
+    pass
+
+
+class ShopItemNotFoundError(EconomyError):
+    pass
+
+
+class ShopItemInactiveError(EconomyError):
+    pass
+
+
+class ShopItemDuplicateSlugError(EconomyError):
+    pass
+
+
+class InventoryDuplicateError(EconomyError):
+    pass
+
+
+class InventoryItemNotFoundError(EconomyError):
+    pass
+
+
+def _normalize_balance(user: models.User) -> int:
+    return int(user.gologani_balance or 0)
+
+
+def grant_gologani(
+    db: Session,
+    *,
+    user_id: Optional[int],
+    amount: int,
+    event_type: str,
+    idempotency_key: str,
+    source_type: Optional[str] = None,
+    source_id: Optional[int] = None,
+    description: Optional[str] = None,
+    extra_data: Optional[dict] = None,
+) -> Optional[models.GologaniTransaction]:
+    if not user_id or amount == 0:
+        return None
+    existing = (
+        db.query(models.GologaniTransaction)
+        .filter(models.GologaniTransaction.idempotency_key == idempotency_key)
+        .first()
+    )
+    if existing:
+        return existing
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+    user.gologani_balance = _normalize_balance(user) + amount
+    transaction = models.GologaniTransaction(
+        user_id=user.id,
+        amount=amount,
+        balance_after=user.gologani_balance,
+        event_type=event_type,
+        source_type=source_type,
+        source_id=source_id,
+        idempotency_key=idempotency_key,
+        description=description,
+        extra_data=extra_data or {},
+    )
+    db.add(transaction)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return (
+            db.query(models.GologaniTransaction)
+            .filter(models.GologaniTransaction.idempotency_key == idempotency_key)
+            .first()
+        )
+    db.refresh(transaction)
+    return transaction
+
+
+def award_content_approved(db: Session, content_type: str, content) -> Optional[models.GologaniTransaction]:
+    reward_key = f"{content_type}_approved"
+    amount = GOLOGANI_REWARDS.get(reward_key)
+    if not amount:
+        return None
+    if getattr(content, "moderation_status", None) != "approved":
+        return None
+    if content_type == "post":
+        user_id = getattr(content, "user_id", None)
+        label = "Postare aprobată"
+    elif content_type == "comment":
+        if getattr(content, "is_robot", False):
+            return None
+        user_id = getattr(content, "user_id", None)
+        label = "Comentariu aprobat"
+    elif content_type == "forum_thread":
+        user_id = getattr(content, "author_id", None)
+        label = "Thread de forum aprobat"
+    elif content_type == "forum_reply":
+        user_id = getattr(content, "author_id", None)
+        label = "Răspuns de forum aprobat"
+    else:
+        return None
+    source_id = getattr(content, "id", None)
+    return grant_gologani(
+        db,
+        user_id=user_id,
+        amount=amount,
+        event_type=reward_key,
+        source_type=content_type,
+        source_id=source_id,
+        idempotency_key=f"reward:{reward_key}:{source_id}",
+        description=label,
+    )
+
+
+def award_like_created(db: Session, like: models.Like) -> None:
+    if not like.user_id:
+        return
+    post = like.post or get_post(db, like.post_id)
+    if not post or post.moderation_status != "approved" or post.user_id == like.user_id:
+        return
+    grant_gologani(
+        db,
+        user_id=like.user_id,
+        amount=GOLOGANI_REWARDS["like_given"],
+        event_type="like_given",
+        source_type="like",
+        source_id=like.id,
+        idempotency_key=f"reward:like_given:{like.user_id}:{like.post_id}",
+        description="Apreciere oferită",
+    )
+    grant_gologani(
+        db,
+        user_id=post.user_id,
+        amount=GOLOGANI_REWARDS["like_received"],
+        event_type="like_received",
+        source_type="like",
+        source_id=like.id,
+        idempotency_key=f"reward:like_received:{like.user_id}:{like.post_id}",
+        description="Apreciere primită",
+    )
+
+
+def award_super_like_created(db: Session, super_like: models.SuperLike) -> None:
+    post = super_like.post or get_post(db, super_like.post_id)
+    if not post or post.moderation_status != "approved" or post.user_id == super_like.user_id:
+        return
+    grant_gologani(
+        db,
+        user_id=super_like.user_id,
+        amount=GOLOGANI_REWARDS["super_like_given"],
+        event_type="super_like_given",
+        source_type="super_like",
+        source_id=super_like.id,
+        idempotency_key=f"reward:super_like_given:{super_like.user_id}:{super_like.post_id}",
+        description="Super-apreciere oferită",
+    )
+    grant_gologani(
+        db,
+        user_id=post.user_id,
+        amount=GOLOGANI_REWARDS["super_like_received"],
+        event_type="super_like_received",
+        source_type="super_like",
+        source_id=super_like.id,
+        idempotency_key=f"reward:super_like_received:{super_like.user_id}:{super_like.post_id}",
+        description="Super-apreciere primită",
+    )
+
+
+def seed_default_shop_items(db: Session) -> None:
+    changed = False
+    for item_data in DEFAULT_SHOP_ITEMS:
+        exists = db.query(models.ShopItem.id).filter(models.ShopItem.slug == item_data["slug"]).first()
+        if not exists:
+            db.add(models.ShopItem(**item_data))
+            changed = True
+    if changed:
+        db.commit()
+
+
+def list_shop_items(db: Session, include_inactive: bool = False) -> List[models.ShopItem]:
+    query = db.query(models.ShopItem)
+    if not include_inactive:
+        query = query.filter(models.ShopItem.is_active == True)
+    return query.order_by(models.ShopItem.sort_order.asc(), models.ShopItem.id.asc()).all()
+
+
+def get_shop_item(db: Session, item_id: int) -> Optional[models.ShopItem]:
+    return db.query(models.ShopItem).filter(models.ShopItem.id == item_id).first()
+
+
+def create_shop_item(db: Session, data: schemas.ShopItemCreate) -> models.ShopItem:
+    item = models.ShopItem(**data.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ShopItemDuplicateSlugError()
+    db.refresh(item)
+    return item
+
+
+def update_shop_item(db: Session, item_id: int, data: schemas.ShopItemUpdate) -> Optional[models.ShopItem]:
+    item = get_shop_item(db, item_id)
+    if not item:
+        return None
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ShopItemDuplicateSlugError()
+    db.refresh(item)
+    return item
+
+
+def get_inventory_for_user(db: Session, user_id: int) -> List[models.UserInventoryItem]:
+    return (
+        db.query(models.UserInventoryItem)
+        .options(joinedload(models.UserInventoryItem.item))
+        .filter(models.UserInventoryItem.user_id == user_id)
+        .order_by(models.UserInventoryItem.purchased_at.desc(), models.UserInventoryItem.id.desc())
+        .all()
+    )
+
+
+def get_equipped_items_for_user(db: Session, user_id: int) -> List[models.UserEquippedItem]:
+    return (
+        db.query(models.UserEquippedItem)
+        .options(joinedload(models.UserEquippedItem.item))
+        .filter(models.UserEquippedItem.user_id == user_id)
+        .order_by(models.UserEquippedItem.slot.asc())
+        .all()
+    )
+
+
+def purchase_shop_item(db: Session, user: models.User, item_id: int) -> models.UserInventoryItem:
+    item = get_shop_item(db, item_id)
+    if not item:
+        raise ShopItemNotFoundError()
+    if not item.is_active:
+        raise ShopItemInactiveError()
+    buyer = db.query(models.User).filter(models.User.id == user.id).first()
+    if not buyer:
+        raise ShopItemNotFoundError()
+    existing = (
+        db.query(models.UserInventoryItem)
+        .filter(
+            models.UserInventoryItem.user_id == buyer.id,
+            models.UserInventoryItem.item_id == item.id,
+        )
+        .first()
+    )
+    if existing:
+        raise InventoryDuplicateError()
+    if _normalize_balance(buyer) < item.price:
+        raise InsufficientGologaniError()
+    buyer.gologani_balance = _normalize_balance(buyer) - item.price
+    inventory_item = models.UserInventoryItem(user_id=buyer.id, item_id=item.id)
+    transaction = models.GologaniTransaction(
+        user_id=buyer.id,
+        amount=-item.price,
+        balance_after=buyer.gologani_balance,
+        event_type="shop_purchase",
+        source_type="shop_item",
+        source_id=item.id,
+        idempotency_key=f"purchase:{buyer.id}:{item.id}",
+        description=f"Cumpărat: {item.name}",
+        extra_data={"item_slug": item.slug, "item_slot": item.slot},
+    )
+    db.add(inventory_item)
+    db.add(transaction)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise InventoryDuplicateError()
+    db.refresh(inventory_item)
+    return inventory_item
+
+
+def equip_inventory_item(db: Session, user: models.User, item_id: int) -> models.UserEquippedItem:
+    inventory_item = (
+        db.query(models.UserInventoryItem)
+        .options(joinedload(models.UserInventoryItem.item))
+        .filter(
+            models.UserInventoryItem.user_id == user.id,
+            models.UserInventoryItem.item_id == item_id,
+        )
+        .first()
+    )
+    if not inventory_item or not inventory_item.item:
+        raise InventoryItemNotFoundError()
+    equipped = (
+        db.query(models.UserEquippedItem)
+        .filter(
+            models.UserEquippedItem.user_id == user.id,
+            models.UserEquippedItem.slot == inventory_item.item.slot,
+        )
+        .first()
+    )
+    if equipped:
+        equipped.item_id = inventory_item.item_id
+        equipped.equipped_at = func.now()
+    else:
+        equipped = models.UserEquippedItem(
+            user_id=user.id,
+            item_id=inventory_item.item_id,
+            slot=inventory_item.item.slot,
+        )
+        db.add(equipped)
+    db.commit()
+    db.refresh(equipped)
+    return equipped
+
+
+def unequip_slot(db: Session, user: models.User, slot: str) -> bool:
+    equipped = (
+        db.query(models.UserEquippedItem)
+        .filter(
+            models.UserEquippedItem.user_id == user.id,
+            models.UserEquippedItem.slot == slot,
+        )
+        .first()
+    )
+    if not equipped:
+        return False
+    db.delete(equipped)
+    db.commit()
+    return True
 
 
 # ===================================
@@ -886,6 +1498,7 @@ def _notify_forum_reply_approved(db: Session, reply: models.ForumReply) -> None:
 
 
 def apply_forum_thread_moderation_result(db: Session, thread: models.ForumThread, moderation_result) -> models.ForumThread:
+    was_approved = thread.moderation_status == "approved"
     thread.moderation_status = _forum_status_value(moderation_result)
     thread.toxicity_score = getattr(moderation_result, "toxicity_score", None)
     thread.moderation_reason = getattr(moderation_result, "reason", None)
@@ -893,6 +1506,8 @@ def apply_forum_thread_moderation_result(db: Session, thread: models.ForumThread
         thread.last_activity_at = func.now()
     db.commit()
     db.refresh(thread)
+    if thread.moderation_status == "approved" and not was_approved:
+        award_content_approved(db, "forum_thread", thread)
     return thread
 
 
@@ -908,6 +1523,7 @@ def apply_forum_reply_moderation_result(db: Session, reply: models.ForumReply, m
     db.commit()
     db.refresh(reply)
     if reply.moderation_status == "approved" and not was_approved:
+        award_content_approved(db, "forum_reply", reply)
         _notify_forum_reply_approved(db, reply)
     return reply
 
@@ -1662,6 +2278,8 @@ def create_super_like(db: Session, user: models.User, post_id: int) -> models.Su
         db.rollback()
         raise SuperLikeDuplicateError()
     db.refresh(sl)
+    award_super_like_created(db, sl)
+    db.refresh(sl)
     return sl
 
 
@@ -1698,15 +2316,21 @@ def get_user_by_stripe_customer_id(db: Session, customer_id: str) -> Optional[mo
 
 
 def set_premium_from_subscription(
-    db: Session, user_id: int, subscription_id: str, premium_until: datetime, premium_tier: str = "premium"
+    db: Session,
+    user_id: int,
+    subscription_id: str,
+    premium_until: datetime,
+    premium_tier: str = "premium",
+    premium_period_start: Optional[datetime] = None,
 ) -> None:
-    db.query(models.User).filter(models.User.id == user_id).update(
-        {
-            "stripe_subscription_id": subscription_id,
-            "premium_tier": premium_tier,
-            "premium_until": premium_until,
-        }
-    )
+    fields = {
+        "stripe_subscription_id": subscription_id,
+        "premium_tier": premium_tier,
+        "premium_until": premium_until,
+    }
+    if premium_period_start is not None:
+        fields["premium_period_start"] = premium_period_start
+    db.query(models.User).filter(models.User.id == user_id).update(fields)
     db.commit()
 
 

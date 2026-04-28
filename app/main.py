@@ -5,7 +5,7 @@ load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes
 
 # Configure logging
 configure_error_logging()
@@ -42,6 +42,7 @@ if not SESSION_SECRET_KEY:
     )
 
 HTTPS_ONLY = os.getenv("HTTPS_ONLY", "True").lower() in ("true", "1", "yes")
+ADSENSE_PUBLISHER_ID = os.getenv("ADSENSE_PUBLISHER_ID", "").strip()
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -107,6 +108,15 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+@app.get("/ads.txt", response_class=PlainTextResponse, include_in_schema=False)
+def ads_txt():
+    if not ADSENSE_PUBLISHER_ID:
+        return PlainTextResponse("", status_code=404)
+    return PlainTextResponse(
+        f"google.com, {ADSENSE_PUBLISHER_ID}, DIRECT, f08c47fec0942fa0\n"
+    )
+
+
 # Subdomain Middleware
 class SubdomainMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -139,6 +149,7 @@ app.include_router(super_like_routes.router)
 app.include_router(premium_routes.router)
 app.include_router(audio_routes.router)
 app.include_router(forum_routes.router)
+app.include_router(shop_routes.router)
 
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
@@ -151,7 +162,11 @@ if os.path.isdir(FRONTEND_DIST):
     @app.get("/{full_path:path}")
     def serve_react(full_path: str):
         """Catch-all: serve React index.html for client-side routing"""
-        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+        response = FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 else:
     logger.warning(
         f"React build not found at {FRONTEND_DIST}. "

@@ -8,9 +8,11 @@ import os
 import sys
 import shutil
 import signal
+import socket
 import subprocess
 import atexit
 import time
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -28,6 +30,11 @@ DB_NAME = os.getenv("DB_NAME", "calimara_db")
 DEV_PREMIUM_USER_EMAIL = "gocandan@gmail.com"
 DEV_PREMIUM_USER_USERNAME = "gocandan"
 DEV_PREMIUM_USER_GOOGLE_ID = "seed-google-gocandan"
+REQUIRED_SEED_TABLES = {
+    "users": 5,
+    "posts": 1,
+    "shop_items": 1,
+}
 # Track child processes for cleanup
 child_processes = []
 
@@ -75,7 +82,21 @@ def check_env():
         sys.exit(1)
 
 
-def seed_dev_premium_user(database_url: str):
+def check_port_available(host: str, port: int):
+    """Fail before resetting the database if the app port is already in use."""
+    bind_host = "" if host in ("0.0.0.0", "::") else host
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((bind_host, port))
+    except OSError as exc:
+        print(f"  Cannot start server on {host}:{port}")
+        print(f"  Error: {exc}")
+        print("\n  Stop the existing server first, or set UVICORN_PORT to a free port.")
+        sys.exit(1)
+
+
+def seed_dev_premium_user(database_url):
     """Seed a local test user with the top paid tier enabled."""
     from sqlalchemy import create_engine, text
 
@@ -91,6 +112,8 @@ def seed_dev_premium_user(database_url: str):
                         google_id,
                         subtitle,
                         avatar_seed,
+                        is_admin,
+                        is_moderator,
                         premium_tier,
                         premium_until
                     )
@@ -100,10 +123,14 @@ def seed_dev_premium_user(database_url: str):
                         :google_id,
                         :subtitle,
                         :avatar_seed,
+                        TRUE,
+                        TRUE,
                         'author_audio',
                         CURRENT_TIMESTAMP + INTERVAL '10 years'
                     )
                     ON CONFLICT (email) DO UPDATE SET
+                        is_admin = TRUE,
+                        is_moderator = TRUE,
                         premium_tier = 'author_audio',
                         premium_until = CURRENT_TIMESTAMP + INTERVAL '10 years',
                         subtitle = EXCLUDED.subtitle,
@@ -124,14 +151,99 @@ def seed_dev_premium_user(database_url: str):
         engine.dispose()
 
 
+def _database_url(database_name: str):
+    from sqlalchemy.engine import URL
+
+    return URL.create(
+        "postgresql+psycopg2",
+        username=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=int(DB_PORT),
+        database=database_name,
+    )
+
+
+def _quote_identifier(identifier: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier or ""):
+        raise RuntimeError(f"Unsafe database name: {identifier!r}")
+    return f'"{identifier}"'
+
+
+def _statement_preview(statement: str) -> str:
+    compact = " ".join(statement.split())
+    return compact[:220] + ("..." if len(compact) > 220 else "")
+
+
+def _schema_statements(schema_content: str) -> list[str]:
+    statements = []
+    current_statement = []
+    in_function = False
+
+    for line in schema_content.split("\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        current_statement.append(line)
+        dollar_count = line.count("$$")
+        if dollar_count % 2 == 1:
+            in_function = not in_function
+        if stripped.endswith(";") and not in_function:
+            stmt = "\n".join(current_statement).strip()
+            if stmt:
+                statements.append(stmt)
+            current_statement = []
+
+    if current_statement:
+        raise RuntimeError("schema.sql ended with an unterminated SQL statement")
+    if in_function:
+        raise RuntimeError("schema.sql ended inside a dollar-quoted function body")
+    if not statements:
+        raise RuntimeError("schema.sql did not contain any executable statements")
+    return statements
+
+
+def verify_seed_data(database_url):
+    """Fail fast if a reset produced an empty or partially seeded database."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            for table_name, minimum_count in REQUIRED_SEED_TABLES.items():
+                count = connection.execute(
+                    text(f"SELECT COUNT(*) FROM {_quote_identifier(table_name)}")
+                ).scalar_one()
+                if count < minimum_count:
+                    raise RuntimeError(
+                        f"Seed verification failed: {table_name} has {count} rows, "
+                        f"expected at least {minimum_count}."
+                    )
+
+            dev_user = connection.execute(
+                text("SELECT id FROM users WHERE email = :email"),
+                {"email": DEV_PREMIUM_USER_EMAIL},
+            ).first()
+            if dev_user is None:
+                raise RuntimeError(
+                    f"Seed verification failed: {DEV_PREMIUM_USER_EMAIL} was not created."
+                )
+    finally:
+        engine.dispose()
+
+
 def init_database():
     """Ensure database exists and initialize from schema.sql."""
     from sqlalchemy import create_engine, text
     from sqlalchemy.exc import SQLAlchemyError
 
+    if DB_NAME in {"postgres", "template0", "template1"}:
+        print(f"  Refusing to reset PostgreSQL system database: {DB_NAME}")
+        sys.exit(1)
+
     # 1. Check PostgreSQL connectivity
     try:
-        server_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/postgres"
+        server_url = _database_url("postgres")
         server_engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
         with server_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -148,9 +260,10 @@ def init_database():
     # 2. Drop and recreate the database for a clean state on every run
     try:
         server_engine = create_engine(
-            f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/postgres",
+            _database_url("postgres"),
             isolation_level="AUTOCOMMIT"
         )
+        quoted_db_name = _quote_identifier(DB_NAME)
         with server_engine.connect() as conn:
             # Terminate existing connections so DROP DATABASE can proceed
             conn.execute(
@@ -160,11 +273,11 @@ def init_database():
                 ),
                 {"dbname": DB_NAME},
             )
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{DB_NAME}"'))
-            conn.execute(text(f'CREATE DATABASE "{DB_NAME}"'))
+            conn.execute(text(f"DROP DATABASE IF EXISTS {quoted_db_name}"))
+            conn.execute(text(f"CREATE DATABASE {quoted_db_name}"))
             print(f"  Database '{DB_NAME}' dropped and recreated.")
         server_engine.dispose()
-    except SQLAlchemyError as e:
+    except (RuntimeError, SQLAlchemyError) as e:
         print(f"  Error resetting database: {e}")
         sys.exit(1)
 
@@ -173,7 +286,7 @@ def init_database():
         print(f"  Error: Schema file not found at {SCHEMA_FILE}")
         sys.exit(1)
 
-    database_url = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    database_url = _database_url(DB_NAME)
     engine = create_engine(database_url)
 
     try:
@@ -181,32 +294,17 @@ def init_database():
             schema_content = f.read()
 
         with engine.connect() as connection:
-            # Parse statements (handling $$ function bodies)
-            statements = []
-            current_statement = []
-            in_function = False
-
-            for line in schema_content.split('\n'):
-                stripped = line.strip()
-                if not stripped or stripped.startswith('--'):
-                    continue
-                current_statement.append(line)
-                dollar_count = line.count('$$')
-                if dollar_count % 2 == 1:
-                    in_function = not in_function
-                if stripped.endswith(';') and not in_function:
-                    stmt = '\n'.join(current_statement).strip()
-                    if stmt:
-                        statements.append(stmt)
-                    current_statement = []
-
+            statements = _schema_statements(schema_content)
             executed = 0
             for stmt in statements:
                 try:
                     connection.execute(text(stmt))
                     executed += 1
-                except SQLAlchemyError:
-                    pass  # DROP IF EXISTS / CREATE IF NOT EXISTS are fine to fail
+                except SQLAlchemyError as exc:
+                    raise RuntimeError(
+                        f"schema.sql statement {executed + 1} failed: "
+                        f"{_statement_preview(stmt)}"
+                    ) from exc
 
             connection.commit()
 
@@ -228,12 +326,16 @@ def init_database():
         from scripts.seed import main as seed_main
         seed_main(quiet=False)
     except Exception as e:
-        print(f"  Seed step skipped ({e})")
+        print(f"  Seed step failed: {e}")
+        sys.exit(1)
 
     try:
         seed_dev_premium_user(database_url)
+        verify_seed_data(database_url)
+        print("  Seed verification: OK")
     except Exception as e:
-        print(f"  Dev premium user seed skipped ({e})")
+        print(f"  Seed verification failed: {e}")
+        sys.exit(1)
 
 
 def check_node():
@@ -279,9 +381,17 @@ def setup_frontend(npm):
     frontend_env = FRONTEND_DIR / ".env"
     main_domain = os.getenv("MAIN_DOMAIN", "localhost")
     subdomain_suffix = os.getenv("SUBDOMAIN_SUFFIX", ".localhost")
+    ad_env = {
+        "VITE_ADS_ENABLED": os.getenv("VITE_ADS_ENABLED", "false"),
+        "VITE_ADSENSE_CLIENT_ID": os.getenv("VITE_ADSENSE_CLIENT_ID", ""),
+        "VITE_ADSENSE_SLOT_RAIL": os.getenv("VITE_ADSENSE_SLOT_RAIL", ""),
+        "VITE_ADSENSE_SLOT_INLINE": os.getenv("VITE_ADSENSE_SLOT_INLINE", ""),
+        "VITE_ADSENSE_SLOT_POST_FOOTER": os.getenv("VITE_ADSENSE_SLOT_POST_FOOTER", ""),
+    }
     frontend_env.write_text(
         f"VITE_MAIN_DOMAIN={main_domain}\n"
         f"VITE_SUBDOMAIN_SUFFIX={subdomain_suffix}\n"
+        + "".join(f"{key}={value}\n" for key, value in ad_env.items())
     )
 
     return True
@@ -302,6 +412,29 @@ def build_frontend(npm):
     print("  Frontend built successfully.")
 
 
+def start_ai_worker():
+    """Start the background AI job worker for moderation and follow-up jobs."""
+    if os.getenv("AI_WORKER_ENABLED", "true").lower() != "true":
+        print("  AI worker disabled by AI_WORKER_ENABLED=false")
+        return None
+
+    worker_script = PROJECT_ROOT / "scripts" / "process_ai_jobs.py"
+    if not worker_script.exists():
+        print(f"  AI worker script missing: {worker_script}")
+        return None
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.Popen(
+        [sys.executable, str(worker_script), "--loop"],
+        cwd=str(PROJECT_ROOT),
+        env=env,
+    )
+    child_processes.append(proc)
+    print(f"  AI moderation worker started (pid {proc.pid})")
+    return proc
+
+
 def main():
     print()
     print("  ╔═══════════════════════════════════════╗")
@@ -312,6 +445,9 @@ def main():
     # 1. Check environment
     print("[1/4] Checking environment...")
     check_env()
+    host = os.getenv("UVICORN_HOST", "0.0.0.0")
+    port = int(os.getenv("UVICORN_PORT", "8000"))
+    check_port_available(host, port)
     print("  Environment: OK")
 
     # 2. Initialize database (always runs schema.sql)
@@ -326,11 +462,10 @@ def main():
     # 4. Start server
     print("[4/4] Starting server...")
 
-    host = os.getenv("UVICORN_HOST", "0.0.0.0")
-    port = int(os.getenv("UVICORN_PORT", "8000"))
-
     if has_frontend:
         build_frontend(npm)
+
+    start_ai_worker()
 
     print(f"  Starting server on http://{host}:{port}")
     print("  Press Ctrl+C to stop.\n")

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from .. import models, schemas, crud, admin, moderation
+from .. import ai_queue, models, schemas, crud, admin, moderation
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -288,6 +288,8 @@ def moderate_content_action(
             result = crud.approve_content(db, content_type, content_id, current_user.id, reason)
             if not result:
                 raise HTTPException(status_code=404, detail="Content not found")
+            if content_type == "post":
+                ai_queue.enqueue_post_approval_jobs(db, result)
             logger.info(f"Content {content_type} {content_id} approved by moderator {current_user.username}")
             return {"success": True, "message": f"{content_type.title()} approved successfully"}
 

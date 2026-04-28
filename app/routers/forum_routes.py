@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import auth, crud, models, moderation, schemas
+from .. import ai_queue, auth, crud, models, schemas
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -87,70 +87,6 @@ def _thread_detail_payload(
     }
 
 
-def _apply_thread_moderation(
-    db: Session,
-    thread: models.ForumThread,
-    current_user: models.User,
-) -> models.ForumThread:
-    try:
-        result = moderation.moderate_forum_thread_with_logging(
-            thread.title, thread.content, thread.id, current_user.id, db
-        )
-        thread = crud.apply_forum_thread_moderation_result(db, thread, result)
-        if thread.moderation_status == "flagged":
-            crud.create_notification(
-                db=db,
-                user_id=current_user.id,
-                notif_type="moderation_queue",
-                title="Discuție în curs de moderare",
-                message=f"Discuția „{thread.title}\" a fost trimisă pentru revizuire manuală.",
-                link=None,
-                extra_data={"thread_id": thread.id},
-            )
-        return thread
-    except Exception as exc:
-        logger.error(f"Forum thread moderation failed for {thread.id}: {exc}")
-        thread.moderation_status = "approved"
-        thread.moderation_reason = "Auto-approved due to moderation error"
-        db.commit()
-        db.refresh(thread)
-        return thread
-
-
-def _apply_reply_moderation(
-    db: Session,
-    reply: models.ForumReply,
-    thread: models.ForumThread,
-    current_user: models.User,
-) -> models.ForumReply:
-    try:
-        result = moderation.moderate_forum_reply_with_logging(
-            reply.content, reply.id, current_user.id, db
-        )
-        reply = crud.apply_forum_reply_moderation_result(db, reply, result)
-        if reply.moderation_status == "flagged":
-            crud.create_notification(
-                db=db,
-                user_id=current_user.id,
-                notif_type="moderation_queue",
-                title="Răspuns în curs de moderare",
-                message=f"Răspunsul tău în „{thread.title}\" a fost trimis pentru revizuire manuală.",
-                link=None,
-                extra_data={"thread_id": thread.id, "reply_id": reply.id},
-            )
-        return reply
-    except Exception as exc:
-        logger.error(f"Forum reply moderation failed for {reply.id}: {exc}")
-        reply.moderation_status = "approved"
-        reply.moderation_reason = "Auto-approved due to moderation error"
-        if reply.thread:
-            reply.thread.last_activity_at = func.now()
-        db.commit()
-        db.refresh(reply)
-        crud._notify_forum_reply_approved(db, reply)
-        return reply
-
-
 @router.get("/api/forum/sections")
 def list_forum_sections_api(
     current_user: models.User = Depends(auth.get_required_user),
@@ -193,7 +129,7 @@ def create_forum_thread_api(
         thread = crud.create_forum_thread(db, current_user, data)
     except ValueError:
         raise HTTPException(status_code=400, detail="Secțiune invalidă")
-    thread = _apply_thread_moderation(db, thread, current_user)
+    ai_queue.enqueue_forum_thread_moderation_job(db, thread)
     return _thread_detail_payload(db, thread, current_user)
 
 
@@ -230,7 +166,7 @@ def create_forum_reply_api(
         raise HTTPException(status_code=409, detail="Discuția nu este publicată")
     if error:
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
-    reply = _apply_reply_moderation(db, reply, thread, current_user)
+    ai_queue.enqueue_forum_reply_moderation_job(db, reply)
     return _reply_payload(reply)
 
 

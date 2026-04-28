@@ -11,15 +11,25 @@ logger = logging.getLogger(__name__)
 # DB epoch: invalidates stale sessions after database reinitialization
 _DB_EPOCH_FILE = Path(__file__).parent.parent / ".db_epoch"
 _db_epoch_cache = None
+_db_epoch_mtime = None
 
 
 def get_db_epoch() -> str:
-    global _db_epoch_cache
-    if _db_epoch_cache is None:
+    global _db_epoch_cache, _db_epoch_mtime
+    try:
+        mtime = _DB_EPOCH_FILE.stat().st_mtime
+    except FileNotFoundError:
+        _db_epoch_cache = ""
+        _db_epoch_mtime = None
+        return _db_epoch_cache
+
+    if _db_epoch_cache is None or _db_epoch_mtime != mtime:
         try:
             _db_epoch_cache = _DB_EPOCH_FILE.read_text().strip()
+            _db_epoch_mtime = mtime
         except FileNotFoundError:
             _db_epoch_cache = ""
+            _db_epoch_mtime = None
     return _db_epoch_cache
 
 
@@ -69,7 +79,7 @@ def require_audio_user(current_user: models.User = Depends(get_required_user)):
     if not current_user.has_audio_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Necesită abonament Membru Junimea",
+            detail="Necesită abonament Membru Junimea pentru generare audio",
         )
     return current_user
 

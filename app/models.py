@@ -44,7 +44,9 @@ class User(Base):
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)
     premium_tier: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
+    premium_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    gologani_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -132,6 +134,21 @@ class User(Base):
         back_populates="author",
         cascade="all, delete-orphan",
     )
+    gologani_transactions: Mapped[List["GologaniTransaction"]] = relationship(
+        "GologaniTransaction",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    inventory_items: Mapped[List["UserInventoryItem"]] = relationship(
+        "UserInventoryItem",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    equipped_items: Mapped[List["UserEquippedItem"]] = relationship(
+        "UserEquippedItem",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def is_premium(self) -> bool:
@@ -159,6 +176,7 @@ class Post(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Category key
     genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Genre key
+    ai_critic_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False) # Track post views
     
     # Moderation fields
@@ -228,8 +246,12 @@ class PostAudio(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     source: Mapped[str] = mapped_column(String(20), nullable=False)  # "tts" | "author"
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+    tts_character_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    quota_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    quota_period_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     storage_backend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -247,6 +269,7 @@ class PostAudio(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="audio_versions")
+    requester: Mapped[Optional["User"]] = relationship("User", foreign_keys=[requester_user_id])
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -308,6 +331,25 @@ class StripeEvent(Base):
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     type: Mapped[str] = mapped_column(String(100), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class AIJob(Base):
+    __tablename__ = "ai_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    job_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    target_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    run_after: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    locked_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
 class BestFriend(Base):
@@ -473,6 +515,84 @@ class UserAward(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="awards")
+
+
+class GologaniTransaction(Base):
+    __tablename__ = "gologani_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    balance_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    source_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True, nullable=False, index=True)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="gologani_transactions")
+
+
+class ShopItem(Base):
+    __tablename__ = "shop_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    price: Mapped[int] = mapped_column(Integer, nullable=False)
+    slot: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    asset_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    inventory_entries: Mapped[List["UserInventoryItem"]] = relationship(
+        "UserInventoryItem",
+        back_populates="item",
+        cascade="all, delete-orphan",
+    )
+    equipped_entries: Mapped[List["UserEquippedItem"]] = relationship(
+        "UserEquippedItem",
+        back_populates="item",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserInventoryItem(Base):
+    __tablename__ = "user_inventory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("shop_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="inventory_items")
+    item: Mapped["ShopItem"] = relationship("ShopItem", back_populates="inventory_entries")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "item_id", name="uq_user_inventory_item"),
+    )
+
+
+class UserEquippedItem(Base):
+    __tablename__ = "user_equipped_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    item_id: Mapped[int] = mapped_column(Integer, ForeignKey("shop_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    slot: Mapped[str] = mapped_column(String(40), nullable=False)
+    equipped_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="equipped_items")
+    item: Mapped["ShopItem"] = relationship("ShopItem", back_populates="equipped_entries")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "slot", name="uq_user_equipped_slot"),
+    )
 
 
 class ForumThread(Base):

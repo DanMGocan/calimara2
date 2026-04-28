@@ -7,6 +7,7 @@
 DROP TABLE IF EXISTS stripe_events CASCADE;
 DROP TABLE IF EXISTS super_likes CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS ai_jobs CASCADE;
 DROP TABLE IF EXISTS moderation_logs CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS conversations CASCADE;
@@ -14,6 +15,10 @@ DROP TABLE IF EXISTS likes CASCADE;
 DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS best_friends CASCADE;
 DROP TABLE IF EXISTS featured_posts CASCADE;
+DROP TABLE IF EXISTS user_equipped_items CASCADE;
+DROP TABLE IF EXISTS user_inventory CASCADE;
+DROP TABLE IF EXISTS shop_items CASCADE;
+DROP TABLE IF EXISTS gologani_transactions CASCADE;
 DROP TABLE IF EXISTS user_awards CASCADE;
 DROP TABLE IF EXISTS forum_replies CASCADE;
 DROP TABLE IF EXISTS forum_threads CASCADE;
@@ -54,7 +59,9 @@ CREATE TABLE users (
     stripe_customer_id VARCHAR(100) UNIQUE,
     stripe_subscription_id VARCHAR(100) UNIQUE,
     premium_tier VARCHAR(20) DEFAULT 'free' NOT NULL,
+    premium_period_start TIMESTAMP,
     premium_until TIMESTAMP,
+    gologani_balance INT DEFAULT 0 NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -68,6 +75,7 @@ CREATE INDEX idx_users_created_at ON users(created_at);
 CREATE INDEX idx_users_is_suspended ON users(is_suspended);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_users_premium_tier ON users(premium_tier);
+CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
 
 -- ===================================
@@ -81,6 +89,7 @@ CREATE TABLE posts (
     content TEXT NOT NULL,
     category VARCHAR(100),
     genre VARCHAR(100),
+    ai_critic_requested BOOLEAN DEFAULT FALSE NOT NULL,
     view_count INT DEFAULT 0 NOT NULL,
     moderation_status VARCHAR(20) DEFAULT 'approved' NOT NULL
         CHECK (moderation_status IN ('approved', 'pending', 'rejected', 'flagged')),
@@ -103,6 +112,7 @@ CREATE INDEX idx_posts_user_id ON posts(user_id);
 CREATE INDEX idx_posts_slug ON posts(slug);
 CREATE INDEX idx_posts_category ON posts(category);
 CREATE INDEX idx_posts_genre ON posts(genre);
+CREATE INDEX idx_posts_ai_critic_requested ON posts(ai_critic_requested);
 CREATE INDEX idx_posts_view_count ON posts(view_count);
 CREATE INDEX idx_posts_created_at ON posts(created_at);
 CREATE INDEX idx_posts_category_genre_views ON posts(category, genre, view_count);
@@ -118,9 +128,13 @@ CREATE INDEX idx_posts_theme_analysis_status ON posts(theme_analysis_status);
 CREATE TABLE post_audio (
     id SERIAL PRIMARY KEY,
     post_id INT NOT NULL,
+    requester_user_id INT,
     source VARCHAR(20) NOT NULL CHECK (source IN ('tts', 'author')),
     status VARCHAR(20) DEFAULT 'pending' NOT NULL
-        CHECK (status IN ('pending', 'processing', 'ready', 'flagged', 'rejected', 'failed')),
+        CHECK (status IN ('pending', 'processing', 'ready', 'flagged', 'rejected', 'failed', 'cancelled')),
+    tts_character_count INT DEFAULT 0 NOT NULL,
+    quota_period_start TIMESTAMP,
+    quota_period_end TIMESTAMP,
     storage_backend VARCHAR(20),
     storage_key VARCHAR(500),
     content_type VARCHAR(100),
@@ -137,12 +151,15 @@ CREATE TABLE post_audio (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_post_audio_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    CONSTRAINT fk_post_audio_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_post_audio_requester FOREIGN KEY (requester_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_post_audio_post_id ON post_audio(post_id);
+CREATE INDEX idx_post_audio_requester_user_id ON post_audio(requester_user_id);
 CREATE INDEX idx_post_audio_status ON post_audio(status);
 CREATE INDEX idx_post_audio_source_status ON post_audio(source, status);
+CREATE INDEX idx_post_audio_tts_quota ON post_audio(requester_user_id, quota_period_start, quota_period_end);
 
 -- ===================================
 -- COMMENTS TABLE
@@ -463,6 +480,105 @@ CREATE INDEX idx_awards_date ON user_awards(award_date);
 CREATE INDEX idx_awards_type ON user_awards(award_type);
 
 -- ===================================
+-- GOLOGANI LEDGER
+-- ===================================
+CREATE TABLE gologani_transactions (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    amount INT NOT NULL,
+    balance_after INT NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    source_type VARCHAR(50),
+    source_id INT,
+    idempotency_key VARCHAR(160) UNIQUE NOT NULL,
+    description VARCHAR(255),
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_gologani_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_gologani_user_created ON gologani_transactions(user_id, created_at DESC);
+CREATE INDEX idx_gologani_event_type ON gologani_transactions(event_type);
+CREATE INDEX idx_gologani_source ON gologani_transactions(source_type, source_id);
+CREATE INDEX idx_gologani_idempotency ON gologani_transactions(idempotency_key);
+
+-- ===================================
+-- SHOP ITEMS TABLE
+-- ===================================
+CREATE TABLE shop_items (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(120) UNIQUE NOT NULL,
+    name VARCHAR(180) NOT NULL,
+    description TEXT,
+    price INT NOT NULL CHECK (price >= 0),
+    slot VARCHAR(40) NOT NULL,
+    asset_url VARCHAR(500),
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    sort_order INT DEFAULT 0 NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_shop_items_slug ON shop_items(slug);
+CREATE INDEX idx_shop_items_active_order ON shop_items(is_active, sort_order, id);
+CREATE INDEX idx_shop_items_slot ON shop_items(slot);
+
+INSERT INTO shop_items (slug, name, description, price, slot, sort_order)
+VALUES
+    (
+        'manuscrisul-scrisorii-a-iii-a',
+        'Manuscrisul Scrisorii a III-a',
+        'Un manuscris de vitrină pentru profilul tău.',
+        120,
+        'profile_badge',
+        10
+    ),
+    (
+        'costumul-de-nunta-al-lui-nichita-stanescu',
+        'Costumul de nuntă al lui Nichita Stănescu',
+        'Un costum literar pentru apariții de cenaclu.',
+        250,
+        'costume',
+        20
+    );
+
+-- ===================================
+-- USER INVENTORY TABLE
+-- ===================================
+CREATE TABLE user_inventory (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    item_id INT NOT NULL,
+    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_user_inventory_item UNIQUE (user_id, item_id),
+    CONSTRAINT fk_inventory_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_inventory_item FOREIGN KEY (item_id) REFERENCES shop_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_inventory_user ON user_inventory(user_id);
+CREATE INDEX idx_inventory_item ON user_inventory(item_id);
+
+-- ===================================
+-- USER EQUIPPED ITEMS TABLE
+-- ===================================
+CREATE TABLE user_equipped_items (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    item_id INT NOT NULL,
+    slot VARCHAR(40) NOT NULL,
+    equipped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_user_equipped_slot UNIQUE (user_id, slot),
+    CONSTRAINT fk_equipped_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_equipped_item FOREIGN KEY (item_id) REFERENCES shop_items(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_equipped_user ON user_equipped_items(user_id);
+CREATE INDEX idx_equipped_item ON user_equipped_items(item_id);
+
+-- ===================================
 -- CONVERSATIONS TABLE
 -- ===================================
 CREATE TABLE conversations (
@@ -539,6 +655,31 @@ CREATE INDEX idx_modlog_toxicity ON moderation_logs(toxicity_score);
 CREATE INDEX idx_modlog_created_at ON moderation_logs(created_at);
 CREATE INDEX idx_modlog_pending_review ON moderation_logs(ai_decision, human_decision);
 CREATE INDEX idx_modlog_moderator ON moderation_logs(moderated_by);
+
+-- ===================================
+-- AI JOBS TABLE
+-- ===================================
+CREATE TABLE ai_jobs (
+    id SERIAL PRIMARY KEY,
+    job_type VARCHAR(80) NOT NULL,
+    target_type VARCHAR(40) NOT NULL,
+    target_id INT NOT NULL,
+    payload JSONB DEFAULT '{}'::jsonb NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    attempts INT DEFAULT 0 NOT NULL,
+    max_attempts INT DEFAULT 3 NOT NULL,
+    run_after TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    locked_at TIMESTAMP,
+    locked_by VARCHAR(120),
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ai_jobs_status_run_after ON ai_jobs(status, run_after, id);
+CREATE INDEX idx_ai_jobs_target ON ai_jobs(target_type, target_id);
+CREATE INDEX idx_ai_jobs_type_target_status ON ai_jobs(job_type, target_type, target_id, status);
 
 -- ===================================
 -- NOTIFICATIONS TABLE
@@ -656,6 +797,8 @@ CREATE TRIGGER trg_posts_updated_at BEFORE UPDATE ON posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_post_audio_updated_at BEFORE UPDATE ON post_audio
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_ai_jobs_updated_at BEFORE UPDATE ON ai_jobs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
@@ -671,6 +814,8 @@ CREATE TRIGGER trg_forum_threads_updated_at BEFORE UPDATE ON forum_threads
 CREATE TRIGGER trg_forum_replies_updated_at BEFORE UPDATE ON forum_replies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_user_awards_updated_at BEFORE UPDATE ON user_awards
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_shop_items_updated_at BEFORE UPDATE ON shop_items
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_conversations_updated_at BEFORE UPDATE ON conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

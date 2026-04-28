@@ -32,11 +32,40 @@ def get_post_audio_status(
     return audio_service.post_audio_status_payload(db, post_id, current_user)
 
 
+@router.get("/api/audio/conversion-quota", response_model=schemas.AudioConversionQuota)
+def get_audio_conversion_quota(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    return audio_service.audio_quota_payload(db, current_user)
+
+
+@router.post("/api/audio/tts-requests", response_model=schemas.TTSConversionResponse)
+def request_tts_audio(
+    body: schemas.TTSConversionRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    try:
+        return audio_service.request_tts_for_posts(db, current_user, body.post_ids)
+    except audio_service.TTSQuotaExceeded as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Limita lunară de caractere ar fi depășită. "
+                f"Disponibil: {exc.remaining}, cerut: {exc.requested}."
+            ),
+        )
+    except audio_service.TTSRequestForbidden as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except audio_service.TTSRequestInvalid as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/api/audio/stream/{audio_id}")
 def stream_local_audio(
     audio_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
 ):
     audio = (
         db.query(models.PostAudio)
@@ -44,7 +73,7 @@ def stream_local_audio(
         .filter(models.PostAudio.id == audio_id)
         .first()
     )
-    if not audio or audio.status != "ready":
+    if not audio or audio.status != "ready" or not audio.post or audio.post.moderation_status != "approved":
         raise HTTPException(status_code=404, detail="Audio indisponibil")
     if audio.storage_backend == "s3":
         return RedirectResponse(audio_storage.playback_url(audio))
@@ -60,7 +89,6 @@ def stream_local_audio(
 def get_collection_audio_playlist(
     collection_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
 ):
     collection = crud.get_collection(db, collection_id)
     if not collection:
@@ -83,7 +111,6 @@ def get_collection_audio_playlist(
 def get_random_audio(
     category: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
 ):
     if category and category not in CATEGORIES:
         raise HTTPException(status_code=400, detail="Categorie invalidă")

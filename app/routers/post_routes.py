@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth, moderation, theme_analysis, category_classifier, ai_critic, audio_service
+from .. import ai_queue, audio_service, models, schemas, crud, auth
 from ..database import get_db
 from ..utils import get_client_ip, SUBDOMAIN_SUFFIX
 from ..categories import CATEGORIES
@@ -29,13 +29,30 @@ def get_posts_archive(
     """Get posts archive for current user, optionally filtered by month/year"""
     try:
         if month and year:
-            posts = crud.get_posts_by_month_year(db, current_user.id, month, year)
+            posts = crud.get_posts_by_month_year(
+                db, current_user.id, month, year, include_unapproved=True
+            )
         else:
-            posts = crud.get_latest_posts_for_user(db, current_user.id, limit=50)
+            posts = crud.get_latest_posts_for_user(
+                db, current_user.id, limit=50, include_unapproved=True
+            )
 
         # Format posts for frontend
         formatted_posts = []
         for post in posts:
+            audio_summary = audio_service.post_audio_summary(db, post)
+            active_tts = crud.get_active_or_ready_tts_for_post(db, post.id)
+            if (
+                active_tts
+                and active_tts.requester_user_id is None
+                and active_tts.status in {"pending", "processing"}
+            ):
+                active_tts = None
+            audio_can_request = bool(
+                current_user.has_audio_access
+                and post.moderation_status == "approved"
+                and not active_tts
+            )
             formatted_posts.append({
                 "id": post.id,
                 "title": post.title,
@@ -45,8 +62,12 @@ def get_posts_archive(
                 "view_count": post.view_count,
                 "likes_count": post.likes_count,
                 "comments_count": len(post.comments),
+                "moderation_status": post.moderation_status,
+                "moderation_reason": post.moderation_reason,
                 "created_at": post.created_at.strftime('%d %B %Y'),
-                "url": f"//{current_user.username}{SUBDOMAIN_SUFFIX}/{post.slug}"
+                "url": f"//{current_user.username}{SUBDOMAIN_SUFFIX}/{post.slug}",
+                "audio_can_request": audio_can_request,
+                **audio_summary,
             })
 
         return {"posts": formatted_posts}
@@ -63,7 +84,7 @@ def get_available_months(
 ):
     """Get available months/years for user's posts"""
     try:
-        months = crud.get_available_months_for_user(db, current_user.id)
+        months = crud.get_available_months_for_user(db, current_user.id, include_unapproved=True)
         return {"months": months}
     except Exception as e:
         logger.error(f"Eroare la obținerea lunilor pentru {current_user.username}: {e}")
@@ -80,79 +101,8 @@ async def create_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
-    # AI category classification
-    try:
-        category = category_classifier.classify_post(post.title, post.content)
-    except Exception as e:
-        logger.error(f"Category classification failed: {e}")
-        category = "proza_scurta"
-
-    # Create post first
-    db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id, category=category)
-
-    # Then moderate it asynchronously with logging
-    try:
-        moderation_result = moderation.moderate_post_with_logging(
-            post.title, post.content, db_post.id, current_user.id, db
-        )
-
-        # Update post with moderation results
-        db_post.moderation_status = moderation_result.status.value
-        db_post.toxicity_score = moderation_result.toxicity_score
-        db_post.moderation_reason = moderation_result.reason
-
-        db.commit()
-        db.refresh(db_post)
-
-        if db_post.moderation_status == "flagged":
-            crud.create_notification(
-                db=db,
-                user_id=current_user.id,
-                notif_type="moderation_queue",
-                title="Postare în curs de moderare",
-                message=f"Postarea '{db_post.title}' a fost trimisă pentru revizuire manuală.",
-                link=None
-            )
-
-        logger.info(f"Post moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
-
-    except Exception as e:
-        logger.error(f"Moderation failed for post: {e}. Auto-approving due to error.")
-        # If moderation fails, auto-approve to avoid blocking user content
-        db_post.moderation_status = "approved"
-        db_post.moderation_reason = "Auto-approved due to moderation error"
-        db.commit()
-        db.refresh(db_post)
-
-    # Theme analysis (non-blocking)
-    try:
-        analysis = theme_analysis.analyze_post_themes(post.title, post.content, db)
-        if analysis.success:
-            crud.update_post_theme_analysis(db, db_post.id, analysis.themes, analysis.feelings, "completed")
-        else:
-            crud.update_post_theme_analysis(db, db_post.id, [], [], "failed")
-        db.refresh(db_post)
-    except Exception as e:
-        logger.error(f"Theme analysis failed for post {db_post.id}: {e}")
-        crud.update_post_theme_analysis(db, db_post.id, [], [], "failed")
-
-    # "Ce zice robotul?" — optional AI critique (non-blocking)
-    if post.ai_critic and db_post.moderation_status == "approved":
-        try:
-            critique = ai_critic.generate_critique(
-                db_post.title, db_post.content, current_user.is_premium
-            )
-            if critique:
-                crud.create_robot_comment(db, post_id=db_post.id, content=critique)
-        except Exception as e:
-            logger.error(f"AI critique failed for post {db_post.id}: {e}")
-
-    if db_post.moderation_status == "approved":
-        try:
-            audio_service.enqueue_tts_for_post(db, db_post)
-        except Exception as e:
-            logger.error(f"Failed to enqueue TTS audio for post {db_post.id}: {e}")
-
+    db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id)
+    ai_queue.enqueue_post_publish_job(db, db_post, ai_critic_requested=post.ai_critic)
     return db_post
 
 
@@ -167,16 +117,10 @@ def update_post_api(
     if not db_post or db_post.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
 
-    # Re-classify category based on updated content
-    try:
-        content = post_update.content if post_update.content else db_post.content
-        title = post_update.title if post_update.title else db_post.title
-        category = category_classifier.classify_post(title, content)
-    except Exception as e:
-        logger.error(f"Category re-classification failed: {e}")
-        category = db_post.category or "proza_scurta"
-
-    return crud.update_post(db=db, post_id=post_id, post_update=post_update, category=category)
+    updated = crud.update_post(db=db, post_id=post_id, post_update=post_update)
+    if updated:
+        ai_queue.enqueue_post_publish_job(db, updated, ai_critic_requested=False)
+    return updated
 
 
 @router.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -211,46 +155,8 @@ def add_comment_to_post(
     if not user_id and (not comment.author_name or not comment.author_email):
         raise HTTPException(status_code=400, detail="Numele și emailul autorului sunt obligatorii pentru comentariile neautentificate")
 
-    # Create comment first
     db_comment = crud.create_comment(db=db, comment=comment, post_id=post_id, user_id=user_id)
-
-    # Then moderate it asynchronously with logging
-    try:
-        moderation_result = moderation.moderate_comment_with_logging(
-            comment.content, db_comment.id, user_id, db
-        )
-
-        # Update comment with moderation results
-        db_comment.moderation_status = moderation_result.status.value
-        db_comment.toxicity_score = moderation_result.toxicity_score
-        db_comment.moderation_reason = moderation_result.reason
-        db_comment.approved = moderation_result.status.value == "approved"
-
-        db.commit()
-        db.refresh(db_comment)
-
-        if db_comment.moderation_status == "flagged" and user_id:
-            crud.create_notification(
-                db=db,
-                user_id=user_id,
-                notif_type="moderation_queue",
-                title="Comentariu în curs de moderare",
-                message=f"Comentariul tău la postarea '{db_post.title}' a fost trimis pentru revizuire manuală.",
-                link=f"/piese/{db_post.slug}"
-            )
-
-        logger.info(f"Comment moderated: {moderation_result.status.value} (toxicity: {moderation_result.toxicity_score:.3f})")
-        logger.info(f"Comment ID {db_comment.id} status: {db_comment.moderation_status}, approved: {db_comment.approved}")
-
-    except Exception as e:
-        logger.error(f"Moderation failed for comment: {e}. Auto-approving due to error.")
-        # If moderation fails, auto-approve to avoid blocking user content
-        db_comment.moderation_status = "approved"
-        db_comment.approved = True
-        db_comment.moderation_reason = "Auto-approved due to moderation error"
-        db.commit()
-        db.refresh(db_comment)
-
+    ai_queue.enqueue_comment_moderation_job(db, db_comment)
     return db_comment
 
 

@@ -42,7 +42,9 @@ class UserInDB(UserBase):
     has_audio_access: bool = False
     has_author_audio_access: bool = False
     premium_tier: str = "free"
+    premium_period_start: Optional[datetime] = None
     premium_until: Optional[datetime] = None
+    gologani_balance: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -186,6 +188,89 @@ class NotificationResponse(BaseModel):
     link: Optional[str] = None
     is_read: bool
     metadata: Optional[dict] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# ===================================
+# GOLOGANI / SHOP SCHEMAS
+# ===================================
+
+ShopItemSlot = Literal["profile_badge", "costume", "frame", "background", "title"]
+
+
+class ShopItemBase(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=120, pattern=r"^[a-z0-9-]+$")
+    name: str = Field(..., min_length=1, max_length=180)
+    description: Optional[str] = Field(None, max_length=2000)
+    price: int = Field(..., ge=0)
+    slot: ShopItemSlot = "profile_badge"
+    asset_url: Optional[str] = Field(None, max_length=500)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class ShopItemCreate(ShopItemBase):
+    pass
+
+
+class ShopItemUpdate(BaseModel):
+    slug: Optional[str] = Field(None, min_length=1, max_length=120, pattern=r"^[a-z0-9-]+$")
+    name: Optional[str] = Field(None, min_length=1, max_length=180)
+    description: Optional[str] = Field(None, max_length=2000)
+    price: Optional[int] = Field(None, ge=0)
+    slot: Optional[ShopItemSlot] = None
+    asset_url: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class ShopItemOut(ShopItemBase):
+    id: int
+    owned: bool = False
+    equipped: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryItemOut(BaseModel):
+    id: int
+    item: ShopItemOut
+    purchased_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EquippedItemOut(BaseModel):
+    id: int
+    slot: str
+    item: ShopItemOut
+    equipped_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShopState(BaseModel):
+    balance: int
+    items: List[ShopItemOut]
+    inventory: List[InventoryItemOut] = []
+    equipped: List[EquippedItemOut] = []
+
+
+class EquipItemRequest(BaseModel):
+    item_id: int
+
+class GologaniTransactionOut(BaseModel):
+    id: int
+    user_id: int
+    amount: int
+    balance_after: int
+    event_type: str
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
+    description: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -503,6 +588,7 @@ class PremiumStatus(BaseModel):
     has_audio_access: bool = False
     has_author_audio_access: bool = False
     premium_tier: str = "free"
+    premium_period_start: Optional[datetime] = None
     premium_until: Optional[datetime] = None
     has_stripe_customer: bool
     has_active_subscription: bool
@@ -541,3 +627,31 @@ class CollectionAudioPlaylist(BaseModel):
     collection_id: int
     title: str
     tracks: List[AudioTrack]
+
+
+class AudioConversionQuota(BaseModel):
+    premium_tier: str
+    limit: int
+    used: int
+    remaining: int
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    can_request: bool
+
+
+class TTSConversionRequest(BaseModel):
+    post_ids: List[int]
+
+
+class TTSConversionItem(BaseModel):
+    post_id: int
+    title: str
+    status: str
+    audio_id: int
+    character_count: int
+
+
+class TTSConversionResponse(BaseModel):
+    queued: List[TTSConversionItem]
+    skipped: List[TTSConversionItem]
+    quota: AudioConversionQuota

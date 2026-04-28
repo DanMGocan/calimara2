@@ -13,30 +13,55 @@ from . import audio_storage, crud, models, moderation
 logger = logging.getLogger(__name__)
 
 
+class TTSRequestError(Exception):
+    pass
+
+
+class TTSRequestForbidden(TTSRequestError):
+    pass
+
+
+class TTSRequestInvalid(TTSRequestError):
+    pass
+
+
+class TTSQuotaExceeded(TTSRequestError):
+    def __init__(self, limit: int, used: int, requested: int):
+        self.limit = limit
+        self.used = used
+        self.requested = requested
+        self.remaining = max(0, limit - used)
+        super().__init__("Audio character quota exceeded")
+
+
 def audio_enabled() -> bool:
     return os.getenv("AUDIO_ENABLED", "False").lower() in ("true", "1", "yes")
 
 
 def enqueue_tts_for_post(db: Session, post: models.Post) -> Optional[models.PostAudio]:
-    if post.moderation_status != "approved":
-        return None
-    audio = crud.enqueue_tts_audio_for_post(db, post)
-    if audio and audio_enabled() and os.getenv("AUDIO_GENERATION_MODE", "queued").lower() == "inline":
-        return generate_tts_audio(db, audio)
-    return audio
+    return None
 
 
 def process_pending_tts_jobs(db: Session, limit: int = 5) -> int:
     if not audio_enabled():
         return 0
-    processed = 0
+    from . import ai_queue
+
     for audio in crud.get_pending_tts_audio_jobs(db, limit=limit):
-        generate_tts_audio(db, audio)
-        processed += 1
-    return processed
+        ai_queue.enqueue_tts_audio_job(db, audio)
+    return ai_queue.process_ai_jobs(db, limit=limit)
 
 
 def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio:
+    if audio.requester_user_id is None:
+        return crud.update_post_audio(
+            db,
+            audio.id,
+            status="cancelled",
+            moderation_status="cancelled",
+            moderation_reason="Automatic TTS generation was disabled",
+            error_message=None,
+        ) or audio
     audio = crud.update_post_audio(db, audio.id, status="processing", error_message=None) or audio
     post = (
         db.query(models.Post)
@@ -85,6 +110,123 @@ def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio
 def text_for_speech(post: models.Post) -> str:
     body = strip_html(post.content)
     return f"{post.title}.\n\n{body}".strip()
+
+
+def tts_character_count_for_post(post: models.Post) -> int:
+    return len(text_for_speech(post))
+
+
+def audio_quota_payload(db: Session, user: models.User) -> dict:
+    limit = crud.audio_tts_quota_limit_for_user(user)
+    period_start, period_end = crud.audio_tts_quota_period_for_user(user)
+    used = 0
+    if period_start and period_end:
+        used = crud.get_user_audio_tts_character_usage(db, user.id, period_start, period_end)
+    return {
+        "premium_tier": user.premium_tier if user else "free",
+        "limit": limit,
+        "used": used,
+        "remaining": max(0, limit - used),
+        "period_start": period_start,
+        "period_end": period_end,
+        "can_request": bool(user and user.has_audio_access and limit > 0 and period_start and period_end),
+    }
+
+
+def request_tts_for_posts(db: Session, user: models.User, post_ids: list[int]) -> dict:
+    unique_ids = []
+    seen = set()
+    for post_id in post_ids:
+        if post_id not in seen:
+            unique_ids.append(post_id)
+            seen.add(post_id)
+    if not unique_ids:
+        raise TTSRequestInvalid("Selectează cel puțin un text.")
+    if not user.has_audio_access:
+        raise TTSRequestForbidden("Necesită abonament Membru Junimea sau La cenaclu' Flacăra.")
+
+    period_start, period_end = crud.audio_tts_quota_period_for_user(user)
+    limit = crud.audio_tts_quota_limit_for_user(user)
+    if not period_start or not period_end or limit <= 0:
+        raise TTSRequestForbidden("Abonamentul nu are o perioadă de facturare activă.")
+
+    posts = db.query(models.Post).filter(models.Post.id.in_(unique_ids)).all()
+    posts_by_id = {post.id: post for post in posts}
+    missing = [post_id for post_id in unique_ids if post_id not in posts_by_id]
+    if missing:
+        raise TTSRequestInvalid("Unul dintre texte nu a fost găsit.")
+
+    queued = []
+    skipped = []
+    requested_characters = 0
+    candidates = []
+
+    for post_id in unique_ids:
+        post = posts_by_id[post_id]
+        if post.user_id != user.id:
+            raise TTSRequestInvalid("Poți genera audio doar pentru textele tale.")
+        if post.moderation_status != "approved":
+            raise TTSRequestInvalid("Poți genera audio doar pentru textele aprobate.")
+
+        crud.cancel_legacy_pending_tts_for_post(db, post.id)
+        existing = crud.get_active_or_ready_tts_for_post(db, post.id)
+        if existing and existing.status in {"pending", "processing", "ready"}:
+            skipped.append(
+                {
+                    "post_id": post.id,
+                    "title": post.title,
+                    "status": existing.status,
+                    "audio_id": existing.id,
+                    "character_count": int(existing.tts_character_count or tts_character_count_for_post(post)),
+                }
+            )
+            continue
+
+        character_count = tts_character_count_for_post(post)
+        requested_characters += character_count
+        candidates.append((post, character_count))
+
+    used = crud.get_user_audio_tts_character_usage(db, user.id, period_start, period_end)
+    if used + requested_characters > limit:
+        raise TTSQuotaExceeded(limit=limit, used=used, requested=requested_characters)
+
+    for post, character_count in candidates:
+        audio = crud.create_tts_audio_request(
+            db,
+            post_id=post.id,
+            requester_user_id=user.id,
+            tts_character_count=character_count,
+            quota_period_start=period_start,
+            quota_period_end=period_end,
+        )
+        if audio_enabled():
+            from . import ai_queue
+
+            ai_queue.enqueue_tts_audio_job(db, audio)
+        queued.append(
+            {
+                "post_id": post.id,
+                "title": post.title,
+                "status": audio.status,
+                "audio_id": audio.id,
+                "character_count": character_count,
+            }
+        )
+
+    new_used = used + requested_characters
+    return {
+        "queued": queued,
+        "skipped": skipped,
+        "quota": {
+            "premium_tier": user.premium_tier,
+            "limit": limit,
+            "used": new_used,
+            "remaining": max(0, limit - new_used),
+            "period_start": period_start,
+            "period_end": period_end,
+            "can_request": True,
+        },
+    }
 
 
 def strip_html(value: str | None) -> str:
@@ -227,14 +369,38 @@ def create_author_recording(
         db,
         post_id=post.id,
         source="author",
-        status="processing",
+        status="pending",
         storage_backend=backend,
         storage_key=key,
         content_type=content_type,
         byte_size=byte_size,
+        moderation_status="pending",
         language_code=os.getenv("GOOGLE_STT_LANGUAGE_CODE", "ro-RO"),
     )
+    from . import ai_queue
+
+    ai_queue.enqueue_author_audio_moderation_job(db, audio)
+    return audio
+
+
+def process_author_recording(db: Session, audio: models.PostAudio) -> models.PostAudio:
+    audio = crud.update_post_audio(db, audio.id, status="processing", error_message=None) or audio
+    post = (
+        db.query(models.Post)
+        .filter(models.Post.id == audio.post_id)
+        .first()
+    )
+    if not post:
+        return crud.update_post_audio(
+            db,
+            audio.id,
+            status="failed",
+            error_message="Post not found",
+            moderation_status="failed",
+            moderation_reason="Post not found",
+        ) or audio
     try:
+        content = audio_storage.load_audio_bytes(audio)
         transcript, confidence = transcribe_audio(content)
         result = moderation.moderate_comment(transcript)
         moderation.log_moderation_decision(db, "audio", audio.id, post.user_id, result)
@@ -360,14 +526,14 @@ def post_audio_status_payload(
         return {
             "available": False,
             "can_listen": False,
-            "requires_audio_tier": True,
+            "requires_audio_tier": False,
             "message": "Postarea nu a fost găsită",
         }
     if post.moderation_status != "approved":
         return {
             "available": False,
-            "can_listen": bool(current_user and current_user.has_audio_access),
-            "requires_audio_tier": not bool(current_user and current_user.has_audio_access),
+            "can_listen": False,
+            "requires_audio_tier": False,
             "status": "post_pending",
             "title": post.title,
             "author_username": post.owner.username if post.owner else None,
@@ -375,22 +541,59 @@ def post_audio_status_payload(
         }
     audio = crud.get_best_audio_for_post(db, post_id)
     latest = audio or crud.get_latest_audio_for_post(db, post_id)
-    can_listen = bool(current_user and current_user.has_audio_access)
+    if latest and latest.source == "tts" and latest.requester_user_id is None and latest.status in {"pending", "processing"}:
+        latest = None
+    can_listen = audio is not None
     payload = {
         "available": audio is not None,
         "can_listen": can_listen,
-        "requires_audio_tier": not can_listen,
+        "requires_audio_tier": False,
         "status": latest.status if latest else "missing",
         "source": latest.source if latest else None,
         "audio_id": audio.id if audio else None,
-        "playback_url": audio_storage.playback_url(audio) if audio and can_listen else None,
+        "playback_url": audio_storage.playback_url(audio) if audio else None,
         "content_type": audio.content_type if audio else None,
         "title": post.title,
         "author_username": post.owner.username if post.owner else None,
     }
-    if audio and not can_listen:
-        payload["message"] = "Necesită Membru Junimea"
+    if not audio:
+        payload["message"] = audio_status_message(latest)
     return payload
+
+
+def audio_status_message(audio: Optional[models.PostAudio]) -> str:
+    if not audio:
+        return "Nu există încă fișier audio pentru acest text."
+    if audio.source == "author" and audio.status in ("pending", "processing"):
+        return "Înregistrarea audio este în curs de transcriere și moderare."
+    if audio.status == "pending":
+        return "Fișierul audio este în coada de generare."
+    if audio.status == "processing":
+        return "Fișierul audio se generează."
+    if audio.status == "flagged":
+        return "Fișierul audio este în curs de revizuire."
+    if audio.status == "rejected":
+        return "Fișierul audio a fost respins."
+    if audio.status == "failed":
+        return "Generarea audio a eșuat."
+    if audio.status == "cancelled":
+        return "Generarea audio automată a fost oprită."
+    return "Audio indisponibil momentan."
+
+
+def post_audio_summary(db: Session, post: models.Post) -> dict:
+    audio = crud.get_best_audio_for_post(db, post.id)
+    latest = audio or crud.get_latest_audio_for_post(db, post.id)
+    if latest and latest.source == "tts" and latest.requester_user_id is None and latest.status in {"pending", "processing"}:
+        latest = None
+    return {
+        "audio_available": audio is not None,
+        "audio_status": latest.status if latest else "missing",
+        "audio_source": latest.source if latest else None,
+        "audio_id": audio.id if audio else None,
+        "audio_playback_url": audio_storage.playback_url(audio) if audio else None,
+        "audio_tts_character_count": tts_character_count_for_post(post),
+    }
 
 
 def audio_track_payload(audio: models.PostAudio) -> dict:

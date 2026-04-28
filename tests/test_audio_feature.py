@@ -98,7 +98,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(best.id, author.id)
         self.assertNotEqual(best.id, tts.id)
 
-    def test_approved_post_enqueues_tts_even_when_generation_disabled(self):
+    def test_approved_post_does_not_auto_enqueue_tts(self):
         owner = self.user("owner")
         post = self.post(owner)
         previous = os.environ.get("AUDIO_ENABLED")
@@ -111,15 +111,14 @@ class AudioFeatureTests(unittest.TestCase):
             else:
                 os.environ["AUDIO_ENABLED"] = previous
 
-        self.assertIsNotNone(audio)
-        self.assertEqual(audio.source, "tts")
-        self.assertEqual(audio.status, "pending")
+        self.assertIsNone(audio)
+        self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 0)
 
-    def test_post_audio_status_hides_url_without_audio_tier(self):
+    def test_post_audio_status_returns_url_without_audio_tier(self):
         owner = self.user("owner")
         listener = self.user("listener", "premium")
         post = self.post(owner)
-        crud.create_post_audio(
+        audio = crud.create_post_audio(
             self.db,
             post_id=post.id,
             source="tts",
@@ -131,8 +130,9 @@ class AudioFeatureTests(unittest.TestCase):
 
         payload = audio_service.post_audio_status_payload(self.db, post.id, listener)
         self.assertTrue(payload["available"])
-        self.assertFalse(payload["can_listen"])
-        self.assertIsNone(payload["playback_url"])
+        self.assertTrue(payload["can_listen"])
+        self.assertFalse(payload["requires_audio_tier"])
+        self.assertEqual(payload["playback_url"], f"/api/audio/stream/{audio.id}")
 
     def test_post_audio_status_returns_local_stream_for_audio_tier(self):
         owner = self.user("owner")
@@ -151,6 +151,96 @@ class AudioFeatureTests(unittest.TestCase):
         payload = audio_service.post_audio_status_payload(self.db, post.id, listener)
         self.assertTrue(payload["can_listen"])
         self.assertEqual(payload["playback_url"], f"/api/audio/stream/{audio.id}")
+
+    def test_audio_quota_payload_for_audio_tier(self):
+        owner = self.user("owner", "audio")
+        payload = audio_service.audio_quota_payload(self.db, owner)
+        self.assertTrue(payload["can_request"])
+        self.assertEqual(payload["limit"], 100000)
+        self.assertEqual(payload["used"], 0)
+        self.assertEqual(payload["remaining"], 100000)
+
+    def test_audio_quota_payload_for_author_audio_tier(self):
+        owner = self.user("owner", "author_audio")
+        payload = audio_service.audio_quota_payload(self.db, owner)
+        self.assertTrue(payload["can_request"])
+        self.assertEqual(payload["limit"], 250000)
+        self.assertEqual(payload["remaining"], 250000)
+
+    def test_manual_tts_request_queues_and_counts_characters(self):
+        owner = self.user("owner", "audio")
+        post = self.post(owner)
+        previous = os.environ.get("AUDIO_ENABLED")
+        os.environ["AUDIO_ENABLED"] = "False"
+        try:
+            result = audio_service.request_tts_for_posts(self.db, owner, [post.id])
+        finally:
+            if previous is None:
+                os.environ.pop("AUDIO_ENABLED", None)
+            else:
+                os.environ["AUDIO_ENABLED"] = previous
+
+        self.assertEqual(len(result["queued"]), 1)
+        audio = self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").one()
+        self.assertEqual(audio.requester_user_id, owner.id)
+        self.assertEqual(audio.status, "pending")
+        self.assertGreater(audio.tts_character_count, 0)
+        self.assertEqual(result["quota"]["used"], audio.tts_character_count)
+
+    def test_manual_tts_request_rejects_over_quota_without_creating_audio(self):
+        owner = self.user("owner", "audio")
+        post = models.Post(
+            user_id=owner.id,
+            title="Long",
+            slug="long",
+            content="x" * 100001,
+            moderation_status="approved",
+        )
+        self.db.add(post)
+        self.db.commit()
+        self.db.refresh(post)
+
+        with self.assertRaises(audio_service.TTSQuotaExceeded):
+            audio_service.request_tts_for_posts(self.db, owner, [post.id])
+
+        self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 0)
+
+    def test_manual_tts_request_skips_existing_ready_audio_without_charge(self):
+        owner = self.user("owner", "audio")
+        post = self.post(owner)
+        existing = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            source="tts",
+            status="ready",
+            storage_backend="local",
+            storage_key="tts.mp3",
+            content_type="audio/mpeg",
+        )
+
+        result = audio_service.request_tts_for_posts(self.db, owner, [post.id])
+
+        self.assertEqual(result["queued"], [])
+        self.assertEqual(result["skipped"][0]["audio_id"], existing.id)
+        self.assertEqual(result["quota"]["used"], 0)
+        self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 1)
+
+    def test_manual_tts_request_cancels_legacy_pending_and_queues_manual(self):
+        owner = self.user("owner", "audio")
+        post = self.post(owner)
+        legacy = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            source="tts",
+            status="pending",
+        )
+
+        result = audio_service.request_tts_for_posts(self.db, owner, [post.id])
+        self.db.refresh(legacy)
+
+        self.assertEqual(legacy.status, "cancelled")
+        self.assertEqual(len(result["queued"]), 1)
+        self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 2)
 
 
 if __name__ == "__main__":

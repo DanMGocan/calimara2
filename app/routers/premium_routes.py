@@ -101,7 +101,19 @@ def _apply_subscription_event(db: Session, event) -> None:
     period_end_ts = data.get("current_period_end")
     if period_end_ts is None:
         return
+    period_start_ts = data.get("current_period_start")
+    if period_start_ts is None:
+        items = ((data.get("items") or {}).get("data") or [])
+        for item in items:
+            period_start_ts = item.get("current_period_start") if item else None
+            if period_start_ts is not None:
+                break
     premium_until = datetime.fromtimestamp(int(period_end_ts), tz=timezone.utc).replace(tzinfo=None)
+    premium_period_start = (
+        datetime.fromtimestamp(int(period_start_ts), tz=timezone.utc).replace(tzinfo=None)
+        if period_start_ts is not None
+        else None
+    )
     premium_tier = stripe_service.subscription_tier_from_event_object(data)
     crud.set_premium_from_subscription(
         db,
@@ -109,6 +121,7 @@ def _apply_subscription_event(db: Session, event) -> None:
         subscription_id=data.get("id"),
         premium_until=premium_until,
         premium_tier=premium_tier,
+        premium_period_start=premium_period_start,
     )
 
 

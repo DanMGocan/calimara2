@@ -22,7 +22,7 @@ from app import crud, models
 from app.week_util import utcnow_naive
 
 
-def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, tier="premium"):
+def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, period_start_ts=None, tier="premium"):
     price_id = {
         "premium": "price_dummy",
         "audio": "price_audio_dummy",
@@ -37,6 +37,8 @@ def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_
                 "customer": customer_id,
                 "metadata": {"tier": tier},
                 "items": {"data": [{"price": {"id": price_id}}]},
+                "current_period_start": period_start_ts
+                or int((utcnow_naive() - timedelta(hours=1)).timestamp()),
                 "current_period_end": period_end_ts
                 or int((utcnow_naive() + timedelta(days=30)).timestamp()),
             }
@@ -83,6 +85,7 @@ class WebhookIdempotencyTests(unittest.TestCase):
         _apply_subscription_event(self.db, event)
         self.db.refresh(self.user)
         self.assertIsNotNone(self.user.premium_until)
+        self.assertIsNotNone(self.user.premium_period_start)
         self.assertEqual(self.user.stripe_subscription_id, "sub_1")
         self.assertEqual(self.user.premium_tier, "premium")
 

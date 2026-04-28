@@ -96,6 +96,10 @@ export function fetchPostDetail(username, slug) {
   return api.get(`/api/blog/${encodeURIComponent(username)}/post/${encodeURIComponent(slug)}`);
 }
 
+export function postPdfUrl(username, slug) {
+  return `/api/blog/${encodeURIComponent(username)}/post/${encodeURIComponent(slug)}/pdf`;
+}
+
 export function fetchPostAudioStatus(postId) {
   return api.get(`/api/audio/posts/${encodeURIComponent(postId)}`);
 }
@@ -235,6 +239,10 @@ export function fetchRandomCollection() {
 
 export function fetchCollection(slug) {
   return api.get(`/api/collections/${encodeURIComponent(slug)}`);
+}
+
+export function collectionPdfUrl(slug) {
+  return `/api/collections/${encodeURIComponent(slug)}/pdf`;
 }
 
 export function fetchUserCollections(username) {
@@ -386,12 +394,48 @@ export function fetchSuperLikeQuota() {
   return api.get("/api/users/me/super-likes/quota");
 }
 
+export function fetchShopState() {
+  return api.get("/api/shop/me");
+}
+
+export function purchaseShopItem(itemId) {
+  return api.post(`/api/shop/items/${encodeURIComponent(itemId)}/purchase`, {});
+}
+
+export function equipInventoryItem(itemId) {
+  return api.post("/api/inventory/equip", { item_id: itemId });
+}
+
+export function unequipInventorySlot(slot) {
+  return api.delete(`/api/inventory/equipped/${encodeURIComponent(slot)}`);
+}
+
+export function fetchAdminShopItems() {
+  return api.get("/api/admin/shop/items");
+}
+
+export function createAdminShopItem(data) {
+  return api.post("/api/admin/shop/items", data);
+}
+
+export function updateAdminShopItem(itemId, data) {
+  return api.put(`/api/admin/shop/items/${encodeURIComponent(itemId)}`, data);
+}
+
 export function startPremiumCheckout(tier = "premium") {
   return api.post("/api/premium/checkout", { tier });
 }
 
 export function openPremiumPortal() {
   return api.post("/api/premium/portal", {});
+}
+
+export function fetchAudioConversionQuota() {
+  return api.get("/api/audio/conversion-quota");
+}
+
+export function requestTtsConversions(postIds) {
+  return api.post("/api/audio/tts-requests", { post_ids: postIds });
 }
 
 export function fetchCollectionAudioPlaylist(collectionId) {
@@ -417,8 +461,9 @@ export function fetchModerationStats() {
   return api.get("/api/moderation/stats");
 }
 
-export function fetchPendingModerationContent() {
-  return api.get("/api/moderation/content/pending");
+export function fetchPendingModerationContent(contentType = "all") {
+  const params = contentType && contentType !== "all" ? `?content_type=${encodeURIComponent(contentType)}` : "";
+  return api.get(`/api/moderation/content/pending${params}`);
 }
 
 export function fetchFlaggedModerationContent() {
@@ -441,8 +486,13 @@ export function unsuspendUser(userId) {
   return api.post(`/api/moderation/users/${encodeURIComponent(userId)}/unsuspend`, {});
 }
 
-export function fetchModerationLogs() {
-  return api.get("/api/moderation/logs");
+export function fetchModerationLogs({ decision = "", limit = 100, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (decision) params.set("decision", decision);
+  if (limit) params.set("limit", String(limit));
+  if (offset) params.set("offset", String(offset));
+  const query = params.toString();
+  return api.get(`/api/moderation/logs${query ? `?${query}` : ""}`);
 }
 
 export function fetchModerationQueue() {

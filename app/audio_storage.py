@@ -56,6 +56,19 @@ def save_audio_bytes(
     return backend, key, len(content)
 
 
+def load_audio_bytes(audio: models.PostAudio) -> bytes:
+    if not audio.storage_key:
+        raise RuntimeError("Audio storage key is missing")
+    if audio.storage_backend == "s3":
+        bucket = _required_env("HETZNER_S3_BUCKET")
+        response = _s3_client().get_object(Bucket=bucket, Key=audio.storage_key)
+        return response["Body"].read()
+    path = local_path_for_key(audio.storage_key)
+    if not path.exists():
+        raise RuntimeError("Audio file is missing from local storage")
+    return path.read_bytes()
+
+
 def _save_local(key: str, content: bytes) -> None:
     path = local_path_for_key(key)
     path.parent.mkdir(parents=True, exist_ok=True)

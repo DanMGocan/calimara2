@@ -1,21 +1,39 @@
 import re
 import logging
+import os
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, google_oauth, auth
+from .. import schemas, google_oauth
 from ..auth import get_db_epoch
 from ..database import get_db
-from ..utils import SUBDOMAIN_SUFFIX, MAIN_DOMAIN
+from ..utils import MAIN_DOMAIN
 
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["auth"])
+
+
+def _frontend_base_url(request: Request) -> str:
+    configured_callback = os.getenv("GOOGLE_REDIRECT_URI", "")
+    parsed_callback = urlparse(configured_callback)
+    scheme = parsed_callback.scheme or request.url.scheme
+    return f"{scheme}://{MAIN_DOMAIN}"
+
+
+def _react_index_response() -> FileResponse:
+    frontend_index = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "frontend", "dist", "index.html")
+    response = FileResponse(frontend_index)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @router.get("/auth/google")
@@ -47,9 +65,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             request.session["user_id"] = user.id
             request.session["db_epoch"] = get_db_epoch()
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
-            protocol = "https" if "localhost" not in MAIN_DOMAIN else "http"
             return RedirectResponse(
-                url=f"{protocol}://{MAIN_DOMAIN}/auth/callback?status=success",
+                url=f"{_frontend_base_url(request)}/auth/callback?status=success",
                 status_code=status.HTTP_302_FOUND
             )
         else:
@@ -61,9 +78,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 "picture": google_user.picture
             }
             logger.info(f"New Google user detected: {google_user.email}. Redirecting to setup.")
-            protocol = "https" if "localhost" not in MAIN_DOMAIN else "http"
             return RedirectResponse(
-                url=f"{protocol}://{MAIN_DOMAIN}/auth/callback?status=setup",
+                url=f"{_frontend_base_url(request)}/auth/callback?status=setup",
                 status_code=status.HTTP_302_FOUND
             )
 
@@ -80,11 +96,7 @@ def auth_setup_page(request: Request):
     google_user_data = request.session.get("google_user")
     if not google_user_data:
         return RedirectResponse(url="/auth/google", status_code=status.HTTP_302_FOUND)
-    # React catch-all will serve the frontend for this route
-    from fastapi.responses import FileResponse
-    import os
-    frontend_index = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "frontend", "dist", "index.html")
-    return FileResponse(frontend_index)
+    return _react_index_response()
 
 
 @router.post("/api/auth/complete-setup")

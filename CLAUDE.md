@@ -85,6 +85,12 @@ The schema includes sample data with 4 users and 10 posts:
 - **STRIPE_SUCCESS_URL**: Full URL users are redirected to after successful Checkout. Include the literal placeholder `?session_id={CHECKOUT_SESSION_ID}`, e.g. `https://calimara.ro/premium/success?session_id={CHECKOUT_SESSION_ID}`.
 - **STRIPE_CANCEL_URL**: Full URL users are redirected to if they cancel Checkout, e.g. `https://calimara.ro/premium/cancel`.
 - **STRIPE_CUSTOMER_PORTAL_RETURN_URL**: Return URL from the Stripe Billing Portal (where users manage their subscription), e.g. `https://calimara.ro/dashboard`.
+- **ADSENSE_PUBLISHER_ID**: AdSense `pub-...` publisher ID used by `/ads.txt`.
+- **VITE_ADS_ENABLED**: `true` to enable frontend ad rendering; defaults to `false`.
+- **VITE_ADSENSE_CLIENT_ID**: AdSense client ID in `ca-pub-...` format for the frontend script and ad units.
+- **VITE_ADSENSE_SLOT_RAIL**: AdSense display ad slot ID for the landing-page side rail.
+- **VITE_ADSENSE_SLOT_INLINE**: AdSense display ad slot ID for inline list ads.
+- **VITE_ADSENSE_SLOT_POST_FOOTER**: AdSense display ad slot ID for post-detail footer ads.
 
 ### Template Context Helper
 Use `get_common_context(request, current_user)` for consistent template variables including domain configuration that's passed to JavaScript via `window.CALIMARA_CONFIG`.

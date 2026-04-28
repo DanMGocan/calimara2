@@ -15,9 +15,13 @@ router = APIRouter(tags=["users"])
 
 
 @router.get("/api/user/me")
-def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get_current_user)):
+def get_current_user_info(
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
+):
     """Endpoint to check current user authentication status"""
     if current_user:
+        equipped_items = crud.get_equipped_items_for_user(db, current_user.id)
         data = {
             "authenticated": True,
             "user": {
@@ -33,7 +37,27 @@ def get_current_user_info(current_user: Optional[models.User] = Depends(auth.get
                 "has_audio_access": current_user.has_audio_access,
                 "has_author_audio_access": current_user.has_author_audio_access,
                 "premium_tier": current_user.premium_tier,
+                "premium_period_start": current_user.premium_period_start.isoformat() if current_user.premium_period_start else None,
                 "premium_until": current_user.premium_until.isoformat() if current_user.premium_until else None,
+                "gologani_balance": current_user.gologani_balance or 0,
+                "equipped_items": [
+                    {
+                        "slot": equipped.slot,
+                        "item": {
+                            "id": equipped.item.id,
+                            "slug": equipped.item.slug,
+                            "name": equipped.item.name,
+                            "description": equipped.item.description,
+                            "price": equipped.item.price,
+                            "slot": equipped.item.slot,
+                            "asset_url": equipped.item.asset_url,
+                            "is_active": equipped.item.is_active,
+                            "sort_order": equipped.item.sort_order,
+                        },
+                    }
+                    for equipped in equipped_items
+                    if equipped.item
+                ],
             }
         }
     else:

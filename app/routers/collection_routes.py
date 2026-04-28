@@ -1,10 +1,11 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session, joinedload
 
-from .. import models, schemas, auth, crud
+from .. import models, schemas, auth, crud, pdf_exporter
+from ..categories import get_category_name
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,32 @@ def get_collection_by_slug_api(
     entries = crud.get_collection_entries(db, collection.id, status="accepted")
     posts_payload = [_entry_payload(e) for e in entries]
     return {**summary, "posts": posts_payload}
+
+
+@router.get("/api/collections/{slug}/pdf")
+def collection_pdf_download(
+    request: Request,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    collection = crud.get_collection_by_slug(db, slug)
+    if not collection:
+        raise HTTPException(status_code=404, detail="Colecția nu a fost găsită")
+
+    entries = crud.get_collection_entries(db, collection.id, status="accepted")
+    page_url = pdf_exporter.collection_page_url(request, collection.slug)
+    pdf_bytes = pdf_exporter.render_collection_pdf(
+        collection=collection,
+        owner=collection.owner,
+        entries=entries,
+        page_url=page_url,
+        category_label_for_post=lambda category: get_category_name(category) if category else "",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type=pdf_exporter.PDF_MEDIA_TYPE,
+        headers=pdf_exporter.pdf_response_headers(f"colectie-{collection.slug}"),
+    )
 
 
 @router.get("/api/users/{username}/collections")

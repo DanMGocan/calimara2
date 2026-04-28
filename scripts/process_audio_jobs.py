@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Process pending Google TTS jobs for approved posts."""
+"""Compatibility wrapper for processing queued AI/audio jobs."""
 
 import argparse
 import os
@@ -24,7 +24,7 @@ def main() -> int:
     db = SessionLocal()
     try:
         processed = process_pending_tts_jobs(db, limit=args.limit)
-        print(f"Processed {processed} audio job(s).")
+        print(f"Processed {processed} AI job(s).")
     finally:
         db.close()
     return 0

@@ -2,7 +2,7 @@ import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -12,12 +12,13 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
 from app import auth, crud, models, moderation, schemas
-from app.routers import auth_routes
+from app.routers import auth_routes, post_routes
 
 
 class DummyRequest:
-    def __init__(self, session):
+    def __init__(self, session, scheme="http"):
         self.session = session
+        self.url = SimpleNamespace(scheme=scheme)
 
 
 class BackendStabilizationTests(unittest.TestCase):
@@ -34,6 +35,7 @@ class BackendStabilizationTests(unittest.TestCase):
         self.db = self.SessionLocal()
         self.slug_counter = 0
         auth._db_epoch_cache = ""
+        auth._db_epoch_mtime = None
 
     def tearDown(self):
         self.db.close()
@@ -82,12 +84,16 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_get_current_user_uses_id_lookup_and_clears_missing_sessions(self):
         user = self.make_user("alice")
+        db_epoch = auth.get_db_epoch()
 
-        current_user = auth.get_current_user(DummyRequest({"user_id": user.id}), self.db)
+        current_user = auth.get_current_user(
+            DummyRequest({"user_id": user.id, "db_epoch": db_epoch}),
+            self.db,
+        )
         self.assertIsNotNone(current_user)
         self.assertEqual(current_user.id, user.id)
 
-        missing_request = DummyRequest({"user_id": 999_999})
+        missing_request = DummyRequest({"user_id": 999_999, "db_epoch": db_epoch})
         self.assertIsNone(auth.get_current_user(missing_request, self.db))
         self.assertEqual(missing_request.session, {})
 
@@ -132,6 +138,276 @@ class BackendStabilizationTests(unittest.TestCase):
             response.headers["location"],
             "https://accounts.google.com/o/oauth2/auth?client_id=test",
         )
+
+    def test_private_archive_includes_unapproved_owned_posts(self):
+        user = self.make_user("author")
+        other_user = self.make_user("other")
+        approved = self.make_post(user, "Approved Text")
+        pending = self.make_post(user, "Pending Text", moderation_status="pending")
+        flagged = self.make_post(user, "Flagged Text", moderation_status="flagged")
+        flagged.moderation_reason = "Needs moderator review"
+        other_pending = self.make_post(other_user, "Other Pending", moderation_status="pending")
+        self.db.commit()
+        self.db.refresh(flagged)
+
+        public_posts = crud.get_latest_posts_for_user(self.db, user.id, limit=10)
+        self.assertEqual({post.id for post in public_posts}, {approved.id})
+
+        archive = post_routes.get_posts_archive(db=self.db, current_user=user)
+        archived_by_id = {post["id"]: post for post in archive["posts"]}
+
+        self.assertIn(approved.id, archived_by_id)
+        self.assertIn(pending.id, archived_by_id)
+        self.assertIn(flagged.id, archived_by_id)
+        self.assertNotIn(other_pending.id, archived_by_id)
+        self.assertEqual(archived_by_id[pending.id]["moderation_status"], "pending")
+        self.assertEqual(archived_by_id[flagged.id]["moderation_status"], "flagged")
+        self.assertEqual(archived_by_id[flagged.id]["moderation_reason"], "Needs moderator review")
+
+        months = post_routes.get_available_months(db=self.db, current_user=user)["months"]
+        self.assertEqual(sum(month["post_count"] for month in months), 3)
+
+    def test_dev_seed_marks_gocandan_as_admin_and_moderator(self):
+        import run
+
+        captured = []
+
+        class FakeConnection:
+            def execute(self, statement, params):
+                captured.append((str(statement), params))
+
+        class FakeBegin:
+            def __enter__(self):
+                return FakeConnection()
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        class FakeEngine:
+            def begin(self):
+                return FakeBegin()
+
+            def dispose(self):
+                pass
+
+        with patch("sqlalchemy.create_engine", return_value=FakeEngine()):
+            run.seed_dev_premium_user("postgresql://example")
+
+        self.assertEqual(len(captured), 1)
+        sql, params = captured[0]
+        self.assertIn("is_admin", sql)
+        self.assertIn("is_moderator", sql)
+        self.assertIn("is_admin = TRUE", sql)
+        self.assertIn("is_moderator = TRUE", sql)
+        self.assertEqual(params["email"], "gocandan@gmail.com")
+
+    def test_run_starts_ai_worker_loop(self):
+        import run
+
+        class FakeProcess:
+            pid = 12345
+
+        fake_process = FakeProcess()
+        run.child_processes.clear()
+
+        with patch.dict(os.environ, {"AI_WORKER_ENABLED": "true"}), patch.object(
+            run.subprocess,
+            "Popen",
+            return_value=fake_process,
+        ) as popen:
+            proc = run.start_ai_worker()
+
+        self.assertIs(proc, fake_process)
+        args = popen.call_args.args[0]
+        self.assertEqual(args, [run.sys.executable, str(run.PROJECT_ROOT / "scripts" / "process_ai_jobs.py"), "--loop"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], str(run.PROJECT_ROOT))
+        self.assertIn(fake_process, run.child_processes)
+        run.child_processes.clear()
+
+    def test_two_pass_moderation_sends_flagged_text_to_llm_review(self):
+        classifier_response = SimpleNamespace(
+            results=[
+                SimpleNamespace(
+                    category_scores=SimpleNamespace(
+                        sexual=0.0,
+                        hate_and_discrimination=0.82,
+                        violence_and_threats=0.0,
+                        dangerous_and_criminal_content=0.0,
+                        selfharm=0.0,
+                        health=0.0,
+                        financial=0.0,
+                        law=0.0,
+                        pii=0.0,
+                        jailbreaking=0.0,
+                    ),
+                    categories=SimpleNamespace(
+                        sexual=False,
+                        hate_and_discrimination=True,
+                        violence_and_threats=False,
+                        dangerous_and_criminal_content=False,
+                        selfharm=False,
+                        health=False,
+                        financial=False,
+                        law=False,
+                        pii=False,
+                        jailbreaking=False,
+                    ),
+                )
+            ]
+        )
+        chat_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"safe": true, "reason": "context literar legitim"}'
+                    )
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            classifiers=SimpleNamespace(moderate=AsyncMock(return_value=classifier_response)),
+            chat=SimpleNamespace(complete=AsyncMock(return_value=chat_response)),
+        )
+        fake_client.classifiers.moderate = lambda **kwargs: classifier_response
+        fake_client.chat.complete = lambda **kwargs: chat_response
+
+        with patch.object(moderation, "MODERATION_ENABLED", True), patch.object(
+            moderation,
+            "client",
+            fake_client,
+        ):
+            result = moderation.moderate_post("Titlu", "Text literar semnalizat de primul nivel.")
+
+        self.assertEqual(result.status, moderation.ModerationStatus.APPROVED)
+        self.assertEqual(result.toxicity_score, 0.82)
+        self.assertIn("Pass 2", result.reason)
+        self.assertIn("pass2_verdict", result.details)
+
+    def test_two_pass_moderation_flags_when_llm_review_rejects(self):
+        classifier_response = SimpleNamespace(
+            results=[
+                SimpleNamespace(
+                    category_scores=SimpleNamespace(
+                        sexual=0.0,
+                        hate_and_discrimination=0.0,
+                        violence_and_threats=0.9,
+                        dangerous_and_criminal_content=0.0,
+                        selfharm=0.0,
+                        health=0.0,
+                        financial=0.0,
+                        law=0.0,
+                        pii=0.0,
+                        jailbreaking=0.0,
+                    ),
+                    categories=SimpleNamespace(
+                        sexual=False,
+                        hate_and_discrimination=False,
+                        violence_and_threats=True,
+                        dangerous_and_criminal_content=False,
+                        selfharm=False,
+                        health=False,
+                        financial=False,
+                        law=False,
+                        pii=False,
+                        jailbreaking=False,
+                    ),
+                )
+            ]
+        )
+        chat_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"safe": false, "reason": "amenințare explicită"}'
+                    )
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            classifiers=SimpleNamespace(moderate=lambda **kwargs: classifier_response),
+            chat=SimpleNamespace(complete=lambda **kwargs: chat_response),
+        )
+
+        with patch.object(moderation, "MODERATION_ENABLED", True), patch.object(
+            moderation,
+            "client",
+            fake_client,
+        ):
+            result = moderation.moderate_post("Titlu", "Text respins de al doilea nivel.")
+
+        self.assertEqual(result.status, moderation.ModerationStatus.FLAGGED)
+        self.assertEqual(result.toxicity_score, 0.9)
+        self.assertIn("manual review", result.reason)
+
+    def test_google_callback_redirect_uses_configured_local_scheme(self):
+        user = self.make_user("oauthuser")
+        request = DummyRequest({}, scheme="https")
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes.google_oauth,
+            "handle_google_callback",
+            new=AsyncMock(return_value=SimpleNamespace(email=user.email)),
+        ), patch.object(
+            auth_routes.google_oauth,
+            "find_or_create_user",
+            return_value=(user, False),
+        ):
+            response = self.async_run(auth_routes.google_callback.__wrapped__(request, self.db))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers["location"],
+            "http://lvh.me:8000/auth/callback?status=success",
+        )
+        self.assertEqual(request.session["user_id"], user.id)
+
+    def test_react_entrypoint_responses_disable_browser_cache(self):
+        from fastapi.testclient import TestClient
+        from app.main import app as fastapi_app
+
+        client = TestClient(fastapi_app)
+
+        for path in ("/", "/create-post"):
+            response = client.get(path, headers={"host": "lvh.me:8000"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["cache-control"], "no-store")
+            self.assertEqual(response.headers["pragma"], "no-cache")
+            self.assertEqual(response.headers["expires"], "0")
+
+    def test_ads_txt_uses_configured_publisher_id(self):
+        from fastapi.testclient import TestClient
+        import app.main as main
+
+        client = TestClient(main.app)
+
+        with patch.object(main, "ADSENSE_PUBLISHER_ID", "pub-1234567890123456"):
+            response = client.get("/ads.txt", headers={"host": "lvh.me:8000"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"].split(";")[0], "text/plain")
+        self.assertEqual(
+            response.text,
+            "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0\n",
+        )
+
+        with patch.object(main, "ADSENSE_PUBLISHER_ID", ""):
+            disabled = client.get("/ads.txt", headers={"host": "lvh.me:8000"})
+
+        self.assertEqual(disabled.status_code, 404)
+
+    def test_auth_setup_spa_response_disables_browser_cache(self):
+        response = auth_routes.auth_setup_page(DummyRequest({"google_user": {"email": "new@example.com"}}))
+
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(response.headers["pragma"], "no-cache")
+        self.assertEqual(response.headers["expires"], "0")
 
     def test_theme_helpers_return_normalized_deduplicated_values(self):
         author = self.make_user("writer")

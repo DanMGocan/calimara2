@@ -5,12 +5,12 @@ These endpoints power the React frontend.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func
 
-from .. import models, crud, auth, statistics
+from .. import models, crud, auth, statistics, pdf_exporter
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, get_avatar_url
 from ..categories import CATEGORIES, get_category_name
@@ -22,11 +22,29 @@ router = APIRouter(tags=["api-pages"])
 
 def serialize_user(user):
     """Serialize a user object to dict for JSON response"""
+    equipped_items = [
+        {
+            "slot": equipped.slot,
+            "item": {
+                "id": equipped.item.id,
+                "slug": equipped.item.slug,
+                "name": equipped.item.name,
+                "description": equipped.item.description,
+                "price": equipped.item.price,
+                "slot": equipped.item.slot,
+                "asset_url": equipped.item.asset_url,
+            },
+        }
+        for equipped in sorted(getattr(user, "equipped_items", []) or [], key=lambda item: item.slot)
+        if getattr(equipped, "item", None)
+    ]
     return {
         "id": user.id,
         "username": user.username,
         "subtitle": user.subtitle,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
+        "equipped_items": equipped_items,
         "facebook_url": getattr(user, 'facebook_url', None),
         "tiktok_url": getattr(user, 'tiktok_url', None),
         "instagram_url": getattr(user, 'instagram_url', None),
@@ -260,12 +278,22 @@ def post_detail_data(
     post = crud.get_post_by_slug(db, slug)
     if not post or post.user_id != user.id:
         raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
+    can_view_pending = bool(
+        current_user
+        and (
+            current_user.id == post.user_id
+            or current_user.is_admin
+            or current_user.is_moderator
+        )
+    )
+    if post.moderation_status != "approved" and not can_view_pending:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
 
     # Track view with bot detection and deduplication
     statistics.record_view(db, request, "post", post.id, post.slug, post.user_id, current_user)
 
     # Related posts from same user
-    related_posts = crud.get_posts_by_user(db, user.id, limit=5)
+    related_posts = crud.get_latest_posts_for_user(db, user.id, limit=5)
     related_posts = [p for p in related_posts if p.id != post.id][:3]
 
     # Random other authors
@@ -296,6 +324,35 @@ def post_detail_data(
         ],
         "other_authors": [serialize_user(u) for u in other_authors],
     }
+
+
+@router.get("/api/blog/{username}/post/{slug}/pdf")
+def post_pdf_download(
+    request: Request,
+    username: str,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    user = crud.get_user_by_username(db, username=username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Blogul nu a fost gasit")
+
+    post = crud.get_post_by_slug(db, slug)
+    if not post or post.user_id != user.id or post.moderation_status != "approved":
+        raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
+
+    page_url = pdf_exporter.post_page_url(request, user.username, post.slug)
+    pdf_bytes = pdf_exporter.render_post_pdf(
+        post=post,
+        author=user,
+        page_url=page_url,
+        category_label=get_category_name(post.category) if post.category else "",
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type=pdf_exporter.PDF_MEDIA_TYPE,
+        headers=pdf_exporter.pdf_response_headers(post.slug),
+    )
 
 
 @router.get("/api/categories/{category_key}")
