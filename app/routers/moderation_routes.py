@@ -14,7 +14,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["moderation"])
 
 
-@router.get("/api/moderation/stats")
+def _content_type_label(content_type: str) -> str:
+    labels = {
+        "post": "Postarea",
+        "comment": "Comentariul",
+        "audio": "Audio",
+        "forum_thread": "Discuția",
+        "forum_reply": "Răspunsul",
+    }
+    return labels.get(content_type, "Conținutul")
+
+
+@router.get("/api/moderare/statistici")
 def get_moderation_stats(
     response: Response,
     db: Session = Depends(get_db),
@@ -61,11 +72,11 @@ def get_moderation_stats(
         }
 
     except Exception as e:
-        logger.error(f"Error getting moderation stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get moderation stats")
+        logger.error(f"Eroare la obținerea statisticilor de moderare: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca statisticile de moderare")
 
 
-@router.get("/api/moderation/content/pending")
+@router.get("/api/moderare/continut/in-asteptare")
 def get_pending_content(
     request: Request,
     content_type: str = "all",
@@ -75,7 +86,7 @@ def get_pending_content(
     """Get content pending moderation - visible only to moderators"""
     try:
         if not current_user.is_moderator and not current_user.is_admin:
-            raise HTTPException(status_code=403, detail="Moderation access required")
+            raise HTTPException(status_code=403, detail="Acces de moderare necesar")
 
         content = []
 
@@ -120,7 +131,7 @@ def get_pending_content(
                     "type": "forum_thread",
                     "title": thread.title,
                     "content": thread.content,
-                    "author": thread.author.username if thread.author else "Unknown",
+                    "author": thread.author.username if thread.author else "Necunoscut",
                     "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": thread.moderation_status,
                     "moderation_reason": getattr(thread, "moderation_reason", ""),
@@ -135,7 +146,7 @@ def get_pending_content(
                     "type": "forum_reply",
                     "title": reply.thread.title if reply.thread else None,
                     "content": reply.content,
-                    "author": reply.author.username if reply.author else "Unknown",
+                    "author": reply.author.username if reply.author else "Necunoscut",
                     "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": reply.moderation_status,
                     "moderation_reason": getattr(reply, "moderation_reason", ""),
@@ -148,11 +159,11 @@ def get_pending_content(
         return {"content": content}
 
     except Exception as e:
-        logger.error(f"Error getting pending content: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get pending content")
+        logger.error(f"Eroare la obținerea conținutului în așteptare: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca conținutul în așteptare")
 
 
-@router.get("/api/moderation/content/flagged")
+@router.get("/api/moderare/continut/marcate")
 def get_flagged_content(
     request: Request,
     db: Session = Depends(get_db),
@@ -161,7 +172,7 @@ def get_flagged_content(
     """Get flagged content (high toxicity) - visible only to moderators"""
     try:
         if not current_user.is_moderator and not current_user.is_admin:
-            raise HTTPException(status_code=403, detail="Moderation access required")
+            raise HTTPException(status_code=403, detail="Acces de moderare necesar")
 
         content = []
 
@@ -227,7 +238,7 @@ def get_flagged_content(
                 "type": "forum_thread",
                 "title": thread.title,
                 "content": thread.content,
-                "author": thread.author.username if thread.author else "Unknown",
+                "author": thread.author.username if thread.author else "Necunoscut",
                 "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
                 "moderation_status": getattr(thread, "moderation_status", "flagged"),
                 "moderation_reason": getattr(thread, "moderation_reason", ""),
@@ -242,7 +253,7 @@ def get_flagged_content(
                 "type": "forum_reply",
                 "title": reply.thread.title if reply.thread else None,
                 "content": reply.content,
-                "author": reply.author.username if reply.author else "Unknown",
+                "author": reply.author.username if reply.author else "Necunoscut",
                 "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
                 "moderation_status": getattr(reply, "moderation_status", "flagged"),
                 "moderation_reason": getattr(reply, "moderation_reason", ""),
@@ -256,11 +267,11 @@ def get_flagged_content(
         return {"content": content}
 
     except Exception as e:
-        logger.error(f"Error getting flagged content: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get flagged content")
+        logger.error(f"Eroare la obținerea conținutului marcat: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca conținutul marcat")
 
 
-@router.post("/api/moderation/moderate/{content_type}/{content_id}")
+@router.post("/api/moderare/modereaza/{content_type}/{content_id}")
 def moderate_content_action(
     content_type: str,
     content_id: int,
@@ -272,33 +283,33 @@ def moderate_content_action(
     """Perform moderation action on content - only moderators can access"""
     try:
         if not current_user.is_moderator and not current_user.is_admin:
-            raise HTTPException(status_code=403, detail="Moderation access required")
+            raise HTTPException(status_code=403, detail="Acces de moderare necesar")
 
         action = action_data.action
         reason = action_data.reason
 
         if action not in ["approve", "reject", "delete"]:
-            raise HTTPException(status_code=400, detail="Invalid action")
+            raise HTTPException(status_code=400, detail="Acțiune invalidă")
 
         if content_type not in ["post", "comment", "audio", "forum_thread", "forum_reply"]:
-            raise HTTPException(status_code=400, detail="Invalid content type")
+            raise HTTPException(status_code=400, detail="Tip de conținut invalid")
 
         # Use the new CRUD functions for approving/rejecting content
         if action == "approve":
             result = crud.approve_content(db, content_type, content_id, current_user.id, reason)
             if not result:
-                raise HTTPException(status_code=404, detail="Content not found")
+                raise HTTPException(status_code=404, detail="Conținutul nu a fost găsit")
             if content_type == "post":
                 ai_queue.enqueue_post_approval_jobs(db, result)
             logger.info(f"Content {content_type} {content_id} approved by moderator {current_user.username}")
-            return {"success": True, "message": f"{content_type.title()} approved successfully"}
+            return {"success": True, "message": f"{_content_type_label(content_type)} a fost aprobat"}
 
         elif action == "reject":
             result = crud.reject_content(db, content_type, content_id, current_user.id, reason)
             if not result:
-                raise HTTPException(status_code=404, detail="Content not found")
+                raise HTTPException(status_code=404, detail="Conținutul nu a fost găsit")
             logger.info(f"Content {content_type} {content_id} rejected by moderator {current_user.username}")
-            return {"success": True, "message": f"{content_type.title()} rejected successfully"}
+            return {"success": True, "message": f"{_content_type_label(content_type)} a fost respins"}
 
         elif action == "delete":
             # For delete, we still need to handle it manually since it's not in CRUD
@@ -314,21 +325,21 @@ def moderate_content_action(
                 content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
 
             if not content:
-                raise HTTPException(status_code=404, detail="Content not found")
+                raise HTTPException(status_code=404, detail="Conținutul nu a fost găsit")
 
             db.delete(content)
             db.commit()
             logger.info(f"Content {content_type} {content_id} deleted by moderator {current_user.username}: {reason}")
-            return {"success": True, "message": f"{content_type.title()} deleted successfully"}
+            return {"success": True, "message": f"{_content_type_label(content_type)} a fost șters"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error moderating content: {e}")
-        raise HTTPException(status_code=500, detail="Failed to moderate content")
+        logger.error(f"Eroare la moderarea conținutului: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut modera conținutul")
 
 
-@router.get("/api/moderation/users/search")
+@router.get("/api/moderare/utilizatori/cauta")
 def search_users_admin(
     q: str = "",
     db: Session = Depends(get_db),
@@ -359,11 +370,11 @@ def search_users_admin(
         return {"users": result}
 
     except Exception as e:
-        logger.error(f"Error searching users: {e}")
-        raise HTTPException(status_code=500, detail="Failed to search users")
+        logger.error(f"Eroare la căutarea utilizatorilor: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut căuta utilizatori")
 
 
-@router.post("/api/moderation/users/{user_id}/suspend")
+@router.post("/api/moderare/utilizatori/{user_id}/suspenda")
 def suspend_user(
     user_id: int,
     suspension_data: schemas.SuspendUserRequest,
@@ -374,10 +385,10 @@ def suspend_user(
     try:
         user = db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
 
         if user.is_admin:
-            raise HTTPException(status_code=400, detail="Cannot suspend admin user")
+            raise HTTPException(status_code=400, detail="Un administrator nu poate fi suspendat")
 
         # Only proceed if the suspension fields exist in the model
         try:
@@ -388,21 +399,21 @@ def suspend_user(
         except AttributeError:
             # If suspension fields don't exist, just log the action
             logger.warning(f"Suspension fields not available in User model for user {user_id}")
-            return {"success": False, "message": "Suspension functionality not available"}
+            return {"success": False, "message": "Funcția de suspendare nu este disponibilă"}
 
         db.commit()
         logger.info(f"User {user.username} suspended by {current_user.username}: {suspension_data.reason}")
 
-        return {"success": True, "message": f"User {user.username} suspended"}
+        return {"success": True, "message": f"Utilizatorul {user.username} a fost suspendat"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error suspending user: {e}")
-        raise HTTPException(status_code=500, detail="Failed to suspend user")
+        logger.error(f"Eroare la suspendarea utilizatorului: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut suspenda utilizatorul")
 
 
-@router.post("/api/moderation/users/{user_id}/unsuspend")
+@router.post("/api/moderare/utilizatori/{user_id}/reactiveaza")
 def unsuspend_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -412,7 +423,7 @@ def unsuspend_user(
     try:
         user = db.query(models.User).filter(models.User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
 
         # Only proceed if the suspension fields exist in the model
         try:
@@ -423,21 +434,21 @@ def unsuspend_user(
         except AttributeError:
             # If suspension fields don't exist, just log the action
             logger.warning(f"Suspension fields not available in User model for user {user_id}")
-            return {"success": False, "message": "Suspension functionality not available"}
+            return {"success": False, "message": "Funcția de suspendare nu este disponibilă"}
 
         db.commit()
         logger.info(f"User {user.username} unsuspended by {current_user.username}")
 
-        return {"success": True, "message": f"User {user.username} unsuspended"}
+        return {"success": True, "message": f"Utilizatorul {user.username} a fost reactivat"}
 
     except Exception as e:
-        logger.error(f"Error unsuspending user: {e}")
-        raise HTTPException(status_code=500, detail="Failed to unsuspend user")
+        logger.error(f"Eroare la reactivarea utilizatorului: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut reactiva utilizatorul")
 
 
 # --- Moderation Logs API Endpoints ---
 
-@router.get("/api/moderation/logs")
+@router.get("/api/moderare/jurnal")
 def get_moderation_logs_api(
     request: Request,
     decision: Optional[str] = None,
@@ -465,28 +476,28 @@ def get_moderation_logs_api(
                 if post:
                     content_title = post.title
                     content_preview = post.content[:100] + "..." if len(post.content) > 100 else post.content
-                    content_author = post.owner.username if post.owner else "Unknown"
+                    content_author = post.owner.username if post.owner else "Necunoscut"
             elif log.content_type == "comment":
                 comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
                 if comment:
-                    content_title = f"Comment on: {comment.post.title}" if comment.post else "Comment"
+                    content_title = f"Comentariu la: {comment.post.title}" if comment.post else "Comentariu"
                     content_preview = comment.content[:100] + "..." if len(comment.content) > 100 else comment.content
-                    content_author = comment.commenter.username if comment.commenter else (comment.author_name or "Anonymous")
+                    content_author = comment.commenter.username if comment.commenter else (comment.author_name or "Anonim")
             elif log.content_type == "forum_thread":
                 thread = db.query(models.ForumThread).filter(models.ForumThread.id == log.content_id).first()
                 if thread:
                     content_title = thread.title
                     content_preview = thread.content[:100] + "..." if len(thread.content) > 100 else thread.content
-                    content_author = thread.author.username if thread.author else "Unknown"
+                    content_author = thread.author.username if thread.author else "Necunoscut"
             elif log.content_type == "forum_reply":
                 reply = db.query(models.ForumReply).options(
                     joinedload(models.ForumReply.thread),
                     joinedload(models.ForumReply.author),
                 ).filter(models.ForumReply.id == log.content_id).first()
                 if reply:
-                    content_title = f"Reply in: {reply.thread.title}" if reply.thread else "Forum reply"
+                    content_title = f"Răspuns în: {reply.thread.title}" if reply.thread else "Răspuns pe forum"
                     content_preview = reply.content[:100] + "..." if len(reply.content) > 100 else reply.content
-                    content_author = reply.author.username if reply.author else "Unknown"
+                    content_author = reply.author.username if reply.author else "Necunoscut"
 
             result.append({
                 "id": log.id,
@@ -514,11 +525,11 @@ def get_moderation_logs_api(
         return {"logs": result, "total": len(result)}
 
     except Exception as e:
-        logger.error(f"Error getting moderation logs: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get moderation logs")
+        logger.error(f"Eroare la obținerea jurnalului de moderare: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca jurnalul de moderare")
 
 
-@router.get("/api/moderation/queue")
+@router.get("/api/moderare/coada")
 def get_moderation_queue_api(
     request: Request,
     db: Session = Depends(get_db),
@@ -540,7 +551,7 @@ def get_moderation_queue_api(
                         "id": post.id,
                         "title": post.title,
                         "content": post.content,
-                        "author": post.owner.username if post.owner else "Unknown",
+                        "author": post.owner.username if post.owner else "Necunoscut",
                         "created_at": post.created_at.isoformat(),
                         "view_count": post.view_count,
                         "category": post.category
@@ -551,8 +562,8 @@ def get_moderation_queue_api(
                     content_data = {
                         "id": comment.id,
                         "content": comment.content,
-                        "author": comment.commenter.username if comment.commenter else (comment.author_name or "Anonymous"),
-                        "post_title": comment.post.title if comment.post else "Unknown Post",
+                        "author": comment.commenter.username if comment.commenter else (comment.author_name or "Anonim"),
+                        "post_title": comment.post.title if comment.post else "Postare necunoscută",
                         "post_id": comment.post_id,
                         "created_at": comment.created_at.isoformat()
                     }
@@ -564,8 +575,8 @@ def get_moderation_queue_api(
                     content_data = {
                         "id": audio.id,
                         "content": audio.transcript or audio.moderation_reason or "Înregistrare audio",
-                        "author": audio.post.owner.username if audio.post and audio.post.owner else "Unknown",
-                        "post_title": audio.post.title if audio.post else "Unknown Post",
+                        "author": audio.post.owner.username if audio.post and audio.post.owner else "Necunoscut",
+                        "post_title": audio.post.title if audio.post else "Postare necunoscută",
                         "post_id": audio.post_id,
                         "created_at": audio.created_at.isoformat(),
                         "match_score": audio.transcript_match_score,
@@ -579,7 +590,7 @@ def get_moderation_queue_api(
                         "id": thread.id,
                         "title": thread.title,
                         "content": thread.content,
-                        "author": thread.author.username if thread.author else "Unknown",
+                        "author": thread.author.username if thread.author else "Necunoscut",
                         "created_at": thread.created_at.isoformat(),
                         "section": thread.section,
                     }
@@ -593,7 +604,7 @@ def get_moderation_queue_api(
                         "id": reply.id,
                         "title": reply.thread.title if reply.thread else None,
                         "content": reply.content,
-                        "author": reply.author.username if reply.author else "Unknown",
+                        "author": reply.author.username if reply.author else "Necunoscut",
                         "thread_id": reply.thread_id,
                         "created_at": reply.created_at.isoformat(),
                     }
@@ -619,11 +630,11 @@ def get_moderation_queue_api(
         return {"queue": result, "total": len(result)}
 
     except Exception as e:
-        logger.error(f"Error getting moderation queue: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get moderation queue")
+        logger.error(f"Eroare la obținerea cozii de moderare: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca coada de moderare")
 
 
-@router.post("/api/moderation/review/{log_id}")
+@router.post("/api/moderare/revizie/{log_id}")
 def review_flagged_content(
     log_id: int,
     review_data: schemas.ModerationActionRequest,
@@ -636,7 +647,7 @@ def review_flagged_content(
         reason = review_data.reason
 
         if decision not in ["approved", "rejected"]:
-            raise HTTPException(status_code=400, detail="Invalid decision. Must be 'approved' or 'rejected'")
+            raise HTTPException(status_code=400, detail="Decizie invalidă. Folosiți 'approved' sau 'rejected'")
 
         # Update the moderation log
         log = crud.update_moderation_log_human_decision(
@@ -644,26 +655,27 @@ def review_flagged_content(
         )
 
         if not log:
-            raise HTTPException(status_code=404, detail="Moderation log not found")
+            raise HTTPException(status_code=404, detail="Înregistrarea de moderare nu a fost găsită")
 
         # Use the centralized CRUD functions to update content and send notifications
         if decision == "approved":
-            crud.approve_content(db, log.content_type, log.content_id, current_user.id, f"Human review: {reason}")
+            crud.approve_content(db, log.content_type, log.content_id, current_user.id, f"Revizie umană: {reason}")
         else:
-            crud.reject_content(db, log.content_type, log.content_id, current_user.id, f"Human review: {reason}")
+            crud.reject_content(db, log.content_type, log.content_id, current_user.id, f"Revizie umană: {reason}")
 
         logger.info(f"Human review completed by {current_user.username}: {log.content_type} {log.content_id} {decision}")
 
-        return {"success": True, "message": f"Content {decision} successfully"}
+        decision_label = "aprobat" if decision == "approved" else "respins"
+        return {"success": True, "message": f"Conținut {decision_label}"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error reviewing flagged content: {e}")
-        raise HTTPException(status_code=500, detail="Failed to review content")
+        logger.error(f"Eroare la revizia conținutului marcat: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut revizui conținutul")
 
 
-@router.get("/api/moderation/stats/extended")
+@router.get("/api/moderare/statistici/extinse")
 def get_extended_moderation_stats(
     request: Request,
     db: Session = Depends(get_db),
@@ -675,5 +687,5 @@ def get_extended_moderation_stats(
         return stats
 
     except Exception as e:
-        logger.error(f"Error getting extended moderation stats: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get extended moderation stats")
+        logger.error(f"Eroare la obținerea statisticilor extinse de moderare: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca statisticile extinse de moderare")

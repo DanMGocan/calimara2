@@ -36,7 +36,7 @@ def _react_index_response() -> FileResponse:
     return response
 
 
-@router.get("/auth/google")
+@router.get("/autentificare/google")
 @limiter.limit("5/minute")
 async def google_login(request: Request):
     """Initiate Google OAuth flow"""
@@ -44,11 +44,11 @@ async def google_login(request: Request):
         auth_url = google_oauth.get_google_auth_url(request)
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
-        logger.error(f"Error initiating Google OAuth: {e}")
-        raise HTTPException(status_code=500, detail="Failed to initiate authentication")
+        logger.error(f"Eroare la inițierea autentificării Google: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut iniția autentificarea")
 
 
-@router.get("/auth/google/callback")
+@router.get("/autentificare/google/raspuns")
 @limiter.limit("5/minute")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     """Handle Google OAuth callback"""
@@ -66,11 +66,12 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             request.session["db_epoch"] = get_db_epoch()
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
             return RedirectResponse(
-                url=f"{_frontend_base_url(request)}/auth/callback?status=success",
+                url=f"{_frontend_base_url(request)}/autentificare/raspuns?status=success",
                 status_code=status.HTTP_302_FOUND
             )
         else:
             # New user - store Google info in session and redirect to setup
+            request.session.clear()
             request.session["google_user"] = {
                 "google_id": google_user.google_id,
                 "email": google_user.email,
@@ -79,32 +80,32 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             }
             logger.info(f"New Google user detected: {google_user.email}. Redirecting to setup.")
             return RedirectResponse(
-                url=f"{_frontend_base_url(request)}/auth/callback?status=setup",
+                url=f"{_frontend_base_url(request)}/autentificare/configurare",
                 status_code=status.HTTP_302_FOUND
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in Google callback: {e}")
-        raise HTTPException(status_code=500, detail="Authentication failed")
+        logger.error(f"Eroare în răspunsul Google: {e}")
+        raise HTTPException(status_code=500, detail="Autentificarea a eșuat")
 
 
-@router.get("/auth/setup")
+@router.get("/autentificare/configurare")
 def auth_setup_page(request: Request):
     """Setup page for new Google OAuth users — served by React frontend"""
     google_user_data = request.session.get("google_user")
     if not google_user_data:
-        return RedirectResponse(url="/auth/google", status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url="/autentificare/google", status_code=status.HTTP_302_FOUND)
     return _react_index_response()
 
 
-@router.post("/api/auth/complete-setup")
+@router.post("/api/autentificare/finalizeaza-configurarea")
 def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
     """Complete user setup after Google OAuth"""
     google_user_data = request.session.get("google_user")
     if not google_user_data:
-        raise HTTPException(status_code=400, detail="No authentication session found")
+        raise HTTPException(status_code=400, detail="Nu există o sesiune de autentificare")
 
     try:
         # Validate username
@@ -123,16 +124,16 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
         request.session["db_epoch"] = get_db_epoch()
 
         logger.info(f"User setup completed for: {new_user.username}")
-        return {"message": "Setup completed successfully", "username": new_user.username}
+        return {"message": "Configurarea a fost finalizată", "username": new_user.username}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error completing user setup: {e}")
-        raise HTTPException(status_code=500, detail="Failed to complete setup")
+        logger.error(f"Eroare la finalizarea configurării utilizatorului: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut finaliza configurarea")
 
 
-@router.get("/api/logout")
+@router.get("/api/deconectare")
 def logout_user(request: Request):
     request.session.clear()  # Clear session
     logger.info("Utilizator deconectat. Sesiune stearsa.")

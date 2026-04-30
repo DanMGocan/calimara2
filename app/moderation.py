@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import re
 from typing import Dict, Tuple, Optional
 from enum import Enum
 from sqlalchemy.orm import Session
@@ -55,20 +56,28 @@ class ModerationResult:
 # --- Romanian pattern matching (additional signal for Pass 2) ---
 
 ROMANIAN_PROFANITY_PATTERNS = [
-    "pula", "muie", "futut", "cacat", "nenorocit", "jegos", "curve", "pizda",
-    "dracu", "mortii", "naiba", "dumnezeu", "ma-ta", "ma-tii",
-    "idiot", "prost", "tâmpit", "retardat", "debil", "cretin"
+    "pula", "pulă", "muie", "futut", "cacat", "căcat", "nenorocit", "jegos",
+    "curvă", "curve", "pizda", "pizdă", "dracu", "mortii", "morții", "naiba",
+    "dumnezeu", "ma-ta", "mă-ta", "ma-tii", "mă-tii", "idiot", "prost",
+    "tâmpit", "tampit", "retardat", "debil", "cretin"
 ]
 
 ROMANIAN_HATE_SPEECH_PATTERNS = [
-    "țigan", "cioară", "jidan", "evreu de căcat", "ungur", "secui",
-    "musulman", "turc", "rus", "bulgar", "sârb"
+    "cioară", "jidan", "evreu de căcat", "țigan împuțit", "tigan imputit"
 ]
 
 
-def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
+def _count_pattern_matches(text: str, patterns: list[str]) -> int:
     text_lower = text.lower()
-    profanity_count = sum(text_lower.count(p) for p in ROMANIAN_PROFANITY_PATTERNS)
+    count = 0
+    for pattern in patterns:
+        escaped = re.escape(pattern.lower())
+        count += len(re.findall(rf"(?<!\w){escaped}(?!\w)", text_lower))
+    return count
+
+
+def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
+    profanity_count = _count_pattern_matches(text, ROMANIAN_PROFANITY_PATTERNS)
     if profanity_count == 0:
         return False, 0.0
     total_words = max(1, len(text.split()))
@@ -77,21 +86,52 @@ def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
 
 
 def contains_romanian_hate_speech(text: str) -> Tuple[bool, float]:
-    text_lower = text.lower()
-    hate_count = sum(text_lower.count(p) for p in ROMANIAN_HATE_SPEECH_PATTERNS)
+    hate_count = _count_pattern_matches(text, ROMANIAN_HATE_SPEECH_PATTERNS)
     if hate_count == 0:
         return False, 0.0
     severity = min(1.0, hate_count * 0.8)
     return True, severity
 
 
+def romanian_content_signals(text: str) -> Dict:
+    has_profanity, profanity_score = contains_romanian_profanity(text)
+    has_hate, hate_score = contains_romanian_hate_speech(text)
+    return {
+        "profanity_detected": has_profanity,
+        "profanity_score": profanity_score,
+        "hate_speech_detected": has_hate,
+        "hate_speech_score": hate_score,
+    }
+
+
 # --- Pass 1: Mistral Moderation classifier ---
 
 MODERATION_CATEGORIES = [
-    "sexual", "hate_and_discrimination", "violence_and_threats",
-    "dangerous_and_criminal_content", "selfharm", "health",
-    "financial", "law", "pii", "jailbreaking"
+    "sexual", "hate_and_discrimination", "violence_and_threats", "dangerous",
+    "criminal", "dangerous_and_criminal_content", "selfharm", "health",
+    "financial", "law", "pii", "jailbreaking",
 ]
+
+
+def _field_value(source, key: str, default):
+    if isinstance(source, dict):
+        return source.get(key, default)
+    if hasattr(source, "model_dump"):
+        dumped = source.model_dump()
+        if isinstance(dumped, dict):
+            return dumped.get(key, default)
+    return getattr(source, key, default)
+
+
+def _score_value(source, key: str) -> float:
+    try:
+        return float(_field_value(source, key, 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _flag_value(source, key: str) -> bool:
+    return bool(_field_value(source, key, False))
 
 
 def classify_content(text: str) -> Dict:
@@ -109,10 +149,26 @@ def classify_content(text: str) -> Dict:
     scores = {}
     flags = {}
     for cat in MODERATION_CATEGORIES:
-        scores[cat] = getattr(result.category_scores, cat, 0.0) if hasattr(result.category_scores, cat) else 0.0
-        flags[cat] = getattr(result.categories, cat, False) if hasattr(result.categories, cat) else False
+        scores[cat] = _score_value(result.category_scores, cat)
+        flags[cat] = _flag_value(result.categories, cat)
 
-    flagged_cats = {k: scores[k] for k, v in flags.items() if v}
+    dangerous_aggregate = max(
+        scores.get("dangerous", 0.0),
+        scores.get("criminal", 0.0),
+        scores.get("dangerous_and_criminal_content", 0.0),
+    )
+    scores["dangerous_and_criminal_content"] = dangerous_aggregate
+    flags["dangerous_and_criminal_content"] = (
+        flags.get("dangerous", False)
+        or flags.get("criminal", False)
+        or flags.get("dangerous_and_criminal_content", False)
+    )
+
+    flagged_cats = {
+        k: scores[k]
+        for k, provider_flagged in flags.items()
+        if provider_flagged or scores.get(k, 0.0) >= MODERATION_THRESHOLD
+    }
     max_score = max(scores.values()) if scores else 0.0
 
     return {
@@ -201,17 +257,36 @@ def _moderate_text(text: str) -> ModerationResult:
         )
 
     if not client:
-        logger.warning("Mistral client not configured - auto-approving")
+        logger.warning("Mistral client not configured - sending content to moderation queue")
         return ModerationResult(
-            status=ModerationStatus.APPROVED,
+            status=ModerationStatus.FLAGGED,
             toxicity_score=0.0,
-            reason="Mistral API not configured"
+            reason="Mistral API not configured - sent to manual review"
         )
 
     try:
         # --- Pass 1: Classifier ---
         logger.info(f"Pass 1 (classifier): analyzing text ({len(text)} chars)")
         classification = classify_content(text)
+        romanian_signals = romanian_content_signals(text)
+        local_score = max(
+            romanian_signals["profanity_score"],
+            romanian_signals["hate_speech_score"],
+        )
+        toxicity_score = max(classification["max_score"], local_score)
+
+        if romanian_signals["profanity_detected"] or romanian_signals["hate_speech_detected"]:
+            logger.info("Romanian content signals detected; sending to manual review")
+            return ModerationResult(
+                status=ModerationStatus.FLAGGED,
+                toxicity_score=toxicity_score,
+                reason="Romanian profanity or direct insult detected - sent to manual review",
+                details={
+                    **classification["category_scores"],
+                    "pass1_flagged": classification["flagged_categories"],
+                    "romanian_signals": romanian_signals,
+                }
+            )
 
         if classification["is_clean"]:
             logger.info(f"Pass 1: CLEAN (max_score={classification['max_score']:.3f})")
@@ -219,18 +294,11 @@ def _moderate_text(text: str) -> ModerationResult:
                 status=ModerationStatus.APPROVED,
                 toxicity_score=classification["max_score"],
                 reason="Pass 1 (classifier): content is clean",
-                details=classification["category_scores"]
+                details={
+                    **classification["category_scores"],
+                    "romanian_signals": romanian_signals,
+                }
             )
-
-        # Content flagged — gather Romanian signals for Pass 2
-        has_profanity, profanity_score = contains_romanian_profanity(text)
-        has_hate, hate_score = contains_romanian_hate_speech(text)
-        romanian_signals = {
-            "profanity_detected": has_profanity,
-            "profanity_score": profanity_score,
-            "hate_speech_detected": has_hate,
-            "hate_speech_score": hate_score,
-        }
 
         flagged = classification["flagged_categories"]
         logger.info(f"Pass 1: FLAGGED categories={list(flagged.keys())}, proceeding to Pass 2")
@@ -243,7 +311,7 @@ def _moderate_text(text: str) -> ModerationResult:
             logger.info(f"Pass 2: SAFE — {llm_verdict.get('reason', '')}")
             return ModerationResult(
                 status=ModerationStatus.APPROVED,
-                toxicity_score=classification["max_score"],
+                toxicity_score=toxicity_score,
                 reason=f"Pass 2 (LLM review): {llm_verdict.get('reason', 'approved by LLM')}",
                 details={
                     **classification["category_scores"],
@@ -257,7 +325,7 @@ def _moderate_text(text: str) -> ModerationResult:
         logger.info(f"Pass 2: UNSAFE — {llm_verdict.get('reason', '')}")
         return ModerationResult(
             status=ModerationStatus.FLAGGED,
-            toxicity_score=classification["max_score"],
+            toxicity_score=toxicity_score,
             reason=f"Flagged for manual review: {llm_verdict.get('reason', 'rejected by both passes')}",
             details={
                 **classification["category_scores"],
@@ -270,9 +338,9 @@ def _moderate_text(text: str) -> ModerationResult:
     except Exception as e:
         logger.error(f"Moderation pipeline error: {e}")
         return ModerationResult(
-            status=ModerationStatus.APPROVED,
+            status=ModerationStatus.FLAGGED,
             toxicity_score=0.0,
-            reason=f"Moderation error (auto-approved): {str(e)}"
+            reason=f"Moderation error - sent to manual review: {str(e)}"
         )
 
 

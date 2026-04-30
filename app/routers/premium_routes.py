@@ -18,7 +18,7 @@ def _require_user(current_user: Optional[models.User]) -> models.User:
     return current_user
 
 
-@router.post("/api/premium/checkout", response_model=schemas.PremiumCheckoutResponse)
+@router.post("/api/premium/plata", response_model=schemas.PremiumCheckoutResponse)
 def create_checkout(
     body: schemas.PremiumCheckoutRequest = schemas.PremiumCheckoutRequest(),
     db: Session = Depends(get_db),
@@ -58,7 +58,7 @@ def open_portal(
     return schemas.PremiumPortalResponse(url=url)
 
 
-@router.post("/api/stripe/webhook")
+@router.post("/api/stripe/notificare")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
@@ -66,7 +66,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         event = stripe_service.verify_webhook(payload, sig_header)
     except Exception as exc:
         logger.warning("Stripe webhook signature verification failed: %s", exc)
-        raise HTTPException(status_code=400, detail="Invalid signature")
+        raise HTTPException(status_code=400, detail="Semnătură invalidă")
 
     event_id = event["id"]
     event_type = event["type"]

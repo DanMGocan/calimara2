@@ -23,14 +23,14 @@ def require_admin(current_user: Optional[models.User] = Depends(auth.get_current
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            detail="Autentificare necesară"
         )
     
     if not is_admin(current_user):
         logger.warning(f"Unauthorized admin access attempt by {current_user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Acces de administrare necesar"
         )
     
     return current_user
@@ -40,14 +40,14 @@ def require_moderator(current_user: Optional[models.User] = Depends(auth.get_cur
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required"
+            detail="Autentificare necesară"
         )
     
     if not is_moderator(current_user):
         logger.warning(f"Unauthorized moderation access attempt by {current_user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderation access required"
+            detail="Acces de moderare necesar"
         )
     
     return current_user

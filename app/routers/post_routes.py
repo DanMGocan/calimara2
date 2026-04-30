@@ -19,7 +19,7 @@ router = APIRouter(tags=["posts"])
 
 # --- Posts Archive ---
 
-@router.get("/api/posts/archive")
+@router.get("/api/postari/arhiva")
 def get_posts_archive(
     month: int = None,
     year: int = None,
@@ -74,10 +74,10 @@ def get_posts_archive(
 
     except Exception as e:
         logger.error(f"Eroare la obținerea arhivei pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get posts archive")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca arhiva postărilor")
 
 
-@router.get("/api/posts/months")
+@router.get("/api/postari/luni")
 def get_available_months(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -88,12 +88,12 @@ def get_available_months(
         return {"months": months}
     except Exception as e:
         logger.error(f"Eroare la obținerea lunilor pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get available months")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca lunile disponibile")
 
 
 # --- Post CRUD ---
 
-@router.post("/api/posts/", response_model=schemas.Post)
+@router.post("/api/postari/", response_model=schemas.Post)
 @limiter.limit("20/minute")
 async def create_post(
     request: Request,
@@ -106,7 +106,7 @@ async def create_post(
     return db_post
 
 
-@router.put("/api/posts/{post_id}", response_model=schemas.Post)
+@router.put("/api/postari/{post_id}", response_model=schemas.Post)
 def update_post_api(
     post_id: int,
     post_update: schemas.PostUpdate,
@@ -123,7 +123,7 @@ def update_post_api(
     return updated
 
 
-@router.delete("/api/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/postari/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_post_api(
     post_id: int,
     db: Session = Depends(get_db),
@@ -138,7 +138,7 @@ def delete_post_api(
 
 # --- Comments ---
 
-@router.post("/api/posts/{post_id}/comments", response_model=schemas.Comment)
+@router.post("/api/postari/{post_id}/comentarii", response_model=schemas.Comment)
 @limiter.limit("20/minute")
 def add_comment_to_post(
     post_id: int,
@@ -160,7 +160,7 @@ def add_comment_to_post(
     return db_comment
 
 
-@router.put("/api/comments/{comment_id}/approve", response_model=schemas.Comment)
+@router.put("/api/comentarii/{comment_id}/aproba", response_model=schemas.Comment)
 def approve_comment_api(
     comment_id: int,
     db: Session = Depends(get_db),
@@ -178,7 +178,7 @@ def approve_comment_api(
     return crud.approve_comment(db=db, comment_id=comment_id)
 
 
-@router.delete("/api/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/comentarii/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_comment_api(
     comment_id: int,
     db: Session = Depends(get_db),
@@ -199,7 +199,7 @@ def delete_comment_api(
 
 # --- Likes ---
 
-@router.post("/api/posts/{post_id}/likes", response_model=schemas.Like)
+@router.post("/api/postari/{post_id}/aprecieri", response_model=schemas.Like)
 def add_like_to_post(
     post_id: int,
     request: Request,
@@ -219,7 +219,7 @@ def add_like_to_post(
     return db_like
 
 
-@router.get("/api/posts/{post_id}/likes/count")
+@router.get("/api/postari/{post_id}/aprecieri/numar")
 def get_likes_count(post_id: int, db: Session = Depends(get_db)):
     count = crud.get_likes_count_for_post(db, post_id)
     return {"post_id": post_id, "likes_count": count}
@@ -227,7 +227,7 @@ def get_likes_count(post_id: int, db: Session = Depends(get_db)):
 
 # --- Random Posts API ---
 
-@router.get("/api/posts/random")
+@router.get("/api/postari/aleatoriu")
 def get_random_posts_api(
     category: str = "toate",
     limit: int = 10,
@@ -267,5 +267,5 @@ def get_random_posts_api(
         return {"posts": formatted_posts}
 
     except Exception as e:
-        logger.error(f"Error getting random posts: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get random posts")
+        logger.error(f"Eroare la obținerea postărilor aleatorii: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca postările aleatorii")

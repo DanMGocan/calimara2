@@ -100,6 +100,38 @@ class AIQueueTests(unittest.TestCase):
         self.assertNotIn(ai_queue.JOB_TTS_AUDIO, queued_types)
         self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="post").count(), 1)
 
+    def test_tts_generation_failure_keeps_ai_job_retryable(self):
+        user = self.make_user()
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Poem", content="Un text pentru audio.", ai_critic=False),
+            user_id=user.id,
+        )
+        post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(post)
+        audio = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            requester_user_id=user.id,
+            source="tts",
+            status="pending",
+            tts_character_count=25,
+        )
+        job = ai_queue.enqueue_tts_audio_job(self.db, audio)
+
+        with patch.object(ai_queue.audio_service, "synthesize_text", side_effect=RuntimeError("provider down")):
+            processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        self.assertEqual(processed, 1)
+        self.db.refresh(audio)
+        job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.assertEqual(audio.status, "failed")
+        self.assertEqual(audio.error_message, "provider down")
+        self.assertEqual(job.status, "pending")
+        self.assertEqual(job.attempts, 1)
+        self.assertIn("provider down", job.error_message)
+
     def test_comment_moderation_job_updates_comment_without_blocking_create(self):
         user = self.make_user()
         post = crud.create_user_post(
@@ -129,6 +161,103 @@ class AIQueueTests(unittest.TestCase):
         self.assertTrue(comment.approved)
         self.assertEqual(comment.moderation_status, "approved")
         self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="comment").count(), 1)
+
+    def test_final_moderation_failures_are_flagged_not_auto_approved(self):
+        user = self.make_user()
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Poem", content="Text de verificat.", ai_critic=True),
+            user_id=user.id,
+        )
+        approved_post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Public", content="Text public.", ai_critic=False),
+            user_id=user.id,
+        )
+        approved_post.moderation_status = "approved"
+        self.db.commit()
+        comment = crud.create_comment(
+            self.db,
+            schemas.CommentCreate(content="Comentariu de verificat"),
+            post_id=approved_post.id,
+            user_id=user.id,
+        )
+        thread = crud.create_forum_thread(
+            self.db,
+            user,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Discuție",
+                content="Text de verificat",
+            ),
+        )
+        reply_thread = crud.create_forum_thread(
+            self.db,
+            user,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Discuție publică",
+                content="Text public",
+            ),
+        )
+        reply_thread.moderation_status = "approved"
+        self.db.commit()
+        reply, error = crud.create_forum_reply(
+            self.db,
+            user,
+            reply_thread,
+            schemas.ForumReplyCreate(content="Răspuns de verificat"),
+        )
+        self.assertIsNone(error)
+
+        jobs = [
+            ai_queue.enqueue_post_publish_job(self.db, post, ai_critic_requested=True),
+            ai_queue.enqueue_comment_moderation_job(self.db, comment),
+            ai_queue.enqueue_forum_thread_moderation_job(self.db, thread),
+            ai_queue.enqueue_forum_reply_moderation_job(self.db, reply),
+        ]
+        for job in jobs:
+            job.max_attempts = 1
+        self.db.commit()
+
+        with patch.object(
+            ai_queue.category_classifier,
+            "classify_post",
+            return_value="poezie",
+        ), patch.object(
+            ai_queue.moderation,
+            "moderate_post_with_logging",
+            side_effect=RuntimeError("moderation provider down"),
+        ), patch.object(
+            ai_queue.moderation,
+            "moderate_comment_with_logging",
+            side_effect=RuntimeError("moderation provider down"),
+        ), patch.object(
+            ai_queue.moderation,
+            "moderate_forum_thread_with_logging",
+            side_effect=RuntimeError("moderation provider down"),
+        ), patch.object(
+            ai_queue.moderation,
+            "moderate_forum_reply_with_logging",
+            side_effect=RuntimeError("moderation provider down"),
+        ):
+            for _ in jobs:
+                self.assertEqual(ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker"), 1)
+
+        for item in (post, comment, thread, reply):
+            self.db.refresh(item)
+            self.assertEqual(item.moderation_status, "flagged")
+            self.assertEqual(item.toxicity_score, 0.0)
+            self.assertIn("manual review", item.moderation_reason)
+        self.assertFalse(comment.approved)
+
+        failed_jobs = self.db.query(models.AIJob).filter(models.AIJob.id.in_([job.id for job in jobs])).all()
+        self.assertEqual({job.status for job in failed_jobs}, {"failed"})
+        self.assertEqual(self.db.query(models.GologaniTransaction).count(), 0)
+        queued_followups = self.db.query(models.AIJob).filter(
+            models.AIJob.job_type.in_([ai_queue.JOB_THEME_ANALYSIS, ai_queue.JOB_AI_CRITIC])
+        ).count()
+        self.assertEqual(queued_followups, 0)
 
 
 if __name__ == "__main__":

@@ -240,7 +240,7 @@ def _handle_comment_moderation(db: Session, job: models.AIJob) -> None:
             notif_type="moderation_queue",
             title="Comentariu în curs de moderare",
             message=f"Comentariul tău la postarea '{comment.post.title if comment.post else ''}' a fost trimis pentru revizuire manuală.",
-            link=f"/piese/{comment.post.slug}" if comment.post else None,
+            link=f"/{comment.post.slug}" if comment.post else None,
         )
     elif comment.moderation_status == "approved":
         crud.award_content_approved(db, "comment", comment)
@@ -352,9 +352,9 @@ def _handle_ai_critic(db: Session, job: models.AIJob) -> None:
 
 
 def _finalize_moderation_failure(db: Session, job: models.AIJob, exc: Exception) -> None:
-    reason = f"Auto-approved due to queued AI job failure: {exc}"
-    approved = SimpleNamespace(
-        status=moderation.ModerationStatus.APPROVED,
+    reason = f"AI moderation failed after queued job retries - sent to manual review: {exc}"
+    flagged = SimpleNamespace(
+        status=moderation.ModerationStatus.FLAGGED,
         toxicity_score=0.0,
         reason=reason,
     )
@@ -362,27 +362,24 @@ def _finalize_moderation_failure(db: Session, job: models.AIJob, exc: Exception)
         post = crud.get_post(db, job.target_id)
         if post and post.moderation_status == "pending" and _post_matches_job(post, job):
             post.category = post.category or "proza_scurta"
-            post.moderation_status = "approved"
+            post.moderation_status = "flagged"
             post.toxicity_score = 0.0
             post.moderation_reason = reason
             db.commit()
             db.refresh(post)
-            crud.award_content_approved(db, "post", post)
-            enqueue_post_approval_jobs(db, post)
     elif job.job_type == JOB_COMMENT_MODERATION:
         comment = db.query(models.Comment).filter(models.Comment.id == job.target_id).first()
         if comment and comment.moderation_status == "pending":
-            comment.moderation_status = "approved"
-            comment.approved = True
+            comment.moderation_status = "flagged"
+            comment.approved = False
             comment.toxicity_score = 0.0
             comment.moderation_reason = reason
             db.commit()
             db.refresh(comment)
-            crud.award_content_approved(db, "comment", comment)
     elif job.job_type == JOB_FORUM_THREAD_MODERATION:
         thread = crud.get_forum_thread(db, job.target_id)
         if thread and thread.moderation_status == "pending":
-            crud.apply_forum_thread_moderation_result(db, thread, approved)
+            crud.apply_forum_thread_moderation_result(db, thread, flagged)
     elif job.job_type == JOB_FORUM_REPLY_MODERATION:
         reply = (
             db.query(models.ForumReply)
@@ -391,7 +388,7 @@ def _finalize_moderation_failure(db: Session, job: models.AIJob, exc: Exception)
             .first()
         )
         if reply and reply.moderation_status == "pending":
-            crud.apply_forum_reply_moderation_result(db, reply, approved)
+            crud.apply_forum_reply_moderation_result(db, reply, flagged)
 
 
 _HANDLERS = {

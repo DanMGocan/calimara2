@@ -16,7 +16,7 @@ os.environ["STRIPE_PRICE_ID_AUDIO_MONTHLY"] = "price_audio_dummy"
 os.environ["STRIPE_PRICE_ID_AUTHOR_AUDIO_MONTHLY"] = "price_author_audio_dummy"
 os.environ["STRIPE_SUCCESS_URL"] = "http://x/success"
 os.environ["STRIPE_CANCEL_URL"] = "http://x/cancel"
-os.environ["STRIPE_CUSTOMER_PORTAL_RETURN_URL"] = "http://x/dashboard"
+os.environ["STRIPE_CUSTOMER_PORTAL_RETURN_URL"] = "http://x/panou"
 
 from app import crud, models
 from app.week_util import utcnow_naive

@@ -102,6 +102,22 @@ class Comment(CommentBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+DiacriticsKind = Literal["post", "forum_thread", "forum_reply", "comment"]
+
+
+class DiacriticsRequest(BaseModel):
+    kind: DiacriticsKind
+    title: Optional[str] = Field(None, max_length=300)
+    content: str = Field(..., min_length=1, max_length=12000)
+
+
+class DiacriticsResponse(BaseModel):
+    title: Optional[str] = None
+    content: str
+    changed: bool = False
+
+
 class Like(BaseModel):
     id: int
     post_id: int

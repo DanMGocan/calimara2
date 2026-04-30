@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
 
 
-@router.get("/api/user/me")
+@router.get("/api/utilizator/eu")
 def get_current_user_info(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
@@ -67,7 +67,7 @@ def get_current_user_info(
     return response
 
 
-@router.put("/api/user/me", response_model=schemas.UserInDB)
+@router.put("/api/utilizator/eu", response_model=schemas.UserInDB)
 def update_current_user(
     user_update: schemas.UserProfileUpdate,
     db: Session = Depends(get_db),
@@ -90,7 +90,7 @@ def update_current_user(
     return current_user
 
 
-@router.put("/api/user/social-links", response_model=schemas.UserInDB)
+@router.put("/api/utilizator/linkuri-sociale", response_model=schemas.UserInDB)
 def update_user_social_links(
     social_update: schemas.SocialLinksUpdate,
     db: Session = Depends(get_db),
@@ -145,7 +145,7 @@ def update_user_social_links(
     return current_user
 
 
-@router.put("/api/user/best-friends")
+@router.put("/api/utilizator/prieteni-apropiati")
 def update_best_friends(
     best_friends_data: schemas.BestFriendsUpdate,
     db: Session = Depends(get_db),
@@ -157,7 +157,7 @@ def update_best_friends(
 
         # Validate max 3 friends
         if len(friend_usernames) > 3:
-            raise HTTPException(status_code=400, detail="Maximum 3 best friends allowed")
+            raise HTTPException(status_code=400, detail="Sunt permiși maximum 3 prieteni apropiați")
 
         # Remove existing best friends using ORM
         db.query(models.BestFriend).filter(models.BestFriend.user_id == current_user.id).delete()
@@ -175,16 +175,16 @@ def update_best_friends(
                     db.add(new_friendship)
 
         db.commit()
-        logger.info(f"Best friends actualizați pentru utilizatorul: {current_user.username}")
-        return {"success": True, "message": "Best friends updated successfully"}
+        logger.info(f"Prieteni apropiați actualizați pentru utilizatorul: {current_user.username}")
+        return {"success": True, "message": "Prietenii apropiați au fost actualizați"}
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Eroare la actualizarea best friends pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update best friends")
+        logger.error(f"Eroare la actualizarea prietenilor apropiați pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut actualiza prietenii apropiați")
 
 
-@router.get("/api/users/search")
+@router.get("/api/utilizatori/cauta")
 def search_users(
     q: str,
     db: Session = Depends(get_db),
@@ -202,12 +202,12 @@ def search_users(
     return [{"username": user.username, "subtitle": user.subtitle} for user in users]
 
 
-@router.get("/api/users/random")
+@router.get("/api/utilizatori/aleatoriu")
 def get_random_user(db: Session = Depends(get_db)):
     """Return a single random user who has at least one approved post."""
     user = crud.get_random_user_with_posts(db)
     if not user:
-        raise HTTPException(status_code=404, detail="No authors available")
+        raise HTTPException(status_code=404, detail="Nu există autori disponibili")
     return {
         "id": user.id,
         "username": user.username,
@@ -216,7 +216,7 @@ def get_random_user(db: Session = Depends(get_db)):
     }
 
 
-@router.put("/api/user/featured-posts")
+@router.put("/api/utilizator/postari-recomandate")
 def update_featured_posts(
     featured_posts_data: schemas.FeaturedPostsUpdate,
     db: Session = Depends(get_db),
@@ -228,7 +228,7 @@ def update_featured_posts(
 
         # Validate max 3 posts
         if len(post_ids) > 3:
-            raise HTTPException(status_code=400, detail="Maximum 3 featured posts allowed")
+            raise HTTPException(status_code=400, detail="Sunt permise maximum 3 postări recomandate")
 
         # Validate that all posts belong to the user
         for post_id in post_ids:
@@ -238,7 +238,7 @@ def update_featured_posts(
                     models.Post.user_id == current_user.id
                 ).first()
                 if not post:
-                    raise HTTPException(status_code=400, detail=f"Post {post_id} not found or not owned by user")
+                    raise HTTPException(status_code=400, detail=f"Postarea {post_id} nu a fost găsită sau nu aparține utilizatorului")
 
         # Remove existing featured posts using ORM
         db.query(models.FeaturedPost).filter(models.FeaturedPost.user_id == current_user.id).delete()
@@ -254,10 +254,10 @@ def update_featured_posts(
                 db.add(new_featured)
 
         db.commit()
-        logger.info(f"Featured posts actualizate pentru utilizatorul: {current_user.username}")
-        return {"success": True, "message": "Featured posts updated successfully"}
+        logger.info(f"Postări recomandate actualizate pentru utilizatorul: {current_user.username}")
+        return {"success": True, "message": "Postările recomandate au fost actualizate"}
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Eroare la actualizarea featured posts pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update featured posts")
+        logger.error(f"Eroare la actualizarea postărilor recomandate pentru {current_user.username}: {e}")
+        raise HTTPException(status_code=500, detail="Nu am putut actualiza postările recomandate")

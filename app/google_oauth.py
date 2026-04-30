@@ -73,7 +73,7 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         # Validate state parameter for CSRF protection
         query_params = dict(request.query_params)
         if 'state' not in query_params:
-            raise HTTPException(status_code=400, detail="Missing OAuth state parameter")
+            raise HTTPException(status_code=400, detail="Lipsește parametrul OAuth state")
             
         received_state = query_params['state']
         
@@ -85,7 +85,7 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
             original_host = state_data.get('host')
         except Exception as e:
             logger.error(f"Failed to decode OAuth state: {e}")
-            raise HTTPException(status_code=400, detail="Invalid OAuth state format")
+            raise HTTPException(status_code=400, detail="Format OAuth state invalid")
         
         # Validate against session (if available) or use embedded validation
         stored_csrf = request.session.get('oauth_csrf')
@@ -95,13 +95,13 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         if stored_csrf and stored_timestamp:
             if csrf_token != stored_csrf or timestamp != stored_timestamp:
                 logger.error(f"OAuth state mismatch via session: csrf={csrf_token[:8]}... vs {stored_csrf[:8] if stored_csrf else None}...")
-                raise HTTPException(status_code=400, detail="Invalid OAuth state parameter")
+                raise HTTPException(status_code=400, detail="Parametru OAuth state invalid")
         else:
             # Validate timestamp is recent (within 10 minutes) as fallback
             current_time = int(datetime.now().timestamp())
             if current_time - timestamp > 600:  # 10 minutes
                 logger.error(f"OAuth state expired: {current_time - timestamp} seconds old")
-                raise HTTPException(status_code=400, detail="OAuth state expired")
+                raise HTTPException(status_code=400, detail="Parametrul OAuth state a expirat")
         
         # Clear the stored state
         request.session.pop('oauth_csrf', None)
@@ -111,7 +111,7 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         
         # Get the authorization code
         if 'code' not in query_params:
-            raise HTTPException(status_code=400, detail="Missing authorization code")
+            raise HTTPException(status_code=400, detail="Lipsește codul de autorizare")
             
         auth_code = query_params['code']
         
@@ -142,7 +142,7 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
             user_info = user_response.json()
         
         if not user_info:
-            raise HTTPException(status_code=400, detail="Failed to get user information from Google")
+            raise HTTPException(status_code=400, detail="Nu am putut obține informațiile contului Google")
         
         # Extract relevant information
         google_user = schemas.GoogleUserInfo(
@@ -159,10 +159,10 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         raise
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error during Google OAuth: {e}")
-        raise HTTPException(status_code=400, detail="OAuth authentication failed")
+        raise HTTPException(status_code=400, detail="Autentificarea OAuth a eșuat")
     except Exception as e:
         logger.error(f"Unexpected error during Google callback: {e}")
-        raise HTTPException(status_code=500, detail="Authentication failed")
+        raise HTTPException(status_code=500, detail="Autentificarea a eșuat")
 
 def find_or_create_user(db: Session, google_user: schemas.GoogleUserInfo) -> tuple[models.User, bool]:
     """
@@ -197,7 +197,7 @@ def create_user_from_google(db: Session, google_user: schemas.GoogleUserInfo, se
     # Validate username is available
     existing_user = crud.get_user_by_username(db, setup_data.username.lower())
     if existing_user:
-        raise HTTPException(status_code=400, detail="Username is already taken")
+        raise HTTPException(status_code=400, detail="Numele de utilizator este deja folosit")
     
     # Create new user
     user_data = {

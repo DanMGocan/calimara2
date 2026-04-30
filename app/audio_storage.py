@@ -93,7 +93,7 @@ def local_path_for_key(key: str) -> Path:
 def playback_url(audio: models.PostAudio) -> str:
     if audio.storage_backend == "s3":
         return _presigned_s3_url(audio.storage_key or "")
-    return f"/api/audio/stream/{audio.id}"
+    return f"/api/audio/redare/{audio.id}"
 
 
 def _presigned_s3_url(key: str) -> str:

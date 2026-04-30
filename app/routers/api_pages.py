@@ -158,7 +158,7 @@ def serialize_comment(comment):
     return result
 
 
-@router.get("/api/landing")
+@router.get("/api/prima-pagina")
 def landing_data(
     request: Request,
     category: str = "toate",
@@ -180,7 +180,7 @@ def landing_data(
     }
 
 
-@router.get("/api/blog/{username}")
+@router.get("/api/bloguri/{username}")
 def blog_data(
     request: Request,
     username: str,
@@ -192,7 +192,7 @@ def blog_data(
     """Blog homepage data for a specific user"""
     user = crud.get_user_by_username(db, username=username)
     if not user:
-        raise HTTPException(status_code=404, detail="Blogul nu a fost gasit")
+        raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
 
     statistics.record_view(db, request, "blog", user.id, username, user.id, current_user)
 
@@ -262,7 +262,7 @@ def blog_data(
     }
 
 
-@router.get("/api/blog/{username}/post/{slug}")
+@router.get("/api/bloguri/{username}/postari/{slug}")
 def post_detail_data(
     request: Request,
     username: str,
@@ -273,11 +273,11 @@ def post_detail_data(
     """Post detail page data"""
     user = crud.get_user_by_username(db, username=username)
     if not user:
-        raise HTTPException(status_code=404, detail="Blogul nu a fost gasit")
+        raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
 
     post = crud.get_post_by_slug(db, slug)
     if not post or post.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
     can_view_pending = bool(
         current_user
         and (
@@ -287,7 +287,7 @@ def post_detail_data(
         )
     )
     if post.moderation_status != "approved" and not can_view_pending:
-        raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     # Track view with bot detection and deduplication
     statistics.record_view(db, request, "post", post.id, post.slug, post.user_id, current_user)
@@ -326,7 +326,7 @@ def post_detail_data(
     }
 
 
-@router.get("/api/blog/{username}/post/{slug}/pdf")
+@router.get("/api/bloguri/{username}/postari/{slug}/pdf")
 def post_pdf_download(
     request: Request,
     username: str,
@@ -335,11 +335,11 @@ def post_pdf_download(
 ):
     user = crud.get_user_by_username(db, username=username)
     if not user:
-        raise HTTPException(status_code=404, detail="Blogul nu a fost gasit")
+        raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
 
     post = crud.get_post_by_slug(db, slug)
     if not post or post.user_id != user.id or post.moderation_status != "approved":
-        raise HTTPException(status_code=404, detail="Postarea nu a fost gasita")
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     page_url = pdf_exporter.post_page_url(request, user.username, post.slug)
     pdf_bytes = pdf_exporter.render_post_pdf(
@@ -355,7 +355,7 @@ def post_pdf_download(
     )
 
 
-@router.get("/api/categories/{category_key}")
+@router.get("/api/categorii/{category_key}")
 def category_page_data(
     request: Request,
     category_key: str,
@@ -365,7 +365,7 @@ def category_page_data(
 ):
     """Category page data"""
     if category_key not in CATEGORIES:
-        raise HTTPException(status_code=404, detail="Categoria nu a fost gasita")
+        raise HTTPException(status_code=404, detail="Categoria nu a fost găsită")
 
     posts = crud.get_posts_by_category_sorted(db, category_key, sort_by=sort_by, limit=6)
     statistics.record_view(db, request, "category", None, category_key, None, None)
@@ -378,7 +378,7 @@ def category_page_data(
     }
 
 
-@router.get("/api/user/{username}/profile")
+@router.get("/api/utilizator/{username}/profil")
 def user_public_profile(
     username: str,
     db: Session = Depends(get_db),
@@ -386,6 +386,6 @@ def user_public_profile(
     """Public user profile data"""
     user = crud.get_user_by_username(db, username=username)
     if not user:
-        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost gasit")
+        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
 
     return serialize_user(user)

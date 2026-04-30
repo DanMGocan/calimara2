@@ -59,7 +59,7 @@ def _shop_state(db: Session, user: models.User) -> dict:
     }
 
 
-@router.get("/api/shop/items", response_model=schemas.ShopState)
+@router.get("/api/magazin/obiecte", response_model=schemas.ShopState)
 def list_shop_items_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -67,7 +67,7 @@ def list_shop_items_api(
     return _shop_state(db, current_user)
 
 
-@router.get("/api/shop/me", response_model=schemas.ShopState)
+@router.get("/api/magazin/eu", response_model=schemas.ShopState)
 def get_my_shop_state_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -75,7 +75,7 @@ def get_my_shop_state_api(
     return _shop_state(db, current_user)
 
 
-@router.post("/api/shop/items/{item_id}/purchase", response_model=schemas.ShopState)
+@router.post("/api/magazin/obiecte/{item_id}/cumpara", response_model=schemas.ShopState)
 def purchase_shop_item_api(
     item_id: int,
     db: Session = Depends(get_db),
@@ -94,7 +94,7 @@ def purchase_shop_item_api(
     return _shop_state(db, current_user)
 
 
-@router.post("/api/inventory/equip", response_model=schemas.ShopState)
+@router.post("/api/inventar/echipeaza", response_model=schemas.ShopState)
 def equip_inventory_item_api(
     data: schemas.EquipItemRequest,
     db: Session = Depends(get_db),
@@ -107,7 +107,7 @@ def equip_inventory_item_api(
     return _shop_state(db, current_user)
 
 
-@router.delete("/api/inventory/equipped/{slot}", response_model=schemas.ShopState)
+@router.delete("/api/inventar/echipate/{slot}", response_model=schemas.ShopState)
 def unequip_slot_api(
     slot: str,
     db: Session = Depends(get_db),
@@ -117,7 +117,7 @@ def unequip_slot_api(
     return _shop_state(db, current_user)
 
 
-@router.get("/api/admin/shop/items", response_model=list[schemas.ShopItemOut])
+@router.get("/api/moderare/magazin/obiecte", response_model=list[schemas.ShopItemOut])
 def admin_list_shop_items_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
@@ -126,7 +126,7 @@ def admin_list_shop_items_api(
 
 
 @router.post(
-    "/api/admin/shop/items",
+    "/api/moderare/magazin/obiecte",
     response_model=schemas.ShopItemOut,
     status_code=status.HTTP_201_CREATED,
 )
@@ -142,7 +142,7 @@ def admin_create_shop_item_api(
     return _item_payload(item)
 
 
-@router.put("/api/admin/shop/items/{item_id}", response_model=schemas.ShopItemOut)
+@router.put("/api/moderare/magazin/obiecte/{item_id}", response_model=schemas.ShopItemOut)
 def admin_update_shop_item_api(
     item_id: int,
     data: schemas.ShopItemUpdate,

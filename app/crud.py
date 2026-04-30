@@ -134,7 +134,7 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, cate
         {
             "status": "rejected",
             "moderation_status": "rejected",
-            "moderation_reason": "Post was edited after this audio was created",
+            "moderation_reason": "Postarea a fost editată după crearea acestui audio",
         }
     )
     db.commit()
@@ -343,6 +343,7 @@ def get_user_audio_tts_character_usage(
             models.PostAudio.requester_user_id == user_id,
             models.PostAudio.quota_period_start == period_start,
             models.PostAudio.quota_period_end == period_end,
+            models.PostAudio.status.in_(["pending", "processing", "ready"]),
         )
         .scalar()
     )
@@ -811,7 +812,7 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
             )
             link = None
             if content_type == "post":
-                link = f"/piese/{content.slug}"
+                link = f"/{content.slug}"
             elif content_type == "forum_thread":
                 link = f"/discutii/{content.slug}"
             elif content_type == "forum_reply" and content.thread:
@@ -1087,7 +1088,7 @@ def award_content_approved(db: Session, content_type: str, content) -> Optional[
         label = "Comentariu aprobat"
     elif content_type == "forum_thread":
         user_id = getattr(content, "author_id", None)
-        label = "Thread de forum aprobat"
+        label = "Discuție de forum aprobată"
     elif content_type == "forum_reply":
         user_id = getattr(content, "author_id", None)
         label = "Răspuns de forum aprobat"

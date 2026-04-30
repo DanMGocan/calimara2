@@ -20,7 +20,7 @@ FORUM_SECTIONS = [
     {"key": "general", "label": "General"},
     {"key": "poezie", "label": "Poezie"},
     {"key": "proza_scurta", "label": "Proză scurtă"},
-    {"key": "feedback", "label": "Feedback"},
+    {"key": "feedback", "label": "Impresii"},
     {"key": "anunturi", "label": "Anunțuri"},
 ]
 
@@ -87,14 +87,14 @@ def _thread_detail_payload(
     }
 
 
-@router.get("/api/forum/sections")
+@router.get("/api/forum/sectiuni")
 def list_forum_sections_api(
     current_user: models.User = Depends(auth.get_required_user),
 ):
     return {"sections": FORUM_SECTIONS}
 
 
-@router.get("/api/forum/threads")
+@router.get("/api/forum/discutii")
 def list_forum_threads_api(
     section: Optional[str] = None,
     q: Optional[str] = None,
@@ -115,7 +115,7 @@ def list_forum_threads_api(
     return {"threads": [_thread_summary_payload(db, thread) for thread in threads]}
 
 
-@router.post("/api/forum/threads", status_code=status.HTTP_201_CREATED)
+@router.post("/api/forum/discutii", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_forum_thread_api(
     request: Request,
@@ -133,7 +133,7 @@ def create_forum_thread_api(
     return _thread_detail_payload(db, thread, current_user)
 
 
-@router.get("/api/forum/threads/{slug}")
+@router.get("/api/forum/discutii/{slug}")
 def get_forum_thread_api(
     slug: str,
     db: Session = Depends(get_db),
@@ -145,7 +145,7 @@ def get_forum_thread_api(
     return _thread_detail_payload(db, thread, current_user)
 
 
-@router.post("/api/forum/threads/{thread_id}/replies", status_code=status.HTTP_201_CREATED)
+@router.post("/api/forum/discutii/{thread_id}/raspunsuri", status_code=status.HTTP_201_CREATED)
 @limiter.limit("20/minute")
 def create_forum_reply_api(
     request: Request,
@@ -170,7 +170,7 @@ def create_forum_reply_api(
     return _reply_payload(reply)
 
 
-@router.delete("/api/forum/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/forum/discutii/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_forum_thread_api(
     thread_id: int,
     db: Session = Depends(get_db),
@@ -184,7 +184,7 @@ def delete_forum_thread_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/api/forum/replies/{reply_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/forum/raspunsuri/{reply_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_forum_reply_api(
     reply_id: int,
     db: Session = Depends(get_db),
@@ -198,7 +198,7 @@ def delete_forum_reply_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/api/forum/threads/{thread_id}/state")
+@router.post("/api/forum/discutii/{thread_id}/stare")
 def update_forum_thread_state_api(
     thread_id: int,
     data: schemas.ForumThreadModerationAction,

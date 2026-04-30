@@ -156,7 +156,7 @@ def _build_club_detail(
 
 # ----- club CRUD endpoints -----
 
-@router.post("/api/clubs/", status_code=status.HTTP_201_CREATED)
+@router.post("/api/cluburi/", status_code=status.HTTP_201_CREATED)
 def create_club_api(
     data: schemas.ClubCreate,
     db: Session = Depends(get_db),
@@ -170,7 +170,7 @@ def create_club_api(
     return _club_summary_payload(db, club)
 
 
-@router.get("/api/clubs")
+@router.get("/api/cluburi")
 def list_clubs_api(
     speciality: Optional[str] = None,
     theme: Optional[str] = None,
@@ -190,7 +190,7 @@ def list_clubs_api(
     return {"clubs": [_club_summary_payload(db, c) for c in clubs]}
 
 
-@router.get("/api/clubs/random")
+@router.get("/api/cluburi/aleatoriu")
 def random_club_api(db: Session = Depends(get_db)):
     club = crud.get_random_club(db)
     if not club:
@@ -198,7 +198,7 @@ def random_club_api(db: Session = Depends(get_db)):
     return _club_summary_payload(db, club)
 
 
-@router.get("/api/clubs/{slug}")
+@router.get("/api/cluburi/{slug}")
 def get_club_api(
     slug: str,
     db: Session = Depends(get_db),
@@ -210,7 +210,7 @@ def get_club_api(
     return _build_club_detail(db, club, current_user)
 
 
-@router.put("/api/clubs/{club_id}")
+@router.put("/api/cluburi/{club_id}")
 def update_club_api(
     club_id: int,
     data: schemas.ClubUpdate,
@@ -228,7 +228,7 @@ def update_club_api(
     return _club_summary_payload(db, updated)
 
 
-@router.delete("/api/clubs/{club_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/cluburi/{club_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_club_api(
     club_id: int,
     db: Session = Depends(get_db),
@@ -243,7 +243,7 @@ def delete_club_api(
 
 # ----- membership: apply, invite, respond, kick, role -----
 
-@router.post("/api/clubs/{club_id}/apply")
+@router.post("/api/cluburi/{club_id}/inscriere")
 def apply_to_club_api(
     club_id: int,
     db: Session = Depends(get_db),
@@ -262,7 +262,7 @@ def apply_to_club_api(
     return _join_request_payload(request)
 
 
-@router.post("/api/clubs/{club_id}/invite")
+@router.post("/api/cluburi/{club_id}/invita")
 def invite_to_club_api(
     club_id: int,
     body: schemas.ClubInviteRequest,
@@ -287,7 +287,7 @@ def invite_to_club_api(
     return _join_request_payload(request)
 
 
-@router.get("/api/clubs/{club_id}/requests")
+@router.get("/api/cluburi/{club_id}/cereri")
 def list_club_requests_api(
     club_id: int,
     db: Session = Depends(get_db),
@@ -303,7 +303,7 @@ def list_club_requests_api(
     return {"requests": [_join_request_payload(r) for r in requests]}
 
 
-@router.post("/api/clubs/{club_id}/requests/{request_id}/respond")
+@router.post("/api/cluburi/{club_id}/cereri/{request_id}/raspunde")
 def respond_club_request_api(
     club_id: int,
     request_id: int,
@@ -326,7 +326,7 @@ def respond_club_request_api(
     return _join_request_payload(updated)
 
 
-@router.delete("/api/clubs/{club_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/cluburi/{club_id}/membri/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_club_member_api(
     club_id: int,
     user_id: int,
@@ -351,7 +351,7 @@ def remove_club_member_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.put("/api/clubs/{club_id}/members/{user_id}/role")
+@router.put("/api/cluburi/{club_id}/membri/{user_id}/rol")
 def update_member_role_api(
     club_id: int,
     user_id: int,
@@ -383,7 +383,7 @@ def update_member_role_api(
 
 # ----- user-scoped club views -----
 
-@router.get("/api/user/clubs")
+@router.get("/api/utilizator/cluburi")
 def list_my_clubs_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -392,7 +392,7 @@ def list_my_clubs_api(
     return {"clubs": [_club_summary_payload(db, c) for c in clubs]}
 
 
-@router.get("/api/user/clubs/pending")
+@router.get("/api/utilizator/cluburi/in-asteptare")
 def list_my_club_invitations_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -412,7 +412,7 @@ def list_my_club_invitations_api(
 
 # ----- board messages -----
 
-@router.get("/api/clubs/{club_id}/board")
+@router.get("/api/cluburi/{club_id}/tabla")
 def list_club_board_api(
     club_id: int,
     limit: int = 50,
@@ -430,7 +430,7 @@ def list_club_board_api(
     return {"messages": [_board_message_payload(m, role_by_user) for m in messages]}
 
 
-@router.post("/api/clubs/{club_id}/board", status_code=status.HTTP_201_CREATED)
+@router.post("/api/cluburi/{club_id}/tabla", status_code=status.HTTP_201_CREATED)
 def post_club_board_message_api(
     club_id: int,
     body: schemas.ClubBoardMessageCreate,
@@ -453,7 +453,7 @@ def post_club_board_message_api(
 
 
 @router.delete(
-    "/api/clubs/{club_id}/board/{message_id}",
+    "/api/cluburi/{club_id}/tabla/{message_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_club_board_message_api(
@@ -473,7 +473,7 @@ def delete_club_board_message_api(
 
 # ----- featured creation -----
 
-@router.post("/api/clubs/{club_id}/featured")
+@router.post("/api/cluburi/{club_id}/creatia-saptamanii")
 def set_club_featured_api(
     club_id: int,
     body: schemas.ClubFeaturedSetRequest,
@@ -500,7 +500,7 @@ def set_club_featured_api(
     return _featured_payload((post, club.featured_until))
 
 
-@router.delete("/api/clubs/{club_id}/featured", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/cluburi/{club_id}/creatia-saptamanii", status_code=status.HTTP_204_NO_CONTENT)
 def clear_club_featured_api(
     club_id: int,
     db: Session = Depends(get_db),

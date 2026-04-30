@@ -22,7 +22,7 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
         raise HTTPException(status_code=400, detail=f"Format dată invalid: {value}. Folosiți YYYY-MM-DD.")
 
 
-@router.get("/api/stats/post/{post_id}")
+@router.get("/api/statistici/postare/{post_id}")
 def post_stats(
     post_id: int,
     db: Session = Depends(get_db),
@@ -37,7 +37,7 @@ def post_stats(
     return statistics.get_post_stats(db, post_id, _parse_date(from_date), _parse_date(to_date))
 
 
-@router.get("/api/stats/author/{username}")
+@router.get("/api/statistici/autor/{username}")
 def author_stats(
     username: str,
     db: Session = Depends(get_db),
@@ -52,7 +52,7 @@ def author_stats(
     return statistics.get_author_stats(db, user.id, _parse_date(from_date), _parse_date(to_date))
 
 
-@router.get("/api/stats/category/{category_key}")
+@router.get("/api/statistici/categorie/{category_key}")
 def category_stats(
     category_key: str,
     db: Session = Depends(get_db),
@@ -63,7 +63,7 @@ def category_stats(
     return statistics.get_category_stats(db, category_key, _parse_date(from_date), _parse_date(to_date))
 
 
-@router.get("/api/stats/overview")
+@router.get("/api/statistici/ansamblu")
 def overview_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
@@ -74,7 +74,7 @@ def overview_stats(
     return statistics.get_overview_stats(db, _parse_date(from_date), _parse_date(to_date))
 
 
-@router.get("/api/stats/my")
+@router.get("/api/statistici/ale-mele")
 def my_stats(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),

@@ -29,6 +29,7 @@ import {
   fetchShopState,
   fetchExtendedModerationStats,
   postPdfUrl,
+  addDiacritics,
   likePost,
   moderateContent,
   addSuperLike,
@@ -57,7 +58,7 @@ const FORUM_SECTIONS = [
   { key: "general", label: "General" },
   { key: "poezie", label: "Poezie" },
   { key: "proza_scurta", label: "Proză scurtă" },
-  { key: "feedback", label: "Feedback" },
+  { key: "feedback", label: "Impresii" },
   { key: "anunturi", label: "Anunțuri" }
 ];
 
@@ -79,6 +80,15 @@ const PREMIUM_TIERS = [
   }
 ];
 
+const AUTH_AVATAR_OPTIONS = [
+  { key: "shapes", label: "Forme" },
+  { key: "ink", label: "Cerneală" },
+  { key: "page", label: "Pagină" },
+  { key: "stars", label: "Stele" },
+  { key: "garden", label: "Grădină" },
+  { key: "arcade", label: "Arcadă" }
+];
+
 const SHOP_SLOT_LABELS = {
   profile_badge: "Insignă profil",
   costume: "Costum",
@@ -91,7 +101,7 @@ const CONTENT_TYPE_LABELS = {
   post: "Text",
   comment: "Comentariu",
   audio: "Audio",
-  forum_thread: "Thread",
+  forum_thread: "Discuție",
   forum_reply: "Răspuns"
 };
 
@@ -169,6 +179,11 @@ function authorPath(user, path) {
   return `${blogUrl(user.username)}${path}`;
 }
 
+function avatarPreviewUrl(seed, size = 96) {
+  const backgroundColor = "f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff";
+  return `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${backgroundColor}&size=${size}`;
+}
+
 function htmlToText(html) {
   if (!html) return "";
   if (typeof DOMParser !== "undefined") {
@@ -219,7 +234,7 @@ function formatScore(value) {
 }
 
 function forumSectionLabel(section) {
-  return FORUM_SECTIONS.find((item) => item.key === section)?.label ?? section ?? "Forum";
+  return FORUM_SECTIONS.find((item) => item.key === section)?.label ?? section ?? "Discuții";
 }
 
 function slotLabel(slot) {
@@ -310,6 +325,48 @@ function canShowAds(route, user, authLoaded) {
     routeAllowsAds(route) &&
     !user?.is_premium
   );
+}
+
+function DiacriticsControl({ user, enabled, onChange, disabled = false }) {
+  if (!user?.is_premium) {
+    return (
+      <p className="diacritics-note">
+        Conversia automată la diacritice este disponibilă pentru abonații Premium. <a href={mainPath("/premium")}>Vezi Premium</a>
+      </p>
+    );
+  }
+  return (
+    <label className="diacritics-control">
+      <input
+        type="checkbox"
+        checked={enabled}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>Adaugă automat diacritice (ăîâțș)?</span>
+    </label>
+  );
+}
+
+function DiacriticsReviewPanel({ active, changed, onReset }) {
+  if (!active) return null;
+  return (
+    <div className="diacritics-review">
+      <p>{changed ? "Am pregătit versiunea cu diacritice. Verifică textul, editează ce vrei, apoi trimite." : "Textul pare deja să aibă diacriticele potrivite. Verifică-l și trimite când e gata."}</p>
+      {onReset ? (
+        <button className="cal-btn" type="button" onClick={onReset}>
+          Revino la varianta inițială
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function diacriticsSubmitLabel({ submitting, reviewing, enabled, submitLabel }) {
+  if (submitting) return enabled && !reviewing ? "Se adaugă diacritice..." : "Se trimite...";
+  if (reviewing) return submitLabel;
+  if (enabled) return "Verifică diacriticele";
+  return submitLabel;
 }
 
 function AdSenseProvider({ route, user, authLoaded, children }) {
@@ -591,26 +648,26 @@ function SideMenu({ open, onClose, user }) {
   }, [open]);
 
   const adminItems = user?.is_admin || user?.is_moderator
-    ? [["Admin", "moderare", mainPath("/admin")]]
+    ? [["Moderare", "moderare", mainPath("/moderare")]]
     : [];
   const menuItems = user
     ? [
         ["Acasă", "pagina principală", mainPath("/")],
-        ["Categorii", "răsfoiește după gen", mainPath("/category/poezie")],
-        ["Scrie", "adaugă un text nou", authorPath(user, "/create-post")],
-        ["Panou", "textele tale", authorPath(user, "/dashboard")],
+        ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
+        ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
+        ["Panou", "textele tale", authorPath(user, "/panou")],
         ...adminItems,
-        ["Mesaje", "conversații", authorPath(user, "/messages")],
+        ["Mesaje", "conversații", authorPath(user, "/mesaje")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
         ["Discuții", "forum și întrebări", mainPath("/discutii")],
         ["Magazin", "cosmetice cu Gologani", mainPath("/magazin")],
         ["Inventar", "obiectele tale", mainPath("/inventar")],
         [user.is_premium ? "Premium" : "Devino Premium", "abonament și super-aprecieri", mainPath("/premium")],
-        ["Deconectare", "", "/api/logout", true]
+        ["Deconectare", "", "/api/deconectare", true]
       ]
     : [
         ["Acasă", "pagina principală", mainPath("/")],
-        ["Categorii", "răsfoiește după gen", mainPath("/category/poezie")],
+        ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
         ["Discuții", "forum și întrebări", mainPath("/discutii")],
         ["Premium", "abonament și super-aprecieri", mainPath("/premium")],
@@ -655,8 +712,8 @@ function Footer() {
     <footer className="site-foot">
       <div className="foot-inner">
         <nav className="foot-links">
-          <a href={mainPath("/privacy")}>Politica de confidențialitate</a>
-          <a href={mainPath("/terms")}>Termeni și condiții</a>
+          <a href={mainPath("/confidentialitate")}>Politica de confidențialitate</a>
+          <a href={mainPath("/termeni")}>Termeni și condiții</a>
           <a href="mailto:contact@calimara.ro">Contact</a>
         </nav>
         <div className="foot-mark">© 2026 călimara.ro</div>
@@ -751,6 +808,8 @@ function LandingPostActions({ post, user, onPostChange }) {
   const [audioTrack, setAudioTrack] = useState(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState("");
+  const [commentAutoDiacritics, setCommentAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [commentReview, setCommentReview] = useState(null);
 
   useEffect(() => {
     setPostState(post);
@@ -759,7 +818,13 @@ function LandingPostActions({ post, user, onPostChange }) {
     setAudioTrack(null);
     setCommentOpen(false);
     setCommentText("");
+    setCommentReview(null);
   }, [post?.id]);
+
+  useEffect(() => {
+    setCommentAutoDiacritics(Boolean(user?.is_premium));
+    setCommentReview(null);
+  }, [user?.id, user?.is_premium]);
 
   if (!postState) return null;
 
@@ -874,8 +939,15 @@ function LandingPostActions({ post, user, onPostChange }) {
     setBusy("comment");
     setStatus("");
     try {
+      if (user?.is_premium && commentAutoDiacritics && !commentReview) {
+        const converted = await addDiacritics({ kind: "comment", content });
+        setCommentText(converted.content);
+        setCommentReview({ originalContent: commentText, changed: converted.changed });
+        return;
+      }
       await createComment(postState.id, { content });
       setCommentText("");
+      setCommentReview(null);
       setStatus(COMMENT_MODERATION_MESSAGE);
     } catch (requestError) {
       setStatus(requestError.message || "Nu am putut trimite comentariul.");
@@ -914,7 +986,31 @@ function LandingPostActions({ post, user, onPostChange }) {
         <form className="landing-comment-panel" onSubmit={submitComment}>
           <label className="auth-field" htmlFor="landing-comment">Comentariu</label>
           <textarea id="landing-comment" className="cal-textarea" value={commentText} onChange={(event) => setCommentText(event.target.value)} maxLength="2000" required />
-          <button className="cal-btn primary" type="submit" disabled={busy === "comment"}>{busy === "comment" ? "Se trimite..." : "Trimite comentariul"}</button>
+          <DiacriticsControl
+            user={user}
+            enabled={commentAutoDiacritics}
+            disabled={Boolean(commentReview)}
+            onChange={(checked) => {
+              setCommentAutoDiacritics(checked);
+              setCommentReview(null);
+            }}
+          />
+          <DiacriticsReviewPanel
+            active={Boolean(commentReview)}
+            changed={Boolean(commentReview?.changed)}
+            onReset={commentReview ? () => {
+              setCommentText(commentReview.originalContent);
+              setCommentReview(null);
+            } : null}
+          />
+          <button className="cal-btn primary" type="submit" disabled={busy === "comment"}>
+            {diacriticsSubmitLabel({
+              submitting: busy === "comment",
+              reviewing: Boolean(commentReview),
+              enabled: Boolean(user?.is_premium && commentAutoDiacritics),
+              submitLabel: "Trimite comentariul"
+            })}
+          </button>
         </form>
       ) : null}
 
@@ -1026,8 +1122,8 @@ function CategoryView({ categoryKey }) {
         <aside className="side-col">
           <div className="side-kicker">categorii</div>
           <div className="actions-group">
-            <ActionRow number="01" label="Poezie" active={categoryKey === "poezie"} onClick={() => { window.location.href = mainPath("/category/poezie"); }} />
-            <ActionRow number="02" label="Proză scurtă" active={categoryKey === "proza_scurta"} onClick={() => { window.location.href = mainPath("/category/proza_scurta"); }} />
+            <ActionRow number="01" label="Poezie" active={categoryKey === "poezie"} onClick={() => { window.location.href = mainPath("/categorie/poezie"); }} />
+            <ActionRow number="02" label="Proză scurtă" active={categoryKey === "proza_scurta"} onClick={() => { window.location.href = mainPath("/categorie/proza_scurta"); }} />
           </div>
         </aside>
       }
@@ -1262,6 +1358,7 @@ function DashboardView({ user }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retryingPostId, setRetryingPostId] = useState(null);
   const { data, error, loading } = useAsync(
     () => (user ? fetchArchive() : Promise.resolve({ posts: [] })),
     [user?.id, refreshKey]
@@ -1291,16 +1388,20 @@ function DashboardView({ user }) {
     });
   };
 
-  const submitAudioRequests = async () => {
-    if (!selectedIds.size || overQuota || submitting) return;
+  const submitAudioRequestIds = async (postIds, successMessage) => {
+    if (!postIds.length || submitting) return;
     setSubmitting(true);
     setStatus("");
     try {
-      const response = await requestTtsConversions([...selectedIds]);
-      setSelectedIds(new Set());
+      const response = await requestTtsConversions(postIds);
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        postIds.forEach((postId) => next.delete(postId));
+        return next;
+      });
       setStatus(
         response.queued.length
-          ? `${response.queued.length} texte au fost trimise la generare audio.`
+          ? successMessage || `${response.queued.length} texte au fost trimise la generare audio.`
           : "Textele selectate aveau deja audio sau erau deja în coadă."
       );
       setRefreshKey((key) => key + 1);
@@ -1308,7 +1409,20 @@ function DashboardView({ user }) {
       setStatus(requestError.message || "Nu am putut porni generarea audio.");
     } finally {
       setSubmitting(false);
+      setRetryingPostId(null);
     }
+  };
+
+  const submitAudioRequests = async () => {
+    if (!selectedIds.size || overQuota || submitting) return;
+    await submitAudioRequestIds([...selectedIds]);
+  };
+
+  const retryAudioRequest = async (post) => {
+    const characterCount = Number(post.audio_tts_character_count ?? 0);
+    if (submitting || !canRequestAudio || !post.audio_can_request || characterCount > remaining) return;
+    setRetryingPostId(post.id);
+    await submitAudioRequestIds([post.id], `„${post.title}” a fost retrimis la generare audio.`);
   };
 
   return (
@@ -1347,7 +1461,9 @@ function DashboardView({ user }) {
           {posts.map((post) => {
             const selected = selectedIds.has(post.id);
             const wouldExceed = !selected && selectedCharacters + Number(post.audio_tts_character_count ?? 0) > remaining;
+            const retryWouldExceed = Number(post.audio_tts_character_count ?? 0) > remaining;
             const disabled = !canRequestAudio || !post.audio_can_request || wouldExceed || submitting;
+            const retryDisabled = !canRequestAudio || !post.audio_can_request || retryWouldExceed || submitting;
             return (
               <DashboardPostCard
                 key={post.id}
@@ -1355,6 +1471,9 @@ function DashboardView({ user }) {
                 selected={selected}
                 disabled={disabled}
                 onToggle={(checked) => togglePost(post, checked)}
+                onRetry={() => retryAudioRequest(post)}
+                retryDisabled={retryDisabled}
+                retrying={retryingPostId === post.id}
               />
             );
           })}
@@ -1364,10 +1483,11 @@ function DashboardView({ user }) {
   );
 }
 
-function DashboardPostCard({ post, selected, disabled, onToggle }) {
+function DashboardPostCard({ post, selected, disabled, onToggle, onRetry, retryDisabled, retrying }) {
   const href = postHref(post);
   const characterCount = Number(post.audio_tts_character_count ?? 0);
   const audioReady = Boolean(post.audio_available && post.audio_playback_url);
+  const canRetry = post.audio_status === "failed" && post.audio_can_request;
   return (
     <article className={`dashboard-post-card ${selected ? "selected" : ""}`}>
       <label className="dashboard-select">
@@ -1396,6 +1516,13 @@ function DashboardPostCard({ post, selected, disabled, onToggle }) {
             Browserul tău nu poate reda acest fișier audio.
           </audio>
         ) : null}
+        {canRetry ? (
+          <div className="dashboard-audio-actions">
+            <button className="cal-btn" type="button" onClick={onRetry} disabled={retryDisabled}>
+              {retrying ? "Se retrimite..." : "Reîncearcă audio"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -1419,7 +1546,7 @@ function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
   const itemId = isFlagged ? item.log_id : `${contentType}:${item.id}`;
   const title = content?.title || content?.post_title || contentTypeLabel(contentType);
   const preview = content?.content || item.content || "";
-  const author = content?.author || item.author || "Unknown";
+  const author = content?.author || item.author || "Necunoscut";
   const createdAt = content?.created_at || item.created_at || item.flagged_at;
   const score = isFlagged ? item.ai_analysis?.toxicity_score : item.toxicity_score;
   const reason = isFlagged ? item.ai_analysis?.reason : item.moderation_reason;
@@ -1481,7 +1608,7 @@ function AdminJournalRow({ log }) {
             <span className="piece-card-status">{contentTypeLabel(log.content_type)}</span>
             <span className="piece-card-status status-flagged">AI: {decisionLabel(log.ai_decision)}</span>
             <span className="piece-card-status">Om: {decisionLabel(log.human_decision)}</span>
-            {log.needs_review ? <span className="piece-card-status status-rejected">review</span> : null}
+            {log.needs_review ? <span className="piece-card-status status-rejected">revizie</span> : null}
           </div>
           <h2 className="admin-row-title">{log.content_title || contentTypeLabel(log.content_type)}</h2>
         </div>
@@ -1577,7 +1704,7 @@ function AdminDashboardView({ user }) {
 
   const approvePending = (item) => runAction(
     `pending:${item.type}:${item.id}:approve`,
-    () => moderateContent(item.type, item.id, { action: "approve", reason: "Approved from admin dashboard" })
+    () => moderateContent(item.type, item.id, { action: "approve", reason: "Aprobat din panoul de moderare" })
   );
   const rejectPending = (item, reason) => runAction(
     `pending:${item.type}:${item.id}:reject`,
@@ -1585,7 +1712,7 @@ function AdminDashboardView({ user }) {
   );
   const approveFlagged = (item) => runAction(
     `flagged:${item.log_id}:approve`,
-    () => reviewModerationLog(item.log_id, { action: "approved", reason: "Approved from admin dashboard" })
+    () => reviewModerationLog(item.log_id, { action: "approved", reason: "Aprobat din panoul de moderare" })
   );
   const rejectFlagged = (item, reason) => runAction(
     `flagged:${item.log_id}:reject`,
@@ -1601,11 +1728,11 @@ function AdminDashboardView({ user }) {
   return (
     <PageShell kicker="admin" title="Moderare" sub={`Conectat ca ${user.username}.`}>
       <div className="admin-stat-grid">
-        <AdminStat label="Pending" value={state.stats?.pending_count} sub="în coadă" />
+        <AdminStat label="În așteptare" value={state.stats?.pending_count} sub="în coadă" />
         <AdminStat label="Marcate" value={state.stats?.flagged_count} sub="AI / manual" />
         <AdminStat label="Azi" value={state.stats?.today_actions} sub="decizii" />
         <AdminStat label="Jurnal" value={state.extendedStats?.total_logs} sub="intrări" />
-        <AdminStat label="Review" value={state.extendedStats?.pending_review_count} sub="uman" />
+        <AdminStat label="Revizie" value={state.extendedStats?.pending_review_count} sub="umană" />
       </div>
 
       <div className="admin-tabs" role="tablist" aria-label="Moderare">
@@ -1678,6 +1805,13 @@ function CreatePostView({ user }) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [diacriticsReview, setDiacriticsReview] = useState(null);
+
+  useEffect(() => {
+    setAutoDiacritics(Boolean(user?.is_premium));
+    setDiacriticsReview(null);
+  }, [user?.id, user?.is_premium]);
 
   if (!user) return <AuthRequired />;
 
@@ -1686,6 +1820,18 @@ function CreatePostView({ user }) {
     setSubmitting(true);
     setStatus("");
     try {
+      if (user.is_premium && autoDiacritics && !diacriticsReview) {
+        const converted = await addDiacritics({ kind: "post", title, content });
+        setTitle(converted.title ?? title);
+        setContent(converted.content);
+        setDiacriticsReview({
+          originalTitle: title,
+          originalContent: content,
+          changed: converted.changed
+        });
+        setSubmitting(false);
+        return;
+      }
       const post = await createPost({ title, content });
       window.location.href = `${blogUrl(user.username)}/${post.slug}`;
     } catch (requestError) {
@@ -1701,8 +1847,33 @@ function CreatePostView({ user }) {
         <input id="post-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} required />
         <label className="auth-field" htmlFor="post-content">Text</label>
         <textarea id="post-content" className="cal-textarea tall" value={content} onChange={(event) => setContent(event.target.value)} required />
+        <DiacriticsControl
+          user={user}
+          enabled={autoDiacritics}
+          disabled={Boolean(diacriticsReview)}
+          onChange={(checked) => {
+            setAutoDiacritics(checked);
+            setDiacriticsReview(null);
+          }}
+        />
+        <DiacriticsReviewPanel
+          active={Boolean(diacriticsReview)}
+          changed={Boolean(diacriticsReview?.changed)}
+          onReset={diacriticsReview ? () => {
+            setTitle(diacriticsReview.originalTitle);
+            setContent(diacriticsReview.originalContent);
+            setDiacriticsReview(null);
+          } : null}
+        />
         {status ? <div className="inline-error">{status}</div> : null}
-        <button className="cal-btn primary" type="submit" disabled={submitting}>{submitting ? "Se publică..." : "Publică"}</button>
+        <button className="cal-btn primary" type="submit" disabled={submitting}>
+          {diacriticsSubmitLabel({
+            submitting,
+            reviewing: Boolean(diacriticsReview),
+            enabled: Boolean(user.is_premium && autoDiacritics),
+            submitLabel: "Publică"
+          })}
+        </button>
       </form>
     </PageShell>
   );
@@ -1950,8 +2121,8 @@ function ForumListView({ user }) {
   return (
     <PageShell
       kicker="discuții"
-      title="Forum"
-      sub="Thread-uri pentru întrebări, feedback și conversații între autori."
+      title="Discuții"
+      sub="Discuții pentru întrebări, feedback și conversații între autori."
       side={
         <aside className="side-col">
           <div className="side-kicker">secțiuni</div>
@@ -1966,7 +2137,7 @@ function ForumListView({ user }) {
               />
             ))}
           </div>
-          <a className="cal-btn primary" href={mainPath("/discutii/nou")}>Thread nou</a>
+          <a className="cal-btn primary" href={mainPath("/discutii/nou")}>Discuție nouă</a>
         </aside>
       }
     >
@@ -1997,6 +2168,13 @@ function ForumThreadCreateView({ user }) {
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [diacriticsReview, setDiacriticsReview] = useState(null);
+
+  useEffect(() => {
+    setAutoDiacritics(Boolean(user?.is_premium));
+    setDiacriticsReview(null);
+  }, [user?.id, user?.is_premium]);
 
   if (!user) return <AuthRequired />;
 
@@ -2005,16 +2183,28 @@ function ForumThreadCreateView({ user }) {
     setSubmitting(true);
     setStatus("");
     try {
+      if (user.is_premium && autoDiacritics && !diacriticsReview) {
+        const converted = await addDiacritics({ kind: "forum_thread", title, content });
+        setTitle(converted.title ?? title);
+        setContent(converted.content);
+        setDiacriticsReview({
+          originalTitle: title,
+          originalContent: content,
+          changed: converted.changed
+        });
+        setSubmitting(false);
+        return;
+      }
       const thread = await createForumThread({ section, title, content });
       window.location.href = mainPath(`/discutii/${thread.slug}`);
     } catch (requestError) {
-      setStatus(requestError.message || "Nu am putut publica thread-ul.");
+      setStatus(requestError.message || "Nu am putut publica discuția.");
       setSubmitting(false);
     }
   };
 
   return (
-    <PageShell kicker="discuții" title="Thread nou" sub="Deschide o discuție în forum.">
+    <PageShell kicker="discuții" title="Discuție nouă" sub="Deschide o discuție în forum.">
       <form className="form-stack" onSubmit={submit}>
         <label className="auth-field" htmlFor="forum-section">Secțiune</label>
         <select id="forum-section" className="cal-input" value={section} onChange={(event) => setSection(event.target.value)}>
@@ -2024,8 +2214,33 @@ function ForumThreadCreateView({ user }) {
         <input id="forum-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength="160" required />
         <label className="auth-field" htmlFor="forum-content">Mesaj</label>
         <textarea id="forum-content" className="cal-textarea tall" value={content} onChange={(event) => setContent(event.target.value)} maxLength="8000" required />
+        <DiacriticsControl
+          user={user}
+          enabled={autoDiacritics}
+          disabled={Boolean(diacriticsReview)}
+          onChange={(checked) => {
+            setAutoDiacritics(checked);
+            setDiacriticsReview(null);
+          }}
+        />
+        <DiacriticsReviewPanel
+          active={Boolean(diacriticsReview)}
+          changed={Boolean(diacriticsReview?.changed)}
+          onReset={diacriticsReview ? () => {
+            setTitle(diacriticsReview.originalTitle);
+            setContent(diacriticsReview.originalContent);
+            setDiacriticsReview(null);
+          } : null}
+        />
         {status ? <div className="inline-error">{status}</div> : null}
-        <button className="cal-btn primary" type="submit" disabled={submitting}>{submitting ? "Se publică..." : "Publică thread"}</button>
+        <button className="cal-btn primary" type="submit" disabled={submitting}>
+          {diacriticsSubmitLabel({
+            submitting,
+            reviewing: Boolean(diacriticsReview),
+            enabled: Boolean(user.is_premium && autoDiacritics),
+            submitLabel: "Publică thread"
+          })}
+        </button>
       </form>
     </PageShell>
   );
@@ -2036,21 +2251,38 @@ function ForumThreadDetailView({ user, slug }) {
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [replyAutoDiacritics, setReplyAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [replyReview, setReplyReview] = useState(null);
   const { data, error, loading } = useAsync(
     () => (user ? fetchForumThread(slug) : Promise.resolve(null)),
     [user?.id, slug, refreshKey]
   );
+
+  useEffect(() => {
+    setReplyAutoDiacritics(Boolean(user?.is_premium));
+    setReplyReview(null);
+  }, [user?.id, user?.is_premium, slug]);
 
   if (!user) return <AuthRequired />;
 
   const submitReply = async (event) => {
     event.preventDefault();
     if (!data) return;
+    const content = reply.trim();
+    if (!content) return;
     setSubmitting(true);
     setStatus("");
     try {
+      if (user.is_premium && replyAutoDiacritics && !replyReview) {
+        const converted = await addDiacritics({ kind: "forum_reply", content });
+        setReply(converted.content);
+        setReplyReview({ originalContent: reply, changed: converted.changed });
+        setSubmitting(false);
+        return;
+      }
       const created = await createForumReply(data.id, { content: reply });
       setReply("");
+      setReplyReview(null);
       setStatus(created.moderation_status === "approved" ? "" : FORUM_MODERATION_MESSAGE);
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
@@ -2061,9 +2293,9 @@ function ForumThreadDetailView({ user, slug }) {
   };
 
   return (
-    <PageShell kicker={data ? forumSectionLabel(data.section) : "discuții"} title={data?.title ?? "Forum"} sub={data?.author?.username ? `Pornit de ${data.author.username}` : ""}>
+    <PageShell kicker={data ? forumSectionLabel(data.section) : "discuții"} title={data?.title ?? "Discuții"} sub={data?.author?.username ? `Pornit de ${data.author.username}` : ""}>
       {loading ? <StatusPanel title="Se încarcă" /> : null}
-      {error ? <StatusPanel title="Nu am putut încărca thread-ul">{error}</StatusPanel> : null}
+      {error ? <StatusPanel title="Nu am putut încărca discuția">{error}</StatusPanel> : null}
       {data ? (
         <div className="detail-stack">
           {data.moderation_status !== "approved" ? (
@@ -2095,13 +2327,37 @@ function ForumThreadDetailView({ user, slug }) {
             ) : <p className="auth-sub">Nu există răspunsuri încă.</p>}
           </section>
           {data.is_locked ? (
-            <StatusPanel title="Thread închis">Nu mai pot fi adăugate răspunsuri.</StatusPanel>
+            <StatusPanel title="Discuție închisă">Nu mai pot fi adăugate răspunsuri.</StatusPanel>
           ) : (
             <form className="form-stack" onSubmit={submitReply}>
               <label className="auth-field" htmlFor="forum-reply">Răspuns</label>
               <textarea id="forum-reply" className="cal-textarea" value={reply} onChange={(event) => setReply(event.target.value)} maxLength="4000" required />
+              <DiacriticsControl
+                user={user}
+                enabled={replyAutoDiacritics}
+                disabled={Boolean(replyReview)}
+                onChange={(checked) => {
+                  setReplyAutoDiacritics(checked);
+                  setReplyReview(null);
+                }}
+              />
+              <DiacriticsReviewPanel
+                active={Boolean(replyReview)}
+                changed={Boolean(replyReview?.changed)}
+                onReset={replyReview ? () => {
+                  setReply(replyReview.originalContent);
+                  setReplyReview(null);
+                } : null}
+              />
               {status ? <div className="inline-error">{status}</div> : null}
-              <button className="cal-btn primary" type="submit" disabled={submitting}>{submitting ? "Se publică..." : "Răspunde"}</button>
+              <button className="cal-btn primary" type="submit" disabled={submitting}>
+                {diacriticsSubmitLabel({
+                  submitting,
+                  reviewing: Boolean(replyReview),
+                  enabled: Boolean(user.is_premium && replyAutoDiacritics),
+                  submitLabel: "Răspunde"
+                })}
+              </button>
             </form>
           )}
         </div>
@@ -2235,18 +2491,22 @@ function TermsView() {
 function AuthSetupView() {
   const [username, setUsername] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [avatarChoice, setAvatarChoice] = useState(AUTH_AVATAR_OPTIONS[0].key);
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const usernameSeed = username.trim().toLowerCase() || "calimara";
+  const avatarSeed = `${usernameSeed}-${avatarChoice}`;
 
   const submit = async (event) => {
     event.preventDefault();
+    const trimmedUsername = username.trim();
     setSubmitting(true);
     setStatus("");
     try {
       const response = await completeAuthSetup({
-        username,
-        subtitle,
-        avatar_seed: `${username || "calimara"}-shapes`
+        username: trimmedUsername,
+        subtitle: subtitle.trim(),
+        avatar_seed: avatarSeed
       });
       window.location.href = blogUrl(response.username);
     } catch (requestError) {
@@ -2256,12 +2516,33 @@ function AuthSetupView() {
   };
 
   return (
-    <PageShell kicker="cont" title="Configurează contul" sub="Alege numele public pentru blogul tău.">
+    <PageShell kicker="cont" title="Configurează contul" sub="Alege numele public, descrierea și avatarul blogului tău.">
       <form className="form-stack" onSubmit={submit}>
-        <label className="auth-field" htmlFor="setup-username">Nume utilizator</label>
+        <label className="auth-field" htmlFor="setup-username">Nume blog</label>
         <input id="setup-username" className="cal-input" value={username} onChange={(event) => setUsername(event.target.value)} required pattern="[A-Za-z0-9]+" />
-        <label className="auth-field" htmlFor="setup-subtitle">Subtitlu</label>
-        <input id="setup-subtitle" className="cal-input" value={subtitle} onChange={(event) => setSubtitle(event.target.value)} />
+        <label className="auth-field" htmlFor="setup-subtitle">Descriere</label>
+        <textarea id="setup-subtitle" className="cal-textarea compact" value={subtitle} onChange={(event) => setSubtitle(event.target.value)} rows="3" />
+        <fieldset className="avatar-choice-field">
+          <legend className="auth-field">Avatar</legend>
+          <div className="avatar-choice-grid">
+            {AUTH_AVATAR_OPTIONS.map((option) => {
+              const seed = `${usernameSeed}-${option.key}`;
+              const selected = avatarChoice === option.key;
+              return (
+                <button
+                  key={option.key}
+                  className={`avatar-choice${selected ? " selected" : ""}`}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setAvatarChoice(option.key)}
+                >
+                  <img src={avatarPreviewUrl(seed)} alt="" aria-hidden="true" />
+                  <span>{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
         {status ? <div className="inline-error">{status}</div> : null}
         <button className="cal-btn primary" type="submit" disabled={submitting}>{submitting ? "Se salvează..." : "Finalizează"}</button>
       </form>
@@ -2270,6 +2551,18 @@ function AuthSetupView() {
 }
 
 function AuthCallbackView() {
+  const callbackStatus = new URLSearchParams(window.location.search).get("status");
+
+  useEffect(() => {
+    if (callbackStatus === "setup") {
+      window.location.replace(mainPath("/autentificare/configurare"));
+    }
+  }, [callbackStatus]);
+
+  if (callbackStatus === "setup") {
+    return <PageShell kicker="cont" title="Configurează contul" sub="Pregătim formularul pentru blogul tău." />;
+  }
+
   return (
     <PageShell kicker="cont" title="Autentificare finalizată" sub="Sesiunea a fost actualizată.">
       <a className="cal-btn primary" href={mainPath("/")}>Continuă</a>
@@ -2291,33 +2584,31 @@ function routeForLocation() {
 
   if (userFromHost) {
     if (path === "/") return { name: "blog", username: userFromHost };
-    if (path === "/dashboard") return { name: "dashboard" };
-    if (path === "/create-post") return { name: "create" };
-    if (path === "/messages") return { name: "messages" };
+    if (path === "/panou") return { name: "dashboard" };
+    if (path === "/scrie") return { name: "create" };
+    if (path === "/mesaje") return { name: "messages" };
     return { name: "post", username: userFromHost, slug: decodeURIComponent(path.slice(1)) };
   }
 
   if (path === "/") return { name: "landing" };
-  if (path === "/dashboard" || path === "/panou") return { name: "dashboard" };
-  if (path === "/create-post" || path === "/scrie") return { name: "create" };
-  if (path === "/messages" || path === "/mesaje") return { name: "messages" };
-  if (path === "/admin" || path === "/moderare") return { name: "admin" };
-  if (path.startsWith("/category/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
+  if (path === "/panou") return { name: "dashboard" };
+  if (path === "/scrie") return { name: "create" };
+  if (path === "/mesaje") return { name: "messages" };
+  if (path === "/moderare") return { name: "admin" };
+  if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/colectii/")) return { name: "collection", slug: decodeURIComponent(path.split("/")[2] || "") };
-  if (path.startsWith("/collections/")) return { name: "collection", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/cluburi") return { name: "clubs" };
   if (path.startsWith("/cluburi/")) return { name: "club", slug: decodeURIComponent(path.split("/")[2] || "") };
-  if (path === "/discutii" || path === "/forum") return { name: "forum" };
-  if (path === "/discutii/nou" || path === "/discutii/new" || path === "/forum/nou" || path === "/forum/new") return { name: "forumCreate" };
+  if (path === "/discutii") return { name: "forum" };
+  if (path === "/discutii/nou") return { name: "forumCreate" };
   if (path.startsWith("/discutii/")) return { name: "forumThread", slug: decodeURIComponent(path.split("/")[2] || "") };
-  if (path.startsWith("/forum/")) return { name: "forumThread", slug: decodeURIComponent(path.split("/")[2] || "") };
-  if (path === "/magazin" || path === "/shop") return { name: "shop" };
-  if (path === "/inventar" || path === "/inventory") return { name: "inventory" };
+  if (path === "/magazin") return { name: "shop" };
+  if (path === "/inventar") return { name: "inventory" };
   if (path === "/premium") return { name: "premium" };
-  if (path === "/privacy" || path === "/confidentialitate") return { name: "privacy" };
-  if (path === "/terms" || path === "/termeni") return { name: "terms" };
-  if (path === "/auth/setup") return { name: "authSetup" };
-  if (path === "/auth/callback") return { name: "authCallback" };
+  if (path === "/confidentialitate") return { name: "privacy" };
+  if (path === "/termeni") return { name: "terms" };
+  if (path === "/autentificare/configurare") return { name: "authSetup" };
+  if (path === "/autentificare/raspuns") return { name: "authCallback" };
   return { name: "notFound" };
 }
 

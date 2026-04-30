@@ -15,7 +15,7 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["messages"])
 
 
-@router.get("/api/messages/conversations")
+@router.get("/api/mesaje/conversatii")
 def get_user_conversations_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -60,10 +60,10 @@ def get_user_conversations_api(
 
     except Exception as e:
         logger.error(f"Eroare la obținerea conversațiilor pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get conversations")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca conversațiile")
 
 
-@router.get("/api/messages/conversations/{conversation_id}")
+@router.get("/api/mesaje/conversatii/{conversation_id}")
 def get_conversation_messages_api(
     conversation_id: int,
     limit: int = 50,
@@ -76,7 +76,7 @@ def get_conversation_messages_api(
         # Verify user has access to this conversation
         conversation = crud.get_conversation_by_id(db, conversation_id, current_user.id)
         if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail="Conversația nu a fost găsită")
 
         messages = crud.get_conversation_messages(db, conversation_id, current_user.id, limit, offset)
 
@@ -116,10 +116,10 @@ def get_conversation_messages_api(
         raise
     except Exception as e:
         logger.error(f"Eroare la obținerea mesajelor pentru conversația {conversation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get messages")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca mesajele")
 
 
-@router.post("/api/messages/conversations/{conversation_id}")
+@router.post("/api/mesaje/conversatii/{conversation_id}")
 @limiter.limit("20/minute")
 def send_message_api(
     request: Request,
@@ -132,7 +132,7 @@ def send_message_api(
     try:
         message = crud.create_message(db, conversation_id, current_user.id, message_data.content)
         if not message:
-            raise HTTPException(status_code=404, detail="Conversation not found or access denied")
+            raise HTTPException(status_code=404, detail="Conversația nu a fost găsită sau accesul este interzis")
 
         return {
             "id": message.id,
@@ -148,10 +148,10 @@ def send_message_api(
         raise
     except Exception as e:
         logger.error(f"Eroare la trimiterea mesajului în conversația {conversation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send message")
+        raise HTTPException(status_code=500, detail="Nu am putut trimite mesajul")
 
 
-@router.post("/api/messages/send")
+@router.post("/api/mesaje/trimite")
 @limiter.limit("20/minute")
 def send_message_to_user_api(
     request: Request,
@@ -165,10 +165,10 @@ def send_message_to_user_api(
             db, current_user.id, message_data.recipient_username, message_data.content
         )
         if not message:
-            raise HTTPException(status_code=404, detail="Recipient not found or cannot message yourself")
+            raise HTTPException(status_code=404, detail="Destinatarul nu a fost găsit sau nu îți poți trimite mesaj ție")
 
         return {
-            "message": "Message sent successfully",
+            "message": "Mesajul a fost trimis",
             "conversation_id": message.conversation_id,
             "message_id": message.id
         }
@@ -177,10 +177,10 @@ def send_message_to_user_api(
         raise
     except Exception as e:
         logger.error(f"Eroare la trimiterea mesajului către {message_data.recipient_username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send message")
+        raise HTTPException(status_code=500, detail="Nu am putut trimite mesajul")
 
 
-@router.get("/api/messages/unread-count")
+@router.get("/api/mesaje/necitite")
 def get_unread_count_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -192,10 +192,10 @@ def get_unread_count_api(
 
     except Exception as e:
         logger.error(f"Eroare la obținerea numărului de mesaje necitite pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get unread count")
+        raise HTTPException(status_code=500, detail="Nu am putut încărca numărul de mesaje necitite")
 
 
-@router.delete("/api/messages/conversations/{conversation_id}")
+@router.delete("/api/mesaje/conversatii/{conversation_id}")
 def delete_conversation_api(
     conversation_id: int,
     db: Session = Depends(get_db),
@@ -205,18 +205,18 @@ def delete_conversation_api(
     try:
         success = crud.delete_conversation(db, conversation_id, current_user.id)
         if not success:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail="Conversația nu a fost găsită")
 
-        return {"message": "Conversation deleted successfully"}
+        return {"message": "Conversația a fost ștearsă"}
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Eroare la ștergerea conversației {conversation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to delete conversation")
+        raise HTTPException(status_code=500, detail="Nu am putut șterge conversația")
 
 
-@router.get("/api/messages/search")
+@router.get("/api/mesaje/cauta")
 def search_conversations_api(
     q: str,
     db: Session = Depends(get_db),
@@ -250,4 +250,4 @@ def search_conversations_api(
 
     except Exception as e:
         logger.error(f"Eroare la căutarea conversațiilor pentru {current_user.username}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to search conversations")
+        raise HTTPException(status_code=500, detail="Nu am putut căuta conversații")

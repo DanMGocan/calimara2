@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["notifications"])
 
 
-@router.get("/api/notifications")
+@router.get("/api/notificari")
 def get_notifications(
     skip: int = 0,
     limit: int = 20,
@@ -36,7 +36,7 @@ def get_notifications(
     }
 
 
-@router.get("/api/notifications/unread-count")
+@router.get("/api/notificari/necitite")
 def get_unread_count(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
@@ -45,7 +45,7 @@ def get_unread_count(
     return {"unread_count": count}
 
 
-@router.put("/api/notifications/{notification_id}/read")
+@router.put("/api/notificari/{notification_id}/citita")
 def mark_read(
     notification_id: int,
     db: Session = Depends(get_db),
@@ -53,14 +53,14 @@ def mark_read(
 ):
     notification = crud.mark_notification_read(db, notification_id, current_user.id)
     if not notification:
-        raise HTTPException(status_code=404, detail="Notificarea nu a fost gasita")
-    return {"message": "Notificare marcata ca citita"}
+        raise HTTPException(status_code=404, detail="Notificarea nu a fost găsită")
+    return {"message": "Notificare marcată ca citită"}
 
 
-@router.put("/api/notifications/read-all")
+@router.put("/api/notificari/citeste-toate")
 def mark_all_read(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
     crud.mark_all_notifications_read(db, current_user.id)
-    return {"message": "Toate notificarile au fost marcate ca citite"}
+    return {"message": "Toate notificările au fost marcate ca citite"}

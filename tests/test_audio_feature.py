@@ -132,7 +132,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertTrue(payload["available"])
         self.assertTrue(payload["can_listen"])
         self.assertFalse(payload["requires_audio_tier"])
-        self.assertEqual(payload["playback_url"], f"/api/audio/stream/{audio.id}")
+        self.assertEqual(payload["playback_url"], f"/api/audio/redare/{audio.id}")
 
     def test_post_audio_status_returns_local_stream_for_audio_tier(self):
         owner = self.user("owner")
@@ -150,7 +150,7 @@ class AudioFeatureTests(unittest.TestCase):
 
         payload = audio_service.post_audio_status_payload(self.db, post.id, listener)
         self.assertTrue(payload["can_listen"])
-        self.assertEqual(payload["playback_url"], f"/api/audio/stream/{audio.id}")
+        self.assertEqual(payload["playback_url"], f"/api/audio/redare/{audio.id}")
 
     def test_audio_quota_payload_for_audio_tier(self):
         owner = self.user("owner", "audio")
@@ -166,6 +166,25 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertTrue(payload["can_request"])
         self.assertEqual(payload["limit"], 250000)
         self.assertEqual(payload["remaining"], 250000)
+
+    def test_audio_quota_ignores_failed_tts_rows(self):
+        owner = self.user("owner", "audio")
+        post = self.post(owner)
+        period_start, period_end = crud.audio_tts_quota_period_for_user(owner)
+        failed = crud.create_tts_audio_request(
+            self.db,
+            post_id=post.id,
+            requester_user_id=owner.id,
+            tts_character_count=1234,
+            quota_period_start=period_start,
+            quota_period_end=period_end,
+        )
+        crud.update_post_audio(self.db, failed.id, status="failed", error_message="provider failure")
+
+        payload = audio_service.audio_quota_payload(self.db, owner)
+
+        self.assertEqual(payload["used"], 0)
+        self.assertEqual(payload["remaining"], 100000)
 
     def test_manual_tts_request_queues_and_counts_characters(self):
         owner = self.user("owner", "audio")
@@ -240,6 +259,36 @@ class AudioFeatureTests(unittest.TestCase):
 
         self.assertEqual(legacy.status, "cancelled")
         self.assertEqual(len(result["queued"]), 1)
+        self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 2)
+
+    def test_manual_tts_request_retries_after_failed_audio_without_double_charging(self):
+        owner = self.user("owner", "audio")
+        post = self.post(owner)
+        period_start, period_end = crud.audio_tts_quota_period_for_user(owner)
+        failed = crud.create_tts_audio_request(
+            self.db,
+            post_id=post.id,
+            requester_user_id=owner.id,
+            tts_character_count=999,
+            quota_period_start=period_start,
+            quota_period_end=period_end,
+        )
+        crud.update_post_audio(self.db, failed.id, status="failed", error_message="provider failure")
+        expected_count = audio_service.tts_character_count_for_post(post)
+
+        previous = os.environ.get("AUDIO_ENABLED")
+        os.environ["AUDIO_ENABLED"] = "False"
+        try:
+            result = audio_service.request_tts_for_posts(self.db, owner, [post.id])
+        finally:
+            if previous is None:
+                os.environ.pop("AUDIO_ENABLED", None)
+            else:
+                os.environ["AUDIO_ENABLED"] = previous
+
+        self.assertEqual(len(result["queued"]), 1)
+        self.assertEqual(result["queued"][0]["character_count"], expected_count)
+        self.assertEqual(result["quota"]["used"], expected_count)
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 2)
 
 

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
 from starlette.middleware.sessions import SessionMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes, writing_routes
 
 # Configure logging
 configure_error_logging()
@@ -118,18 +118,22 @@ def ads_txt():
 
 
 # Subdomain Middleware
-class SubdomainMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        host = request.headers.get("host", "").split(":")[0]
-        if host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
-            username = host.replace(SUBDOMAIN_SUFFIX, "")
-            request.state.is_subdomain = True
-            request.state.username = username
-        else:
-            request.state.is_subdomain = False
-            request.state.username = None
-        response = await call_next(request)
-        return response
+class SubdomainMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = Headers(scope=scope)
+            host = headers.get("host", "").split(":", 1)[0]
+            state = scope.setdefault("state", {})
+            if host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
+                state["is_subdomain"] = True
+                state["username"] = host.replace(SUBDOMAIN_SUFFIX, "")
+            else:
+                state["is_subdomain"] = False
+                state["username"] = None
+        await self.app(scope, receive, send)
 
 
 app.add_middleware(SubdomainMiddleware)
@@ -150,9 +154,32 @@ app.include_router(premium_routes.router)
 app.include_router(audio_routes.router)
 app.include_router(forum_routes.router)
 app.include_router(shop_routes.router)
+app.include_router(writing_routes.router)
 
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
+LEGACY_FRONTEND_PATHS = {
+    "/admin",
+    "/dashboard",
+    "/create-post",
+    "/messages",
+    "/shop",
+    "/inventory",
+    "/privacy",
+    "/terms",
+}
+LEGACY_FRONTEND_PREFIXES = (
+    "/auth",
+    "/category",
+    "/collections",
+    "/forum",
+)
+
+
+def _legacy_frontend_path(path: str) -> bool:
+    if path in LEGACY_FRONTEND_PATHS:
+        return True
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in LEGACY_FRONTEND_PREFIXES)
 
 if os.path.isdir(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
@@ -162,6 +189,9 @@ if os.path.isdir(FRONTEND_DIST):
     @app.get("/{full_path:path}")
     def serve_react(full_path: str):
         """Catch-all: serve React index.html for client-side routing"""
+        normalized_path = f"/{full_path.strip('/')}" if full_path else "/"
+        if normalized_path.startswith("/api/") or _legacy_frontend_path(normalized_path):
+            return JSONResponse(status_code=404, content={"detail": "Ruta nu a fost găsită"})
         response = FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"

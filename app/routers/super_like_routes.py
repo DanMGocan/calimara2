@@ -20,7 +20,7 @@ def _require_user(current_user: Optional[models.User]) -> models.User:
 
 
 @router.post(
-    "/api/posts/{post_id}/super-likes",
+    "/api/postari/{post_id}/super-aprecieri",
     response_model=schemas.SuperLike,
     status_code=status.HTTP_201_CREATED,
 )
@@ -53,7 +53,7 @@ def add_super_like(
 
 
 @router.delete(
-    "/api/posts/{post_id}/super-likes",
+    "/api/postari/{post_id}/super-aprecieri",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def remove_super_like(
@@ -68,7 +68,7 @@ def remove_super_like(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/api/users/me/super-likes/quota", response_model=schemas.SuperLikeQuota)
+@router.get("/api/utilizatori/eu/super-aprecieri/cota", response_model=schemas.SuperLikeQuota)
 def get_quota(
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),

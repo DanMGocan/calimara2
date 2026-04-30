@@ -23,7 +23,7 @@ ALLOWED_AUDIO_TYPES = {
 }
 
 
-@router.get("/api/audio/posts/{post_id}", response_model=schemas.PostAudioStatus)
+@router.get("/api/audio/postari/{post_id}", response_model=schemas.PostAudioStatus)
 def get_post_audio_status(
     post_id: int,
     db: Session = Depends(get_db),
@@ -32,7 +32,7 @@ def get_post_audio_status(
     return audio_service.post_audio_status_payload(db, post_id, current_user)
 
 
-@router.get("/api/audio/conversion-quota", response_model=schemas.AudioConversionQuota)
+@router.get("/api/audio/cota-conversie", response_model=schemas.AudioConversionQuota)
 def get_audio_conversion_quota(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -40,7 +40,7 @@ def get_audio_conversion_quota(
     return audio_service.audio_quota_payload(db, current_user)
 
 
-@router.post("/api/audio/tts-requests", response_model=schemas.TTSConversionResponse)
+@router.post("/api/audio/cereri-tts", response_model=schemas.TTSConversionResponse)
 def request_tts_audio(
     body: schemas.TTSConversionRequest,
     db: Session = Depends(get_db),
@@ -62,7 +62,7 @@ def request_tts_audio(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.get("/api/audio/stream/{audio_id}")
+@router.get("/api/audio/redare/{audio_id}")
 def stream_local_audio(
     audio_id: int,
     db: Session = Depends(get_db),
@@ -85,7 +85,7 @@ def stream_local_audio(
     return FileResponse(path, media_type=audio.content_type or "audio/mpeg")
 
 
-@router.get("/api/audio/collections/{collection_id}/playlist", response_model=schemas.CollectionAudioPlaylist)
+@router.get("/api/audio/colectii/{collection_id}/lista-redare", response_model=schemas.CollectionAudioPlaylist)
 def get_collection_audio_playlist(
     collection_id: int,
     db: Session = Depends(get_db),
@@ -107,7 +107,7 @@ def get_collection_audio_playlist(
     }
 
 
-@router.get("/api/audio/random", response_model=schemas.AudioTrack)
+@router.get("/api/audio/aleatoriu", response_model=schemas.AudioTrack)
 def get_random_audio(
     category: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -126,7 +126,7 @@ def get_random_audio(
     return audio_service.audio_track_payload(audio)
 
 
-@router.post("/api/posts/{post_id}/audio-recording", response_model=schemas.PostAudioStatus)
+@router.post("/api/postari/{post_id}/inregistrare-audio", response_model=schemas.PostAudioStatus)
 async def upload_author_recording(
     post_id: int,
     file: UploadFile = File(...),

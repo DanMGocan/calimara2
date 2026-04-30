@@ -339,13 +339,137 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(result.toxicity_score, 0.9)
         self.assertIn("manual review", result.reason)
 
+    def test_moderation_reads_dict_classifier_response(self):
+        classifier_response = SimpleNamespace(
+            results=[
+                SimpleNamespace(
+                    category_scores={
+                        "sexual": 0.0,
+                        "hate_and_discrimination": 0.82,
+                        "violence_and_threats": 0.0,
+                        "dangerous": 0.0,
+                        "criminal": 0.0,
+                        "selfharm": 0.0,
+                        "health": 0.0,
+                        "financial": 0.0,
+                        "law": 0.0,
+                        "pii": 0.0,
+                        "jailbreaking": 0.0,
+                    },
+                    categories={
+                        "sexual": False,
+                        "hate_and_discrimination": True,
+                        "violence_and_threats": False,
+                        "dangerous": False,
+                        "criminal": False,
+                        "selfharm": False,
+                        "health": False,
+                        "financial": False,
+                        "law": False,
+                        "pii": False,
+                        "jailbreaking": False,
+                    },
+                )
+            ]
+        )
+        chat_response = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        content='{"safe": true, "reason": "context literar legitim"}'
+                    )
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            classifiers=SimpleNamespace(moderate=lambda **kwargs: classifier_response),
+            chat=SimpleNamespace(complete=lambda **kwargs: chat_response),
+        )
+
+        with patch.object(moderation, "MODERATION_ENABLED", True), patch.object(
+            moderation,
+            "client",
+            fake_client,
+        ):
+            result = moderation.moderate_post("Titlu", "Text semnalizat de model.")
+
+        self.assertEqual(result.status, moderation.ModerationStatus.APPROVED)
+        self.assertEqual(result.toxicity_score, 0.82)
+        self.assertIn("Pass 2", result.reason)
+
+    def test_romanian_profanity_forces_manual_review_when_classifier_is_clean(self):
+        classifier_response = SimpleNamespace(
+            results=[
+                SimpleNamespace(
+                    category_scores={
+                        "sexual": 0.0,
+                        "hate_and_discrimination": 0.0,
+                        "violence_and_threats": 0.0,
+                        "dangerous": 0.0,
+                        "criminal": 0.0,
+                        "selfharm": 0.0,
+                        "health": 0.0,
+                        "financial": 0.0,
+                        "law": 0.0,
+                        "pii": 0.0,
+                        "jailbreaking": 0.0,
+                    },
+                    categories={
+                        "sexual": False,
+                        "hate_and_discrimination": False,
+                        "violence_and_threats": False,
+                        "dangerous": False,
+                        "criminal": False,
+                        "selfharm": False,
+                        "health": False,
+                        "financial": False,
+                        "law": False,
+                        "pii": False,
+                        "jailbreaking": False,
+                    },
+                )
+            ]
+        )
+        fake_client = SimpleNamespace(
+            classifiers=SimpleNamespace(moderate=lambda **kwargs: classifier_response),
+            chat=SimpleNamespace(complete=lambda **kwargs: self.fail("LLM review should not publish local profanity")),
+        )
+
+        with patch.object(moderation, "MODERATION_ENABLED", True), patch.object(
+            moderation,
+            "client",
+            fake_client,
+        ):
+            result = moderation.moderate_forum_thread("Titlu", "Ești un idiot prost.")
+
+        self.assertEqual(result.status, moderation.ModerationStatus.FLAGGED)
+        self.assertGreater(result.toxicity_score, 0.0)
+        self.assertIn("Romanian profanity", result.reason)
+        self.assertTrue(result.details["romanian_signals"]["profanity_detected"])
+
+    def test_moderation_errors_fail_closed_to_manual_review(self):
+        with patch.object(moderation, "MODERATION_ENABLED", True), patch.object(
+            moderation,
+            "client",
+            object(),
+        ), patch.object(
+            moderation,
+            "classify_content",
+            side_effect=RuntimeError("provider down"),
+        ):
+            result = moderation.moderate_post("Titlu", "Text care nu poate fi verificat.")
+
+        self.assertEqual(result.status, moderation.ModerationStatus.FLAGGED)
+        self.assertEqual(result.toxicity_score, 0.0)
+        self.assertIn("manual review", result.reason)
+
     def test_google_callback_redirect_uses_configured_local_scheme(self):
         user = self.make_user("oauthuser")
         request = DummyRequest({}, scheme="https")
 
         with patch.dict(
             os.environ,
-            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/autentificare/google/raspuns"},
         ), patch.object(
             auth_routes,
             "MAIN_DOMAIN",
@@ -364,9 +488,45 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response.headers["location"],
-            "http://lvh.me:8000/auth/callback?status=success",
+            "http://lvh.me:8000/autentificare/raspuns?status=success",
         )
         self.assertEqual(request.session["user_id"], user.id)
+
+    def test_google_callback_sends_new_users_to_setup_and_clears_stale_login(self):
+        existing_user = self.make_user("olduser")
+        request = DummyRequest({"user_id": existing_user.id, "db_epoch": "old"}, scheme="https")
+        google_user = SimpleNamespace(
+            google_id="google-new-user",
+            email="newuser@example.com",
+            name="New User",
+            picture=None,
+        )
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/autentificare/google/raspuns"},
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes.google_oauth,
+            "handle_google_callback",
+            new=AsyncMock(return_value=google_user),
+        ), patch.object(
+            auth_routes.google_oauth,
+            "find_or_create_user",
+            return_value=(None, True),
+        ):
+            response = self.async_run(auth_routes.google_callback.__wrapped__(request, self.db))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response.headers["location"],
+            "http://lvh.me:8000/autentificare/configurare",
+        )
+        self.assertNotIn("user_id", request.session)
+        self.assertEqual(request.session["google_user"]["email"], "newuser@example.com")
 
     def test_react_entrypoint_responses_disable_browser_cache(self):
         from fastapi.testclient import TestClient
@@ -374,7 +534,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
         client = TestClient(fastapi_app)
 
-        for path in ("/", "/create-post"):
+        for path in ("/", "/scrie"):
             response = client.get(path, headers={"host": "lvh.me:8000"})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers["cache-control"], "no-store")

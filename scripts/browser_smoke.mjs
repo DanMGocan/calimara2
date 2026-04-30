@@ -15,9 +15,9 @@ const CONNECT_URL = process.env.CALIMARA_SMOKE_CONNECT_URL || (() => {
 })();
 const USER_ID = process.env.CALIMARA_SMOKE_USER_ID || "5";
 const ROUTES = (process.env.CALIMARA_SMOKE_ROUTES || [
-  "/dashboard",
-  "/create-post",
-  "/messages",
+  "/panou",
+  "/scrie",
+  "/mesaje",
   "/magazin",
   "/inventar",
   "/premium",
@@ -328,18 +328,18 @@ async function verifySignedCookie(cookie) {
   const base = new URL(BASE_URL);
   let response;
   try {
-    response = await fetch(`${CONNECT_URL}/api/user/me`, {
+    response = await fetch(`${CONNECT_URL}/api/utilizator/eu`, {
       headers: {
         cookie: `calimara_sess=${cookie}`,
         host: base.host,
       },
     });
   } catch (error) {
-    throw new Error(`/api/user/me smoke check failed: ${error.message}${error.cause ? ` (${error.cause.message})` : ""}`);
+    throw new Error(`/api/utilizator/eu smoke check failed: ${error.message}${error.cause ? ` (${error.cause.message})` : ""}`);
   }
   const data = await response.json();
   if (!response.ok || !data.authenticated) {
-    throw new Error(`/api/user/me did not authenticate smoke user ${USER_ID}: ${response.status} ${JSON.stringify(data)}`);
+    throw new Error(`/api/utilizator/eu did not authenticate smoke user ${USER_ID}: ${response.status} ${JSON.stringify(data)}`);
   }
   return data.user;
 }

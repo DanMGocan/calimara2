@@ -34,6 +34,10 @@ class TTSQuotaExceeded(TTSRequestError):
         super().__init__("Audio character quota exceeded")
 
 
+class TTSGenerationFailed(RuntimeError):
+    pass
+
+
 def audio_enabled() -> bool:
     return os.getenv("AUDIO_ENABLED", "False").lower() in ("true", "1", "yes")
 
@@ -70,12 +74,13 @@ def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio
         .first()
     )
     if not post:
-        return crud.update_post_audio(db, audio.id, status="failed", error_message="Post not found") or audio
+        crud.update_post_audio(db, audio.id, status="failed", error_message="Postarea nu a fost găsită")
+        raise TTSGenerationFailed("Postarea nu a fost găsită")
 
     try:
         text = text_for_speech(post)
         if not text:
-            raise RuntimeError("Post has no readable text")
+            raise RuntimeError("Postarea nu are text lizibil")
         content, content_type = synthesize_text(text)
         backend, key, byte_size = audio_storage.save_audio_bytes(
             post_id=post.id,
@@ -99,12 +104,13 @@ def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio
         ) or audio
     except Exception as exc:
         logger.exception("TTS generation failed for post audio %s", audio.id)
-        return crud.update_post_audio(
+        crud.update_post_audio(
             db,
             audio.id,
             status="failed",
             error_message=str(exc),
-        ) or audio
+        )
+        raise TTSGenerationFailed(str(exc)) from exc
 
 
 def text_for_speech(post: models.Post) -> str:
@@ -395,9 +401,9 @@ def process_author_recording(db: Session, audio: models.PostAudio) -> models.Pos
             db,
             audio.id,
             status="failed",
-            error_message="Post not found",
+            error_message="Postarea nu a fost găsită",
             moderation_status="failed",
-            moderation_reason="Post not found",
+            moderation_reason="Postarea nu a fost găsită",
         ) or audio
     try:
         content = audio_storage.load_audio_bytes(audio)

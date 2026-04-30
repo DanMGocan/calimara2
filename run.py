@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Calimara local development server.
+Calimara development/server runner.
 Initializes the database from schema.sql, installs frontend
 dependencies, and starts uvicorn.
 """
@@ -13,7 +13,12 @@ import subprocess
 import atexit
 import time
 import re
+import getpass
+import pwd
+import grp
+import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).parent
@@ -27,6 +32,10 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "calimara_db")
+MAIN_DOMAIN = os.getenv("MAIN_DOMAIN", "localhost").strip()
+SUBDOMAIN_SUFFIX = os.getenv("SUBDOMAIN_SUFFIX", ".localhost").strip()
+PUBLIC_SCHEME = os.getenv("PUBLIC_SCHEME", "").strip()
+SYSTEMD_SERVICE_NAME = os.getenv("SYSTEMD_SERVICE_NAME", "calimara").strip()
 DEV_PREMIUM_USER_EMAIL = "gocandan@gmail.com"
 DEV_PREMIUM_USER_USERNAME = "gocandan"
 DEV_PREMIUM_USER_GOOGLE_ID = "seed-google-gocandan"
@@ -66,6 +75,178 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in ("true", "1", "yes", "on")
+
+
+def public_base_url() -> str:
+    """Return the public browser URL configured for links and OAuth redirects."""
+    if "://" in MAIN_DOMAIN:
+        return MAIN_DOMAIN.rstrip("/")
+
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    redirect_scheme = urlparse(redirect_uri).scheme
+    scheme = PUBLIC_SCHEME or redirect_scheme or ("https" if env_bool("HTTPS_ONLY") else "http")
+    return f"{scheme}://{MAIN_DOMAIN}".rstrip("/")
+
+
+def systemd_available() -> bool:
+    """Return True when this host appears to be booted with systemd."""
+    return shutil.which("systemctl") is not None and Path("/run/systemd/system").exists()
+
+
+def sudo_prefix() -> list[str]:
+    if os.geteuid() == 0:
+        return []
+    return ["sudo"]
+
+
+def service_unit_name() -> str:
+    return SYSTEMD_SERVICE_NAME if SYSTEMD_SERVICE_NAME.endswith(".service") else f"{SYSTEMD_SERVICE_NAME}.service"
+
+
+def service_file_path() -> Path:
+    return Path("/etc/systemd/system") / service_unit_name()
+
+
+def service_exists() -> bool:
+    if not systemd_available():
+        return False
+    result = subprocess.run(
+        ["systemctl", "cat", service_unit_name()],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def systemd_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+
+
+def service_user_and_group() -> tuple[str, str]:
+    username = os.getenv("SUDO_USER") or getpass.getuser()
+    try:
+        info = pwd.getpwnam(username)
+        group = grp.getgrgid(info.pw_gid).gr_name
+    except KeyError:
+        group = username
+    return username, group
+
+
+def python_for_service() -> Path:
+    venv_python = PROJECT_ROOT / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        return venv_python
+    return Path(sys.executable)
+
+
+def build_systemd_unit() -> str:
+    user, group = service_user_and_group()
+    python_bin = python_for_service()
+    path_env = os.environ.get(
+        "PATH",
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    )
+    service_name = service_unit_name()
+    return f"""[Unit]
+Description=Calimara FastAPI application
+After=network-online.target postgresql.service nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={user}
+Group={group}
+WorkingDirectory={PROJECT_ROOT}
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH={systemd_escape(path_env)}"
+ExecStart={python_bin} {PROJECT_ROOT / "run.py"} --serve
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def run_systemctl(*args: str):
+    subprocess.run([*sudo_prefix(), "systemctl", *args], check=True)
+
+
+def install_systemd_service():
+    """Create and enable the systemd service used to keep Calimara online."""
+    if not systemd_available():
+        print("  systemd was not detected. Starting in the foreground instead.")
+        return False
+
+    if not SYSTEMD_SERVICE_NAME:
+        print("  SYSTEMD_SERVICE_NAME is empty. Starting in the foreground instead.")
+        return False
+
+    unit_path = service_file_path()
+    unit_content = build_systemd_unit()
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+        tmp.write(unit_content)
+        tmp_path = tmp.name
+
+    try:
+        subprocess.run(
+            [*sudo_prefix(), "install", "-m", "0644", tmp_path, str(unit_path)],
+            check=True,
+        )
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
+
+    run_systemctl("daemon-reload")
+    run_systemctl("enable", service_unit_name())
+    print(f"  Installed systemd service: {unit_path}")
+    return True
+
+
+def manage_systemd_service_if_needed():
+    """Install/restart the persistent service for normal interactive runs."""
+    if "--serve" in sys.argv or os.getenv("CALIMARA_SKIP_SYSTEMD", "").lower() in ("1", "true", "yes"):
+        return
+
+    if not systemd_available():
+        print("  systemd was not detected. Continuing in foreground mode.")
+        return
+
+    print("[0/4] Checking systemd service...")
+
+    if not service_exists():
+        print(f"  {service_unit_name()} was not found. Creating it now.")
+        install_systemd_service()
+    else:
+        print(f"  {service_unit_name()}: OK")
+
+    print(f"  Restarting {service_unit_name()} with automatic restarts enabled.")
+    run_systemctl("restart", service_unit_name())
+    run_systemctl("enable", service_unit_name())
+    print()
+    print(f"  Service started: {service_unit_name()}")
+    print(f"  Public URL: {public_base_url()}")
+    print()
+    print("  Follow logs with:")
+    print(f"    journalctl -u {service_unit_name()} -f")
+    print()
+    print("  Stop the service with:")
+    print(f"    sudo systemctl stop {service_unit_name()}")
+    print()
+    print("  Note: this service runs run.py --serve, so every service start/restart resets the database.")
+    sys.exit(0)
+
+
 def check_env():
     """Verify required environment variables are set."""
     missing = []
@@ -75,11 +256,26 @@ def check_env():
         missing.append("DB_PASSWORD")
     if not os.getenv("SESSION_SECRET_KEY"):
         missing.append("SESSION_SECRET_KEY")
+    if not MAIN_DOMAIN:
+        missing.append("MAIN_DOMAIN")
+    if not SUBDOMAIN_SUFFIX:
+        missing.append("SUBDOMAIN_SUFFIX")
 
     if missing:
         print(f"Missing required environment variables: {', '.join(missing)}")
         print("Please configure them in your .env file.")
         sys.exit(1)
+
+    if not SUBDOMAIN_SUFFIX.startswith("."):
+        print("SUBDOMAIN_SUFFIX must start with a dot, e.g. .calimara.ro")
+        sys.exit(1)
+
+    google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
+    expected_redirect_uri = f"{public_base_url()}/autentificare/google/raspuns"
+    if google_redirect_uri and google_redirect_uri != expected_redirect_uri:
+        print("  Warning: GOOGLE_REDIRECT_URI does not match the configured public domain.")
+        print(f"  Expected: {expected_redirect_uri}")
+        print(f"  Current:  {google_redirect_uri}")
 
 
 def check_port_available(host: str, port: int):
@@ -442,6 +638,8 @@ def main():
     print("  ╚═══════════════════════════════════════╝")
     print()
 
+    manage_systemd_service_if_needed()
+
     # 1. Check environment
     print("[1/4] Checking environment...")
     check_env()
@@ -467,7 +665,12 @@ def main():
 
     start_ai_worker()
 
-    print(f"  Starting server on http://{host}:{port}")
+    public_url = public_base_url()
+    forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")
+    print(f"  Public URL: {public_url}")
+    print(f"  Uvicorn bind: http://{host}:{port}")
+    if host in ("127.0.0.1", "localhost"):
+        print("  Expecting a local reverse proxy to serve HTTP/HTTPS for the public domain.")
     print("  Press Ctrl+C to stop.\n")
 
     import uvicorn
@@ -475,6 +678,8 @@ def main():
         "app.main:app",
         host=host,
         port=port,
+        proxy_headers=True,
+        forwarded_allow_ips=forwarded_allow_ips,
     )
 
 

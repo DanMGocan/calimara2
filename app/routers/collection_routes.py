@@ -77,7 +77,7 @@ def _entry_payload(entry: models.CollectionPost) -> dict:
 
 # ----- endpoints -----
 
-@router.post("/api/collections/", status_code=status.HTTP_201_CREATED)
+@router.post("/api/colectii/", status_code=status.HTTP_201_CREATED)
 def create_collection_api(
     data: schemas.CollectionCreate,
     db: Session = Depends(get_db),
@@ -88,7 +88,7 @@ def create_collection_api(
     return _collection_summary_payload(collection, db, include_pending=True)
 
 
-@router.get("/api/collections/random")
+@router.get("/api/colectii/aleatoriu")
 def random_collection_api(db: Session = Depends(get_db)):
     collection = crud.get_random_collection(db)
     if not collection:
@@ -96,7 +96,7 @@ def random_collection_api(db: Session = Depends(get_db)):
     return _collection_summary_payload(collection, db, include_pending=False)
 
 
-@router.get("/api/collections/{slug}")
+@router.get("/api/colectii/{slug}")
 def get_collection_by_slug_api(
     slug: str,
     db: Session = Depends(get_db),
@@ -113,7 +113,7 @@ def get_collection_by_slug_api(
     return {**summary, "posts": posts_payload}
 
 
-@router.get("/api/collections/{slug}/pdf")
+@router.get("/api/colectii/{slug}/pdf")
 def collection_pdf_download(
     request: Request,
     slug: str,
@@ -139,7 +139,7 @@ def collection_pdf_download(
     )
 
 
-@router.get("/api/users/{username}/collections")
+@router.get("/api/utilizatori/{username}/colectii")
 def list_user_collections_public(
     username: str,
     db: Session = Depends(get_db),
@@ -153,7 +153,7 @@ def list_user_collections_public(
     }
 
 
-@router.put("/api/collections/{collection_id}")
+@router.put("/api/colectii/{collection_id}")
 def update_collection_api(
     collection_id: int,
     data: schemas.CollectionUpdate,
@@ -168,7 +168,7 @@ def update_collection_api(
     return _collection_summary_payload(updated, db, include_pending=True)
 
 
-@router.delete("/api/collections/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/colectii/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_collection_api(
     collection_id: int,
     db: Session = Depends(get_db),
@@ -181,7 +181,7 @@ def delete_collection_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/api/collections/{collection_id}/posts")
+@router.post("/api/colectii/{collection_id}/postari")
 def add_post_to_collection_api(
     collection_id: int,
     body: schemas.CollectionAddPostRequest,
@@ -213,7 +213,7 @@ def add_post_to_collection_api(
     return _entry_payload(entry)
 
 
-@router.post("/api/collections/{collection_id}/posts/{post_id}/respond")
+@router.post("/api/colectii/{collection_id}/postari/{post_id}/raspunde")
 def respond_collection_entry_api(
     collection_id: int,
     post_id: int,
@@ -243,7 +243,7 @@ def respond_collection_entry_api(
     return _entry_payload(updated)
 
 
-@router.delete("/api/collections/{collection_id}/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/colectii/{collection_id}/postari/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_collection_entry_api(
     collection_id: int,
     post_id: int,
@@ -265,7 +265,7 @@ def remove_collection_entry_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/api/user/collections")
+@router.get("/api/utilizator/colectii")
 def list_my_collections(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -276,7 +276,7 @@ def list_my_collections(
     }
 
 
-@router.get("/api/user/collections/{collection_id}/manage")
+@router.get("/api/utilizator/colectii/{collection_id}/gestioneaza")
 def manage_my_collection(
     collection_id: int,
     db: Session = Depends(get_db),
@@ -299,7 +299,7 @@ def manage_my_collection(
     }
 
 
-@router.get("/api/user/collections/pending")
+@router.get("/api/utilizator/colectii/in-asteptare")
 def my_pending_approvals(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
@@ -316,7 +316,7 @@ def my_pending_approvals(
     return {"items": items}
 
 
-@router.get("/api/posts/{post_id}/collections")
+@router.get("/api/postari/{post_id}/colectii")
 def get_post_collections(
     post_id: int,
     db: Session = Depends(get_db),
