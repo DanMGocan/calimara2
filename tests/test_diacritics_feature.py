@@ -83,7 +83,7 @@ def test_writing_diacritics_endpoint_returns_converted_text(monkeypatch):
 
     response = handler(
         request=SimpleNamespace(),
-        body=schemas.DiacriticsRequest(kind="post", title="Orasul", content="Sapte tari"),
+        body=schemas.DiacriticsRequest(kind="post", title="Orasul", category="poezie", content="Sapte tari"),
         current_user=_user(premium=True),
     )
 

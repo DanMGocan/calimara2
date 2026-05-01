@@ -1,6 +1,71 @@
-from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator, model_validator
 from datetime import datetime
 from typing import Literal, Optional, List
+
+from . import rich_text
+
+
+TITLE_CHARACTER_LIMIT = 120
+POETRY_CHARACTER_LIMIT = 10000
+SHORT_STORY_CHARACTER_LIMIT = 50000
+COMMENT_CHARACTER_LIMIT = 2500
+PROFILE_DESCRIPTION_CHARACTER_LIMIT = 1000
+FORUM_THREAD_CHARACTER_LIMIT = 8000
+FORUM_REPLY_CHARACTER_LIMIT = 4000
+
+PostCategory = Literal["poezie", "proza_scurta"]
+
+POST_CONTENT_CHARACTER_LIMITS = {
+    "poezie": POETRY_CHARACTER_LIMIT,
+    "proza_scurta": SHORT_STORY_CHARACTER_LIMIT,
+}
+
+
+def _visible_text_length(value: Optional[str]) -> int:
+    return len(rich_text.rich_text_to_plain_text(value))
+
+
+def _validate_visible_text_limit(value: Optional[str], limit: int, label: str) -> None:
+    if value and _visible_text_length(value) > limit:
+        raise ValueError(f"{label} poate avea cel mult {limit} de caractere")
+
+
+def _sanitize_required_rich_text(value: str) -> str:
+    cleaned = rich_text.sanitize_rich_text(value)
+    if not rich_text.rich_text_to_plain_text(cleaned):
+        raise ValueError("Conținutul este obligatoriu")
+    return cleaned
+
+
+def _sanitize_draft_rich_text(value: str) -> str:
+    return rich_text.sanitize_rich_text(value)
+
+
+def _sanitize_optional_profile_text(value: Optional[str]) -> Optional[str]:
+    cleaned = rich_text.sanitize_optional_rich_text(value)
+    _validate_visible_text_limit(
+        cleaned,
+        PROFILE_DESCRIPTION_CHARACTER_LIMIT,
+        "Descrierea",
+    )
+    return cleaned
+
+
+def _trim_optional_string(value: Optional[str], limit: int, label: str) -> Optional[str]:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) > limit:
+        raise ValueError(f"{label} poate avea cel mult {limit} de caractere")
+    return trimmed
+
+
+def _validate_post_content_limit(category: PostCategory, content: str) -> None:
+    limit = POST_CONTENT_CHARACTER_LIMITS[category]
+    label = "Poezia" if category == "poezie" else "Proza scurtă"
+    _validate_visible_text_limit(content, limit, label)
 
 class UserBase(BaseModel):
     username: str
@@ -8,6 +73,8 @@ class UserBase(BaseModel):
     google_id: str
     subtitle: Optional[str] = None # User motto
     avatar_seed: Optional[str] = None # DiceBear avatar seed
+    location: Optional[str] = None
+    youtube_playlist_url: Optional[str] = None
     
     # Social media links
     facebook_url: Optional[str] = None
@@ -26,9 +93,25 @@ class UserSetup(BaseModel):
     subtitle: Optional[str] = None
     avatar_seed: str
 
+    @field_validator("subtitle")
+    @classmethod
+    def sanitize_subtitle(cls, value: Optional[str]) -> Optional[str]:
+        return _sanitize_optional_profile_text(value)
+
 class UserProfileUpdate(BaseModel):
     subtitle: Optional[str] = None
     avatar_seed: Optional[str] = None
+    location: Optional[str] = None
+
+    @field_validator("subtitle")
+    @classmethod
+    def sanitize_subtitle(cls, value: Optional[str]) -> Optional[str]:
+        return _sanitize_optional_profile_text(value)
+
+    @field_validator("location")
+    @classmethod
+    def sanitize_location(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 120, "Locația")
 
 class GoogleUserInfo(BaseModel):
     google_id: str
@@ -55,17 +138,99 @@ class SocialLinksUpdate(BaseModel):
     instagram_url: Optional[str] = None
     x_url: Optional[str] = None
     bluesky_url: Optional[str] = None
+    patreon_url: Optional[str] = None
+    paypal_url: Optional[str] = None
+    buymeacoffee_url: Optional[str] = None
+    youtube_playlist_url: Optional[str] = None
+
+    @field_validator(
+        "facebook_url",
+        "tiktok_url",
+        "instagram_url",
+        "x_url",
+        "bluesky_url",
+        "patreon_url",
+        "paypal_url",
+        "buymeacoffee_url",
+        "youtube_playlist_url",
+    )
+    @classmethod
+    def sanitize_url(cls, value: Optional[str], info: ValidationInfo) -> Optional[str]:
+        limit = 500 if info.field_name == "youtube_playlist_url" else 300
+        return _trim_optional_string(value, limit, "Linkul")
+
+
+class UserProfileSettingsUpdate(BaseModel):
+    subtitle: Optional[str] = None
+    avatar_seed: Optional[str] = None
+    location: Optional[str] = None
+    youtube_playlist_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    x_url: Optional[str] = None
+    bluesky_url: Optional[str] = None
+    patreon_url: Optional[str] = None
+    paypal_url: Optional[str] = None
     buymeacoffee_url: Optional[str] = None
 
+    @field_validator("subtitle")
+    @classmethod
+    def sanitize_subtitle(cls, value: Optional[str]) -> Optional[str]:
+        return _sanitize_optional_profile_text(value)
+
+    @field_validator("avatar_seed")
+    @classmethod
+    def sanitize_avatar_seed(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 100, "Avatarul")
+
+    @field_validator("location")
+    @classmethod
+    def sanitize_location(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 120, "Locația")
+
+    @field_validator(
+        "facebook_url",
+        "tiktok_url",
+        "instagram_url",
+        "x_url",
+        "bluesky_url",
+        "patreon_url",
+        "paypal_url",
+        "buymeacoffee_url",
+        "youtube_playlist_url",
+    )
+    @classmethod
+    def sanitize_url(cls, value: Optional[str], info: ValidationInfo) -> Optional[str]:
+        limit = 500 if info.field_name == "youtube_playlist_url" else 300
+        return _trim_optional_string(value, limit, "Linkul")
+
 class PostBase(BaseModel):
-    title: str
+    title: str = Field(..., min_length=1, max_length=TITLE_CHARACTER_LIMIT)
     content: str
 
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
+
 class PostCreate(PostBase):
+    category: PostCategory
     ai_critic: bool = False
+    draft_id: Optional[int] = Field(None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_post_content_length(self):
+        _validate_post_content_limit(self.category, self.content)
+        return self
 
 class PostUpdate(PostBase):
-    pass
+    category: PostCategory
+
+    @model_validator(mode="after")
+    def validate_post_content_length(self):
+        _validate_post_content_limit(self.category, self.content)
+        return self
 
 class Post(PostBase):
     id: int
@@ -82,10 +247,53 @@ class Post(PostBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PostDraftSave(BaseModel):
+    title: str = Field(default="", max_length=TITLE_CHARACTER_LIMIT)
+    content: str = ""
+    category: PostCategory = "poezie"
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return (value or "").strip()
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_draft_rich_text(value or "")
+
+    @model_validator(mode="after")
+    def validate_draft_content_length(self):
+        _validate_post_content_limit(self.category, self.content)
+        return self
+
+
+class PostDraft(PostDraftSave):
+    id: int
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PostDraftList(BaseModel):
+    drafts: List[PostDraft] = []
+
+
 class CommentBase(BaseModel):
     content: str
     author_name: Optional[str] = None
     author_email: Optional[EmailStr] = None
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        cleaned = _sanitize_required_rich_text(value)
+        _validate_visible_text_limit(cleaned, COMMENT_CHARACTER_LIMIT, "Comentariul")
+        return cleaned
 
 class CommentCreate(CommentBase):
     pass
@@ -108,8 +316,28 @@ DiacriticsKind = Literal["post", "forum_thread", "forum_reply", "comment"]
 
 class DiacriticsRequest(BaseModel):
     kind: DiacriticsKind
-    title: Optional[str] = Field(None, max_length=300)
-    content: str = Field(..., min_length=1, max_length=12000)
+    title: Optional[str] = Field(None, max_length=TITLE_CHARACTER_LIMIT)
+    content: str = Field(..., min_length=1)
+    category: Optional[PostCategory] = None
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
+
+    @model_validator(mode="after")
+    def validate_request_limits(self):
+        if self.kind == "post":
+            if self.category is None:
+                raise ValueError("Categoria este obligatorie pentru texte")
+            _validate_post_content_limit(self.category, self.content)
+        elif self.kind == "comment":
+            _validate_visible_text_limit(self.content, COMMENT_CHARACTER_LIMIT, "Comentariul")
+        elif self.kind == "forum_thread":
+            _validate_visible_text_limit(self.content, FORUM_THREAD_CHARACTER_LIMIT, "Mesajul")
+        elif self.kind == "forum_reply":
+            _validate_visible_text_limit(self.content, FORUM_REPLY_CHARACTER_LIMIT, "Răspunsul")
+        return self
 
 
 class DiacriticsResponse(BaseModel):
@@ -309,12 +537,22 @@ class ForumAuthorRef(BaseModel):
 
 class ForumThreadCreate(BaseModel):
     section: ForumSection
-    title: str = Field(..., min_length=1, max_length=160)
+    title: str = Field(..., min_length=1, max_length=TITLE_CHARACTER_LIMIT)
     content: str = Field(..., min_length=1, max_length=8000)
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
 
 
 class ForumReplyCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
 
 
 class ForumThreadModerationAction(BaseModel):
@@ -356,77 +594,81 @@ class ForumThreadDetail(ForumThreadSummary):
     moderation_reason: Optional[str] = None
     replies: List[ForumReplyOut] = Field(default_factory=list)
 # ===================================
-# COLLECTION SCHEMAS
+# SERIES SCHEMAS
 # ===================================
 
-class CollectionAuthor(BaseModel):
+class SeriesAuthor(BaseModel):
     id: int
     username: str
     avatar_seed: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
-class CollectionCreate(BaseModel):
+
+
+class SeriesCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=2000)
 
-class CollectionUpdate(BaseModel):
+
+class SeriesUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=2000)
 
-class CollectionSummary(BaseModel):
+
+class SeriesSummary(BaseModel):
     id: int
     owner_id: int
     title: str
     slug: str
     description: Optional[str] = None
-    owner: Optional[CollectionAuthor] = None
+    owner: Optional[SeriesAuthor] = None
     post_count: int = 0
-    pending_count: int = 0
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
-class CollectionPostPostRef(BaseModel):
-    """Subset of Post info needed for collection listings."""
+
+
+class SeriesPostPostRef(BaseModel):
+    """Subset of Post info needed for series listings."""
     id: int
     title: str
     slug: str
     category: Optional[str] = None
-    owner: Optional[CollectionAuthor] = None
+    moderation_status: Optional[str] = None
+    owner: Optional[SeriesAuthor] = None
 
     model_config = ConfigDict(from_attributes=True)
-class CollectionPostEntry(BaseModel):
+
+
+class SeriesPostEntry(BaseModel):
     id: int
-    collection_id: int
+    series_id: int
     post_id: int
-    initiator_id: int
-    status: str
-    position: Optional[int] = None
+    position: int
     created_at: datetime
-    responded_at: Optional[datetime] = None
-    post: Optional[CollectionPostPostRef] = None
+    post: Optional[SeriesPostPostRef] = None
 
     model_config = ConfigDict(from_attributes=True)
-class CollectionDetail(CollectionSummary):
-    posts: List[CollectionPostEntry] = []
 
-class CollectionAddPostRequest(BaseModel):
+
+class SeriesDetail(SeriesSummary):
+    posts: List[SeriesPostEntry] = []
+
+
+class SeriesAddPostRequest(BaseModel):
     post_id: int
 
-class CollectionRespondRequest(BaseModel):
-    action: str  # "accept" | "reject"
 
-class PendingApprovalItem(BaseModel):
-    entry: CollectionPostEntry
-    direction: str  # "invitation" (owner invited author) | "suggestion" (author suggested to owner)
-    collection: CollectionSummary
-    post: CollectionPostPostRef
+class SeriesReorderRequest(BaseModel):
+    post_ids: List[int] = Field(..., min_length=1)
 
-class CollectionMembershipRef(BaseModel):
+
+class SeriesMembershipRef(BaseModel):
     id: int
     title: str
     slug: str
-    owner: CollectionAuthor
+    owner: SeriesAuthor
 
     model_config = ConfigDict(from_attributes=True)
 # ===================================
@@ -639,8 +881,8 @@ class AudioTrack(BaseModel):
     content_type: Optional[str] = None
 
 
-class CollectionAudioPlaylist(BaseModel):
-    collection_id: int
+class SeriesAudioPlaylist(BaseModel):
+    series_id: int
     title: str
     tracks: List[AudioTrack]
 

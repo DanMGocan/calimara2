@@ -125,7 +125,7 @@ Use `get_common_context(request, current_user)` for consistent template variable
 ### Database Initialization
 - **schema.sql**: PostgreSQL schema with sample data
 - **initdb.py**: Creates database if needed, executes schema.sql
-- **Database Reinitialization**: Database will be reinitialized after every update, no need to create migrations. It will use the schema.sql for the general layout of the DB and initdb.py to process the creation of the database.
+- **Database Initialization**: Existing databases are preserved by default. Set `CALIMARA_RESET_DATABASE=true` to rebuild from `schema.sql` and seed data.
 
 ## Code Patterns
 

@@ -1,5 +1,6 @@
 import os
 import urllib.parse
+from urllib.parse import parse_qs
 
 from fastapi import Request
 
@@ -56,5 +57,33 @@ def validate_social_url(url: str, platform: str) -> bool:
             domain == valid_domain or domain.endswith("." + valid_domain)
             for valid_domain in platform_domains[platform]
         )
+    except (ValueError, AttributeError):
+        return False
+
+
+def validate_youtube_playlist_url(url: str) -> bool:
+    """Validate YouTube playlist links without accepting arbitrary video URLs."""
+    if not url or not url.strip():
+        return True
+
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        if parsed.scheme not in {"http", "https"}:
+            return False
+
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        valid_domains = {
+            "youtube.com",
+            "m.youtube.com",
+            "music.youtube.com",
+            "youtu.be",
+        }
+        if domain not in valid_domains and not domain.endswith(".youtube.com"):
+            return False
+
+        playlist_ids = parse_qs(parsed.query).get("list") or []
+        return any(playlist_id.strip() for playlist_id in playlist_ids)
     except (ValueError, AttributeError):
         return False

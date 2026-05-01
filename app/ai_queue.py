@@ -102,7 +102,7 @@ def enqueue_tts_audio_job(db: Session, audio: models.PostAudio) -> models.AIJob:
         target_type="audio",
         target_id=audio.id,
         payload={},
-        max_attempts=2,
+        max_attempts=3,
     )
 
 
@@ -190,7 +190,8 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
             enqueue_post_approval_jobs(db, post)
         return
 
-    post.category = _classify_post(post)
+    if post.category not in {"poezie", "proza_scurta"}:
+        post.category = _classify_post(post)
     result = moderation.moderate_post_with_logging(
         post.title, post.content, post.id, post.user_id, db
     )

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -11,8 +12,8 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
-from app import auth, crud, models, moderation, schemas
-from app.routers import auth_routes, post_routes
+from app import auth, crud, models, moderation, schemas, statistics
+from app.routers import api_pages, auth_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
 class DummyRequest:
@@ -82,6 +83,203 @@ class BackendStabilizationTests(unittest.TestCase):
         self.db.refresh(post)
         return post
 
+    def make_series(self, owner: models.User, title: str = "Series") -> models.Series:
+        series = crud.create_series(
+            self.db,
+            owner_id=owner.id,
+            data=schemas.SeriesCreate(title=title, description="series description"),
+        )
+        self.db.refresh(series)
+        return series
+
+    def test_series_are_owner_only_and_public_pages_hide_unapproved_posts(self):
+        owner = self.make_user("seriesowner")
+        other = self.make_user("seriesother")
+        series = self.make_series(owner, "Owner Series")
+        approved = self.make_post(owner, "Approved Chapter")
+        pending = self.make_post(owner, "Pending Chapter", moderation_status="pending")
+        other_post = self.make_post(other, "Other Chapter")
+
+        first_entry = series_routes.add_post_to_series_api(
+            series.id,
+            schemas.SeriesAddPostRequest(post_id=approved.id),
+            db=self.db,
+            current_user=owner,
+        )
+        second_entry = series_routes.add_post_to_series_api(
+            series.id,
+            schemas.SeriesAddPostRequest(post_id=pending.id),
+            db=self.db,
+            current_user=owner,
+        )
+
+        self.assertEqual(first_entry["position"], 1)
+        self.assertEqual(second_entry["position"], 2)
+
+        with self.assertRaises(HTTPException) as wrong_author:
+            series_routes.add_post_to_series_api(
+                series.id,
+                schemas.SeriesAddPostRequest(post_id=other_post.id),
+                db=self.db,
+                current_user=owner,
+            )
+        self.assertEqual(wrong_author.exception.status_code, 403)
+
+        public_payload = series_routes.get_series_by_slug_api(series.slug, db=self.db)
+        self.assertEqual([entry["post"]["slug"] for entry in public_payload["posts"]], [approved.slug])
+
+        managed_payload = series_routes.manage_my_series(series.id, db=self.db, current_user=owner)
+        self.assertEqual([entry["post"]["moderation_status"] for entry in managed_payload["posts"]], ["approved", "pending"])
+
+    def test_series_reorder_and_single_series_per_post(self):
+        owner = self.make_user("serieseditor")
+        series = self.make_series(owner, "Editable Series")
+        other_series = self.make_series(owner, "Other Series")
+        first = self.make_post(owner, "First Chapter")
+        second = self.make_post(owner, "Second Chapter")
+
+        series_routes.add_post_to_series_api(
+            series.id,
+            schemas.SeriesAddPostRequest(post_id=first.id),
+            db=self.db,
+            current_user=owner,
+        )
+        series_routes.add_post_to_series_api(
+            series.id,
+            schemas.SeriesAddPostRequest(post_id=second.id),
+            db=self.db,
+            current_user=owner,
+        )
+
+        reordered = series_routes.reorder_series_posts_api(
+            series.id,
+            schemas.SeriesReorderRequest(post_ids=[second.id, first.id]),
+            db=self.db,
+            current_user=owner,
+        )
+        self.assertEqual([entry["post_id"] for entry in reordered["posts"]], [second.id, first.id])
+
+        with self.assertRaises(HTTPException) as already_used:
+            series_routes.add_post_to_series_api(
+                other_series.id,
+                schemas.SeriesAddPostRequest(post_id=first.id),
+                db=self.db,
+                current_user=owner,
+            )
+        self.assertEqual(already_used.exception.status_code, 409)
+
+        context = series_routes.get_post_series(first.id, db=self.db, current_user=None)
+        self.assertEqual(context["series"]["slug"], series.slug)
+        self.assertEqual(context["position"], 2)
+        self.assertEqual(context["previous_post"]["id"], second.id)
+
+    def test_profile_and_moderation_routes_preserve_http_errors(self):
+        user = self.make_user("profileuser")
+        admin = self.make_user("adminuser")
+        admin.is_admin = True
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as featured_error:
+            user_routes.update_featured_posts(
+                schemas.FeaturedPostsUpdate(post_ids=[999_999]),
+                db=self.db,
+                current_user=user,
+            )
+        self.assertEqual(featured_error.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as unsuspend_error:
+            moderation_routes.unsuspend_user(
+                999_999,
+                db=self.db,
+                current_user=admin,
+            )
+        self.assertEqual(unsuspend_error.exception.status_code, 404)
+
+    def test_statistics_uses_configured_session_cookie(self):
+        current_cookie = SimpleNamespace(cookies={"calimara_sess": "session-token"})
+        old_cookie = SimpleNamespace(cookies={"session": "session-token"})
+
+        fingerprint = statistics._get_session_fingerprint(current_cookie)
+
+        self.assertIsNotNone(fingerprint)
+        self.assertEqual(len(fingerprint), 32)
+        self.assertIsNone(statistics._get_session_fingerprint(old_cookie))
+
+    def test_moderation_log_ai_details_remain_json_object(self):
+        user = self.make_user("moderated")
+        result = moderation.ModerationResult(
+            moderation.ModerationStatus.FLAGGED,
+            0.7,
+            "needs review",
+            {
+                "hate_and_discrimination": 0.7,
+                "dangerous_and_criminal_content": 0.1,
+                "romanian_signals": {"profanity_score": 0.2},
+                "nested": {"ok": True},
+            },
+        )
+
+        moderation.log_moderation_decision(self.db, "post", 123, user.id, result)
+        self.db.commit()
+
+        log_entry = self.db.query(models.ModerationLog).one()
+        self.assertIsInstance(log_entry.ai_details, dict)
+        self.assertTrue(log_entry.ai_details["nested"]["ok"])
+
+    def test_run_init_database_preserves_existing_schema_by_default(self):
+        import run
+
+        executed_sql = []
+
+        class FakeResult:
+            def __init__(self, *, exists=False, scalar_value=None):
+                self.exists = exists
+                self.scalar_value = scalar_value
+
+            def first(self):
+                return object() if self.exists else None
+
+            def scalar(self):
+                return self.scalar_value
+
+        class FakeConnection:
+            def execute(self, statement, params=None):
+                sql = str(statement)
+                executed_sql.append(sql)
+                if "FROM pg_database" in sql:
+                    return FakeResult(exists=True)
+                if "to_regclass" in sql:
+                    return FakeResult(scalar_value="users")
+                return FakeResult()
+
+        class FakeConnect:
+            def __enter__(self):
+                return FakeConnection()
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnect()
+
+            def dispose(self):
+                pass
+
+        with patch.dict(os.environ, {"CALIMARA_RESET_DATABASE": "false"}), patch(
+            "sqlalchemy.create_engine",
+            return_value=FakeEngine(),
+        ):
+            run.init_database()
+
+        self.assertTrue(any("FROM pg_database" in sql for sql in executed_sql))
+        self.assertTrue(any("to_regclass" in sql for sql in executed_sql))
+        self.assertTrue(any("ADD COLUMN IF NOT EXISTS location" in sql for sql in executed_sql))
+        self.assertTrue(any("ADD COLUMN IF NOT EXISTS profile_photo_storage_key" in sql for sql in executed_sql))
+        self.assertTrue(any("ADD COLUMN IF NOT EXISTS cover_photo_storage_key" in sql for sql in executed_sql))
+        self.assertFalse(any("DROP DATABASE" in sql for sql in executed_sql))
+        self.assertFalse(any("CREATE DATABASE" in sql for sql in executed_sql))
+
     def test_get_current_user_uses_id_lookup_and_clears_missing_sessions(self):
         user = self.make_user("alice")
         db_epoch = auth.get_db_epoch()
@@ -122,6 +320,50 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(canonical_payload.recipient_username, "reader")
         self.assertEqual(profile_update.avatar_seed, "new-seed")
         self.assertIsNone(profile_update.subtitle)
+
+    def test_profile_settings_update_links_location_and_donations(self):
+        user = self.make_user("profilelinks")
+        payload = schemas.UserProfileSettingsUpdate.model_validate(
+            {
+                "location": "Iași",
+                "youtube_playlist_url": "https://www.youtube.com/playlist?list=PL123",
+                "paypal_url": "https://paypal.me/profilelinks",
+                "patreon_url": "https://patreon.com/profilelinks",
+                "instagram_url": "https://instagram.com/profilelinks",
+            }
+        )
+
+        response = user_routes.update_profile_settings(payload, db=self.db, current_user=user)
+
+        self.assertEqual(response["location"], "Iași")
+        self.assertEqual(response["youtube_playlist_url"], "https://www.youtube.com/playlist?list=PL123")
+        self.assertEqual(response["paypal_url"], "https://paypal.me/profilelinks")
+        self.assertEqual(response["patreon_url"], "https://patreon.com/profilelinks")
+
+        bad_payload = schemas.UserProfileSettingsUpdate.model_validate(
+            {"paypal_url": "https://example.com/not-paypal"}
+        )
+        with self.assertRaises(HTTPException) as bad_url:
+            user_routes.update_profile_settings(bad_payload, db=self.db, current_user=user)
+        self.assertEqual(bad_url.exception.status_code, 422)
+
+    def test_public_profile_media_urls_are_hidden_when_premium_expires(self):
+        user = self.make_user("profilemedia")
+        user.profile_photo_storage_key = "users/1/profil.webp"
+        user.cover_photo_storage_key = "users/1/coperta.webp"
+        user.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        self.db.commit()
+
+        expired_payload = api_pages.serialize_user(user)
+        self.assertIsNone(expired_payload["profile_photo_url"])
+        self.assertIsNone(expired_payload["cover_photo_url"])
+        self.assertTrue(expired_payload["has_profile_photo"])
+
+        user.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+        self.db.commit()
+        active_payload = api_pages.serialize_user(user)
+        self.assertEqual(active_payload["profile_photo_url"], "/api/utilizatori/profilemedia/media/profil")
+        self.assertEqual(active_payload["cover_photo_url"], "/api/utilizatori/profilemedia/media/coperta")
 
     def test_google_login_redirects_with_sync_auth_url_helper(self):
         request = DummyRequest({})
@@ -166,6 +408,77 @@ class BackendStabilizationTests(unittest.TestCase):
 
         months = post_routes.get_available_months(db=self.db, current_user=user)["months"]
         self.assertEqual(sum(month["post_count"] for month in months), 3)
+
+    def test_post_drafts_are_private_and_editable(self):
+        user = self.make_user("drafter")
+        other_user = self.make_user("otherdrafter")
+
+        draft = post_routes.create_post_draft_api(
+            schemas.PostDraftSave(
+                title="Ciornă",
+                content="<p>Text în lucru</p>",
+                category="proza_scurta",
+            ),
+            db=self.db,
+            current_user=user,
+        )
+
+        drafts = post_routes.list_post_drafts(db=self.db, current_user=user)["drafts"]
+        self.assertEqual([item.id for item in drafts], [draft.id])
+        self.assertEqual(draft.category, "proza_scurta")
+
+        updated = post_routes.update_post_draft_api(
+            draft.id,
+            schemas.PostDraftSave(title="Ciornă revizuită", content="<p>Alt text</p>", category="poezie"),
+            db=self.db,
+            current_user=user,
+        )
+        self.assertEqual(updated.title, "Ciornă revizuită")
+        self.assertEqual(updated.category, "poezie")
+
+        with self.assertRaises(HTTPException) as other_error:
+            post_routes.get_post_draft_api(draft.id, db=self.db, current_user=other_user)
+        self.assertEqual(other_error.exception.status_code, 404)
+
+        response = post_routes.delete_post_draft_api(draft.id, db=self.db, current_user=user)
+        self.assertEqual(response.status_code, 204)
+        self.assertIsNone(crud.get_post_draft(self.db, draft.id, user.id))
+
+    def test_publishing_from_draft_deletes_only_owned_draft(self):
+        user = self.make_user("publishdrafter")
+        other_user = self.make_user("otherpublishdrafter")
+        draft = crud.create_post_draft(
+            self.db,
+            schemas.PostDraftSave(title="Draft title", content="<p>Draft body</p>", category="poezie"),
+            user.id,
+        )
+        other_draft = crud.create_post_draft(
+            self.db,
+            schemas.PostDraftSave(title="Other draft", content="<p>Other body</p>", category="poezie"),
+            other_user.id,
+        )
+
+        create_post_callable = getattr(post_routes.create_post, "__wrapped__", post_routes.create_post)
+        with patch.object(post_routes.ai_queue, "enqueue_post_publish_job") as enqueue:
+            post = self.async_run(
+                create_post_callable(
+                    DummyRequest({}),
+                    schemas.PostCreate(
+                        title="Publicat din ciornă",
+                        content="<p>Text publicat</p>",
+                        category="poezie",
+                        draft_id=draft.id,
+                    ),
+                    self.db,
+                    user,
+                )
+            )
+
+        self.assertEqual(post.user_id, user.id)
+        self.assertEqual(post.category, "poezie")
+        self.assertIsNone(crud.get_post_draft(self.db, draft.id, user.id))
+        self.assertIsNotNone(crud.get_post_draft(self.db, other_draft.id, other_user.id))
+        enqueue.assert_called_once()
 
     def test_dev_seed_marks_gocandan_as_admin_and_moderator(self):
         import run

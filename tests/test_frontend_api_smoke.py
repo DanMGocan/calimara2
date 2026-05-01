@@ -1,4 +1,5 @@
 import os
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable
@@ -19,6 +20,11 @@ from app.database import get_db
 from app.main import app
 
 
+SMOKE_PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
+
+
 @dataclass(frozen=True)
 class SmokeData:
     user_id: int
@@ -28,11 +34,12 @@ class SmokeData:
     post_id: int
     peer_post_id: int
     pending_post_id: int
+    draft_id: int
     comment_id: int
     conversation_id: int
     notification_id: int
-    collection_id: int
-    collection_slug: str
+    series_id: int
+    series_slug: str
     club_id: int
     club_slug: str
     club_request_id: int
@@ -131,6 +138,13 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
     peer_post = _create_post(db, peer, "reader-story", category="proza_scurta")
     super_liked_post = _create_post(db, target, "target-poem", category="poezie")
     pending_post = _create_post(db, user, "pending-poem", moderation_status="pending")
+    draft = models.PostDraft(
+        user_id=user.id,
+        title="Smoke Draft",
+        content="<p>Draft smoke body</p>",
+        category="proza_scurta",
+    )
+    db.add(draft)
 
     comment = models.Comment(
         post_id=post.id,
@@ -162,20 +176,19 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
     )
     db.add(notification)
 
-    collection = models.Collection(
+    series = models.Series(
         owner_id=user.id,
-        title="Smoke Collection",
-        slug="smoke-collection",
-        description="Smoke collection description",
+        title="Smoke Series",
+        slug="smoke-series",
+        description="Smoke series description",
     )
-    db.add(collection)
+    db.add(series)
     db.flush()
     db.add(
-        models.CollectionPost(
-            collection_id=collection.id,
-            post_id=peer_post.id,
-            initiator_id=user.id,
-            status="accepted",
+        models.SeriesPost(
+            series_id=series.id,
+            post_id=post.id,
+            position=1,
         )
     )
 
@@ -298,10 +311,11 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         peer_post,
         super_liked_post,
         pending_post,
+        draft,
         comment,
         conversation,
         notification,
-        collection,
+        series,
         club,
         club_request,
         board_message,
@@ -322,11 +336,12 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         post_id=post.id,
         peer_post_id=peer_post.id,
         pending_post_id=pending_post.id,
+        draft_id=draft.id,
         comment_id=comment.id,
         conversation_id=conversation.id,
         notification_id=notification.id,
-        collection_id=collection.id,
-        collection_slug=collection.slug,
+        series_id=series.id,
+        series_slug=series.slug,
         club_id=club.id,
         club_slug=club.slug,
         club_request_id=club_request.id,
@@ -345,7 +360,10 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
 @pytest.fixture
 def smoke_client(monkeypatch, tmp_path):
     audio_dir = tmp_path / "audio"
+    monkeypatch.setenv("AUDIO_STORAGE_BACKEND", "local")
     monkeypatch.setenv("AUDIO_LOCAL_DIR", str(audio_dir))
+    monkeypatch.setenv("PROFILE_MEDIA_STORAGE_BACKEND", "local")
+    monkeypatch.setenv("PROFILE_MEDIA_LOCAL_DIR", str(tmp_path / "profile-media"))
     monkeypatch.setattr(statistics, "STATS_ENABLED", False)
     monkeypatch.setattr(
         stripe_service,
@@ -422,7 +440,17 @@ def _json(value: dict) -> Callable[[SmokeData], dict]:
 SMOKE_CASES = [
     SmokeCase("fetchMe", "GET", _path("/api/utilizator/eu"), {200}),
     SmokeCase("updateMe", "PUT", _path("/api/utilizator/eu"), {200}, _json({"subtitle": "Updated smoke profile", "avatar_seed": "updated-seed"})),
-    SmokeCase("updateSocialLinks", "PUT", _path("/api/utilizator/linkuri-sociale"), {200}, _json({"instagram_url": "https://instagram.com/smokeauthor"})),
+    SmokeCase("updateProfileSettings", "PUT", _path("/api/utilizator/profil"), {200}, _json({
+        "location": "București",
+        "youtube_playlist_url": "https://www.youtube.com/playlist?list=PLsmoke123",
+        "paypal_url": "https://paypal.me/smokeauthor",
+        "patreon_url": "https://patreon.com/smokeauthor",
+        "instagram_url": "https://instagram.com/smokeauthor",
+    })),
+    SmokeCase("updateSocialLinks", "PUT", _path("/api/utilizator/linkuri-sociale"), {200}, _json({"instagram_url": "https://instagram.com/smokeauthor", "paypal_url": "https://paypal.me/smokeauthor"})),
+    SmokeCase("uploadProfileMedia", "POST", _path("/api/utilizator/media/profil"), {200}, files=lambda _data: {"file": ("profile.png", SMOKE_PNG_BYTES, "image/png")}),
+    SmokeCase("uploadCoverMedia", "POST", _path("/api/utilizator/media/coperta"), {200}, files=lambda _data: {"file": ("cover.png", SMOKE_PNG_BYTES, "image/png")}),
+    SmokeCase("deleteProfileMedia", "DELETE", _path("/api/utilizator/media/profil"), {200}),
     SmokeCase("updateBestFriends", "PUT", _path("/api/utilizator/prieteni-apropiati"), {200}, _json({"friends": ["smokereader"]})),
     SmokeCase("searchUsers", "GET", _path("/api/utilizatori/cauta?q=smoke"), {200}),
     SmokeCase("fetchPublicProfile", "GET", _path("/api/utilizator/smokeauthor/profil"), {200}),
@@ -437,11 +465,16 @@ SMOKE_CASES = [
     SmokeCase("fetchRandomClub", "GET", _path("/api/cluburi/aleatoriu"), {200}),
     SmokeCase("fetchClub", "GET", _path("/api/cluburi/smoke-club"), {200}),
     SmokeCase("fetchArchive", "GET", _path("/api/postari/arhiva"), {200}),
+    SmokeCase("fetchPostDrafts", "GET", _path("/api/postari/ciorne"), {200}),
+    SmokeCase("fetchPostDraft", "GET", lambda data: f"/api/postari/ciorne/{data.draft_id}", {200}),
+    SmokeCase("createPostDraft", "POST", _path("/api/postari/ciorne"), {201}, _json({"title": "Smoke Draft New", "content": "<p>Draft body</p>", "category": "poezie"})),
+    SmokeCase("updatePostDraft", "PUT", lambda data: f"/api/postari/ciorne/{data.draft_id}", {200}, _json({"title": "Smoke Draft Updated", "content": "<p>Updated draft body</p>", "category": "proza_scurta"})),
+    SmokeCase("deletePostDraft", "DELETE", lambda data: f"/api/postari/ciorne/{data.draft_id}", {204}),
     SmokeCase("fetchPostMonths", "GET", _path("/api/postari/luni"), {200}),
     SmokeCase("fetchRandomPosts", "GET", _path("/api/postari/aleatoriu?category=poezie"), {200}),
-    SmokeCase("createPost", "POST", _path("/api/postari/"), {200}, _json({"title": "Smoke Created Post", "content": "Created smoke body", "ai_critic": False})),
+    SmokeCase("createPost", "POST", _path("/api/postari/"), {200}, _json({"title": "Smoke Created Post", "content": "Created smoke body", "category": "proza_scurta", "ai_critic": False})),
     SmokeCase("addDiacritics", "POST", _path("/api/scriere/diacritice"), {200}, _json({"kind": "forum_thread", "title": "Orasul", "content": "Sapte tari"})),
-    SmokeCase("updatePost", "PUT", lambda data: f"/api/postari/{data.post_id}", {200}, _json({"title": "Smoke Poem Updated", "content": "Updated smoke body"})),
+    SmokeCase("updatePost", "PUT", lambda data: f"/api/postari/{data.post_id}", {200}, _json({"title": "Smoke Poem Updated", "content": "Updated smoke body", "category": "poezie"})),
     SmokeCase("deletePost", "DELETE", _path("/api/postari/999999"), {404}),
     SmokeCase("createComment", "POST", lambda data: f"/api/postari/{data.post_id}/comentarii", {200}, _json({"content": "Smoke authenticated comment"})),
     SmokeCase("approveComment", "PUT", lambda data: f"/api/comentarii/{data.comment_id}/aproba", {200}, _json({})),
@@ -464,19 +497,18 @@ SMOKE_CASES = [
     SmokeCase("fetchCategoryStats", "GET", _path("/api/statistici/categorie/poezie"), {200}),
     SmokeCase("fetchOverviewStats", "GET", _path("/api/statistici/ansamblu"), {200}),
     SmokeCase("fetchMyStats", "GET", _path("/api/statistici/ale-mele"), {200}),
-    SmokeCase("createCollection", "POST", _path("/api/colectii/"), {201}, _json({"title": "Created Collection", "description": "Created through smoke"})),
-    SmokeCase("fetchRandomCollection", "GET", _path("/api/colectii/aleatoriu"), {200}),
-    SmokeCase("fetchCollection", "GET", _path("/api/colectii/smoke-collection"), {200}),
-    SmokeCase("fetchUserCollections", "GET", _path("/api/utilizatori/smokeauthor/colectii"), {200}),
-    SmokeCase("updateCollection", "PUT", lambda data: f"/api/colectii/{data.collection_id}", {200}, _json({"title": "Updated Smoke Collection"})),
-    SmokeCase("deleteCollection", "DELETE", _path("/api/colectii/999999"), {404}),
-    SmokeCase("addPostToCollection", "POST", lambda data: f"/api/colectii/{data.collection_id}/postari", {409}, lambda data: {"post_id": data.peer_post_id}),
-    SmokeCase("respondCollectionEntry", "POST", lambda data: f"/api/colectii/{data.collection_id}/postari/{data.peer_post_id}/raspunde", {409}, _json({"action": "accept"})),
-    SmokeCase("removeCollectionEntry", "DELETE", lambda data: f"/api/colectii/{data.collection_id}/postari/{data.peer_post_id}", {204}),
-    SmokeCase("fetchMyCollections", "GET", _path("/api/utilizator/colectii"), {200}),
-    SmokeCase("fetchManagedCollection", "GET", lambda data: f"/api/utilizator/colectii/{data.collection_id}/gestioneaza", {200}),
-    SmokeCase("fetchPendingCollectionApprovals", "GET", _path("/api/utilizator/colectii/in-asteptare"), {200}),
-    SmokeCase("fetchPostCollections", "GET", lambda data: f"/api/postari/{data.peer_post_id}/colectii", {200}),
+    SmokeCase("createSeries", "POST", _path("/api/serii/"), {201}, _json({"title": "Created Series", "description": "Created through smoke"})),
+    SmokeCase("fetchRandomSeries", "GET", _path("/api/serii/aleatoriu"), {200}),
+    SmokeCase("fetchSeries", "GET", _path("/api/serii/smoke-series"), {200}),
+    SmokeCase("fetchUserSeries", "GET", _path("/api/utilizatori/smokeauthor/serii"), {200}),
+    SmokeCase("updateSeries", "PUT", lambda data: f"/api/serii/{data.series_id}", {200}, _json({"title": "Updated Smoke Series"})),
+    SmokeCase("deleteSeries", "DELETE", _path("/api/serii/999999"), {404}),
+    SmokeCase("addPostToSeries", "POST", lambda data: f"/api/serii/{data.series_id}/postari", {403}, lambda data: {"post_id": data.peer_post_id}),
+    SmokeCase("reorderSeriesPosts", "PUT", lambda data: f"/api/serii/{data.series_id}/postari/ordine", {200}, lambda data: {"post_ids": [data.post_id]}),
+    SmokeCase("removePostFromSeries", "DELETE", lambda data: f"/api/serii/{data.series_id}/postari/999999", {404}),
+    SmokeCase("fetchMySeries", "GET", _path("/api/utilizator/serii"), {200}),
+    SmokeCase("fetchManagedSeries", "GET", lambda data: f"/api/utilizator/serii/{data.series_id}/gestioneaza", {200}),
+    SmokeCase("fetchPostSeries", "GET", lambda data: f"/api/postari/{data.post_id}/serie", {200}),
     SmokeCase("fetchForumThreads", "GET", _path("/api/forum/discutii?section=general"), {200}),
     SmokeCase("fetchForumSections", "GET", _path("/api/forum/sectiuni"), {200}),
     SmokeCase("fetchForumThread", "GET", _path("/api/forum/discutii/smoke-forum-thread"), {200}),
@@ -515,9 +547,10 @@ SMOKE_CASES = [
     SmokeCase("openPremiumPortal", "POST", _path("/api/premium/portal"), {200}, _json({})),
     SmokeCase("fetchAudioConversionQuota", "GET", _path("/api/audio/cota-conversie"), {200}),
     SmokeCase("requestTtsConversions", "POST", _path("/api/audio/cereri-tts"), {200}, lambda data: {"post_ids": [data.post_id]}),
-    SmokeCase("fetchCollectionAudioPlaylist", "GET", lambda data: f"/api/audio/colectii/{data.collection_id}/lista-redare", {200}),
+    SmokeCase("fetchSeriesAudioPlaylist", "GET", lambda data: f"/api/audio/serii/{data.series_id}/lista-redare", {200}),
     SmokeCase("fetchRandomAudio", "GET", _path("/api/audio/aleatoriu?category=poezie"), {200}),
     SmokeCase("audioStreamUrl", "GET", lambda data: f"/api/audio/redare/{data.audio_id}", {200}),
+    SmokeCase("audioDownloadUrl", "GET", lambda data: f"/api/audio/descarcare/{data.audio_id}", {200}),
     SmokeCase(
         "uploadPostAudioRecording",
         "POST",
@@ -567,6 +600,7 @@ OLD_PUBLIC_PATHS = [
     "/create-post",
     "/messages",
     "/category/poezie",
+    "/colectii/smoke-collection",
     "/collections/smoke-collection",
     "/forum",
     "/forum/new",
@@ -585,7 +619,6 @@ OLD_API_GET_PATHS = [
     "/api/user/me",
     "/api/users/search?q=smoke",
     "/api/user/smokeauthor/profile",
-    "/api/landing?category=toate",
     "/api/categories/poezie",
     "/api/blog/smokeauthor",
     "/api/blog/smokeauthor/post/smoke-poem",
@@ -600,6 +633,8 @@ OLD_API_GET_PATHS = [
     "/api/messages/conversations",
     "/api/notifications",
     "/api/stats/my",
+    "/api/colectii/aleatoriu",
+    "/api/utilizator/colectii",
     "/api/collections/random",
     "/api/user/collections",
     "/api/forum/threads",
@@ -617,6 +652,34 @@ OLD_API_GET_PATHS = [
     "/api/stripe/webhook",
     "/api/logout",
 ]
+
+
+@pytest.mark.parametrize("path", ["/api/prima-pagina?category=toate", "/api/landing?category=toate"])
+def test_landing_api_returns_json_stats(smoke_client, path: str):
+    client, _data = smoke_client
+    response = client.get(path)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    payload = response.json()
+    assert payload["stats"]["total_posts"] > 0
+    assert payload["stats"]["total_authors"] > 0
+
+
+def test_audio_download_returns_attachment(smoke_client):
+    client, data = smoke_client
+    response = client.get(f"/api/audio/descarcare/{data.audio_id}")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/mpeg")
+    content_disposition = response.headers["content-disposition"]
+    assert "attachment" in content_disposition
+    assert "smokeauthor-smoke-poem-audio.mp3" in content_disposition
+
+
+def test_missing_audio_download_returns_json_404(smoke_client):
+    client, _data = smoke_client
+    response = client.get("/api/audio/descarcare/999999")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
 
 
 @pytest.mark.parametrize("path", OLD_PUBLIC_PATHS)

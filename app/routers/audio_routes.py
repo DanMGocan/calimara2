@@ -1,4 +1,6 @@
 import os
+import re
+import unicodedata
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -21,6 +23,31 @@ ALLOWED_AUDIO_TYPES = {
     "audio/mp4",
     "audio/x-m4a",
 }
+
+
+def _get_public_ready_audio(db: Session, audio_id: int) -> models.PostAudio:
+    audio = (
+        db.query(models.PostAudio)
+        .options(joinedload(models.PostAudio.post).joinedload(models.Post.owner))
+        .filter(models.PostAudio.id == audio_id)
+        .first()
+    )
+    if not audio or audio.status != "ready" or not audio.post or audio.post.moderation_status != "approved":
+        raise HTTPException(status_code=404, detail="Audio indisponibil")
+    return audio
+
+
+def _safe_filename_part(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", normalized).strip("-._")
+    return safe or "calimara"
+
+
+def _audio_download_filename(audio: models.PostAudio) -> str:
+    author = audio.post.owner.username if audio.post and audio.post.owner else "calimara"
+    slug = audio.post.slug if audio.post else f"audio-{audio.id}"
+    ext = audio_storage.extension_for_content_type(audio.content_type)
+    return f"{_safe_filename_part(author)}-{_safe_filename_part(slug)}-audio.{ext}"
 
 
 @router.get("/api/audio/postari/{post_id}", response_model=schemas.PostAudioStatus)
@@ -67,14 +94,7 @@ def stream_local_audio(
     audio_id: int,
     db: Session = Depends(get_db),
 ):
-    audio = (
-        db.query(models.PostAudio)
-        .options(joinedload(models.PostAudio.post))
-        .filter(models.PostAudio.id == audio_id)
-        .first()
-    )
-    if not audio or audio.status != "ready" or not audio.post or audio.post.moderation_status != "approved":
-        raise HTTPException(status_code=404, detail="Audio indisponibil")
+    audio = _get_public_ready_audio(db, audio_id)
     if audio.storage_backend == "s3":
         return RedirectResponse(audio_storage.playback_url(audio))
     if audio.storage_backend != "local" or not audio.storage_key:
@@ -85,15 +105,36 @@ def stream_local_audio(
     return FileResponse(path, media_type=audio.content_type or "audio/mpeg")
 
 
-@router.get("/api/audio/colectii/{collection_id}/lista-redare", response_model=schemas.CollectionAudioPlaylist)
-def get_collection_audio_playlist(
-    collection_id: int,
+@router.get("/api/audio/descarcare/{audio_id}")
+def download_audio(
+    audio_id: int,
     db: Session = Depends(get_db),
 ):
-    collection = crud.get_collection(db, collection_id)
-    if not collection:
-        raise HTTPException(status_code=404, detail="Colecția nu a fost găsită")
-    entries = crud.get_collection_entries(db, collection_id, status="accepted")
+    audio = _get_public_ready_audio(db, audio_id)
+    filename = _audio_download_filename(audio)
+    if audio.storage_backend == "s3":
+        return RedirectResponse(audio_storage.download_url(audio, filename))
+    if audio.storage_backend != "local" or not audio.storage_key:
+        raise HTTPException(status_code=404, detail="Audio indisponibil")
+    path = audio_storage.local_path_for_key(audio.storage_key)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Fișierul audio nu există")
+    return FileResponse(
+        path,
+        media_type=audio.content_type or "audio/mpeg",
+        filename=filename,
+    )
+
+
+@router.get("/api/audio/serii/{series_id}/lista-redare", response_model=schemas.SeriesAudioPlaylist)
+def get_series_audio_playlist(
+    series_id: int,
+    db: Session = Depends(get_db),
+):
+    series = crud.get_series(db, series_id)
+    if not series:
+        raise HTTPException(status_code=404, detail="Seria nu a fost găsită")
+    entries = crud.get_series_entries(db, series_id, approved_posts_only=True)
     tracks = []
     for entry in entries:
         audio = crud.get_best_audio_for_post(db, entry.post_id)
@@ -101,8 +142,8 @@ def get_collection_audio_playlist(
             db.refresh(audio)
             tracks.append(audio_service.audio_track_payload(audio))
     return {
-        "collection_id": collection.id,
-        "title": collection.title,
+        "series_id": series.id,
+        "title": series.title,
         "tracks": tracks,
     }
 

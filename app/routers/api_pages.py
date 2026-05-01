@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy import func
 
-from .. import models, crud, auth, statistics, pdf_exporter
+from .. import models, crud, auth, statistics, pdf_exporter, profile_media, rich_text
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, get_avatar_url
 from ..categories import CATEGORIES, get_category_name
@@ -22,6 +22,13 @@ router = APIRouter(tags=["api-pages"])
 
 def serialize_user(user):
     """Serialize a user object to dict for JSON response"""
+    profile_photo_url = None
+    cover_photo_url = None
+    if getattr(user, "is_premium", False):
+        if getattr(user, "profile_photo_storage_key", None):
+            profile_photo_url = profile_media.public_media_url(user.username, "profil")
+        if getattr(user, "cover_photo_storage_key", None):
+            cover_photo_url = profile_media.public_media_url(user.username, "coperta")
     equipped_items = [
         {
             "slot": equipped.slot,
@@ -41,8 +48,16 @@ def serialize_user(user):
     return {
         "id": user.id,
         "username": user.username,
-        "subtitle": user.subtitle,
+        "subtitle": rich_text.sanitize_optional_rich_text(user.subtitle),
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "avatar_url": profile_photo_url or get_avatar_url(user, size=160),
+        "profile_photo_url": profile_photo_url,
+        "cover_photo_url": cover_photo_url,
+        "has_profile_photo": bool(getattr(user, "profile_photo_storage_key", None)),
+        "has_cover_photo": bool(getattr(user, "cover_photo_storage_key", None)),
+        "location": getattr(user, "location", None),
+        "youtube_playlist_url": getattr(user, "youtube_playlist_url", None),
+        "is_premium": getattr(user, "is_premium", False),
         "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
         "equipped_items": equipped_items,
         "facebook_url": getattr(user, 'facebook_url', None),
@@ -70,7 +85,7 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
         "user_id": post.user_id,
         "title": post.title,
         "slug": post.slug,
-        "content": post.content,
+        "content": rich_text.sanitize_rich_text(post.content),
         "category": post.category,
         "category_name": get_category_name(post.category) if post.category else "",
         "view_count": post.view_count,
@@ -86,7 +101,7 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
             "id": post.owner.id,
             "username": post.owner.username,
             "avatar_seed": post.owner.avatar_seed or f"{post.owner.username}-shapes",
-            "subtitle": post.owner.subtitle,
+            "subtitle": rich_text.sanitize_optional_rich_text(post.owner.subtitle),
         }
     return result
 
@@ -135,6 +150,25 @@ def serialize_posts_with_super_likes(db, posts, current_user, include_owner=Fals
     ]
 
 
+def serialize_series_summary(db: Session, series):
+    owner = series.owner
+    return {
+        "id": series.id,
+        "owner_id": series.owner_id,
+        "title": series.title,
+        "slug": series.slug,
+        "description": series.description,
+        "owner": {
+            "id": owner.id,
+            "username": owner.username,
+            "avatar_seed": owner.avatar_seed or f"{owner.username}-shapes",
+        } if owner else None,
+        "post_count": crud.count_series_posts(db, series.id, approved_only=True),
+        "created_at": series.created_at.isoformat() if series.created_at else None,
+        "updated_at": series.updated_at.isoformat() if series.updated_at else None,
+    }
+
+
 def serialize_comment(comment):
     """Serialize a comment for JSON response"""
     result = {
@@ -143,7 +177,7 @@ def serialize_comment(comment):
         "user_id": comment.user_id,
         "author_name": comment.author_name,
         "author_email": comment.author_email,
-        "content": comment.content,
+        "content": rich_text.sanitize_rich_text(comment.content),
         "approved": comment.approved,
         "is_robot": getattr(comment, "is_robot", False),
         "moderation_status": comment.moderation_status,
@@ -159,6 +193,7 @@ def serialize_comment(comment):
 
 
 @router.get("/api/prima-pagina")
+@router.get("/api/landing", include_in_schema=False)
 def landing_data(
     request: Request,
     category: str = "toate",
@@ -231,6 +266,11 @@ def blog_data(
 
     # Blog categories
     blog_categories = crud.get_distinct_categories_used(db, user_id=user.id)
+    user_series = [
+        serialize_series_summary(db, series)
+        for series in crud.get_series_by_owner(db, user.id)
+    ]
+    user_series = [series for series in user_series if series["post_count"] > 0]
 
     return {
         "blog_owner": serialize_user(user),
@@ -259,6 +299,7 @@ def blog_data(
             {"category": key, "category_name": get_category_name(key), "count": category_counts.get(key, 0)}
             for key in CATEGORIES
         ],
+        "series": user_series,
     }
 
 
@@ -310,10 +351,12 @@ def post_detail_data(
     post_data["approved_comments"] = [
         serialize_comment(c) for c in (post.approved_comments or [])
     ]
+    series_context = crud.get_series_context_for_post(db, post, include_unapproved=can_view_pending)
 
     return {
         "blog_owner": serialize_user(user),
         "post": post_data,
+        "series_context": series_context,
         "related_posts": [
             serialize_post(
                 p,

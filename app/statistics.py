@@ -49,7 +49,7 @@ def _get_client_ip(request: Request) -> str:
 
 
 def _get_session_fingerprint(request: Request) -> Optional[str]:
-    session_cookie = request.cookies.get("session")
+    session_cookie = request.cookies.get("calimara_sess")
     if session_cookie:
         return hashlib.sha256(session_cookie.encode()).hexdigest()[:32]
     return None

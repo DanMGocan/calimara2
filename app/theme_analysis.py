@@ -5,6 +5,8 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
+from .rich_text import rich_text_to_plain_text
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -124,7 +126,7 @@ def analyze_post_themes(title: str, content: str, db: Session) -> ThemeAnalysisR
         existing_themes = crud.get_distinct_themes(db)
         existing_feelings = crud.get_distinct_feelings(db)
 
-        full_text = f"Titlu: {title}\n\nConținut: {content}"
+        full_text = f"Titlu: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
         logger.info(f"Analyzing themes for post: {title[:30]}...")
 
         result = extract_themes_from_text(full_text, existing_themes, existing_feelings)

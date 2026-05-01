@@ -441,6 +441,8 @@ def unsuspend_user(
 
         return {"success": True, "message": f"Utilizatorul {user.username} a fost reactivat"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Eroare la reactivarea utilizatorului: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut reactiva utilizatorul")

@@ -7,6 +7,8 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
+from .rich_text import rich_text_to_plain_text
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -347,25 +349,27 @@ def _moderate_text(text: str) -> ModerationResult:
 # --- Public API (unchanged interface) ---
 
 def moderate_comment(content: str) -> ModerationResult:
-    logger.info(f"Moderating comment ({len(content)} chars)")
-    return _moderate_text(content)
+    plain_content = rich_text_to_plain_text(content)
+    logger.info(f"Moderating comment ({len(plain_content)} chars)")
+    return _moderate_text(plain_content)
 
 
 def moderate_post(title: str, content: str) -> ModerationResult:
     logger.info(f"Moderating post: {title[:30]}...")
-    full_text = f"Titlu: {title}\n\nConținut: {content}"
+    full_text = f"Titlu: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
     return _moderate_text(full_text)
 
 
 def moderate_forum_thread(title: str, content: str) -> ModerationResult:
     logger.info(f"Moderating forum thread: {title[:30]}...")
-    full_text = f"Titlu discuție: {title}\n\nConținut: {content}"
+    full_text = f"Titlu discuție: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
     return _moderate_text(full_text)
 
 
 def moderate_forum_reply(content: str) -> ModerationResult:
-    logger.info(f"Moderating forum reply ({len(content)} chars)")
-    return _moderate_text(content)
+    plain_content = rich_text_to_plain_text(content)
+    logger.info(f"Moderating forum reply ({len(plain_content)} chars)")
+    return _moderate_text(plain_content)
 
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
@@ -407,7 +411,7 @@ def log_moderation_decision(
             romanian_profanity_score=details.get("romanian_signals", {}).get("profanity_score", 0.0)
                 if isinstance(details.get("romanian_signals"), dict) else 0.0,
             ai_reason=moderation_result.reason,
-            ai_details=json.dumps(details, ensure_ascii=False, default=str) if details else None,
+            ai_details=json.loads(json.dumps(details, ensure_ascii=False, default=str)) if details else None,
             human_decision="pending" if moderation_result.status == ModerationStatus.FLAGGED else None
         )
 

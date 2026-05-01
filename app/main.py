@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, collection_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes, writing_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, series_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes, writing_routes
 
 # Configure logging
 configure_error_logging()
@@ -147,7 +147,7 @@ app.include_router(moderation_routes.router)
 app.include_router(api_pages.router)
 app.include_router(notification_routes.router)
 app.include_router(stats_routes.router)
-app.include_router(collection_routes.router)
+app.include_router(series_routes.router)
 app.include_router(club_routes.router)
 app.include_router(super_like_routes.router)
 app.include_router(premium_routes.router)
@@ -171,6 +171,7 @@ LEGACY_FRONTEND_PATHS = {
 LEGACY_FRONTEND_PREFIXES = (
     "/auth",
     "/category",
+    "/colectii",
     "/collections",
     "/forum",
 )

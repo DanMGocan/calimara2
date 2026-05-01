@@ -3,6 +3,8 @@ import json
 import logging
 from dotenv import load_dotenv
 
+from .rich_text import rich_text_to_plain_text
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -42,7 +44,7 @@ def classify_post(title: str, content: str) -> str:
         return "proza_scurta"
 
     try:
-        full_text = f"Titlu: {title}\n\nConținut: {content}"
+        full_text = f"Titlu: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
         response = client.chat.complete(
             model=CATEGORY_CLASSIFIER_MODEL,
             messages=[

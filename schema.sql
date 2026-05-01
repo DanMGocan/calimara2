@@ -26,9 +26,12 @@ DROP TABLE IF EXISTS club_board_messages CASCADE;
 DROP TABLE IF EXISTS club_join_requests CASCADE;
 DROP TABLE IF EXISTS club_members CASCADE;
 DROP TABLE IF EXISTS clubs CASCADE;
+DROP TABLE IF EXISTS series_posts CASCADE;
+DROP TABLE IF EXISTS series CASCADE;
 DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
 DROP TABLE IF EXISTS post_audio CASCADE;
+DROP TABLE IF EXISTS post_drafts CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
@@ -40,8 +43,18 @@ CREATE TABLE users (
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     google_id VARCHAR(100) UNIQUE NOT NULL,
-    subtitle VARCHAR(500),
+    subtitle TEXT,
     avatar_seed VARCHAR(100),
+    location VARCHAR(120),
+    youtube_playlist_url VARCHAR(500),
+    profile_photo_storage_backend VARCHAR(20),
+    profile_photo_storage_key VARCHAR(500),
+    profile_photo_content_type VARCHAR(100),
+    profile_photo_updated_at TIMESTAMP,
+    cover_photo_storage_backend VARCHAR(20),
+    cover_photo_storage_key VARCHAR(500),
+    cover_photo_content_type VARCHAR(100),
+    cover_photo_updated_at TIMESTAMP,
     facebook_url VARCHAR(300),
     tiktok_url VARCHAR(300),
     instagram_url VARCHAR(300),
@@ -77,6 +90,25 @@ CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
+
+-- ===================================
+-- POST DRAFTS TABLE
+-- ===================================
+CREATE TABLE post_drafts (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    title VARCHAR(255) DEFAULT '' NOT NULL,
+    content TEXT DEFAULT '' NOT NULL,
+    category VARCHAR(100) DEFAULT 'poezie' NOT NULL
+        CHECK (category IN ('poezie', 'proza_scurta')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_post_drafts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_post_drafts_user_id ON post_drafts(user_id);
+CREATE INDEX idx_post_drafts_user_updated ON post_drafts(user_id, updated_at DESC);
 
 -- ===================================
 -- POSTS TABLE
@@ -260,9 +292,9 @@ CREATE INDEX idx_fp_post_id ON featured_posts(post_id);
 CREATE INDEX idx_fp_position ON featured_posts(position);
 
 -- ===================================
--- COLLECTIONS TABLE
+-- SERIES TABLE
 -- ===================================
-CREATE TABLE collections (
+CREATE TABLE series (
     id SERIAL PRIMARY KEY,
     owner_id INT NOT NULL,
     title VARCHAR(120) NOT NULL,
@@ -271,36 +303,32 @@ CREATE TABLE collections (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_collections_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_series_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_collections_owner_id ON collections(owner_id);
-CREATE INDEX idx_collections_slug ON collections(slug);
-CREATE INDEX idx_collections_created_at ON collections(created_at);
+CREATE INDEX idx_series_owner_id ON series(owner_id);
+CREATE INDEX idx_series_slug ON series(slug);
+CREATE INDEX idx_series_created_at ON series(created_at);
 
 -- ===================================
--- COLLECTION_POSTS TABLE (junction with consent-flow status)
+-- SERIES_POSTS TABLE
 -- ===================================
-CREATE TABLE collection_posts (
+CREATE TABLE series_posts (
     id SERIAL PRIMARY KEY,
-    collection_id INT NOT NULL,
+    series_id INT NOT NULL,
     post_id INT NOT NULL,
-    initiator_id INT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'accepted', 'rejected')),
-    position INT,
+    position INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    responded_at TIMESTAMP,
 
-    CONSTRAINT unique_collection_post UNIQUE (collection_id, post_id),
-    CONSTRAINT fk_cp_collection FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
-    CONSTRAINT fk_cp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    CONSTRAINT fk_cp_initiator FOREIGN KEY (initiator_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT uq_series_post UNIQUE (series_id, post_id),
+    CONSTRAINT uq_series_posts_post UNIQUE (post_id),
+    CONSTRAINT uq_series_position UNIQUE (series_id, position),
+    CONSTRAINT fk_sp_series FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE,
+    CONSTRAINT fk_sp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_cp_collection_status ON collection_posts(collection_id, status);
-CREATE INDEX idx_cp_post_status ON collection_posts(post_id, status);
-CREATE INDEX idx_cp_initiator ON collection_posts(initiator_id);
+CREATE INDEX idx_sp_series_position ON series_posts(series_id, position);
+CREATE INDEX idx_sp_post_id ON series_posts(post_id);
 
 -- ===================================
 -- CLUBS TABLE
@@ -803,7 +831,7 @@ CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER trg_collections_updated_at BEFORE UPDATE ON collections
+CREATE TRIGGER trg_series_updated_at BEFORE UPDATE ON series
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_clubs_updated_at BEFORE UPDATE ON clubs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

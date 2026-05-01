@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, and_, desc, extract, case
 from sqlalchemy.exc import IntegrityError
-from . import models, schemas
+from . import models, rich_text, schemas
 from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,11 @@ def get_user_by_google_id(db: Session, google_id: str):
     return db.query(models.User).filter(models.User.google_id == google_id).first()
 
 def create_user_from_google(db: Session, user_data: Dict[str, Any]):
+    if "subtitle" in user_data:
+        user_data = {
+            **user_data,
+            "subtitle": rich_text.sanitize_optional_rich_text(user_data.get("subtitle")),
+        }
     db_user = models.User(**user_data)
     db.add(db_user)
     db.commit()
@@ -40,6 +45,11 @@ def create_user_from_google(db: Session, user_data: Dict[str, Any]):
     return db_user
 
 def update_user(db: Session, user_id: int, user_update: Dict[str, Any]):
+    if "subtitle" in user_update:
+        user_update = {
+            **user_update,
+            "subtitle": rich_text.sanitize_optional_rich_text(user_update.get("subtitle")),
+        }
     db.query(models.User).filter(models.User.id == user_id).update(user_update)
     db.commit()
     return get_user_by_id(db, user_id)
@@ -95,15 +105,62 @@ def get_posts(db: Session, skip: int = 0, limit: int = 100):
 def get_posts_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100):
     return db.query(models.Post).filter(models.Post.user_id == user_id).order_by(models.Post.created_at.desc()).offset(skip).limit(limit).all()
 
-def create_user_post(db: Session, post: schemas.PostCreate, user_id: int, category: str = "proza_scurta"):
+def get_post_draft(db: Session, draft_id: int, user_id: Optional[int] = None):
+    query = db.query(models.PostDraft).filter(models.PostDraft.id == draft_id)
+    if user_id is not None:
+        query = query.filter(models.PostDraft.user_id == user_id)
+    return query.first()
+
+def get_post_drafts_by_user(db: Session, user_id: int, limit: int = 50):
+    return (
+        db.query(models.PostDraft)
+        .filter(models.PostDraft.user_id == user_id)
+        .order_by(models.PostDraft.updated_at.desc(), models.PostDraft.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+def create_post_draft(db: Session, draft: schemas.PostDraftSave, user_id: int):
+    db_draft = models.PostDraft(
+        user_id=user_id,
+        title=draft.title,
+        content=draft.content,
+        category=draft.category,
+    )
+    db.add(db_draft)
+    db.commit()
+    db.refresh(db_draft)
+    return db_draft
+
+def update_post_draft(db: Session, draft_id: int, draft_update: schemas.PostDraftSave, user_id: int):
+    db_draft = get_post_draft(db, draft_id, user_id)
+    if not db_draft:
+        return None
+    db_draft.title = draft_update.title
+    db_draft.content = draft_update.content
+    db_draft.category = draft_update.category
+    db.commit()
+    db.refresh(db_draft)
+    return db_draft
+
+def delete_post_draft(db: Session, draft_id: int, user_id: int):
+    db_draft = get_post_draft(db, draft_id, user_id)
+    if not db_draft:
+        return None
+    db.delete(db_draft)
+    db.commit()
+    return db_draft
+
+def create_user_post(db: Session, post: schemas.PostCreate, user_id: int, category: Optional[str] = None):
     base_slug = generate_slug(post.title)
     slug = ensure_unique_slug(db, base_slug)
+    post_data = post.model_dump(exclude={"ai_critic", "draft_id", "category"})
     
     db_post = models.Post(
-        **post.model_dump(exclude={"ai_critic"}),
+        **post_data,
         user_id=user_id,
         slug=slug,
-        category=category,
+        category=category or post.category,
         ai_critic_requested=post.ai_critic,
         moderation_status="pending"
     )
@@ -454,6 +511,13 @@ def complete_ai_job(db: Session, job: models.AIJob) -> models.AIJob:
     return job
 
 
+def ai_job_retry_delay_seconds(job: models.AIJob) -> int:
+    attempts = int(job.attempts or 1)
+    if job.job_type == "tts_audio_generation" and attempts == 2:
+        return max(0, int(os.getenv("TTS_THIRD_ATTEMPT_DELAY_SECONDS", "900")))
+    return min(300, 10 * (2 ** max(0, attempts - 1)))
+
+
 def fail_ai_job(
     db: Session,
     job: models.AIJob,
@@ -463,7 +527,7 @@ def fail_ai_job(
 ) -> models.AIJob:
     message = error_message[:2000] if error_message else "AI job failed"
     if retry and int(job.attempts or 0) < int(job.max_attempts or 1):
-        delay_seconds = min(300, 10 * (2 ** max(0, int(job.attempts or 1) - 1)))
+        delay_seconds = ai_job_retry_delay_seconds(job)
         job.status = "pending"
         job.run_after = utcnow_naive() + timedelta(seconds=delay_seconds)
     else:
@@ -637,7 +701,7 @@ def create_robot_comment(db: Session, post_id: int, content: str):
         user_id=None,
         author_name="Robotul Călimara",
         author_email=None,
-        content=content,
+        content=rich_text.sanitize_rich_text(content),
         approved=True,
         is_robot=True,
         moderation_status="approved",
@@ -1834,330 +1898,251 @@ def update_moderation_log_human_decision(db: Session, log_id: int, decision: str
     return log
 
 # ===================================
-# COLLECTION CRUD FUNCTIONS
+# SERIES CRUD FUNCTIONS
 # ===================================
 
-def _generate_collection_slug(title: str) -> str:
+def _generate_series_slug(title: str) -> str:
     slug = title.lower()
     slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
-    return slug or "colectie"
+    return slug or "serie"
 
-def _ensure_unique_collection_slug(db: Session, base_slug: str) -> str:
+
+def _ensure_unique_series_slug(db: Session, base_slug: str) -> str:
     slug = base_slug
     counter = 1
-    while db.query(models.Collection).filter(models.Collection.slug == slug).first():
+    while db.query(models.Series).filter(models.Series.slug == slug).first():
         slug = f"{base_slug}-{counter}"
         counter += 1
     return slug
 
-def get_collection(db: Session, collection_id: int):
-    return db.query(models.Collection).filter(models.Collection.id == collection_id).first()
 
-def get_collection_by_slug(db: Session, slug: str):
-    return db.query(models.Collection).options(
-        joinedload(models.Collection.owner)
-    ).filter(models.Collection.slug == slug).first()
+def get_series(db: Session, series_id: int):
+    return db.query(models.Series).options(
+        joinedload(models.Series.owner)
+    ).filter(models.Series.id == series_id).first()
 
-def get_collections_by_owner(db: Session, owner_id: int):
-    return db.query(models.Collection).options(
-        joinedload(models.Collection.owner)
+
+def get_series_by_slug(db: Session, slug: str):
+    return db.query(models.Series).options(
+        joinedload(models.Series.owner)
+    ).filter(models.Series.slug == slug).first()
+
+
+def get_series_by_owner(db: Session, owner_id: int):
+    return db.query(models.Series).options(
+        joinedload(models.Series.owner)
     ).filter(
-        models.Collection.owner_id == owner_id
-    ).order_by(models.Collection.created_at.desc()).all()
+        models.Series.owner_id == owner_id
+    ).order_by(models.Series.created_at.desc()).all()
 
-def create_collection(db: Session, owner_id: int, data: schemas.CollectionCreate) -> models.Collection:
-    base_slug = _generate_collection_slug(data.title)
-    slug = _ensure_unique_collection_slug(db, base_slug)
-    collection = models.Collection(
+
+def create_series(db: Session, owner_id: int, data: schemas.SeriesCreate) -> models.Series:
+    base_slug = _generate_series_slug(data.title)
+    slug = _ensure_unique_series_slug(db, base_slug)
+    series = models.Series(
         owner_id=owner_id,
         title=data.title.strip(),
         slug=slug,
         description=(data.description or "").strip() or None,
     )
-    db.add(collection)
+    db.add(series)
     db.commit()
-    db.refresh(collection)
-    return collection
+    db.refresh(series)
+    return series
 
-def update_collection(db: Session, collection_id: int, data: schemas.CollectionUpdate) -> Optional[models.Collection]:
-    collection = get_collection(db, collection_id)
-    if not collection:
+
+def update_series(db: Session, series_id: int, data: schemas.SeriesUpdate) -> Optional[models.Series]:
+    series = get_series(db, series_id)
+    if not series:
         return None
     payload = data.model_dump(exclude_unset=True)
     if "title" in payload and payload["title"]:
-        collection.title = payload["title"].strip()
+        series.title = payload["title"].strip()
     if "description" in payload:
         value = payload["description"]
-        collection.description = value.strip() if value else None
+        series.description = value.strip() if value else None
     db.commit()
-    db.refresh(collection)
-    return collection
+    db.refresh(series)
+    return series
 
-def delete_collection(db: Session, collection_id: int) -> bool:
-    collection = get_collection(db, collection_id)
-    if not collection:
+
+def delete_series(db: Session, series_id: int) -> bool:
+    series = get_series(db, series_id)
+    if not series:
         return False
-    db.delete(collection)
+    db.delete(series)
     db.commit()
     return True
 
-def count_collection_posts(db: Session, collection_id: int, status: str = "accepted") -> int:
-    return db.query(models.CollectionPost).filter(
-        models.CollectionPost.collection_id == collection_id,
-        models.CollectionPost.status == status,
-    ).count()
 
-def get_collection_entries(
+def count_series_posts(db: Session, series_id: int, approved_only: bool = True) -> int:
+    query = db.query(models.SeriesPost).join(models.Post).filter(
+        models.SeriesPost.series_id == series_id,
+    )
+    if approved_only:
+        query = query.filter(models.Post.moderation_status == "approved")
+    return query.count()
+
+
+def get_series_entries(
     db: Session,
-    collection_id: int,
-    status: Optional[str] = "accepted",
+    series_id: int,
     approved_posts_only: bool = True,
 ):
-    query = db.query(models.CollectionPost).options(
-        joinedload(models.CollectionPost.post).joinedload(models.Post.owner)
-    ).filter(models.CollectionPost.collection_id == collection_id)
-    if status:
-        query = query.filter(models.CollectionPost.status == status)
+    query = db.query(models.SeriesPost).options(
+        joinedload(models.SeriesPost.post).joinedload(models.Post.owner)
+    ).filter(models.SeriesPost.series_id == series_id)
+    if approved_posts_only:
+        query = query.join(models.Post).filter(models.Post.moderation_status == "approved")
     entries = query.order_by(
-        models.CollectionPost.position.asc().nullslast(),
-        models.CollectionPost.created_at.desc(),
+        models.SeriesPost.position.asc(),
+        models.SeriesPost.created_at.asc(),
     ).all()
-    if approved_posts_only and status == "accepted":
-        entries = [e for e in entries if e.post and e.post.moderation_status == "approved"]
     return entries
 
-def get_collection_entry(db: Session, collection_id: int, post_id: int) -> Optional[models.CollectionPost]:
-    return db.query(models.CollectionPost).filter(
-        models.CollectionPost.collection_id == collection_id,
-        models.CollectionPost.post_id == post_id,
+
+def get_series_entry(db: Session, series_id: int, post_id: int) -> Optional[models.SeriesPost]:
+    return db.query(models.SeriesPost).filter(
+        models.SeriesPost.series_id == series_id,
+        models.SeriesPost.post_id == post_id,
     ).first()
 
-def add_post_to_collection(
+
+def get_series_entry_for_post(db: Session, post_id: int) -> Optional[models.SeriesPost]:
+    return db.query(models.SeriesPost).options(
+        joinedload(models.SeriesPost.series).joinedload(models.Series.owner),
+        joinedload(models.SeriesPost.post).joinedload(models.Post.owner),
+    ).filter(models.SeriesPost.post_id == post_id).first()
+
+
+def _renumber_series_entries(db: Session, entries: List[models.SeriesPost]) -> None:
+    ordered_entries = sorted(entries, key=lambda entry: (entry.position, entry.created_at or datetime.min, entry.id))
+    for index, entry in enumerate(ordered_entries, start=1):
+        entry.position = -index
+    db.flush()
+    for index, entry in enumerate(ordered_entries, start=1):
+        entry.position = index
+
+
+def add_post_to_series(
     db: Session,
-    collection: models.Collection,
+    series: models.Series,
     post: models.Post,
-    initiator_id: int,
-) -> tuple[Optional[models.CollectionPost], Optional[str]]:
-    """Add or re-propose a post in a collection.
+) -> tuple[Optional[models.SeriesPost], Optional[str]]:
+    if post.user_id != series.owner_id:
+        return None, "wrong_author"
 
-    Returns (entry, error). Permission rules:
-      - If initiator is both owner and author: auto-accept.
-      - If initiator is the owner only: pending, author must approve.
-      - If initiator is the author only: pending, owner must approve.
-      - Otherwise: error.
-    """
-    owner_id = collection.owner_id
-    author_id = post.user_id
-    is_owner = initiator_id == owner_id
-    is_author = initiator_id == author_id
-
-    if not is_owner and not is_author:
-        return None, "not_allowed"
-
-    existing = get_collection_entry(db, collection.id, post.id)
+    existing = get_series_entry_for_post(db, post.id)
     if existing:
-        if existing.status == "accepted":
-            return existing, "already_in_collection"
-        if existing.status == "pending":
-            return existing, "already_pending"
-        # previously rejected — allow re-initiation by either party by reusing the row
-        existing.initiator_id = initiator_id
-        existing.created_at = func.now()
-        existing.responded_at = None
-        auto_accept = is_owner and is_author
-        existing.status = "accepted" if auto_accept else "pending"
-        db.commit()
-        db.refresh(existing)
-        _notify_collection_counterparty(db, existing, collection, post, action="created")
-        return existing, None
+        if existing.series_id == series.id:
+            return existing, "already_in_series"
+        return existing, "post_in_other_series"
 
-    auto_accept = is_owner and is_author
-    entry = models.CollectionPost(
-        collection_id=collection.id,
+    max_position = db.query(func.max(models.SeriesPost.position)).filter(
+        models.SeriesPost.series_id == series.id
+    ).scalar() or 0
+    entry = models.SeriesPost(
+        series_id=series.id,
         post_id=post.id,
-        initiator_id=initiator_id,
-        status="accepted" if auto_accept else "pending",
-        responded_at=(func.now() if auto_accept else None),
+        position=max_position + 1,
     )
     db.add(entry)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return None, "post_in_other_series"
     db.refresh(entry)
-    _notify_collection_counterparty(db, entry, collection, post, action="created")
     return entry, None
 
-def respond_to_collection_entry(
-    db: Session,
-    entry: models.CollectionPost,
-    responder_id: int,
-    action: str,
-) -> tuple[Optional[models.CollectionPost], Optional[str]]:
-    if action not in ("accept", "reject"):
-        return None, "bad_action"
-    if entry.status != "pending":
-        return None, "not_pending"
 
-    collection = entry.collection
-    post = entry.post
-    owner_id = collection.owner_id
-    author_id = post.user_id
-
-    # Responder must be the counterparty: if initiator is the owner, responder must be the author, and vice versa.
-    initiator_id = entry.initiator_id
-    if initiator_id == owner_id:
-        expected_responder = author_id
-    elif initiator_id == author_id:
-        expected_responder = owner_id
-    else:
-        return None, "inconsistent_initiator"
-
-    if responder_id != expected_responder:
-        return None, "not_allowed"
-
-    entry.status = "accepted" if action == "accept" else "rejected"
-    entry.responded_at = func.now()
-    db.commit()
-    db.refresh(entry)
-    _notify_collection_counterparty(db, entry, collection, post, action=entry.status)
-    return entry, None
-
-def remove_collection_entry(
-    db: Session,
-    entry: models.CollectionPost,
-    user_id: int,
-) -> tuple[bool, Optional[str]]:
-    collection = entry.collection
-    post = entry.post
-    owner_id = collection.owner_id
-    author_id = post.user_id
-
-    allowed = False
-    if entry.status == "accepted":
-        allowed = user_id in (owner_id, author_id)
-    elif entry.status == "pending":
-        allowed = user_id in (owner_id, author_id, entry.initiator_id)
-    else:  # rejected
-        allowed = user_id in (owner_id, author_id, entry.initiator_id)
-
-    if not allowed:
-        return False, "not_allowed"
-
-    # Notify the other party if the accepted association is being torn down by the non-author
-    if entry.status == "accepted" and user_id == owner_id and author_id != owner_id:
-        create_notification(
-            db=db,
-            user_id=author_id,
-            notif_type="collection_removed",
-            title="Postare scoasă dintr-o colecție",
-            message=f"Postarea ta \"{post.title}\" a fost scoasă din colecția \"{collection.title}\".",
-            link=f"/{post.slug}",
-            extra_data={"collection_id": collection.id, "post_id": post.id},
-        )
-    elif entry.status == "accepted" and user_id == author_id and author_id != owner_id:
-        create_notification(
-            db=db,
-            user_id=owner_id,
-            notif_type="collection_removed",
-            title="Postare retrasă dintr-o colecție",
-            message=f"Autorul a retras postarea \"{post.title}\" din colecția \"{collection.title}\".",
-            link=f"/colectii/{collection.slug}",
-            extra_data={"collection_id": collection.id, "post_id": post.id},
-        )
-
+def remove_series_entry(db: Session, series: models.Series, post_id: int) -> bool:
+    entry = get_series_entry(db, series.id, post_id)
+    if not entry:
+        return False
     db.delete(entry)
+    db.flush()
+    remaining = get_series_entries(db, series.id, approved_posts_only=False)
+    _renumber_series_entries(db, remaining)
     db.commit()
-    return True, None
+    return True
 
-def _notify_collection_counterparty(
+
+def reorder_series_posts(
     db: Session,
-    entry: models.CollectionPost,
-    collection: models.Collection,
-    post: models.Post,
-    action: str,
-):
-    owner_id = collection.owner_id
-    author_id = post.user_id
-    initiator_id = entry.initiator_id
+    series: models.Series,
+    post_ids: List[int],
+) -> tuple[Optional[List[models.SeriesPost]], Optional[str]]:
+    entries = get_series_entries(db, series.id, approved_posts_only=False)
+    existing_ids = [entry.post_id for entry in entries]
+    if len(post_ids) != len(set(post_ids)):
+        return None, "duplicate_posts"
+    if set(post_ids) != set(existing_ids):
+        return None, "mismatched_posts"
 
-    if owner_id == author_id:
-        return  # no counterparty to notify when the owner adds their own post
+    by_post_id = {entry.post_id: entry for entry in entries}
+    ordered_entries = [by_post_id[post_id] for post_id in post_ids]
+    for index, entry in enumerate(ordered_entries, start=1):
+        entry.position = -index
+    db.flush()
+    for index, entry in enumerate(ordered_entries, start=1):
+        entry.position = index
+    db.commit()
+    return get_series_entries(db, series.id, approved_posts_only=False), None
 
-    if action == "created" and entry.status == "pending":
-        counterparty_id = author_id if initiator_id == owner_id else owner_id
-        if initiator_id == owner_id:
-            title = "Invitație într-o colecție"
-            message = f"Postarea ta \"{post.title}\" a fost propusă pentru colecția \"{collection.title}\". Acceptă sau refuză din panou."
-        else:
-            title = "Sugestie pentru colecția ta"
-            message = f"Un autor a sugerat postarea \"{post.title}\" pentru colecția \"{collection.title}\". Acceptă sau refuză din panou."
-        create_notification(
-            db=db,
-            user_id=counterparty_id,
-            notif_type="collection_pending",
-            title=title,
-            message=message,
-            link=f"/panou",
-            extra_data={"collection_id": collection.id, "post_id": post.id, "entry_id": entry.id},
-        )
-        return
 
-    if action in ("accepted", "rejected"):
-        # Notify the initiator of the outcome.
-        if action == "accepted":
-            title = "Postare adăugată într-o colecție"
-            message = f"Postarea \"{post.title}\" face acum parte din colecția \"{collection.title}\"."
-        else:
-            title = "Propunere respinsă"
-            message = f"Propunerea pentru \"{post.title}\" în colecția \"{collection.title}\" a fost respinsă."
-        create_notification(
-            db=db,
-            user_id=initiator_id,
-            notif_type=f"collection_{action}",
-            title=title,
-            message=message,
-            link=f"/colectii/{collection.slug}" if action == "accepted" else "/panou",
-            extra_data={"collection_id": collection.id, "post_id": post.id, "entry_id": entry.id},
-        )
+def _series_context_post_payload(post: Optional[models.Post]) -> Optional[dict]:
+    if not post:
+        return None
+    owner = post.owner
+    return {
+        "id": post.id,
+        "title": post.title,
+        "slug": post.slug,
+        "category": post.category,
+        "moderation_status": post.moderation_status,
+        "owner": {
+            "id": owner.id,
+            "username": owner.username,
+            "avatar_seed": owner.avatar_seed or f"{owner.username}-shapes",
+        } if owner else None,
+    }
 
-def get_pending_approvals_for_user(db: Session, user_id: int):
-    """Return pending entries where the user is the counterparty.
 
-    Produces two kinds of items:
-      - "invitation": owner initiated, current user is the post author.
-      - "suggestion": author initiated, current user is the collection owner.
-    """
-    entries = db.query(models.CollectionPost).options(
-        joinedload(models.CollectionPost.collection).joinedload(models.Collection.owner),
-        joinedload(models.CollectionPost.post).joinedload(models.Post.owner),
-    ).filter(models.CollectionPost.status == "pending").all()
-
-    results = []
-    for entry in entries:
-        if not entry.collection or not entry.post:
-            continue
-        owner_id = entry.collection.owner_id
-        author_id = entry.post.user_id
-        if owner_id == author_id:
-            continue
-        if entry.initiator_id == owner_id and author_id == user_id:
-            direction = "invitation"
-        elif entry.initiator_id == author_id and owner_id == user_id:
-            direction = "suggestion"
-        else:
-            continue
-        results.append((entry, direction))
-    # Most-recent first
-    results.sort(key=lambda pair: pair[0].created_at, reverse=True)
-    return results
-
-def get_collections_containing_post(db: Session, post_id: int):
-    """Accepted public collections that contain a given post."""
-    entries = db.query(models.CollectionPost).options(
-        joinedload(models.CollectionPost.collection).joinedload(models.Collection.owner)
-    ).filter(
-        models.CollectionPost.post_id == post_id,
-        models.CollectionPost.status == "accepted",
-    ).all()
-    return [e.collection for e in entries if e.collection is not None]
+def get_series_context_for_post(db: Session, post: models.Post, include_unapproved: bool = False) -> Optional[dict]:
+    entry = get_series_entry_for_post(db, post.id)
+    if not entry or not entry.series:
+        return None
+    entries = get_series_entries(
+        db,
+        entry.series_id,
+        approved_posts_only=not include_unapproved,
+    )
+    visible_post_ids = [series_entry.post_id for series_entry in entries]
+    if post.id not in visible_post_ids:
+        return None
+    index = visible_post_ids.index(post.id)
+    series = entry.series
+    owner = series.owner
+    return {
+        "series": {
+            "id": series.id,
+            "owner_id": series.owner_id,
+            "title": series.title,
+            "slug": series.slug,
+            "description": series.description,
+            "owner": {
+                "id": owner.id,
+                "username": owner.username,
+                "avatar_seed": owner.avatar_seed or f"{owner.username}-shapes",
+            } if owner else None,
+            "post_count": len(entries),
+        },
+        "position": index + 1,
+        "total_posts": len(entries),
+        "previous_post": _series_context_post_payload(entries[index - 1].post) if index > 0 else None,
+        "next_post": _series_context_post_payload(entries[index + 1].post) if index + 1 < len(entries) else None,
+    }
 
 
 def get_moderation_stats_extended(db: Session):
@@ -2428,17 +2413,18 @@ def get_random_club(db: Session) -> Optional[models.Club]:
     )
 
 
-def get_random_collection(db: Session) -> Optional[models.Collection]:
-    """Random collection with at least one accepted post (so the random link
+def get_random_series(db: Session) -> Optional[models.Series]:
+    """Random series with at least one approved post (so the random link
     isn't a dead-end to an empty page)."""
     return (
-        db.query(models.Collection)
-        .options(joinedload(models.Collection.owner))
+        db.query(models.Series)
+        .options(joinedload(models.Series.owner))
         .filter(
-            db.query(models.CollectionPost.id)
+            db.query(models.SeriesPost.id)
+            .join(models.Post, models.Post.id == models.SeriesPost.post_id)
             .filter(
-                models.CollectionPost.collection_id == models.Collection.id,
-                models.CollectionPost.status == "accepted",
+                models.SeriesPost.series_id == models.Series.id,
+                models.Post.moderation_status == "approved",
             )
             .exists()
         )

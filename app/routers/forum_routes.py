@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import ai_queue, auth, crud, models, schemas
+from .. import ai_queue, auth, crud, models, rich_text, schemas
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def _reply_payload(reply: models.ForumReply) -> dict:
     return {
         "id": reply.id,
         "thread_id": reply.thread_id,
-        "content": reply.content,
+        "content": rich_text.sanitize_rich_text(reply.content),
         "author": _author_payload(reply.author),
         "moderation_status": reply.moderation_status,
         "moderation_reason": reply.moderation_reason,
@@ -81,7 +81,7 @@ def _thread_detail_payload(
     replies = crud.list_forum_replies_for_thread(db, thread.id, current_user)
     return {
         **_thread_summary_payload(db, thread),
-        "content": thread.content,
+        "content": rich_text.sanitize_rich_text(thread.content),
         "moderation_reason": thread.moderation_reason,
         "replies": [_reply_payload(reply) for reply in replies],
     }
@@ -123,7 +123,7 @@ def create_forum_thread_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
-    if not data.title.strip() or not data.content.strip():
+    if not data.title.strip() or not rich_text.rich_text_to_plain_text(data.content):
         raise HTTPException(status_code=400, detail="Titlul și conținutul sunt obligatorii")
     try:
         thread = crud.create_forum_thread(db, current_user, data)
@@ -154,7 +154,7 @@ def create_forum_reply_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
-    if not data.content.strip():
+    if not rich_text.rich_text_to_plain_text(data.content):
         raise HTTPException(status_code=400, detail="Conținutul este obligatoriu")
     thread = crud.get_forum_thread(db, thread_id)
     if not thread:

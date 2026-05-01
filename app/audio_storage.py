@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from . import models
+from . import models, object_storage
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -21,7 +21,7 @@ CONTENT_TYPE_EXTENSIONS = {
 
 
 def storage_backend() -> str:
-    return os.getenv("AUDIO_STORAGE_BACKEND", "local").strip().lower()
+    return object_storage.storage_backend("AUDIO_STORAGE_BACKEND")
 
 
 def local_audio_dir() -> Path:
@@ -60,9 +60,7 @@ def load_audio_bytes(audio: models.PostAudio) -> bytes:
     if not audio.storage_key:
         raise RuntimeError("Audio storage key is missing")
     if audio.storage_backend == "s3":
-        bucket = _required_env("HETZNER_S3_BUCKET")
-        response = _s3_client().get_object(Bucket=bucket, Key=audio.storage_key)
-        return response["Body"].read()
+        return object_storage.get_object_bytes(audio.storage_key)
     path = local_path_for_key(audio.storage_key)
     if not path.exists():
         raise RuntimeError("Audio file is missing from local storage")
@@ -76,14 +74,7 @@ def _save_local(key: str, content: bytes) -> None:
 
 
 def _save_s3(key: str, content: bytes, content_type: str | None) -> None:
-    import boto3
-
-    bucket = _required_env("HETZNER_S3_BUCKET")
-    client = _s3_client()
-    extra_args = {}
-    if content_type:
-        extra_args["ContentType"] = content_type
-    client.put_object(Bucket=bucket, Key=key, Body=content, **extra_args)
+    object_storage.put_object(key, content, content_type)
 
 
 def local_path_for_key(key: str) -> Path:
@@ -96,33 +87,19 @@ def playback_url(audio: models.PostAudio) -> str:
     return f"/api/audio/redare/{audio.id}"
 
 
-def _presigned_s3_url(key: str) -> str:
-    bucket = _required_env("HETZNER_S3_BUCKET")
-    ttl = int(os.getenv("AUDIO_SIGNED_URL_TTL_SECONDS", "600"))
-    client = _s3_client()
-    return client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=ttl,
+def download_url(audio: models.PostAudio, filename: str) -> str:
+    if audio.storage_backend == "s3":
+        return _presigned_s3_url(
+            audio.storage_key or "",
+            content_disposition=f'attachment; filename="{filename}"',
+        )
+    return f"/api/audio/descarcare/{audio.id}"
+
+
+def _presigned_s3_url(key: str, content_disposition: str | None = None) -> str:
+    ttl = int(os.getenv("AUDIO_SIGNED_URL_TTL_SECONDS", str(object_storage.signed_url_ttl_seconds())))
+    return object_storage.presigned_get_url(
+        key,
+        content_disposition=content_disposition,
+        ttl_seconds=ttl,
     )
-
-
-def _s3_client():
-    import boto3
-
-    endpoint_url = _required_env("HETZNER_S3_ENDPOINT_URL")
-    region_name = os.getenv("HETZNER_S3_REGION", "fsn1")
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint_url,
-        region_name=region_name,
-        aws_access_key_id=_required_env("HETZNER_S3_ACCESS_KEY_ID"),
-        aws_secret_access_key=_required_env("HETZNER_S3_SECRET_ACCESS_KEY"),
-    )
-
-
-def _required_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"{name} is required for audio storage")
-    return value

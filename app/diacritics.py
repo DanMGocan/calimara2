@@ -5,6 +5,8 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
+from . import rich_text
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ Reguli stricte:
 - Nu rescrie textul, nu schimba stilul, sensul, ordinea propozițiilor sau cuvintele.
 - Nu corecta gramatica, punctuația sau ortografia dacă nu ține strict de diacritice.
 - Păstrează exact paragrafele, rândurile goale, spațiile relevante, semnele de punctuație și majusculele.
+- Dacă textul conține HTML, păstrează structura și tagurile HTML existente; modifică doar textul din interiorul tagurilor.
 - Dacă un cuvânt poate primi mai multe forme, alege forma potrivită contextului.
 - Păstrează numele proprii, username-urile, URL-urile, emailurile, codul și citatele străine dacă diacriticele nu sunt evidente.
 
@@ -63,7 +66,7 @@ def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
         raise RuntimeError("Serviciul AI pentru diacritice nu este configurat.")
 
     original_title = title if title is not None else None
-    original_content = content
+    original_content = rich_text.sanitize_rich_text(content)
     user_message = {
         "kind": kind,
         "title": original_title,
@@ -90,7 +93,10 @@ def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
     elif not isinstance(converted_title, str):
         converted_title = original_title
 
-    if not isinstance(converted_content, str) or not converted_content.strip():
+    if isinstance(converted_content, str):
+        converted_content = rich_text.sanitize_rich_text(converted_content)
+
+    if not isinstance(converted_content, str) or not rich_text.rich_text_to_plain_text(converted_content):
         raise RuntimeError("Serviciul AI nu a returnat un text valid.")
 
     return {

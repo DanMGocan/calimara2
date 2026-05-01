@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
 from app import ai_queue, crud, models, moderation, schemas
+from app.week_util import utcnow_naive
 
 
 class AIQueueTests(unittest.TestCase):
@@ -70,7 +72,7 @@ class AIQueueTests(unittest.TestCase):
         user = self.make_user()
         post = crud.create_user_post(
             self.db,
-            schemas.PostCreate(title="Poem", content="Un text pentru coadă.", ai_critic=True),
+            schemas.PostCreate(title="Poem", content="Un text pentru coadă.", category="proza_scurta", ai_critic=True),
             user_id=user.id,
         )
         ai_queue.enqueue_post_publish_job(self.db, post, ai_critic_requested=True)
@@ -82,13 +84,14 @@ class AIQueueTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"AUDIO_ENABLED": "True"}), patch.object(
             ai_queue.category_classifier, "classify_post", return_value="poezie"
-        ), patch.object(ai_queue.moderation, "moderate_post_with_logging", return_value=approved):
+        ) as classify_post, patch.object(ai_queue.moderation, "moderate_post_with_logging", return_value=approved):
             processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
 
         self.assertEqual(processed, 1)
         self.db.refresh(post)
         self.assertEqual(post.moderation_status, "approved")
-        self.assertEqual(post.category, "poezie")
+        self.assertEqual(post.category, "proza_scurta")
+        classify_post.assert_not_called()
         self.assertTrue(post.ai_critic_requested)
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 0)
         queued_types = {
@@ -104,7 +107,7 @@ class AIQueueTests(unittest.TestCase):
         user = self.make_user()
         post = crud.create_user_post(
             self.db,
-            schemas.PostCreate(title="Poem", content="Un text pentru audio.", ai_critic=False),
+            schemas.PostCreate(title="Poem", content="Un text pentru audio.", category="poezie", ai_critic=False),
             user_id=user.id,
         )
         post.moderation_status = "approved"
@@ -132,11 +135,49 @@ class AIQueueTests(unittest.TestCase):
         self.assertEqual(job.attempts, 1)
         self.assertIn("provider down", job.error_message)
 
+    def test_tts_generation_second_failure_waits_before_third_attempt(self):
+        user = self.make_user()
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Poem", content="Un text pentru audio.", category="poezie", ai_critic=False),
+            user_id=user.id,
+        )
+        post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(post)
+        audio = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            requester_user_id=user.id,
+            source="tts",
+            status="pending",
+            tts_character_count=25,
+        )
+        job = ai_queue.enqueue_tts_audio_job(self.db, audio)
+        self.assertEqual(job.max_attempts, 3)
+
+        with patch.dict(os.environ, {"TTS_THIRD_ATTEMPT_DELAY_SECONDS": "900"}), patch.object(
+            ai_queue.audio_service, "synthesize_text", side_effect=RuntimeError("provider down")
+        ):
+            ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+            job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+            job.run_after = job.created_at
+            self.db.commit()
+
+            before_retry = utcnow_naive()
+            ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.assertEqual(job.status, "pending")
+        self.assertEqual(job.attempts, 2)
+        self.assertGreaterEqual(job.run_after, before_retry + timedelta(seconds=890))
+        self.assertLessEqual(job.run_after, utcnow_naive() + timedelta(seconds=910))
+
     def test_comment_moderation_job_updates_comment_without_blocking_create(self):
         user = self.make_user()
         post = crud.create_user_post(
             self.db,
-            schemas.PostCreate(title="Text", content="Conținut", ai_critic=False),
+            schemas.PostCreate(title="Text", content="Conținut", category="proza_scurta", ai_critic=False),
             user_id=user.id,
         )
         post.moderation_status = "approved"
@@ -166,12 +207,12 @@ class AIQueueTests(unittest.TestCase):
         user = self.make_user()
         post = crud.create_user_post(
             self.db,
-            schemas.PostCreate(title="Poem", content="Text de verificat.", ai_critic=True),
+            schemas.PostCreate(title="Poem", content="Text de verificat.", category="poezie", ai_critic=True),
             user_id=user.id,
         )
         approved_post = crud.create_user_post(
             self.db,
-            schemas.PostCreate(title="Public", content="Text public.", ai_critic=False),
+            schemas.PostCreate(title="Public", content="Text public.", category="proza_scurta", ai_critic=False),
             user_id=user.id,
         )
         approved_post.moderation_status = "approved"

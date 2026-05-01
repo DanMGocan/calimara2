@@ -93,6 +93,61 @@ def get_available_months(
 
 # --- Post CRUD ---
 
+@router.get("/api/postari/ciorne", response_model=schemas.PostDraftList)
+def list_post_drafts(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    drafts = crud.get_post_drafts_by_user(db, current_user.id)
+    return {"drafts": drafts}
+
+
+@router.get("/api/postari/ciorne/{draft_id}", response_model=schemas.PostDraft)
+def get_post_draft_api(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    draft = crud.get_post_draft(db, draft_id, current_user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Ciorna nu a fost găsită")
+    return draft
+
+
+@router.post("/api/postari/ciorne", response_model=schemas.PostDraft, status_code=status.HTTP_201_CREATED)
+def create_post_draft_api(
+    draft: schemas.PostDraftSave,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    return crud.create_post_draft(db, draft, current_user.id)
+
+
+@router.put("/api/postari/ciorne/{draft_id}", response_model=schemas.PostDraft)
+def update_post_draft_api(
+    draft_id: int,
+    draft_update: schemas.PostDraftSave,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    draft = crud.update_post_draft(db, draft_id, draft_update, current_user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Ciorna nu a fost găsită")
+    return draft
+
+
+@router.delete("/api/postari/ciorne/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_post_draft_api(
+    draft_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    draft = crud.delete_post_draft(db, draft_id, current_user.id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Ciorna nu a fost găsită")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/api/postari/", response_model=schemas.Post)
 @limiter.limit("20/minute")
 async def create_post(
@@ -101,8 +156,13 @@ async def create_post(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
+    if post.draft_id is not None and not crud.get_post_draft(db, post.draft_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Ciorna nu a fost găsită")
+
     db_post = crud.create_user_post(db=db, post=post, user_id=current_user.id)
     ai_queue.enqueue_post_publish_job(db, db_post, ai_critic_requested=post.ai_critic)
+    if post.draft_id is not None:
+        crud.delete_post_draft(db, post.draft_id, current_user.id)
     return db_post
 
 

@@ -1,4 +1,8 @@
 import { Component, Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { FaFacebookF, FaInstagram, FaPatreon, FaPaypal, FaTiktok, FaXTwitter } from "react-icons/fa6";
+import { FiArrowDown, FiArrowUp, FiAward, FiBookOpen, FiExternalLink, FiHeart, FiImage, FiMapPin, FiMessageCircle, FiPlus, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
+import { GiPerspectiveDiceSixFacesRandom } from "react-icons/gi";
+import { SiBluesky, SiBuymeacoffee, SiYoutube } from "react-icons/si";
 import {
   AUTH_GOOGLE_PATH,
   completeAuthSetup,
@@ -6,30 +10,38 @@ import {
   createForumReply,
   createForumThread,
   createPost,
-  collectionPdfUrl,
+  createPostDraft,
+  createSeries,
+  deletePostDraft,
+  deleteSeries,
   fetchArchive,
   fetchBlog,
   fetchCategory,
   fetchClub,
   fetchClubs,
-  fetchCollection,
   fetchAudioConversionQuota,
   fetchConversations,
   fetchForumThread,
   fetchForumThreads,
   fetchLanding,
+  fetchManagedSeries,
   fetchMe,
   fetchModerationLogs,
   fetchModerationQueue,
   fetchModerationStats,
+  audioDownloadUrl,
   fetchPostAudioStatus,
   fetchPostDetail,
+  fetchPostDraft,
+  fetchPostDrafts,
   fetchPendingModerationContent,
   fetchRandomUser,
   fetchShopState,
   fetchExtendedModerationStats,
   postPdfUrl,
+  seriesPdfUrl,
   addDiacritics,
+  addPostToSeries,
   likePost,
   moderateContent,
   addSuperLike,
@@ -40,9 +52,19 @@ import {
   unequipInventorySlot,
   openPremiumPortal,
   requestTtsConversions,
-  startPremiumCheckout
+  startPremiumCheckout,
+  deleteProfileMedia,
+  updateProfileSettings,
+  uploadProfileMedia,
+  updatePostDraft,
+  updateSeries,
+  fetchMySeries,
+  fetchSeries,
+  removePostFromSeries,
+  reorderSeriesPosts
 } from "./api.js";
 import { POEMS, STORIES } from "./content.js";
+import { RichTextEditor } from "./RichTextEditor.jsx";
 
 const KIND_TO_CATEGORY = {
   poem: "poezie",
@@ -53,6 +75,19 @@ const CATEGORY_LABELS = {
   poezie: "Poezie",
   proza_scurta: "Proză scurtă"
 };
+
+const TITLE_CHARACTER_LIMIT = 120;
+const POETRY_CHARACTER_LIMIT = 10000;
+const SHORT_STORY_CHARACTER_LIMIT = 50000;
+const COMMENT_CHARACTER_LIMIT = 2500;
+const PROFILE_DESCRIPTION_CHARACTER_LIMIT = 1000;
+
+const POST_CATEGORIES = [
+  { key: "poezie", label: CATEGORY_LABELS.poezie, limit: POETRY_CHARACTER_LIMIT },
+  { key: "proza_scurta", label: CATEGORY_LABELS.proza_scurta, limit: SHORT_STORY_CHARACTER_LIMIT }
+];
+
+const POST_CONTENT_LIMITS = Object.fromEntries(POST_CATEGORIES.map((item) => [item.key, item.limit]));
 
 const FORUM_SECTIONS = [
   { key: "general", label: "General" },
@@ -105,9 +140,9 @@ const CONTENT_TYPE_LABELS = {
   forum_reply: "Răspuns"
 };
 
-const PROTECTED_ROUTES = new Set(["dashboard", "create", "messages", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
-const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "create", "messages"]);
-const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "blog", "post", "collection"]);
+const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
+const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
+const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "blog", "post", "series"]);
 const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";
 const ADSENSE_CLIENT_ID = (import.meta.env.VITE_ADSENSE_CLIENT_ID || "").trim();
 const ADSENSE_SLOTS = {
@@ -118,6 +153,7 @@ const ADSENSE_SLOTS = {
 const TEXT_MODERATION_MESSAGE = "Textul este în curs de moderare și va fi disponibil pe site în câteva secunde, cu voia Robotului.";
 const COMMENT_MODERATION_MESSAGE = "Comentariul este în curs de moderare și va fi disponibil în câteva secunde, cu voia Robotului.";
 const FORUM_MODERATION_MESSAGE = "Mesajul este în curs de moderare și va fi disponibil în câteva secunde, cu voia Robotului.";
+const POST_DRAFT_AUTOSAVE_MS = 15000;
 const MODERATION_LABELS = {
   pending: "în moderare",
   flagged: "în revizie",
@@ -184,13 +220,79 @@ function avatarPreviewUrl(seed, size = 96) {
   return `https://api.dicebear.com/7.x/shapes/svg?seed=${encodeURIComponent(seed)}&backgroundColor=${backgroundColor}&size=${size}`;
 }
 
+function profileAvatarUrl(user, size = 160) {
+  if (user?.profile_photo_url) return user.profile_photo_url;
+  if (user?.avatar_url) return user.avatar_url;
+  return avatarPreviewUrl(user?.avatar_seed || `${user?.username || "calimara"}-shapes`, size);
+}
+
+const SOCIAL_PROFILE_LINKS = [
+  { field: "facebook_url", label: "Facebook", Icon: FaFacebookF, className: "facebook" },
+  { field: "instagram_url", label: "Instagram", Icon: FaInstagram, className: "instagram" },
+  { field: "tiktok_url", label: "TikTok", Icon: FaTiktok, className: "tiktok" },
+  { field: "x_url", label: "X", Icon: FaXTwitter, className: "x-twitter" },
+  { field: "bluesky_url", label: "Bluesky", Icon: SiBluesky, className: "bluesky" }
+];
+
+const SUPPORT_PROFILE_LINKS = [
+  { field: "paypal_url", label: "PayPal", Icon: FaPaypal, className: "paypal" },
+  { field: "patreon_url", label: "Patreon", Icon: FaPatreon, className: "patreon" },
+  { field: "buymeacoffee_url", label: "Cafea", Icon: SiBuymeacoffee, className: "coffee" }
+];
+
+function profileLinks(user, definitions) {
+  return definitions
+    .map((definition) => ({ ...definition, url: user?.[definition.field] }))
+    .filter((item) => item.url);
+}
+
 function htmlToText(html) {
   if (!html) return "";
+  const normalized = String(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|blockquote|li|h[1-6])>/gi, "\n");
   if (typeof DOMParser !== "undefined") {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    return (doc.body.textContent || "").trim();
+    const doc = new DOMParser().parseFromString(normalized, "text/html");
+    return (doc.body.textContent || "").replace(/\u00a0/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   }
-  return html.replace(/<[^>]*>/g, "").trim();
+  return normalized.replace(/<[^>]*>/g, "").replace(/\u00a0/g, " ").trim();
+}
+
+function draftFingerprint(title, content) {
+  return `${(title || "").trim()}\n${content || ""}`;
+}
+
+function draftHasContent(title, content) {
+  return Boolean((title || "").trim() || htmlToText(content));
+}
+
+function hasHtml(value) {
+  return /<[a-zA-Z][^>]*>/.test(value || "");
+}
+
+function RichTextContent({ html, className = "" }) {
+  const classes = `rich-text-content ${className}`.trim();
+  if (hasHtml(html)) {
+    return <div className={classes} dangerouslySetInnerHTML={{ __html: html || "" }} />;
+  }
+
+  const text = htmlToText(html);
+  if (!text) return <div className={classes} />;
+
+  return (
+    <div className={classes}>
+      {text.split(/\n{2,}/).map((block, index) => (
+        <p key={index}>
+          {block.split("\n").map((line, lineIndex) => (
+            <Fragment key={`${index}-${lineIndex}`}>
+              {lineIndex ? <br /> : null}
+              {line}
+            </Fragment>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function formatDateTime(value) {
@@ -260,6 +362,91 @@ function audioStatusLabel(status) {
   return "fără audio";
 }
 
+function formatAudioTime(value) {
+  if (!Number.isFinite(value) || value < 0) return "0:00";
+  const totalSeconds = Math.floor(value);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function CompactAudioPlayer({ src, downloadUrl, className = "" }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setError("");
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.load();
+    }
+  }, [src]);
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio || !src) return;
+    setError("");
+    if (playing) {
+      audio.pause();
+      return;
+    }
+    try {
+      await audio.play();
+    } catch {
+      setError("Audio nu poate fi redat.");
+    }
+  };
+
+  const syncDuration = () => {
+    const audio = audioRef.current;
+    setDuration(audio && Number.isFinite(audio.duration) ? audio.duration : 0);
+  };
+
+  return (
+    <div className={`compact-audio-player ${className}`.trim()}>
+      <audio
+        ref={audioRef}
+        className="compact-audio-native"
+        preload="metadata"
+        src={src}
+        onLoadedMetadata={syncDuration}
+        onDurationChange={syncDuration}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false);
+          setCurrentTime(duration);
+        }}
+        onError={() => {
+          setPlaying(false);
+          setError("Audio nu poate fi redat.");
+        }}
+      >
+        Browserul tău nu poate reda acest fișier audio.
+      </audio>
+      <button className="compact-audio-play" type="button" onClick={togglePlayback} disabled={!src} aria-label={playing ? "Pauză audio" : "Redă audio"}>
+        {playing ? "Pauză" : "Redă"}
+      </button>
+      <span className="compact-audio-time" aria-label="Timp audio">
+        {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
+      </span>
+      <a className="compact-audio-download" href={downloadUrl || src} download>
+        Descarcă
+      </a>
+      {error ? <span className="compact-audio-error">{error}</span> : null}
+    </div>
+  );
+}
+
 function postToPiece(post) {
   return {
     title: post.title,
@@ -267,6 +454,7 @@ function postToPiece(post) {
     year: formatDateTime(post.created_at),
     categoryLabel: post.category_name ?? categoryLabel(post.category),
     body: htmlToText(post.content),
+    contentHtml: post.content,
     sourceUrl: post.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : "#"
   };
 }
@@ -475,10 +663,12 @@ function NavBar({ loggedIn, user, onMenu, menuOpen }) {
   );
 }
 
-function ActionRow({ number, label, sub, active, disabled, onClick }) {
+function ActionRow({ number, icon, label, sub, active, disabled, compact, onClick }) {
+  const className = ["action-row", active ? "active" : "", icon ? "has-icon" : "", compact ? "compact" : ""].filter(Boolean).join(" ");
+
   return (
-    <button className={`action-row ${active ? "active" : ""}`} onClick={onClick} disabled={disabled} type="button">
-      <span className="action-num">{number}</span>
+    <button className={className} onClick={onClick} disabled={disabled} type="button" aria-label={label} title={label}>
+      {icon ? <span className="action-icon" aria-hidden="true">{icon}</span> : <span className="action-num">{number}</span>}
       <span className="action-body">
         <span className="action-label">{label}</span>
         {sub ? <span className="action-sub">{sub}</span> : null}
@@ -493,13 +683,15 @@ function ActionRow({ number, label, sub, active, disabled, onClick }) {
 }
 
 function SideActions({ kind, onPoem, onStory, onAuthor, disabled, busy }) {
+  const randomIcon = <GiPerspectiveDiceSixFacesRandom />;
+
   return (
     <aside className="side-col">
       <div className="side-kicker">alege un text</div>
       <div className="actions-group">
-        <ActionRow number="01" label="Poezie la întâmplare" active={kind === "poem"} disabled={disabled} onClick={onPoem} />
-        <ActionRow number="02" label="Proză scurtă la întâmplare" active={kind === "story"} disabled={disabled} onClick={onStory} />
-        <ActionRow number="03" label="Un autor la întâmplare" disabled={busy === "author"} onClick={onAuthor} />
+        <ActionRow icon={randomIcon} label="Poezie" active={kind === "poem"} disabled={disabled} compact onClick={onPoem} />
+        <ActionRow icon={randomIcon} label="Proză" active={kind === "story"} disabled={disabled} compact onClick={onStory} />
+        <ActionRow icon={randomIcon} label="Autor" disabled={busy === "author"} compact onClick={onAuthor} />
       </div>
       <div className="side-hint">
         <span className="kbd">P</span>
@@ -611,7 +803,11 @@ function PieceCol({ piece, animKey }) {
       <div className="piece-scroll-wrap">
         <div ref={scrollRef} className={`piece-scroll ${atTop ? "at-top" : ""} ${atBottom ? "at-bottom" : ""}`} onScroll={onScroll}>
           <div className="piece-body-inner">
-            <RevealText text={piece.body || ""} keySeed={animKey} />
+            {hasHtml(piece.contentHtml) ? (
+              <RichTextContent html={piece.contentHtml} className="piece-rich-text" />
+            ) : (
+              <RevealText text={piece.body || ""} keySeed={animKey} />
+            )}
             <div className="piece-end">
               <span>fin</span>
               <span className="piece-end-mark">· · ·</span>
@@ -653,9 +849,11 @@ function SideMenu({ open, onClose, user }) {
   const menuItems = user
     ? [
         ["Acasă", "pagina principală", mainPath("/")],
+        ["Calimara mea", "profilul tău public", blogUrl(user.username)],
         ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
         ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
         ["Panou", "textele tale", authorPath(user, "/panou")],
+        ["Profil", "prezentare și linkuri", authorPath(user, "/profil")],
         ...adminItems,
         ["Mesaje", "conversații", authorPath(user, "/mesaje")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
@@ -747,7 +945,9 @@ function PageShell({ kicker, title, sub, side, children }) {
           <span className="piece-kind-sep" />
         </div>
         <h1 className="page-title">{title}</h1>
-        {sub ? <p className="page-sub">{sub}</p> : null}
+        {sub ? (
+          typeof sub === "string" ? <p className="page-sub">{sub}</p> : <div className="page-sub">{sub}</div>
+        ) : null}
         {children}
       </section>
     </main>
@@ -935,7 +1135,12 @@ function LandingPostActions({ post, user, onPostChange }) {
   const submitComment = async (event) => {
     event.preventDefault();
     const content = commentText.trim();
-    if (!content) return;
+    const visibleContent = htmlToText(content);
+    if (!visibleContent) return;
+    if (visibleContent.length > COMMENT_CHARACTER_LIMIT) {
+      setStatus(`Comentariul poate avea cel mult ${formatNumber(COMMENT_CHARACTER_LIMIT)} de caractere.`);
+      return;
+    }
     setBusy("comment");
     setStatus("");
     try {
@@ -976,16 +1181,14 @@ function LandingPostActions({ post, user, onPostChange }) {
       {audioTrack?.playback_url ? (
         <div className="landing-audio-player">
           <div className="piece-card-kicker">{audioTrack.source === "author" ? "înregistrare autor" : "voce generată"}</div>
-          <audio className="audio-player" controls src={audioTrack.playback_url}>
-            Browserul tău nu poate reda acest fișier audio.
-          </audio>
+          <CompactAudioPlayer src={audioTrack.playback_url} downloadUrl={audioTrack.audio_id ? audioDownloadUrl(audioTrack.audio_id) : audioTrack.playback_url} />
         </div>
       ) : null}
 
       {commentOpen ? (
         <form className="landing-comment-panel" onSubmit={submitComment}>
           <label className="auth-field" htmlFor="landing-comment">Comentariu</label>
-          <textarea id="landing-comment" className="cal-textarea" value={commentText} onChange={(event) => setCommentText(event.target.value)} maxLength="2000" required />
+          <RichTextEditor id="landing-comment" className="compact" value={commentText} onChange={setCommentText} maxLength={COMMENT_CHARACTER_LIMIT} />
           <DiacriticsControl
             user={user}
             enabled={commentAutoDiacritics}
@@ -1204,15 +1407,171 @@ function ClubDetailView({ slug }) {
   );
 }
 
+function ExternalProfileLinks({ links, className = "" }) {
+  if (!links.length) return null;
+  return (
+    <div className={`profile-link-row ${className}`.trim()}>
+      {links.map((link) => {
+        const Icon = link.Icon || FiExternalLink;
+        return (
+          <a key={link.field} className={`profile-link-btn ${link.className || ""}`.trim()} href={link.url} target="_blank" rel="noreferrer">
+            <Icon aria-hidden="true" />
+            <span>{link.label}</span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileStat({ Icon, value, label }) {
+  return (
+    <span className="profile-stat">
+      <Icon aria-hidden="true" />
+      <span>
+        <strong>{formatNumber(value)}</strong>
+        {label}
+      </span>
+    </span>
+  );
+}
+
+function ProfileHero({ data, postCount }) {
+  const owner = data?.blog_owner;
+  if (!owner) return null;
+  const socialLinks = profileLinks(owner, SOCIAL_PROFILE_LINKS);
+  const supportLinks = profileLinks(owner, SUPPORT_PROFILE_LINKS);
+  const categoryCount = (data.category_counts || []).filter((item) => item.count > 0).length;
+  const coverStyle = owner.cover_photo_url ? { backgroundImage: `url(${owner.cover_photo_url})` } : undefined;
+
+  return (
+    <section className={`profile-hero ${owner.cover_photo_url ? "has-cover" : ""}`} aria-label="Profil autor">
+      <div className="profile-cover" style={coverStyle} aria-hidden="true" />
+      <div className="profile-head">
+        <img className="profile-avatar" src={profileAvatarUrl(owner)} alt="" aria-hidden="true" />
+        <div className="profile-head-main">
+          <div className="profile-name-row">
+            <span className="piece-card-kicker">autor</span>
+            {owner.is_premium ? <span className="piece-card-status">premium</span> : null}
+          </div>
+          {owner.location ? (
+            <div className="profile-location">
+              <FiMapPin aria-hidden="true" />
+              <span>{owner.location}</span>
+            </div>
+          ) : null}
+          {owner.subtitle ? <RichTextContent html={owner.subtitle} className="profile-bio" /> : <p className="profile-bio-text">Texte publicate pe călimara.ro.</p>}
+        </div>
+      </div>
+      <div className="profile-stat-row" aria-label="Statistici autor">
+        <ProfileStat Icon={FiBookOpen} value={postCount} label="texte" />
+        <ProfileStat Icon={FiHeart} value={data.total_likes} label="aprecieri" />
+        <ProfileStat Icon={FiMessageCircle} value={data.total_comments} label="comentarii" />
+        <ProfileStat Icon={FiAward} value={categoryCount} label="categorii" />
+      </div>
+      <ExternalProfileLinks links={socialLinks} />
+      <ExternalProfileLinks links={supportLinks} className="support" />
+      {owner.youtube_playlist_url ? (
+        <a className="profile-playlist-link" href={owner.youtube_playlist_url} target="_blank" rel="noreferrer">
+          <SiYoutube aria-hidden="true" />
+          <span>Playlist YouTube</span>
+        </a>
+      ) : null}
+    </section>
+  );
+}
+
+function ProfileHighlights({ data }) {
+  const friends = data?.best_friends || [];
+  const awards = data?.user_awards || [];
+  const categories = (data?.category_counts || []).filter((item) => item.count > 0);
+  if (!friends.length && !awards.length && !categories.length) return null;
+  return (
+    <section className="profile-highlights" aria-label="Repere profil">
+      {friends.length ? (
+        <div className="profile-panel">
+          <div className="profile-panel-heading">
+            <FiUsers aria-hidden="true" />
+            <div className="piece-card-kicker">prieteni apropiați</div>
+          </div>
+          <div className="profile-chip-list">
+            {friends.map((entry) => (
+              <a className="profile-chip" key={entry.user.username} href={blogUrl(entry.user.username)}>
+                <FiUsers aria-hidden="true" />
+                {entry.user.username}
+              </a>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {awards.length ? (
+        <div className="profile-panel">
+          <div className="profile-panel-heading">
+            <FiAward aria-hidden="true" />
+            <div className="piece-card-kicker">distincții</div>
+          </div>
+          <div className="profile-chip-list">
+            {awards.slice(0, 4).map((award) => (
+              <span className="profile-chip" key={award.id}><FiAward aria-hidden="true" />{award.award_title}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {categories.length ? (
+        <div className="profile-panel">
+          <div className="profile-panel-heading">
+            <FiBookOpen aria-hidden="true" />
+            <div className="piece-card-kicker">categorii</div>
+          </div>
+          <div className="profile-chip-list">
+            {categories.map((category) => (
+              <span className="profile-chip" key={category.category}><FiBookOpen aria-hidden="true" />{category.category_name} · {formatNumber(category.count)}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ProfileSeriesList({ series }) {
+  if (!series?.length) return null;
+  return (
+    <section className="profile-series" aria-label="Serii">
+      <div className="profile-panel-heading">
+        <FiBookOpen aria-hidden="true" />
+        <div className="piece-card-kicker">serii</div>
+      </div>
+      <div className="profile-series-grid">
+        {series.map((item) => (
+          <a className="profile-series-card" key={item.id} href={mainPath(`/serii/${item.slug}`)}>
+            <span className="profile-series-title">{item.title}</span>
+            <span className="profile-series-meta">{formatNumber(item.post_count)} texte</span>
+            {item.description ? <span className="profile-series-description">{item.description}</span> : null}
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function BlogView({ username }) {
   const { data, error, loading } = useAsync(() => fetchBlog(username), [username]);
   const posts = data ? [...(data.featured_posts || []), ...(data.latest_posts || []), ...(data.all_posts || [])] : [];
   const uniquePosts = posts.filter((post, index, all) => all.findIndex((item) => item.id === post.id) === index);
+  const totalPostCount = (data?.category_counts || []).reduce((sum, item) => sum + Number(item.count || 0), 0) || uniquePosts.length;
   return (
-    <PageShell kicker="blog" title={data?.blog_owner?.username ?? username} sub={data?.blog_owner?.subtitle ?? "Texte publicate pe călimara.ro."}>
+    <PageShell kicker="profil" title={data?.blog_owner?.username ?? username}>
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca blogul">{error}</StatusPanel> : null}
-      <EquippedStrip items={data?.blog_owner?.equipped_items} />
+      {data ? (
+        <>
+          <ProfileHero data={data} postCount={totalPostCount} />
+          <EquippedStrip items={data.blog_owner?.equipped_items} />
+          <ProfileHighlights data={data} />
+          <ProfileSeriesList series={data.series} />
+        </>
+      ) : null}
       {uniquePosts.length ? (
         <div className="list-grid">
           {uniquePosts.map((post, index) => (
@@ -1227,22 +1586,22 @@ function BlogView({ username }) {
   );
 }
 
-function CollectionView({ slug }) {
-  const { data, error, loading } = useAsync(() => fetchCollection(slug), [slug]);
+function SeriesView({ slug }) {
+  const { data, error, loading } = useAsync(() => fetchSeries(slug), [slug]);
   const posts = data?.posts?.map((entry) => entry.post).filter(Boolean) ?? [];
-  const pdfHref = data?.slug ? collectionPdfUrl(data.slug) : "#";
+  const pdfHref = data?.slug ? seriesPdfUrl(data.slug) : "#";
 
   return (
     <PageShell
-      kicker="colecție"
-      title={data?.title ?? "Colecție"}
-      sub={data?.description || (data?.owner?.username ? `Colecție de ${data.owner.username}.` : "Texte grupate pe călimara.ro.")}
+      kicker="serie"
+      title={data?.title ?? "Serie"}
+      sub={data?.description || (data?.owner?.username ? `Serie de ${data.owner.username}.` : "Texte în ordine pe călimara.ro.")}
     >
       {loading ? <StatusPanel title="Se încarcă" /> : null}
-      {error ? <StatusPanel title="Nu am putut încărca colecția">{error}</StatusPanel> : null}
+      {error ? <StatusPanel title="Nu am putut încărca seria">{error}</StatusPanel> : null}
       {data ? (
         <div className="detail-stack">
-          <div className="piece-actions" aria-label="Acțiuni colecție">
+          <div className="piece-actions" aria-label="Acțiuni serie">
             <a className="react-btn react-link" href={pdfHref}>PDF</a>
             {data.owner?.username ? (
               <a className="react-btn react-link" href={blogUrl(data.owner.username)}>Autor</a>
@@ -1264,7 +1623,7 @@ function CollectionView({ slug }) {
               ))}
             </div>
           ) : (
-            <StatusPanel title="Colecția nu are texte publice încă" />
+            <StatusPanel title="Seria nu are texte publice încă" />
           )}
         </div>
       ) : null}
@@ -1296,9 +1655,7 @@ function AudioStatusPanel({ postId, user }) {
             <h2 className="audio-title">Ascultă textul</h2>
             <span className="audio-source">{data.source === "author" ? "înregistrare autor" : "voce generată"}</span>
           </div>
-          <audio className="audio-player" controls src={data.playback_url}>
-            Browserul tău nu poate reda acest fișier audio.
-          </audio>
+          <CompactAudioPlayer src={data.playback_url} downloadUrl={data.audio_id ? audioDownloadUrl(data.audio_id) : data.playback_url} />
         </>
       ) : null}
       {data && data.available && !data.playback_url ? (
@@ -1310,6 +1667,30 @@ function AudioStatusPanel({ postId, user }) {
         </div>
       ) : null}
       {data && !data.available ? <p className="auth-sub">{data.message || audioStatusText(data.status)}</p> : null}
+    </section>
+  );
+}
+
+function SeriesContextPanel({ context }) {
+  if (!context?.series) return null;
+  const { series, previous_post: previousPost, next_post: nextPost } = context;
+  return (
+    <section className="piece-series" aria-label="Context serie">
+      <div className="piece-series-head">
+        <div>
+          <div className="piece-series-kicker">serie · {formatNumber(context.position)} din {formatNumber(context.total_posts)}</div>
+          <a className="piece-series-name" href={mainPath(`/serii/${series.slug}`)}>{series.title}</a>
+        </div>
+        <FiBookOpen aria-hidden="true" />
+      </div>
+      <div className="piece-series-links">
+        {previousPost ? (
+          <a className="piece-series-link" href={postHref(previousPost)}>Anterior: {previousPost.title}</a>
+        ) : <span className="piece-series-empty">Primul text din serie</span>}
+        {nextPost ? (
+          <a className="piece-series-link" href={postHref(nextPost)}>Următor: {nextPost.title}</a>
+        ) : <span className="piece-series-empty">Ultimul text din serie</span>}
+      </div>
     </section>
   );
 }
@@ -1331,6 +1712,7 @@ function PostDetailView({ username, slug, user }) {
               <StatusPanel title="Text în curs de moderare">{TEXT_MODERATION_MESSAGE}</StatusPanel>
             ) : null}
             <PieceCol piece={piece} animKey={slug} />
+            <SeriesContextPanel context={data.series_context} />
             {data.post.moderation_status === "approved" ? (
               <div className="piece-actions detail-actions" aria-label="Acțiuni text">
                 <a className="react-btn react-link" href={pdfHref}>PDF</a>
@@ -1353,15 +1735,212 @@ function AuthRequired() {
   );
 }
 
+function profileFormFromUser(user) {
+  return {
+    subtitle: user?.subtitle || "",
+    avatar_seed: user?.avatar_seed || `${user?.username || "calimara"}-shapes`,
+    location: user?.location || "",
+    youtube_playlist_url: user?.youtube_playlist_url || "",
+    facebook_url: user?.facebook_url || "",
+    instagram_url: user?.instagram_url || "",
+    tiktok_url: user?.tiktok_url || "",
+    x_url: user?.x_url || "",
+    bluesky_url: user?.bluesky_url || "",
+    paypal_url: user?.paypal_url || "",
+    patreon_url: user?.patreon_url || "",
+    buymeacoffee_url: user?.buymeacoffee_url || ""
+  };
+}
+
+function ProfileMediaPanel({ user, kind, title, description, previewUrl, hasMedia, onUserUpdate }) {
+  const [busy, setBusy] = useState("");
+  const [status, setStatus] = useState("");
+  const inputRef = useRef(null);
+  const locked = !user?.is_premium;
+
+  const upload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || busy || locked) return;
+    setBusy("upload");
+    setStatus("");
+    try {
+      const nextUser = await uploadProfileMedia(kind, file);
+      onUserUpdate(nextUser);
+      setStatus("Imaginea a fost actualizată.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut încărca imaginea.");
+    } finally {
+      setBusy("");
+      event.target.value = "";
+    }
+  };
+
+  const remove = async () => {
+    if (busy || !hasMedia) return;
+    setBusy("delete");
+    setStatus("");
+    try {
+      const nextUser = await deleteProfileMedia(kind);
+      onUserUpdate(nextUser);
+      setStatus("Imaginea a fost eliminată.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut elimina imaginea.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <section className={`profile-media-panel ${locked ? "locked" : ""}`}>
+      <div className="profile-media-preview">
+        {previewUrl ? <img src={previewUrl} alt="" /> : <FiImage aria-hidden="true" />}
+      </div>
+      <div className="profile-media-body">
+        <div className="piece-card-kicker">{title}</div>
+        <p className="auth-sub">{locked && hasMedia ? "Imaginea salvată va redeveni vizibilă când abonamentul Premium este activ." : description}</p>
+        <input ref={inputRef} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/avif" onChange={upload} disabled={locked || Boolean(busy)} />
+        <div className="button-row">
+          <button className="cal-btn" type="button" onClick={() => inputRef.current?.click()} disabled={locked || Boolean(busy)}>
+            <FiUpload aria-hidden="true" />
+            {busy === "upload" ? "Se încarcă..." : "Încarcă"}
+          </button>
+          {hasMedia ? (
+            <button className="cal-btn" type="button" onClick={remove} disabled={locked || Boolean(busy)}>
+              <FiTrash2 aria-hidden="true" />
+              {busy === "delete" ? "Se elimină..." : "Elimină"}
+            </button>
+          ) : null}
+          {locked ? <a className="cal-btn primary" href={mainPath("/premium")}>Premium</a> : null}
+        </div>
+        {status ? <div className={status.includes("Nu am putut") ? "inline-error" : "inline-status"}>{status}</div> : null}
+      </div>
+    </section>
+  );
+}
+
+function ProfileSettingsView({ user, onUserUpdate }) {
+  const [form, setForm] = useState(() => profileFormFromUser(user));
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setForm(profileFormFromUser(user));
+  }, [user?.id]);
+
+  if (!user) return <AuthRequired />;
+
+  const setField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setStatus("");
+    if (htmlToText(form.subtitle).length > PROFILE_DESCRIPTION_CHARACTER_LIMIT) {
+      setStatus(`Descrierea poate avea cel mult ${formatNumber(PROFILE_DESCRIPTION_CHARACTER_LIMIT)} de caractere.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const nextUser = await updateProfileSettings(form);
+      onUserUpdate(nextUser);
+      setForm(profileFormFromUser(nextUser));
+      setStatus("Profilul a fost salvat.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut salva profilul.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PageShell kicker="profil" title="Profilul tău" sub="Actualizează prezentarea publică, linkurile și imaginile profilului.">
+      <form className="profile-settings-form" onSubmit={submit}>
+        <section className="profile-settings-section">
+          <div className="profile-panel-heading">
+            <FiMapPin aria-hidden="true" />
+            <div className="piece-card-kicker">prezentare</div>
+          </div>
+          <label className="auth-field" htmlFor="profile-subtitle">Descriere</label>
+          <RichTextEditor id="profile-subtitle" className="compact" value={form.subtitle} onChange={(value) => setField("subtitle", value)} maxLength={PROFILE_DESCRIPTION_CHARACTER_LIMIT} />
+          <label className="auth-field profile-inline-label" htmlFor="profile-location"><FiMapPin aria-hidden="true" />Locație</label>
+          <input id="profile-location" className="cal-input" value={form.location} onChange={(event) => setField("location", event.target.value)} maxLength="120" />
+          <label className="auth-field profile-inline-label" htmlFor="profile-youtube"><SiYoutube aria-hidden="true" />Playlist YouTube</label>
+          <input id="profile-youtube" className="cal-input" type="url" value={form.youtube_playlist_url} onChange={(event) => setField("youtube_playlist_url", event.target.value)} placeholder="https://www.youtube.com/playlist?list=..." />
+        </section>
+        <section className="profile-settings-section">
+          <div className="profile-panel-heading">
+            <FiExternalLink aria-hidden="true" />
+            <div className="piece-card-kicker">linkuri sociale</div>
+          </div>
+          <div className="profile-field-grid">
+            {SOCIAL_PROFILE_LINKS.map(({ field, label, Icon, className }) => (
+              <label className={`profile-field ${className || ""}`.trim()} key={field}>
+                <span className="profile-field-label"><Icon aria-hidden="true" />{label}</span>
+                <input className="cal-input" type="url" value={form[field]} onChange={(event) => setField(field, event.target.value)} />
+              </label>
+            ))}
+          </div>
+        </section>
+        <section className="profile-settings-section">
+          <div className="profile-panel-heading">
+            <FiHeart aria-hidden="true" />
+            <div className="piece-card-kicker">donații</div>
+          </div>
+          <div className="profile-field-grid">
+            {SUPPORT_PROFILE_LINKS.map(({ field, label, Icon, className }) => (
+              <label className={`profile-field ${className || ""}`.trim()} key={field}>
+                <span className="profile-field-label"><Icon aria-hidden="true" />{label}</span>
+                <input className="cal-input" type="url" value={form[field]} onChange={(event) => setField(field, event.target.value)} />
+              </label>
+            ))}
+          </div>
+        </section>
+        <div className="button-row">
+          <button className="cal-btn primary" type="submit" disabled={saving}>{saving ? "Se salvează..." : "Salvează profilul"}</button>
+          <a className="cal-btn" href={blogUrl(user.username)}>Vezi profilul public</a>
+        </div>
+        {status ? <div className={status.includes("Nu am putut") || status.includes("cel mult") ? "inline-error" : "inline-status"}>{status}</div> : null}
+      </form>
+      <div className="profile-media-grid">
+        <ProfileMediaPanel
+          user={user}
+          kind="profil"
+          title="fotografie profil"
+          description="Imagine pătrată pentru profilul public."
+          previewUrl={user.profile_photo_url || profileAvatarUrl(user)}
+          hasMedia={Boolean(user.has_profile_photo)}
+          onUserUpdate={onUserUpdate}
+        />
+        <ProfileMediaPanel
+          user={user}
+          kind="coperta"
+          title="copertă profil"
+          description="Imagine lată pentru antetul profilului public."
+          previewUrl={user.cover_photo_url}
+          hasMedia={Boolean(user.has_cover_photo)}
+          onUserUpdate={onUserUpdate}
+        />
+      </div>
+    </PageShell>
+  );
+}
+
 function DashboardView({ user }) {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [draftRefreshKey, setDraftRefreshKey] = useState(0);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [draftBusyId, setDraftBusyId] = useState(null);
   const [retryingPostId, setRetryingPostId] = useState(null);
   const { data, error, loading } = useAsync(
     () => (user ? fetchArchive() : Promise.resolve({ posts: [] })),
     [user?.id, refreshKey]
+  );
+  const draftState = useAsync(
+    () => (user ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
+    [user?.id, draftRefreshKey]
   );
   const quotaState = useAsync(
     () => (user ? fetchAudioConversionQuota() : Promise.resolve(null)),
@@ -1371,6 +1950,7 @@ function DashboardView({ user }) {
   if (!user) return <AuthRequired />;
 
   const posts = data?.posts ?? [];
+  const drafts = draftState.data?.drafts ?? [];
   const quota = quotaState.data;
   const canRequestAudio = Boolean(quota?.can_request);
   const selectedPosts = posts.filter((post) => selectedIds.has(post.id));
@@ -1425,6 +2005,21 @@ function DashboardView({ user }) {
     await submitAudioRequestIds([post.id], `„${post.title}” a fost retrimis la generare audio.`);
   };
 
+  const discardDraft = async (draft) => {
+    if (draftBusyId) return;
+    setDraftBusyId(draft.id);
+    setStatus("");
+    try {
+      await deletePostDraft(draft.id);
+      setStatus("Ciorna a fost ștearsă.");
+      setDraftRefreshKey((key) => key + 1);
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut șterge ciorna.");
+    } finally {
+      setDraftBusyId(null);
+    }
+  };
+
   return (
     <PageShell kicker="panou" title="Textele tale" sub={`Conectat ca ${user.username}.`}>
       <section className="audio-quota-panel" aria-label="Cotă generare audio">
@@ -1454,6 +2049,30 @@ function DashboardView({ user }) {
       </section>
       {quotaState.error ? <div className="inline-error">{quotaState.error}</div> : null}
       {status ? <div className={status.includes("Nu am putut") || status.includes("depășită") ? "inline-error" : "inline-status"}>{status}</div> : null}
+      {draftState.error ? <div className="inline-error">{draftState.error}</div> : null}
+      {drafts.length ? (
+        <section className="draft-panel" aria-label="Ciorne salvate">
+          <div className="draft-panel-head">
+            <div>
+              <div className="piece-card-kicker">ciorne</div>
+              <h2>Ciorne salvate</h2>
+            </div>
+            <a className="cal-btn" href={authorPath(user, "/scrie")}>Text nou</a>
+          </div>
+          <div className="dashboard-list">
+            {drafts.map((draft) => (
+              <DashboardDraftCard
+                key={draft.id}
+                draft={draft}
+                user={user}
+                busy={draftBusyId === draft.id}
+                onDiscard={() => discardDraft(draft)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <SeriesManagerPanel posts={posts} user={user} />
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca panoul">{error}</StatusPanel> : null}
       {data?.posts?.length ? (
@@ -1480,6 +2099,271 @@ function DashboardView({ user }) {
         </div>
       ) : !loading && !error ? <StatusPanel title="Nu ai texte încă" /> : null}
     </PageShell>
+  );
+}
+
+function SeriesManagerPanel({ posts, user }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedSeriesId, setSelectedSeriesId] = useState("");
+  const [createForm, setCreateForm] = useState({ title: "", description: "" });
+  const [editForm, setEditForm] = useState({ title: "", description: "" });
+  const [postToAdd, setPostToAdd] = useState("");
+  const [busy, setBusy] = useState("");
+  const [status, setStatus] = useState("");
+  const seriesState = useAsync(
+    () => (user ? fetchMySeries() : Promise.resolve({ series: [] })),
+    [user?.id, refreshKey]
+  );
+  const seriesList = seriesState.data?.series ?? [];
+  const selectedSeries = seriesList.find((item) => String(item.id) === String(selectedSeriesId)) || seriesList[0] || null;
+  const activeSeriesId = selectedSeries ? String(selectedSeries.id) : "";
+  const managedState = useAsync(
+    () => (activeSeriesId ? fetchManagedSeries(activeSeriesId) : Promise.resolve(null)),
+    [activeSeriesId, refreshKey]
+  );
+  const entries = managedState.data?.posts ?? [];
+  const entryPostIds = new Set(entries.map((entry) => entry.post_id));
+  const availablePosts = (posts || []).filter((post) => !entryPostIds.has(post.id));
+
+  useEffect(() => {
+    if (!seriesList.length) {
+      if (selectedSeriesId) setSelectedSeriesId("");
+      return;
+    }
+    if (!selectedSeriesId || !seriesList.some((item) => String(item.id) === String(selectedSeriesId))) {
+      setSelectedSeriesId(String(seriesList[0].id));
+    }
+  }, [seriesList, selectedSeriesId]);
+
+  useEffect(() => {
+    setEditForm({
+      title: selectedSeries?.title || "",
+      description: selectedSeries?.description || ""
+    });
+  }, [selectedSeries?.id, selectedSeries?.title, selectedSeries?.description]);
+
+  const refreshSeries = () => setRefreshKey((key) => key + 1);
+
+  const createNewSeries = async (event) => {
+    event.preventDefault();
+    const title = createForm.title.trim();
+    if (!title || busy) return;
+    setBusy("create");
+    setStatus("");
+    try {
+      const created = await createSeries({
+        title,
+        description: createForm.description.trim() || null
+      });
+      setCreateForm({ title: "", description: "" });
+      setSelectedSeriesId(String(created.id));
+      setStatus("Seria a fost creată.");
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut crea seria.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const saveSelectedSeries = async (event) => {
+    event.preventDefault();
+    if (!activeSeriesId || busy) return;
+    setBusy("save");
+    setStatus("");
+    try {
+      await updateSeries(activeSeriesId, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null
+      });
+      setStatus("Seria a fost actualizată.");
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut actualiza seria.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const deleteSelectedSeries = async () => {
+    if (!activeSeriesId || busy) return;
+    setBusy("delete");
+    setStatus("");
+    try {
+      await deleteSeries(activeSeriesId);
+      setSelectedSeriesId("");
+      setStatus("Seria a fost ștearsă.");
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut șterge seria.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const addSelectedPost = async () => {
+    if (!activeSeriesId || !postToAdd || busy) return;
+    setBusy("add");
+    setStatus("");
+    try {
+      await addPostToSeries(activeSeriesId, { post_id: Number(postToAdd) });
+      setPostToAdd("");
+      setStatus("Postarea a fost adăugată în serie.");
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut adăuga postarea.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const removeEntry = async (entry) => {
+    if (!activeSeriesId || busy) return;
+    setBusy(`remove:${entry.post_id}`);
+    setStatus("");
+    try {
+      await removePostFromSeries(activeSeriesId, entry.post_id);
+      setStatus("Postarea a fost scoasă din serie.");
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut scoate postarea.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const moveEntry = async (index, direction) => {
+    if (!activeSeriesId || busy) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= entries.length) return;
+    const orderedIds = entries.map((entry) => entry.post_id);
+    [orderedIds[index], orderedIds[nextIndex]] = [orderedIds[nextIndex], orderedIds[index]];
+    setBusy("reorder");
+    setStatus("");
+    try {
+      await reorderSeriesPosts(activeSeriesId, orderedIds);
+      refreshSeries();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut reordona seria.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <section className="series-manager" aria-label="Serii">
+      <div className="draft-panel-head">
+        <div>
+          <div className="piece-card-kicker">serii</div>
+          <h2>Serii și volume</h2>
+        </div>
+        {selectedSeries?.slug ? <a className="cal-btn" href={mainPath(`/serii/${selectedSeries.slug}`)}>Vezi seria</a> : null}
+      </div>
+      <form className="series-form" onSubmit={createNewSeries}>
+        <input
+          className="cal-input"
+          value={createForm.title}
+          maxLength={TITLE_CHARACTER_LIMIT}
+          onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))}
+          placeholder="Titlu serie"
+        />
+        <input
+          className="cal-input"
+          value={createForm.description}
+          maxLength={2000}
+          onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))}
+          placeholder="Descriere opțională"
+        />
+        <button className="cal-btn primary" type="submit" disabled={busy === "create" || !createForm.title.trim()}>
+          <FiPlus aria-hidden="true" />
+          {busy === "create" ? "Se creează..." : "Creează"}
+        </button>
+      </form>
+      {seriesState.loading ? <p className="auth-sub">Se încarcă seriile...</p> : null}
+      {seriesState.error ? <div className="inline-error">{seriesState.error}</div> : null}
+      {status ? <div className={status.includes("Nu am putut") ? "inline-error" : "inline-status"}>{status}</div> : null}
+      {seriesList.length ? (
+        <div className="series-manager-grid">
+          <div className="series-selector-list" role="listbox" aria-label="Alege seria">
+            {seriesList.map((item) => (
+              <button
+                className={`series-selector ${String(item.id) === activeSeriesId ? "active" : ""}`}
+                key={item.id}
+                type="button"
+                onClick={() => setSelectedSeriesId(String(item.id))}
+              >
+                <span>{item.title}</span>
+                <small>{formatNumber(item.post_count)} texte</small>
+              </button>
+            ))}
+          </div>
+          <div className="series-editor">
+            <form className="series-edit-form" onSubmit={saveSelectedSeries}>
+              <input
+                className="cal-input"
+                value={editForm.title}
+                maxLength={TITLE_CHARACTER_LIMIT}
+                onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))}
+              />
+              <textarea
+                className="cal-input"
+                value={editForm.description}
+                maxLength={2000}
+                rows={3}
+                onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))}
+              />
+              <div className="button-row">
+                <button className="cal-btn primary" type="submit" disabled={busy === "save" || !editForm.title.trim()}>
+                  {busy === "save" ? "Se salvează..." : "Salvează"}
+                </button>
+                <button className="cal-btn danger" type="button" onClick={deleteSelectedSeries} disabled={busy === "delete"}>
+                  <FiTrash2 aria-hidden="true" />
+                  {busy === "delete" ? "Se șterge..." : "Șterge"}
+                </button>
+              </div>
+            </form>
+            <div className="series-add-row">
+              <select className="cal-input" value={postToAdd} onChange={(event) => setPostToAdd(event.target.value)}>
+                <option value="">Alege o postare</option>
+                {availablePosts.map((post) => (
+                  <option key={post.id} value={post.id}>{post.title} · {categoryLabel(post.category)}</option>
+                ))}
+              </select>
+              <button className="cal-btn" type="button" onClick={addSelectedPost} disabled={!postToAdd || busy === "add"}>
+                <FiPlus aria-hidden="true" />
+                {busy === "add" ? "Se adaugă..." : "Adaugă"}
+              </button>
+            </div>
+            {managedState.loading ? <p className="auth-sub">Se încarcă postările seriei...</p> : null}
+            {managedState.error ? <div className="inline-error">{managedState.error}</div> : null}
+            {entries.length ? (
+              <div className="series-entry-list">
+                {entries.map((entry, index) => (
+                  <article className="series-entry" key={entry.id}>
+                    <div>
+                      <span className="piece-card-kicker">{formatNumber(index + 1)} · {categoryLabel(entry.post?.category)}</span>
+                      <h3><a href={entry.post ? postHref(entry.post) : "#"}>{entry.post?.title || "Postare"}</a></h3>
+                      {entry.post?.moderation_status ? <span className="piece-card-status">{entry.post.moderation_status}</span> : null}
+                    </div>
+                    <div className="series-entry-actions">
+                      <button className="icon-btn" type="button" aria-label="Mută în sus" onClick={() => moveEntry(index, -1)} disabled={index === 0 || busy === "reorder"}>
+                        <FiArrowUp aria-hidden="true" />
+                      </button>
+                      <button className="icon-btn" type="button" aria-label="Mută în jos" onClick={() => moveEntry(index, 1)} disabled={index === entries.length - 1 || busy === "reorder"}>
+                        <FiArrowDown aria-hidden="true" />
+                      </button>
+                      <button className="icon-btn danger" type="button" aria-label="Scoate din serie" onClick={() => removeEntry(entry)} disabled={busy === `remove:${entry.post_id}`}>
+                        <FiTrash2 aria-hidden="true" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : !managedState.loading ? <p className="auth-sub">Seria nu are postări încă.</p> : null}
+          </div>
+        </div>
+      ) : !seriesState.loading ? <p className="auth-sub">Creează o serie, apoi adaugă postările tale în ordinea dorită.</p> : null}
+    </section>
   );
 }
 
@@ -1512,9 +2396,7 @@ function DashboardPostCard({ post, selected, disabled, onToggle, onRetry, retryD
           {post.created_at ? <span>{post.created_at}</span> : null}
         </div>
         {audioReady ? (
-          <audio className="audio-player compact" controls src={post.audio_playback_url}>
-            Browserul tău nu poate reda acest fișier audio.
-          </audio>
+          <CompactAudioPlayer className="compact" src={post.audio_playback_url} downloadUrl={post.audio_id ? audioDownloadUrl(post.audio_id) : post.audio_playback_url} />
         ) : null}
         {canRetry ? (
           <div className="dashboard-audio-actions">
@@ -1523,6 +2405,31 @@ function DashboardPostCard({ post, selected, disabled, onToggle, onRetry, retryD
             </button>
           </div>
         ) : null}
+      </div>
+    </article>
+  );
+}
+
+function DashboardDraftCard({ draft, user, busy, onDiscard }) {
+  const title = draft.title?.trim() || "Ciornă fără titlu";
+  const excerpt = htmlToText(draft.content) || "Fără text încă.";
+  const href = `${authorPath(user, "/scrie")}?draft=${encodeURIComponent(draft.id)}`;
+
+  return (
+    <article className="dashboard-post-card dashboard-draft-card">
+      <div className="dashboard-post-main">
+        <div className="piece-card-kicker-row">
+          <span className="piece-card-kicker">ciornă · {categoryLabel(draft.category)}</span>
+          {draft.updated_at ? <span className="piece-card-status">{formatDateTime(draft.updated_at)}</span> : null}
+        </div>
+        <h2 className="piece-card-title"><a href={href}>{title}</a></h2>
+        <p className="piece-card-excerpt">{excerpt}</p>
+      </div>
+      <div className="dashboard-draft-actions">
+        <a className="cal-btn primary" href={href}>Continuă</a>
+        <button className="cal-btn" type="button" onClick={onDiscard} disabled={busy}>
+          {busy ? "Se șterge..." : "Șterge"}
+        </button>
       </div>
     </article>
   );
@@ -1801,27 +2708,214 @@ function AdminDashboardView({ user }) {
 }
 
 function CreatePostView({ user }) {
+  const draftParam = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get("draft");
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, []);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [category, setCategory] = useState("poezie");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [directPublishing, setDirectPublishing] = useState(false);
   const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
   const [diacriticsReview, setDiacriticsReview] = useState(null);
+  const [draftId, setDraftId] = useState(null);
+  const [draftStatus, setDraftStatus] = useState("");
+  const [draftError, setDraftError] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftsRefreshKey, setDraftsRefreshKey] = useState(0);
+  const contentLimit = POST_CONTENT_LIMITS[category] ?? SHORT_STORY_CHARACTER_LIMIT;
+  const titleRef = useRef("");
+  const contentRef = useRef("");
+  const categoryRef = useRef("poezie");
+  const draftIdRef = useRef(null);
+  const lastSavedFingerprintRef = useRef("");
+  const savingDraftRef = useRef(false);
+  const pendingDraftSaveRef = useRef(false);
+  const draftListState = useAsync(
+    () => (user ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
+    [user?.id, draftsRefreshKey]
+  );
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  useEffect(() => {
+    contentRef.current = content;
+  }, [content]);
+
+  useEffect(() => {
+    categoryRef.current = category;
+  }, [category]);
+
+  useEffect(() => {
+    draftIdRef.current = draftId;
+  }, [draftId]);
 
   useEffect(() => {
     setAutoDiacritics(Boolean(user?.is_premium));
     setDiacriticsReview(null);
-  }, [user?.id, user?.is_premium]);
+    setDraftStatus("");
+    setDraftError("");
+    if (!draftParam) {
+      setDraftId(null);
+      lastSavedFingerprintRef.current = "";
+    }
+  }, [user?.id, user?.is_premium, draftParam]);
+
+  useEffect(() => {
+    if (!user || !draftParam) return undefined;
+    let cancelled = false;
+    setDraftLoading(true);
+    setDraftError("");
+    fetchPostDraft(draftParam)
+      .then((draft) => {
+        if (cancelled) return;
+        const nextTitle = draft.title || "";
+        const nextContent = draft.content || "";
+        const nextCategory = draft.category || "poezie";
+        setDraftId(draft.id);
+        setTitle(nextTitle);
+        setContent(nextContent);
+        setCategory(nextCategory);
+        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent);
+        setDraftStatus("Ciornă încărcată.");
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setDraftError(requestError.message || "Nu am putut încărca ciorna.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, draftParam]);
+
+  const saveDraft = useCallback(async (source = "manual") => {
+    if (!user) return null;
+    if (savingDraftRef.current) {
+      pendingDraftSaveRef.current = true;
+      return null;
+    }
+
+    savingDraftRef.current = true;
+    setDraftSaving(true);
+    setDraftError("");
+
+    try {
+      let savedDraft = null;
+      do {
+        pendingDraftSaveRef.current = false;
+        const snapshot = {
+          title: titleRef.current.trim(),
+          content: contentRef.current || "",
+          category: categoryRef.current || "poezie"
+        };
+        const fingerprint = draftFingerprint(`${snapshot.category}:${snapshot.title}`, snapshot.content);
+
+        if (!draftHasContent(snapshot.title, snapshot.content)) {
+          if (source === "manual") {
+            setDraftError("Scrie un titlu sau un text înainte să salvezi ciorna.");
+          }
+          return null;
+        }
+
+        if (snapshot.title.length > TITLE_CHARACTER_LIMIT) {
+          setDraftError(`Titlul poate avea cel mult ${formatNumber(TITLE_CHARACTER_LIMIT)} de caractere.`);
+          return null;
+        }
+
+        const snapshotLimit = POST_CONTENT_LIMITS[snapshot.category] ?? SHORT_STORY_CHARACTER_LIMIT;
+        const visibleContent = htmlToText(snapshot.content);
+        if (visibleContent.length > snapshotLimit) {
+          const label = snapshot.category === "poezie" ? "poezia" : "proza scurtă";
+          setDraftError(`Pentru ${label}, textul poate avea cel mult ${formatNumber(snapshotLimit)} de caractere.`);
+          return null;
+        }
+
+        if (fingerprint === lastSavedFingerprintRef.current) {
+          if (source === "manual") setDraftStatus("Ciorna este deja salvată.");
+          return savedDraft;
+        }
+
+        savedDraft = draftIdRef.current
+          ? await updatePostDraft(draftIdRef.current, snapshot)
+          : await createPostDraft(snapshot);
+
+        draftIdRef.current = savedDraft.id;
+        setDraftId(savedDraft.id);
+        lastSavedFingerprintRef.current = draftFingerprint(`${savedDraft.category}:${savedDraft.title}`, savedDraft.content);
+        setDraftStatus(source === "auto" ? "Salvat automat." : "Ciornă salvată.");
+        setDraftsRefreshKey((key) => key + 1);
+
+        const currentFingerprint = draftFingerprint(
+          `${categoryRef.current || "poezie"}:${titleRef.current.trim()}`,
+          contentRef.current || ""
+        );
+        if (currentFingerprint !== lastSavedFingerprintRef.current) {
+          pendingDraftSaveRef.current = true;
+        }
+      } while (pendingDraftSaveRef.current);
+
+      return savedDraft;
+    } catch (requestError) {
+      setDraftError(requestError.message || "Nu am putut salva ciorna.");
+      return null;
+    } finally {
+      savingDraftRef.current = false;
+      setDraftSaving(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    const timer = window.setInterval(() => {
+      if (!submitting) saveDraft("auto");
+    }, POST_DRAFT_AUTOSAVE_MS);
+    return () => window.clearInterval(timer);
+  }, [user?.id, submitting, saveDraft]);
 
   if (!user) return <AuthRequired />;
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const otherDrafts = (draftListState.data?.drafts ?? []).filter((draft) => draft.id !== draftId);
+  const canSaveDraft = draftHasContent(title, content);
+  const canPublishDirectly = Boolean(user?.is_premium && autoDiacritics && !diacriticsReview);
+
+  const submitPost = async ({ skipDiacritics = false } = {}) => {
+    if (submitting) return;
     setSubmitting(true);
+    setDirectPublishing(skipDiacritics);
     setStatus("");
+    const visibleContent = htmlToText(content);
+    if (!title.trim() || !visibleContent) {
+      setStatus("Titlul și textul sunt obligatorii.");
+      setSubmitting(false);
+      setDirectPublishing(false);
+      return;
+    }
+    if (title.trim().length > TITLE_CHARACTER_LIMIT) {
+      setStatus(`Titlul poate avea cel mult ${formatNumber(TITLE_CHARACTER_LIMIT)} de caractere.`);
+      setSubmitting(false);
+      setDirectPublishing(false);
+      return;
+    }
+    if (visibleContent.length > contentLimit) {
+      const label = category === "poezie" ? "poezia" : "proza scurtă";
+      setStatus(`Pentru ${label}, textul poate avea cel mult ${formatNumber(contentLimit)} de caractere.`);
+      setSubmitting(false);
+      setDirectPublishing(false);
+      return;
+    }
     try {
-      if (user.is_premium && autoDiacritics && !diacriticsReview) {
-        const converted = await addDiacritics({ kind: "post", title, content });
+      if (!skipDiacritics && user.is_premium && autoDiacritics && !diacriticsReview) {
+        const converted = await addDiacritics({ kind: "post", title, content, category });
         setTitle(converted.title ?? title);
         setContent(converted.content);
         setDiacriticsReview({
@@ -1830,23 +2924,70 @@ function CreatePostView({ user }) {
           changed: converted.changed
         });
         setSubmitting(false);
+        setDirectPublishing(false);
         return;
       }
-      const post = await createPost({ title, content });
+      const payload = { title, content, category };
+      if (draftIdRef.current) payload.draft_id = draftIdRef.current;
+      const post = await createPost(payload);
+      lastSavedFingerprintRef.current = draftFingerprint(`${category}:${title}`, content);
       window.location.href = `${blogUrl(user.username)}/${post.slug}`;
     } catch (requestError) {
       setStatus(requestError.message || "Nu am putut publica textul.");
       setSubmitting(false);
+      setDirectPublishing(false);
     }
   };
 
+  const submit = async (event) => {
+    event.preventDefault();
+    await submitPost();
+  };
+
   return (
-    <PageShell kicker="scrie" title="Text nou" sub="Publică un text în blogul tău. Categoria este detectată automat.">
+    <PageShell kicker="scrie" title="Text nou" sub="Publică un text în blogul tău.">
       <form className="form-stack" onSubmit={submit}>
         <label className="auth-field" htmlFor="post-title">Titlu</label>
-        <input id="post-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} required />
+        <input id="post-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_CHARACTER_LIMIT} required />
+        <label className="auth-field" htmlFor="post-category">Categorie</label>
+        <select
+          id="post-category"
+          className="cal-input"
+          value={category}
+          onChange={(event) => {
+            setCategory(event.target.value);
+            setDiacriticsReview(null);
+          }}
+        >
+          {POST_CATEGORIES.map((item) => (
+            <option key={item.key} value={item.key}>
+              {item.label} - {formatNumber(item.limit)} caractere
+            </option>
+          ))}
+        </select>
         <label className="auth-field" htmlFor="post-content">Text</label>
-        <textarea id="post-content" className="cal-textarea tall" value={content} onChange={(event) => setContent(event.target.value)} required />
+        <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} />
+        <div className="draft-actions-row">
+          <button className="cal-btn" type="button" onClick={() => saveDraft("manual")} disabled={submitting || draftSaving || !canSaveDraft}>
+            {draftSaving ? "Se salvează..." : "Salvează ca ciornă"}
+          </button>
+          <span className="draft-save-status">{draftLoading ? "Se încarcă ciorna..." : draftStatus}</span>
+        </div>
+        {draftError ? <div className="inline-error">{draftError}</div> : null}
+        {draftListState.error ? <div className="inline-error">{draftListState.error}</div> : null}
+        {otherDrafts.length ? (
+          <section className="draft-resume-list" aria-label="Alte ciorne">
+            <div className="piece-card-kicker">alte ciorne</div>
+            <div className="draft-chip-row">
+              {otherDrafts.slice(0, 5).map((draft) => (
+                <a className="draft-chip" key={draft.id} href={`${authorPath(user, "/scrie")}?draft=${encodeURIComponent(draft.id)}`}>
+                  <span>{draft.title?.trim() || "Ciornă fără titlu"}</span>
+                  <small>{categoryLabel(draft.category)}{draft.updated_at ? ` · ${formatDateTime(draft.updated_at)}` : ""}</small>
+                </a>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <DiacriticsControl
           user={user}
           enabled={autoDiacritics}
@@ -1866,14 +3007,21 @@ function CreatePostView({ user }) {
           } : null}
         />
         {status ? <div className="inline-error">{status}</div> : null}
-        <button className="cal-btn primary" type="submit" disabled={submitting}>
-          {diacriticsSubmitLabel({
-            submitting,
-            reviewing: Boolean(diacriticsReview),
-            enabled: Boolean(user.is_premium && autoDiacritics),
-            submitLabel: "Publică"
-          })}
-        </button>
+        <div className="button-row">
+          <button className="cal-btn primary" type="submit" disabled={submitting}>
+            {diacriticsSubmitLabel({
+              submitting,
+              reviewing: Boolean(diacriticsReview),
+              enabled: Boolean(user.is_premium && autoDiacritics && !directPublishing),
+              submitLabel: "Publică"
+            })}
+          </button>
+          {canPublishDirectly ? (
+            <button className="cal-btn" type="button" onClick={() => submitPost({ skipDiacritics: true })} disabled={submitting}>
+              {directPublishing ? "Se publică..." : "Publică direct"}
+            </button>
+          ) : null}
+        </div>
       </form>
     </PageShell>
   );
@@ -2182,6 +3330,11 @@ function ForumThreadCreateView({ user }) {
     event.preventDefault();
     setSubmitting(true);
     setStatus("");
+    if (!title.trim() || !htmlToText(content)) {
+      setStatus("Titlul și mesajul sunt obligatorii.");
+      setSubmitting(false);
+      return;
+    }
     try {
       if (user.is_premium && autoDiacritics && !diacriticsReview) {
         const converted = await addDiacritics({ kind: "forum_thread", title, content });
@@ -2211,9 +3364,9 @@ function ForumThreadCreateView({ user }) {
           {FORUM_SECTIONS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
         </select>
         <label className="auth-field" htmlFor="forum-title">Titlu</label>
-        <input id="forum-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength="160" required />
+        <input id="forum-title" className="cal-input" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_CHARACTER_LIMIT} required />
         <label className="auth-field" htmlFor="forum-content">Mesaj</label>
-        <textarea id="forum-content" className="cal-textarea tall" value={content} onChange={(event) => setContent(event.target.value)} maxLength="8000" required />
+        <RichTextEditor id="forum-content" className="tall" value={content} onChange={setContent} maxLength={8000} />
         <DiacriticsControl
           user={user}
           enabled={autoDiacritics}
@@ -2269,7 +3422,7 @@ function ForumThreadDetailView({ user, slug }) {
     event.preventDefault();
     if (!data) return;
     const content = reply.trim();
-    if (!content) return;
+    if (!htmlToText(content)) return;
     setSubmitting(true);
     setStatus("");
     try {
@@ -2280,7 +3433,7 @@ function ForumThreadDetailView({ user, slug }) {
         setSubmitting(false);
         return;
       }
-      const created = await createForumReply(data.id, { content: reply });
+      const created = await createForumReply(data.id, { content });
       setReply("");
       setReplyReview(null);
       setStatus(created.moderation_status === "approved" ? "" : FORUM_MODERATION_MESSAGE);
@@ -2307,7 +3460,7 @@ function ForumThreadDetailView({ user, slug }) {
               <span>{formatDateTime(data.created_at)}</span>
               {data.moderation_status !== "approved" ? <span>{data.moderation_status}</span> : null}
             </div>
-            <p className="forum-body">{data.content}</p>
+            <RichTextContent html={data.content} className="forum-body" />
           </article>
           <section className="forum-replies" aria-label="Răspunsuri">
             <div className="piece-card-kicker">răspunsuri</div>
@@ -2320,7 +3473,7 @@ function ForumThreadDetailView({ user, slug }) {
                       <span>{formatDateTime(item.created_at)}</span>
                       {item.moderation_status !== "approved" ? <span>{item.moderation_status}</span> : null}
                     </div>
-                    <p className="forum-body">{item.content}</p>
+                    <RichTextContent html={item.content} className="forum-body" />
                   </article>
                 ))}
               </div>
@@ -2331,7 +3484,7 @@ function ForumThreadDetailView({ user, slug }) {
           ) : (
             <form className="form-stack" onSubmit={submitReply}>
               <label className="auth-field" htmlFor="forum-reply">Răspuns</label>
-              <textarea id="forum-reply" className="cal-textarea" value={reply} onChange={(event) => setReply(event.target.value)} maxLength="4000" required />
+              <RichTextEditor id="forum-reply" value={reply} onChange={setReply} maxLength={4000} />
               <DiacriticsControl
                 user={user}
                 enabled={replyAutoDiacritics}
@@ -2502,6 +3655,11 @@ function AuthSetupView() {
     const trimmedUsername = username.trim();
     setSubmitting(true);
     setStatus("");
+    if (htmlToText(subtitle).length > PROFILE_DESCRIPTION_CHARACTER_LIMIT) {
+      setStatus(`Descrierea poate avea cel mult ${formatNumber(PROFILE_DESCRIPTION_CHARACTER_LIMIT)} de caractere.`);
+      setSubmitting(false);
+      return;
+    }
     try {
       const response = await completeAuthSetup({
         username: trimmedUsername,
@@ -2521,7 +3679,7 @@ function AuthSetupView() {
         <label className="auth-field" htmlFor="setup-username">Nume blog</label>
         <input id="setup-username" className="cal-input" value={username} onChange={(event) => setUsername(event.target.value)} required pattern="[A-Za-z0-9]+" />
         <label className="auth-field" htmlFor="setup-subtitle">Descriere</label>
-        <textarea id="setup-subtitle" className="cal-textarea compact" value={subtitle} onChange={(event) => setSubtitle(event.target.value)} rows="3" />
+        <RichTextEditor id="setup-subtitle" className="compact" value={subtitle} onChange={setSubtitle} maxLength={PROFILE_DESCRIPTION_CHARACTER_LIMIT} />
         <fieldset className="avatar-choice-field">
           <legend className="auth-field">Avatar</legend>
           <div className="avatar-choice-grid">
@@ -2585,18 +3743,20 @@ function routeForLocation() {
   if (userFromHost) {
     if (path === "/") return { name: "blog", username: userFromHost };
     if (path === "/panou") return { name: "dashboard" };
-    if (path === "/scrie") return { name: "create" };
+    if (path === "/profil") return { name: "profileSettings" };
+    if (path === "/scrie" || path === "/create-post") return { name: "create" };
     if (path === "/mesaje") return { name: "messages" };
     return { name: "post", username: userFromHost, slug: decodeURIComponent(path.slice(1)) };
   }
 
   if (path === "/") return { name: "landing" };
   if (path === "/panou") return { name: "dashboard" };
-  if (path === "/scrie") return { name: "create" };
+  if (path === "/profil") return { name: "profileSettings" };
+  if (path === "/scrie" || path === "/create-post") return { name: "create" };
   if (path === "/mesaje") return { name: "messages" };
   if (path === "/moderare") return { name: "admin" };
   if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
-  if (path.startsWith("/colectii/")) return { name: "collection", slug: decodeURIComponent(path.split("/")[2] || "") };
+  if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/cluburi") return { name: "clubs" };
   if (path.startsWith("/cluburi/")) return { name: "club", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/discutii") return { name: "forum" };
@@ -2612,7 +3772,7 @@ function routeForLocation() {
   return { name: "notFound" };
 }
 
-function RouteView({ route, user, authLoaded }) {
+function RouteView({ route, user, authLoaded, onUserUpdate }) {
   if (PROTECTED_ROUTES.has(route.name) && !authLoaded) {
     return (
       <PageShell kicker="cont" title="Se verifică sesiunea" sub="Încărcăm starea contului tău." />
@@ -2627,8 +3787,9 @@ function RouteView({ route, user, authLoaded }) {
   if (route.name === "club") return <ClubDetailView slug={route.slug} />;
   if (route.name === "blog") return <BlogView username={route.username} />;
   if (route.name === "post") return <PostDetailView username={route.username} slug={route.slug} user={user} />;
-  if (route.name === "collection") return <CollectionView slug={route.slug} />;
+  if (route.name === "series") return <SeriesView slug={route.slug} />;
   if (route.name === "dashboard") return <DashboardView user={user} />;
+  if (route.name === "profileSettings") return <ProfileSettingsView user={user} onUserUpdate={onUserUpdate} />;
   if (route.name === "admin") return <AdminDashboardView user={user} />;
   if (route.name === "create") return <CreatePostView user={user} />;
   if (route.name === "messages") return <MessagesView user={user} />;
@@ -2699,6 +3860,9 @@ export function App() {
 
   const route = useMemo(routeForLocation, [routeVersion]);
   const loggedIn = Boolean(auth.user);
+  const updateAuthUser = useCallback((nextUser) => {
+    setAuth((current) => ({ ...current, user: nextUser }));
+  }, []);
 
   useEffect(() => {
     if (!auth.loaded || !auth.user) return;
@@ -2716,7 +3880,7 @@ export function App() {
       <NavBar loggedIn={loggedIn} user={auth.user} onMenu={() => setMenuOpen((open) => !open)} menuOpen={menuOpen} />
       <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
         <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
-          <RouteView route={route} user={auth.user} authLoaded={auth.loaded} />
+          <RouteView route={route} user={auth.user} authLoaded={auth.loaded} onUserUpdate={updateAuthUser} />
         </ErrorBoundary>
       </AdSenseProvider>
       <Footer />

@@ -12,7 +12,7 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
 from app import models, pdf_exporter
-from app.routers import api_pages, collection_routes
+from app.routers import api_pages, series_routes
 
 
 class DummyRequest:
@@ -64,24 +64,22 @@ class PdfExportTests(unittest.TestCase):
         self.db.refresh(post)
         return post
 
-    def make_collection(self, owner, slug="test-collection"):
-        collection = models.Collection(
+    def make_series(self, owner, slug="test-series"):
+        series = models.Series(
             owner_id=owner.id,
-            title="Test Collection",
+            title="Test Series",
             slug=slug,
-            description="Descriere colecție",
+            description="Descriere serie",
         )
-        self.db.add(collection)
+        self.db.add(series)
         self.db.commit()
-        self.db.refresh(collection)
-        return collection
+        self.db.refresh(series)
+        return series
 
-    def add_collection_post(self, collection, post, *, status="accepted", position=None):
-        entry = models.CollectionPost(
-            collection_id=collection.id,
+    def add_series_post(self, series, post, *, position=1):
+        entry = models.SeriesPost(
+            series_id=series.id,
             post_id=post.id,
-            initiator_id=collection.owner_id,
-            status=status,
             position=position,
         )
         self.db.add(entry)
@@ -121,29 +119,26 @@ class PdfExportTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, 404)
 
-    def test_collection_pdf_endpoint_exports_only_public_accepted_posts(self):
+    def test_series_pdf_endpoint_exports_only_public_approved_posts(self):
         owner = self.make_user("owner")
-        other = self.make_user("other")
-        collection = self.make_collection(owner, "public-collection")
-        accepted = self.make_post(other, "accepted-poem")
-        pending_post = self.make_post(other, "pending-poem", status="pending")
-        suggested = self.make_post(other, "suggested-poem")
-        self.add_collection_post(collection, accepted, status="accepted")
-        self.add_collection_post(collection, pending_post, status="accepted")
-        self.add_collection_post(collection, suggested, status="pending")
+        series = self.make_series(owner, "public-series")
+        accepted = self.make_post(owner, "accepted-poem")
+        pending_post = self.make_post(owner, "pending-poem", status="pending")
+        self.add_series_post(series, accepted, position=1)
+        self.add_series_post(series, pending_post, position=2)
 
-        with patch.object(pdf_exporter, "render_collection_pdf", return_value=b"%PDF-collection") as renderer:
-            response = collection_routes.collection_pdf_download(
+        with patch.object(pdf_exporter, "render_series_pdf", return_value=b"%PDF-series") as renderer:
+            response = series_routes.series_pdf_download(
                 request=DummyRequest(host="calimara.ro"),
-                slug=collection.slug,
+                slug=series.slug,
                 db=self.db,
             )
 
         exported_entries = renderer.call_args.kwargs["entries"]
         self.assertEqual([entry.post.slug for entry in exported_entries], ["accepted-poem"])
         self.assertEqual(response.media_type, "application/pdf")
-        self.assertEqual(response.body, b"%PDF-collection")
-        self.assertIn("colectie-public-collection.pdf", response.headers["content-disposition"])
+        self.assertEqual(response.body, b"%PDF-series")
+        self.assertIn("serie-public-series.pdf", response.headers["content-disposition"])
 
     def test_pdf_html_sanitizes_unsafe_post_content(self):
         html = pdf_exporter.build_post_pdf_html(

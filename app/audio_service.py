@@ -3,6 +3,7 @@ import html
 import logging
 import os
 import re
+import time
 from typing import Optional
 
 import bleach
@@ -246,6 +247,7 @@ def strip_html(value: str | None) -> str:
 
 
 def synthesize_text(text: str) -> tuple[bytes, str]:
+    from google.api_core import exceptions as google_exceptions
     from google.api_core.client_options import ClientOptions
     from google.cloud import texttospeech
 
@@ -268,15 +270,27 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
     audio_config = texttospeech.AudioConfig(audio_encoding=encoding)
     chunks = split_text_for_tts(text)
     audio_parts: list[bytes] = []
+    max_attempts = max(1, int(os.getenv("GOOGLE_TTS_MAX_ATTEMPTS", "3")))
     for chunk in chunks:
         input_kwargs = {"text": chunk}
         if style_prompt:
             input_kwargs["prompt"] = style_prompt
-        response = client.synthesize_speech(
-            input=texttospeech.SynthesisInput(**input_kwargs),
-            voice=voice,
-            audio_config=audio_config,
-        )
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = client.synthesize_speech(
+                    input=texttospeech.SynthesisInput(**input_kwargs),
+                    voice=voice,
+                    audio_config=audio_config,
+                )
+                break
+            except (
+                google_exceptions.ServiceUnavailable,
+                google_exceptions.DeadlineExceeded,
+                google_exceptions.ResourceExhausted,
+            ):
+                if attempt >= max_attempts:
+                    raise
+                time.sleep(min(2 ** (attempt - 1), 8))
         audio_parts.append(response.audio_content)
     return b"".join(audio_parts), content_type_for_tts_encoding(encoding_name)
 

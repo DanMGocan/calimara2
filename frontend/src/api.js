@@ -38,7 +38,20 @@ async function request(path, options = {}) {
   }
 
   if (response.status === 204) return null;
-  return response.json();
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(
+      response.status,
+      "Serverul a răspuns cu pagina aplicației în loc de date JSON. Reîncarcă pagina."
+    );
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    throw new ApiError(response.status, "Răspunsul serverului nu a fost JSON valid.");
+  }
 }
 
 export const api = {
@@ -60,8 +73,22 @@ export function updateMe(data) {
   return api.put("/api/utilizator/eu", data);
 }
 
+export function updateProfileSettings(data) {
+  return api.put("/api/utilizator/profil", data);
+}
+
 export function updateSocialLinks(data) {
   return api.put("/api/utilizator/linkuri-sociale", data);
+}
+
+export function uploadProfileMedia(kind, file) {
+  const form = new FormData();
+  form.append("file", file);
+  return api.post(`/api/utilizator/media/${encodeURIComponent(kind)}`, form);
+}
+
+export function deleteProfileMedia(kind) {
+  return api.delete(`/api/utilizator/media/${encodeURIComponent(kind)}`);
 }
 
 export function updateBestFriends(friends) {
@@ -135,6 +162,26 @@ export function fetchRandomPosts(category) {
 
 export function createPost(data) {
   return api.post("/api/postari/", data);
+}
+
+export function fetchPostDrafts() {
+  return api.get("/api/postari/ciorne");
+}
+
+export function fetchPostDraft(draftId) {
+  return api.get(`/api/postari/ciorne/${encodeURIComponent(draftId)}`);
+}
+
+export function createPostDraft(data) {
+  return api.post("/api/postari/ciorne", data);
+}
+
+export function updatePostDraft(draftId, data) {
+  return api.put(`/api/postari/ciorne/${encodeURIComponent(draftId)}`, data);
+}
+
+export function deletePostDraft(draftId) {
+  return api.delete(`/api/postari/ciorne/${encodeURIComponent(draftId)}`);
 }
 
 export function updatePost(postId, data) {
@@ -233,60 +280,56 @@ export function fetchMyStats() {
   return api.get("/api/statistici/ale-mele");
 }
 
-export function createCollection(data) {
-  return api.post("/api/colectii/", data);
+export function createSeries(data) {
+  return api.post("/api/serii/", data);
 }
 
-export function fetchRandomCollection() {
-  return api.get("/api/colectii/aleatoriu");
+export function fetchRandomSeries() {
+  return api.get("/api/serii/aleatoriu");
 }
 
-export function fetchCollection(slug) {
-  return api.get(`/api/colectii/${encodeURIComponent(slug)}`);
+export function fetchSeries(slug) {
+  return api.get(`/api/serii/${encodeURIComponent(slug)}`);
 }
 
-export function collectionPdfUrl(slug) {
-  return `/api/colectii/${encodeURIComponent(slug)}/pdf`;
+export function seriesPdfUrl(slug) {
+  return `/api/serii/${encodeURIComponent(slug)}/pdf`;
 }
 
-export function fetchUserCollections(username) {
-  return api.get(`/api/utilizatori/${encodeURIComponent(username)}/colectii`);
+export function fetchUserSeries(username) {
+  return api.get(`/api/utilizatori/${encodeURIComponent(username)}/serii`);
 }
 
-export function updateCollection(collectionId, data) {
-  return api.put(`/api/colectii/${encodeURIComponent(collectionId)}`, data);
+export function updateSeries(seriesId, data) {
+  return api.put(`/api/serii/${encodeURIComponent(seriesId)}`, data);
 }
 
-export function deleteCollection(collectionId) {
-  return api.delete(`/api/colectii/${encodeURIComponent(collectionId)}`);
+export function deleteSeries(seriesId) {
+  return api.delete(`/api/serii/${encodeURIComponent(seriesId)}`);
 }
 
-export function addPostToCollection(collectionId, data) {
-  return api.post(`/api/colectii/${encodeURIComponent(collectionId)}/postari`, data);
+export function addPostToSeries(seriesId, data) {
+  return api.post(`/api/serii/${encodeURIComponent(seriesId)}/postari`, data);
 }
 
-export function respondCollectionEntry(collectionId, postId, data) {
-  return api.post(`/api/colectii/${encodeURIComponent(collectionId)}/postari/${encodeURIComponent(postId)}/raspunde`, data);
+export function reorderSeriesPosts(seriesId, postIds) {
+  return api.put(`/api/serii/${encodeURIComponent(seriesId)}/postari/ordine`, { post_ids: postIds });
 }
 
-export function removeCollectionEntry(collectionId, postId) {
-  return api.delete(`/api/colectii/${encodeURIComponent(collectionId)}/postari/${encodeURIComponent(postId)}`);
+export function removePostFromSeries(seriesId, postId) {
+  return api.delete(`/api/serii/${encodeURIComponent(seriesId)}/postari/${encodeURIComponent(postId)}`);
 }
 
-export function fetchMyCollections() {
-  return api.get("/api/utilizator/colectii");
+export function fetchMySeries() {
+  return api.get("/api/utilizator/serii");
 }
 
-export function fetchManagedCollection(collectionId) {
-  return api.get(`/api/utilizator/colectii/${encodeURIComponent(collectionId)}/gestioneaza`);
+export function fetchManagedSeries(seriesId) {
+  return api.get(`/api/utilizator/serii/${encodeURIComponent(seriesId)}/gestioneaza`);
 }
 
-export function fetchPendingCollectionApprovals() {
-  return api.get("/api/utilizator/colectii/in-asteptare");
-}
-
-export function fetchPostCollections(postId) {
-  return api.get(`/api/postari/${encodeURIComponent(postId)}/colectii`);
+export function fetchPostSeries(postId) {
+  return api.get(`/api/postari/${encodeURIComponent(postId)}/serie`);
 }
 
 export function fetchForumThreads(section = "general") {
@@ -442,8 +485,8 @@ export function requestTtsConversions(postIds) {
   return api.post("/api/audio/cereri-tts", { post_ids: postIds });
 }
 
-export function fetchCollectionAudioPlaylist(collectionId) {
-  return api.get(`/api/audio/colectii/${encodeURIComponent(collectionId)}/lista-redare`);
+export function fetchSeriesAudioPlaylist(seriesId) {
+  return api.get(`/api/audio/serii/${encodeURIComponent(seriesId)}/lista-redare`);
 }
 
 export function fetchRandomAudio(category) {
@@ -453,6 +496,10 @@ export function fetchRandomAudio(category) {
 
 export function audioStreamUrl(audioId) {
   return `/api/audio/redare/${encodeURIComponent(audioId)}`;
+}
+
+export function audioDownloadUrl(audioId) {
+  return `/api/audio/descarcare/${encodeURIComponent(audioId)}`;
 }
 
 export function uploadPostAudioRecording(postId, file) {

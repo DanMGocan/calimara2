@@ -58,11 +58,11 @@ def post_page_url(request: Any, username: str, slug: str) -> str:
     return f"{scheme}://{host}/{quote(slug)}"
 
 
-def collection_page_url(request: Any, slug: str) -> str:
+def series_page_url(request: Any, slug: str) -> str:
     scheme, host_name, port = _request_host_parts(request)
     if host_name not in {"localhost"} and not IPV4_RE.match(host_name):
         host_name = _root_host(host_name)
-    return f"{scheme}://{_join_host_port(host_name, port)}/colectii/{quote(slug)}"
+    return f"{scheme}://{_join_host_port(host_name, port)}/serii/{quote(slug)}"
 
 
 def render_post_pdf(
@@ -86,9 +86,9 @@ def render_post_pdf(
     return render_html_to_pdf(html_document)
 
 
-def render_collection_pdf(
+def render_series_pdf(
     *,
-    collection: Any,
+    series: Any,
     owner: Any,
     entries: Iterable[Any],
     page_url: str,
@@ -110,10 +110,10 @@ def render_collection_pdf(
             }
         )
 
-    html_document = build_collection_pdf_html(
-        title=getattr(collection, "title", ""),
+    html_document = build_series_pdf_html(
+        title=getattr(series, "title", ""),
         owner=getattr(owner, "username", "anonim"),
-        description=getattr(collection, "description", "") or "",
+        description=getattr(series, "description", "") or "",
         posts=posts,
         page_url=page_url,
     )
@@ -149,7 +149,7 @@ def build_post_pdf_html(
     )
 
 
-def build_collection_pdf_html(
+def build_series_pdf_html(
     *,
     title: str,
     owner: str,
@@ -158,22 +158,22 @@ def build_collection_pdf_html(
     page_url: str,
 ) -> str:
     if posts:
-        post_sections = "\n".join(_collection_post_html(post) for post in posts)
+        post_sections = "\n".join(_series_post_html(post) for post in posts)
     else:
-        post_sections = '<p class="empty">Colecția nu are încă texte publice acceptate.</p>'
+        post_sections = '<p class="empty">Seria nu are încă texte publice aprobate.</p>'
 
     return _document(
         page_url=page_url,
         body=f"""
-        <main class="document collection-document">
+        <main class="document series-document">
           {_document_header(page_url)}
           <section class="hero">
-            <div class="kicker">colecție</div>
+            <div class="kicker">serie</div>
             <h1>{_escape(title)}</h1>
             <p class="byline">de {_escape(owner)}</p>
             {f'<p class="description">{_escape(description)}</p>' if description else ''}
           </section>
-          <section class="collection-items">
+          <section class="series-items">
             {post_sections}
           </section>
         </main>
@@ -185,10 +185,10 @@ def render_html_to_pdf(html_document: str) -> bytes:
     return HTML(string=html_document).write_pdf()
 
 
-def _collection_post_html(post: dict[str, Any]) -> str:
+def _series_post_html(post: dict[str, Any]) -> str:
     meta = _meta_line(post.get("category_label", ""), post.get("created_at"))
     return f"""
-    <article class="collection-item">
+    <article class="series-item">
       <header class="item-header">
         <div class="kicker">{_escape(post.get("category_label") or "text")}</div>
         <h2>{_escape(post.get("title") or "")}</h2>
@@ -359,11 +359,11 @@ def _document(*, page_url: str, body: str) -> str:
       padding: 0;
     }}
 
-    .collection-item {{
+    .series-item {{
       break-before: page;
     }}
 
-    .collection-item:first-child {{
+    .series-item:first-child {{
       break-before: auto;
     }}
 
