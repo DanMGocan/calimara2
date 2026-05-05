@@ -61,6 +61,7 @@ class BackendStabilizationTests(unittest.TestCase):
         user: models.User,
         title: str,
         *,
+        category: str = "proza_scurta",
         moderation_status: str = "approved",
         theme_analysis_status: str = "completed",
         themes=None,
@@ -72,7 +73,7 @@ class BackendStabilizationTests(unittest.TestCase):
             title=title,
             slug=f"{title.lower().replace(' ', '-')}-{self.slug_counter}",
             content=f"content for {title}",
-            category="proza_scurta",
+            category=category,
             moderation_status=moderation_status,
             theme_analysis_status=theme_analysis_status,
             themes=themes or [],
@@ -226,7 +227,7 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertIsInstance(log_entry.ai_details, dict)
         self.assertTrue(log_entry.ai_details["nested"]["ok"])
 
-    def test_run_init_database_preserves_existing_schema_by_default(self):
+    def test_run_init_database_skips_existing_schema_without_migrations(self):
         import run
 
         executed_sql = []
@@ -274,9 +275,8 @@ class BackendStabilizationTests(unittest.TestCase):
 
         self.assertTrue(any("FROM pg_database" in sql for sql in executed_sql))
         self.assertTrue(any("to_regclass" in sql for sql in executed_sql))
-        self.assertTrue(any("ADD COLUMN IF NOT EXISTS location" in sql for sql in executed_sql))
-        self.assertTrue(any("ADD COLUMN IF NOT EXISTS profile_photo_storage_key" in sql for sql in executed_sql))
-        self.assertTrue(any("ADD COLUMN IF NOT EXISTS cover_photo_storage_key" in sql for sql in executed_sql))
+        self.assertFalse(any("ADD COLUMN" in sql for sql in executed_sql))
+        self.assertFalse(any("CREATE TABLE" in sql for sql in executed_sql))
         self.assertFalse(any("DROP DATABASE" in sql for sql in executed_sql))
         self.assertFalse(any("CREATE DATABASE" in sql for sql in executed_sql))
 
@@ -365,6 +365,64 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(active_payload["profile_photo_url"], "/api/utilizatori/profilemedia/media/profil")
         self.assertEqual(active_payload["cover_photo_url"], "/api/utilizatori/profilemedia/media/coperta")
 
+    def test_public_inventory_returns_read_only_user_items(self):
+        user = self.make_user("publicinventory")
+        user.gologani_balance = 77
+        item = models.ShopItem(
+            slug="public-frame",
+            name="Ramă publică",
+            description="Vizibilă în inventarul public.",
+            price=25,
+            slot="frame",
+            sort_order=1,
+        )
+        self.db.add(item)
+        self.db.flush()
+        self.db.add(models.UserInventoryItem(user_id=user.id, item_id=item.id))
+        self.db.add(models.UserEquippedItem(user_id=user.id, item_id=item.id, slot=item.slot))
+        self.db.commit()
+
+        payload = api_pages.user_public_inventory("publicinventory", db=self.db)
+
+        self.assertEqual(payload["owner"]["username"], "publicinventory")
+        self.assertEqual(payload["owner"]["gologani_balance"], 77)
+        self.assertEqual(len(payload["inventory"]), 1)
+        self.assertEqual(len(payload["equipped"]), 1)
+        self.assertEqual(payload["inventory"][0]["item"]["name"], "Ramă publică")
+        self.assertTrue(payload["inventory"][0]["item"]["equipped"])
+
+    def test_public_inventory_unknown_user_raises_404(self):
+        with self.assertRaises(HTTPException) as missing:
+            api_pages.user_public_inventory("missing-user", db=self.db)
+
+        self.assertEqual(missing.exception.status_code, 404)
+
+    def test_blog_all_works_returns_all_approved_posts_with_comment_counts(self):
+        user = self.make_user("allworks")
+        reader = self.make_user("allworksreader")
+        first = self.make_post(user, "First public work", category="poezie")
+        second = self.make_post(user, "Second public work", category="proza_scurta")
+        self.make_post(user, "Hidden work", moderation_status="pending")
+        self.db.add_all(
+            [
+                models.Comment(post_id=first.id, user_id=reader.id, content="approved", approved=True, moderation_status="approved"),
+                models.Comment(post_id=first.id, user_id=reader.id, content="pending", approved=False, moderation_status="pending"),
+                models.Like(post_id=second.id, user_id=reader.id),
+                models.SuperLike(post_id=second.id, user_id=reader.id),
+            ]
+        )
+        self.db.commit()
+
+        payload = api_pages.blog_all_works_data("allworks", db=self.db, current_user=None)
+
+        self.assertEqual(payload["blog_owner"]["username"], "allworks")
+        self.assertEqual([post["title"] for post in payload["posts"]], ["Second public work", "First public work"])
+        first_payload = next(post for post in payload["posts"] if post["id"] == first.id)
+        second_payload = next(post for post in payload["posts"] if post["id"] == second.id)
+        self.assertEqual(first_payload["comments_count"], 1)
+        self.assertEqual(second_payload["likes_count"], 1)
+        self.assertEqual(second_payload["super_likes_count"], 1)
+
     def test_google_login_redirects_with_sync_auth_url_helper(self):
         request = DummyRequest({})
 
@@ -380,6 +438,15 @@ class BackendStabilizationTests(unittest.TestCase):
             response.headers["location"],
             "https://accounts.google.com/o/oauth2/auth?client_id=test",
         )
+
+    def test_legacy_google_callback_route_remains_registered(self):
+        routes = {
+            (route.path, tuple(sorted(route.methods)))
+            for route in auth_routes.router.routes
+            if hasattr(route, "methods")
+        }
+
+        self.assertIn(("/auth/google/callback", ("GET",)), routes)
 
     def test_private_archive_includes_unapproved_owned_posts(self):
         user = self.make_user("author")

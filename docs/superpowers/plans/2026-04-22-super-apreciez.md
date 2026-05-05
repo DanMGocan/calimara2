@@ -134,7 +134,7 @@ CREATE TABLE stripe_events (
 
 - [ ] **Step 5: Verify schema applies**
 
-Run: `python scripts/initdb.py`
+Run: `CALIMARA_RESET_DATABASE=true python run.py`
 Expected: Completes without errors. A quick `\d super_likes` and `\d users` in psql should show the new tables/columns.
 
 - [ ] **Step 6: Commit**
@@ -2018,7 +2018,7 @@ git commit -m "docs: document Stripe env vars for Super-apreciez Premium"
 
 ## Task 20: End-to-end smoke checklist
 
-- [ ] Run `python scripts/initdb.py` to recreate the DB with the new schema.
+- [ ] Run `CALIMARA_RESET_DATABASE=true python run.py` to recreate the DB with the new schema.
 - [ ] Run `python -m unittest tests.test_super_apreciez tests.test_premium_webhook tests.test_backend_stabilization -v`. All pass.
 - [ ] Run `cd frontend && npm run build`. Clean build.
 - [ ] Run `python run.py`. Open `http://<dev-domain>/` — landing page loads.

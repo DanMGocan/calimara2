@@ -5,6 +5,8 @@
 
 -- Drop tables in reverse order of dependency
 DROP TABLE IF EXISTS stripe_events CASCADE;
+DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
+DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS super_likes CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS ai_jobs CASCADE;
@@ -694,7 +696,7 @@ CREATE TABLE ai_jobs (
     target_id INT NOT NULL,
     payload JSONB DEFAULT '{}'::jsonb NOT NULL,
     status VARCHAR(20) DEFAULT 'pending' NOT NULL
-        CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+        CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
     attempts INT DEFAULT 0 NOT NULL,
     max_attempts INT DEFAULT 3 NOT NULL,
     run_after TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -781,6 +783,43 @@ CREATE TABLE daily_stats (
 CREATE INDEX idx_ds_date ON daily_stats(stat_date);
 CREATE INDEX idx_ds_owner ON daily_stats(content_owner_id, stat_date);
 CREATE INDEX idx_ds_content ON daily_stats(content_type, content_id, stat_date);
+
+-- ===================================
+-- ADMIN AUDIT LOGS TABLE
+-- ===================================
+CREATE TABLE admin_audit_logs (
+    id SERIAL PRIMARY KEY,
+    actor_user_id INT,
+    actor_username VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    target_type VARCHAR(60) NOT NULL,
+    target_id INT,
+    reason TEXT,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_admin_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_admin_audit_actor ON admin_audit_logs(actor_user_id);
+CREATE INDEX idx_admin_audit_action ON admin_audit_logs(action);
+CREATE INDEX idx_admin_audit_target ON admin_audit_logs(target_type, target_id);
+CREATE INDEX idx_admin_audit_created ON admin_audit_logs(created_at);
+
+-- ===================================
+-- ADMIN DAILY METRICS TABLE
+-- ===================================
+CREATE TABLE admin_daily_metrics (
+    id SERIAL PRIMARY KEY,
+    stat_date DATE UNIQUE NOT NULL,
+    metrics JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX idx_admin_daily_metrics_date ON admin_daily_metrics(stat_date);
 
 -- ===================================
 -- SUPER LIKES TABLE

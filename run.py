@@ -243,7 +243,8 @@ def manage_systemd_service_if_needed():
     print("  Stop the service with:")
     print(f"    sudo systemctl stop {service_unit_name()}")
     print()
-    print("  Note: database data is preserved unless CALIMARA_RESET_DATABASE=true is set.")
+    print("  Note: run.py does not run database migrations.")
+    print("  Existing database data is preserved unless CALIMARA_RESET_DATABASE=true is set.")
     sys.exit(0)
 
 
@@ -360,88 +361,6 @@ def _database_url(database_name: str):
     )
 
 
-def _ensure_incremental_schema(connection):
-    """Apply additive schema updates when preserving an existing database."""
-    from sqlalchemy import text
-
-    statements = [
-        """
-        CREATE TABLE IF NOT EXISTS post_drafts (
-            id SERIAL PRIMARY KEY,
-            user_id INT NOT NULL,
-            title VARCHAR(255) DEFAULT '' NOT NULL,
-            content TEXT DEFAULT '' NOT NULL,
-            category VARCHAR(100) DEFAULT 'poezie' NOT NULL
-                CHECK (category IN ('poezie', 'proza_scurta')),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT fk_post_drafts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-        "ALTER TABLE users ALTER COLUMN subtitle TYPE TEXT",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(120)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS youtube_playlist_url VARCHAR(500)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_storage_backend VARCHAR(20)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_storage_key VARCHAR(500)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_content_type VARCHAR(100)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo_updated_at TIMESTAMP",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cover_photo_storage_backend VARCHAR(20)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cover_photo_storage_key VARCHAR(500)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cover_photo_content_type VARCHAR(100)",
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS cover_photo_updated_at TIMESTAMP",
-        "ALTER TABLE post_drafts ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'poezie' NOT NULL",
-        "CREATE INDEX IF NOT EXISTS idx_post_drafts_user_id ON post_drafts(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_post_drafts_user_updated ON post_drafts(user_id, updated_at DESC)",
-        "DROP TABLE IF EXISTS collection_posts CASCADE",
-        "DROP TABLE IF EXISTS collections CASCADE",
-        """
-        CREATE TABLE IF NOT EXISTS series (
-            id SERIAL PRIMARY KEY,
-            owner_id INT NOT NULL,
-            title VARCHAR(120) NOT NULL,
-            slug VARCHAR(140) UNIQUE NOT NULL,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT fk_series_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS series_posts (
-            id SERIAL PRIMARY KEY,
-            series_id INT NOT NULL,
-            post_id INT NOT NULL,
-            position INT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT uq_series_post UNIQUE (series_id, post_id),
-            CONSTRAINT uq_series_posts_post UNIQUE (post_id),
-            CONSTRAINT uq_series_position UNIQUE (series_id, position),
-            CONSTRAINT fk_sp_series FOREIGN KEY (series_id) REFERENCES series(id) ON DELETE CASCADE,
-            CONSTRAINT fk_sp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS idx_series_owner_id ON series(owner_id)",
-        "CREATE INDEX IF NOT EXISTS idx_series_slug ON series(slug)",
-        "CREATE INDEX IF NOT EXISTS idx_series_created_at ON series(created_at)",
-        "CREATE INDEX IF NOT EXISTS idx_sp_series_position ON series_posts(series_id, position)",
-        "CREATE INDEX IF NOT EXISTS idx_sp_post_id ON series_posts(post_id)",
-        """
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_trigger WHERE tgname = 'trg_series_updated_at'
-            ) THEN
-                CREATE TRIGGER trg_series_updated_at BEFORE UPDATE ON series
-                    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-            END IF;
-        END
-        $$;
-        """,
-    ]
-    for statement in statements:
-        connection.execute(text(statement))
-
-
 def _quote_identifier(identifier: str) -> str:
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier or ""):
         raise RuntimeError(f"Unsafe database name: {identifier!r}")
@@ -550,12 +469,8 @@ def init_database():
                     text("SELECT to_regclass('public.users')")
                 ).scalar()
             if users_table:
-                with engine.connect() as connection:
-                    _ensure_incremental_schema(connection)
-                    if hasattr(connection, "commit"):
-                        connection.commit()
                 print(f"  Database '{DB_NAME}' exists. Preserving data.")
-                print("  Set CALIMARA_RESET_DATABASE=true to rebuild it from schema.sql.")
+                print("  No migrations are run; reset/destroy the database to apply schema.sql changes.")
                 return
             print(f"  Database '{DB_NAME}' exists but schema is missing. Initializing schema.")
         except SQLAlchemyError as e:
@@ -762,7 +677,7 @@ def main():
     check_port_available(host, port)
     print("  Environment: OK")
 
-    # 2. Initialize database only when needed; existing data is preserved by default.
+    # 2. Initialize the database from schema.sql when missing or explicitly reset.
     print("[2/4] Initializing database...")
     init_database()
 

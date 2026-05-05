@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
-from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, api_pages, notification_routes, stats_routes, series_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes, writing_routes
+from .routers import auth_routes, user_routes, post_routes, message_routes, moderation_routes, admin_routes, api_pages, notification_routes, stats_routes, series_routes, super_like_routes, premium_routes, club_routes, audio_routes, forum_routes, shop_routes, writing_routes
 
 # Configure logging
 configure_error_logging()
@@ -144,6 +144,7 @@ app.include_router(user_routes.router)
 app.include_router(post_routes.router)
 app.include_router(message_routes.router)
 app.include_router(moderation_routes.router)
+app.include_router(admin_routes.router)
 app.include_router(api_pages.router)
 app.include_router(notification_routes.router)
 app.include_router(stats_routes.router)
@@ -159,7 +160,6 @@ app.include_router(writing_routes.router)
 # React frontend — serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
 LEGACY_FRONTEND_PATHS = {
-    "/admin",
     "/dashboard",
     "/create-post",
     "/messages",

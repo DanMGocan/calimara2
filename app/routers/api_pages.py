@@ -58,6 +58,7 @@ def serialize_user(user):
         "location": getattr(user, "location", None),
         "youtube_playlist_url": getattr(user, "youtube_playlist_url", None),
         "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
         "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
         "equipped_items": equipped_items,
         "facebook_url": getattr(user, 'facebook_url', None),
@@ -71,7 +72,46 @@ def serialize_user(user):
     }
 
 
-def serialize_post(post, include_owner=False, super_likes_count=None, viewer_super_liked=False):
+def serialize_shop_item(item, owned=False, equipped=False):
+    return {
+        "id": item.id,
+        "slug": item.slug,
+        "name": item.name,
+        "description": item.description,
+        "price": item.price,
+        "slot": item.slot,
+        "asset_url": item.asset_url,
+        "is_active": item.is_active,
+        "sort_order": item.sort_order,
+        "owned": owned,
+        "equipped": equipped,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+    }
+
+
+def serialize_inventory_item(entry, equipped_ids):
+    return {
+        "id": entry.id,
+        "item": serialize_shop_item(
+            entry.item,
+            owned=True,
+            equipped=entry.item_id in equipped_ids,
+        ),
+        "purchased_at": entry.purchased_at,
+    }
+
+
+def serialize_equipped_item(entry):
+    return {
+        "id": entry.id,
+        "slot": entry.slot,
+        "item": serialize_shop_item(entry.item, owned=True, equipped=True),
+        "equipped_at": entry.equipped_at,
+    }
+
+
+def serialize_post(post, include_owner=False, super_likes_count=None, viewer_super_liked=False, comments_count=None):
     """Serialize a post object to dict for JSON response.
 
     super_likes_count/viewer_super_liked are accepted as precomputed values so
@@ -90,6 +130,7 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
         "category_name": get_category_name(post.category) if post.category else "",
         "view_count": post.view_count,
         "likes_count": post.likes_count,
+        "comments_count": comments_count if comments_count is not None else len(post.approved_comments),
         "super_likes_count": super_likes_count,
         "viewer_super_liked": viewer_super_liked,
         "moderation_status": post.moderation_status,
@@ -136,15 +177,32 @@ def compute_super_like_fields(db: Session, posts, current_user):
     return counts, liked
 
 
+def compute_approved_comment_counts(db: Session, posts):
+    if not posts:
+        return {}
+    post_ids = [p.id for p in posts]
+    return dict(
+        db.query(models.Comment.post_id, func.count(models.Comment.id))
+        .filter(
+            models.Comment.post_id.in_(post_ids),
+            models.Comment.approved == True,
+        )
+        .group_by(models.Comment.post_id)
+        .all()
+    )
+
+
 def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False):
     """Serialize a list of posts with efficient bulk super-like lookups."""
     counts, liked = compute_super_like_fields(db, posts, current_user)
+    comment_counts = compute_approved_comment_counts(db, posts)
     return [
         serialize_post(
             p,
             include_owner=include_owner,
             super_likes_count=counts.get(p.id, 0),
             viewer_super_liked=liked.get(p.id, False),
+            comments_count=comment_counts.get(p.id, 0),
         )
         for p in posts
     ]
@@ -303,6 +361,38 @@ def blog_data(
     }
 
 
+@router.get("/api/bloguri/{username}/toate-operele")
+def blog_all_works_data(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
+):
+    """All approved posts for a public author profile."""
+    user = crud.get_user_by_username(db, username=username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
+
+    posts = (
+        db.query(models.Post)
+        .filter(
+            models.Post.user_id == user.id,
+            models.Post.moderation_status == "approved",
+        )
+        .order_by(models.Post.created_at.desc(), models.Post.id.desc())
+        .all()
+    )
+    category_counts = crud.get_user_post_counts_by_category(db, user.id)
+
+    return {
+        "blog_owner": serialize_user(user),
+        "posts": serialize_posts_with_super_likes(db, posts, current_user),
+        "category_counts": [
+            {"category": key, "category_name": get_category_name(key), "count": category_counts.get(key, 0)}
+            for key in CATEGORIES
+        ],
+    }
+
+
 @router.get("/api/bloguri/{username}/postari/{slug}")
 def post_detail_data(
     request: Request,
@@ -432,3 +522,32 @@ def user_public_profile(
         raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
 
     return serialize_user(user)
+
+
+@router.get("/api/utilizator/{username}/inventar")
+def user_public_inventory(
+    username: str,
+    db: Session = Depends(get_db),
+):
+    """Public read-only inventory for a user profile."""
+    user = crud.get_user_by_username(db, username=username)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
+
+    inventory = crud.get_inventory_for_user(db, user.id)
+    equipped = crud.get_equipped_items_for_user(db, user.id)
+    equipped_ids = {entry.item_id for entry in equipped}
+
+    return {
+        "owner": serialize_user(user),
+        "inventory": [
+            serialize_inventory_item(entry, equipped_ids)
+            for entry in inventory
+            if entry.item
+        ],
+        "equipped": [
+            serialize_equipped_item(entry)
+            for entry in equipped
+            if entry.item
+        ],
+    }

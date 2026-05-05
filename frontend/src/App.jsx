@@ -1,5 +1,5 @@
 import { Component, Fragment, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { FaFacebookF, FaInstagram, FaPatreon, FaPaypal, FaTiktok, FaXTwitter } from "react-icons/fa6";
+import { FaCoins, FaFacebookF, FaInstagram, FaPatreon, FaPaypal, FaShirt, FaTiktok, FaXTwitter } from "react-icons/fa6";
 import { FiArrowDown, FiArrowUp, FiAward, FiBookOpen, FiExternalLink, FiHeart, FiImage, FiMapPin, FiMessageCircle, FiPlus, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
 import { GiPerspectiveDiceSixFacesRandom } from "react-icons/gi";
 import { SiBluesky, SiBuymeacoffee, SiYoutube } from "react-icons/si";
@@ -15,6 +15,18 @@ import {
   deletePostDraft,
   deleteSeries,
   fetchArchive,
+  adjustAdminUserGologani,
+  cancelAdminJob,
+  createAdminShopItem,
+  deleteAdminContent,
+  deleteAdminUser,
+  fetchAllWorks,
+  fetchAdminAuditLog,
+  fetchAdminContent,
+  fetchAdminJobs,
+  fetchAdminOverview,
+  fetchAdminShopItems,
+  fetchAdminUsers,
   fetchBlog,
   fetchCategory,
   fetchClub,
@@ -35,6 +47,7 @@ import {
   fetchPostDraft,
   fetchPostDrafts,
   fetchPendingModerationContent,
+  fetchPublicInventory,
   fetchRandomUser,
   fetchShopState,
   fetchExtendedModerationStats,
@@ -47,6 +60,8 @@ import {
   addSuperLike,
   removeSuperLike,
   reviewModerationLog,
+  retryAdminJob,
+  rollupAdminMetrics,
   purchaseShopItem,
   equipInventoryItem,
   unequipInventorySlot,
@@ -57,6 +72,12 @@ import {
   updateProfileSettings,
   uploadProfileMedia,
   updatePostDraft,
+  updateAdminShopItem,
+  updateAdminUserPremium,
+  updateAdminUserRoles,
+  moderateAdminContent,
+  reactivateAdminUser,
+  suspendAdminUser,
   updateSeries,
   fetchMySeries,
   fetchSeries,
@@ -114,6 +135,13 @@ const PREMIUM_TIERS = [
     summary: "Generează 250.000 caractere per ciclu și poți încărca înregistrări audio de autor."
   }
 ];
+
+const PROFILE_TIER_BADGES = {
+  free: { label: "Utilizator", className: "free" },
+  premium: { label: "Cronicar", className: "premium" },
+  audio: { label: "Membru Junimea", className: "audio" },
+  author_audio: { label: "La cenaclu' Flacăra", className: "author-audio" }
+};
 
 const AUTH_AVATAR_OPTIONS = [
   { key: "shapes", label: "Forme" },
@@ -240,10 +268,22 @@ const SUPPORT_PROFILE_LINKS = [
   { field: "buymeacoffee_url", label: "Cafea", Icon: SiBuymeacoffee, className: "coffee" }
 ];
 
+const PROFILE_LINK_MISSING_MESSAGE = "Acest utilizator nu a setat inca un link pentru aceasta platforma";
+
+const ALL_WORKS_SORT_OPTIONS = [
+  { key: "newest", label: "Cele mai noi" },
+  { key: "comments", label: "Comentarii" },
+  { key: "likes", label: "Aprecieri" },
+  { key: "super_likes", label: "Super-aprecieri" }
+];
+
 function profileLinks(user, definitions) {
-  return definitions
-    .map((definition) => ({ ...definition, url: user?.[definition.field] }))
-    .filter((item) => item.url);
+  return definitions.map((definition) => ({ ...definition, url: user?.[definition.field] || "" }));
+}
+
+function profileTierBadge(user) {
+  const tier = user?.is_premium ? user?.premium_tier || "premium" : "free";
+  return PROFILE_TIER_BADGES[tier] || PROFILE_TIER_BADGES.premium;
 }
 
 function htmlToText(html) {
@@ -448,19 +488,33 @@ function CompactAudioPlayer({ src, downloadUrl, className = "" }) {
 }
 
 function postToPiece(post) {
+  const sourceUrl = post.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : "#";
   return {
     title: post.title,
     author: post.owner?.username ?? "anonim",
+    authorUrl: post.owner ? blogUrl(post.owner.username) : "",
     year: formatDateTime(post.created_at),
     categoryLabel: post.category_name ?? categoryLabel(post.category),
     body: htmlToText(post.content),
     contentHtml: post.content,
-    sourceUrl: post.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : "#"
+    sourceUrl
   };
 }
 
 function postHref(post) {
   return post?.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : post?.url || "#";
+}
+
+function AuthorLink({ user, username, children, className = "author-link" }) {
+  const name = user?.username || username;
+  if (!name) return children ?? null;
+  return <a className={className} href={blogUrl(name)}>{children ?? name}</a>;
+}
+
+function PostTitleLink({ post, children, className = "post-title-link" }) {
+  const href = postHref(post);
+  if (!href || href === "#") return children ?? post?.title ?? null;
+  return <a className={className} href={href}>{children ?? post?.title}</a>;
 }
 
 function fallbackPiece(kind) {
@@ -689,9 +743,9 @@ function SideActions({ kind, onPoem, onStory, onAuthor, disabled, busy }) {
     <aside className="side-col">
       <div className="side-kicker">alege un text</div>
       <div className="actions-group">
-        <ActionRow icon={randomIcon} label="Poezie" active={kind === "poem"} disabled={disabled} compact onClick={onPoem} />
-        <ActionRow icon={randomIcon} label="Proză" active={kind === "story"} disabled={disabled} compact onClick={onStory} />
-        <ActionRow icon={randomIcon} label="Autor" disabled={busy === "author"} compact onClick={onAuthor} />
+        <ActionRow icon={randomIcon} label="Poezie aleatorie" active={kind === "poem"} disabled={disabled} compact onClick={onPoem} />
+        <ActionRow icon={randomIcon} label="Proza aleatorie" active={kind === "story"} disabled={disabled} compact onClick={onStory} />
+        <ActionRow icon={randomIcon} label="Autor aleatoriu" disabled={busy === "author"} compact onClick={onAuthor} />
       </div>
       <div className="side-hint">
         <span className="kbd">P</span>
@@ -720,18 +774,27 @@ function Rail({ stats }) {
   );
 }
 
-function JoinReasons() {
-  const features = [
-    "autorii necunoscuți sunt promovați primii",
-    "textele bune ies la suprafață",
-    "feedback direct de la cititori",
-    "comunități pentru poezie și proză"
+function LandingLinks() {
+  const links = [
+    { label: "Ce este calimara.ro?", href: mainPath("/ce-este-calimara") },
+    { label: "De ce sa ni te alaturi?", href: mainPath("/de-ce-sa-ni-te-alaturi") },
+    { label: "Functii si Caracterisitci", href: mainPath("/functii-si-caracteristici") }
   ];
+
   return (
-    <aside className="join-rail">
-      <div className="join-title">De ce să ni te alături?</div>
-      <div className="join-badges">
-        {features.map((feature) => <span className="join-badge" key={feature}>{feature}</span>)}
+    <aside className="landing-link-rail" aria-label="Informații călimara.ro">
+      <div className="landing-link-list">
+        {links.map((link, index) => (
+          <a className="landing-link-row" href={link.href} key={link.href}>
+            <span className="landing-link-number">{String(index + 1).padStart(2, "0")}</span>
+            <span className="landing-link-label">{link.label}</span>
+            <span className="landing-link-arrow" aria-hidden="true">
+              <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+                <path d="M1 5h11m0 0L9 1m3 4l-3 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </a>
+        ))}
       </div>
     </aside>
   );
@@ -790,9 +853,17 @@ function PieceCol({ piece, animKey }) {
           </a>
         ) : null}
       </div>
-      <h1 className="piece-title">{piece.title}</h1>
+      <h1 className="piece-title">
+        {piece.sourceUrl && piece.sourceUrl !== "#" ? (
+          <a href={piece.sourceUrl}>{piece.title}</a>
+        ) : piece.title}
+      </h1>
       <div className="piece-meta">
-        <span className="piece-author">{piece.author}</span>
+        {piece.authorUrl ? (
+          <a className="piece-author" href={piece.authorUrl}>{piece.author}</a>
+        ) : (
+          <span className="piece-author">{piece.author}</span>
+        )}
         {piece.year ? (
           <>
             <span className="piece-meta-dot" />
@@ -843,9 +914,11 @@ function SideMenu({ open, onClose, user }) {
     };
   }, [open]);
 
-  const adminItems = user?.is_admin || user?.is_moderator
-    ? [["Moderare", "moderare", mainPath("/moderare")]]
-    : [];
+  const adminItems = user?.is_admin
+    ? [["Admin", "operațiuni și moderare", mainPath("/admin")]]
+    : user?.is_moderator
+      ? [["Moderare", "moderare", mainPath("/moderare")]]
+      : [];
   const menuItems = user
     ? [
         ["Acasă", "pagina principală", mainPath("/")],
@@ -944,7 +1017,7 @@ function PageShell({ kicker, title, sub, side, children }) {
           <span className="piece-kind-badge">{kicker}</span>
           <span className="piece-kind-sep" />
         </div>
-        <h1 className="page-title">{title}</h1>
+        {title ? <h1 className="page-title">{title}</h1> : null}
         {sub ? (
           typeof sub === "string" ? <p className="page-sub">{sub}</p> : <div className="page-sub">{sub}</div>
         ) : null}
@@ -955,14 +1028,13 @@ function PageShell({ kicker, title, sub, side, children }) {
 }
 
 function PostCard({ post }) {
-  const href = postHref(post);
   const moderationText = moderationLabel(post.moderation_status);
   const moderationClass = post.moderation_status ? `status-${post.moderation_status}` : "";
   const moderationTitle = post.moderation_reason
     ? `${moderationText}: ${post.moderation_reason}`
     : moderationText;
   return (
-    <a className={`piece-card ${post.super_likes_count > 0 ? "has-super-like" : ""}`} href={href}>
+    <article className={`piece-card ${post.super_likes_count > 0 ? "has-super-like" : ""}`}>
       <div className="piece-card-kicker-row">
         <span className="piece-card-kicker">{post.category_name ?? categoryLabel(post.category)}</span>
         {moderationText ? (
@@ -971,13 +1043,15 @@ function PostCard({ post }) {
           </span>
         ) : null}
       </div>
-      <h2 className="piece-card-title">{post.title}</h2>
+      <h2 className="piece-card-title">
+        <PostTitleLink post={post}>{post.title}</PostTitleLink>
+      </h2>
       <p className="piece-card-excerpt">{htmlToText(post.content)}</p>
       <div className="piece-card-meta">
-        {post.owner?.username ? <span>{post.owner.username}</span> : null}
+        {post.owner?.username ? <AuthorLink user={post.owner} /> : null}
         {post.created_at ? <span>{formatDateTime(post.created_at)}</span> : null}
       </div>
-    </a>
+    </article>
   );
 }
 
@@ -1302,7 +1376,7 @@ function LandingView({ user }) {
           busy={busy}
         />
         <Rail stats={stats} />
-        <JoinReasons />
+        <LandingLinks />
         <AdSlot placement="rail" />
         {error ? <div className="inline-error">{error}</div> : null}
       </div>
@@ -1357,15 +1431,17 @@ function ClubsView() {
         <div className="list-grid">
           {data.clubs.map((club, index) => (
             <Fragment key={club.id}>
-              <a className="piece-card" href={mainPath(`/cluburi/${club.slug}`)}>
+              <article className="piece-card">
                 <div className="piece-card-kicker">{categoryLabel(club.speciality)}</div>
-                <h2 className="piece-card-title">{club.title}</h2>
+                <h2 className="piece-card-title">
+                  <a className="post-title-link" href={mainPath(`/cluburi/${club.slug}`)}>{club.title}</a>
+                </h2>
                 <p className="piece-card-excerpt">{club.description || club.motto || "Club literar pe călimara.ro."}</p>
                 <div className="piece-card-meta">
                   <span>{club.member_count} membri</span>
-                  {club.owner?.username ? <span>{club.owner.username}</span> : null}
+                  {club.owner?.username ? <AuthorLink user={club.owner} /> : null}
                 </div>
-              </a>
+              </article>
               {index === 1 ? <AdSlot placement="inline" /> : null}
             </Fragment>
           ))}
@@ -1413,11 +1489,27 @@ function ExternalProfileLinks({ links, className = "" }) {
     <div className={`profile-link-row ${className}`.trim()}>
       {links.map((link) => {
         const Icon = link.Icon || FiExternalLink;
+        const classes = `profile-link-btn ${link.className || ""} ${link.url ? "is-active" : "is-inactive"}`.trim();
+        if (link.url) {
+          return (
+            <a key={link.field} className={classes} href={link.url} target="_blank" rel="noreferrer" aria-label={link.label} title={link.label}>
+              <Icon aria-hidden="true" />
+            </a>
+          );
+        }
         return (
-          <a key={link.field} className={`profile-link-btn ${link.className || ""}`.trim()} href={link.url} target="_blank" rel="noreferrer">
+          <span
+            key={link.field}
+            className={classes}
+            role="button"
+            aria-disabled="true"
+            aria-label={`${link.label}: ${PROFILE_LINK_MISSING_MESSAGE}`}
+            title={PROFILE_LINK_MISSING_MESSAGE}
+            data-tooltip={PROFILE_LINK_MISSING_MESSAGE}
+            tabIndex={0}
+          >
             <Icon aria-hidden="true" />
-            <span>{link.label}</span>
-          </a>
+          </span>
         );
       })}
     </div>
@@ -1436,41 +1528,61 @@ function ProfileStat({ Icon, value, label }) {
   );
 }
 
+function ProfileStatLink({ Icon, href, label }) {
+  return (
+    <a className="profile-stat" href={href}>
+      <Icon aria-hidden="true" />
+      <span>
+        <strong>{label}</strong>
+      </span>
+    </a>
+  );
+}
+
 function ProfileHero({ data, postCount }) {
   const owner = data?.blog_owner;
   if (!owner) return null;
-  const socialLinks = profileLinks(owner, SOCIAL_PROFILE_LINKS);
-  const supportLinks = profileLinks(owner, SUPPORT_PROFILE_LINKS);
-  const categoryCount = (data.category_counts || []).filter((item) => item.count > 0).length;
+  const profileIconLinks = profileLinks(owner, [...SOCIAL_PROFILE_LINKS, ...SUPPORT_PROFILE_LINKS]);
   const coverStyle = owner.cover_photo_url ? { backgroundImage: `url(${owner.cover_photo_url})` } : undefined;
+  const tierBadge = profileTierBadge(owner);
 
   return (
     <section className={`profile-hero ${owner.cover_photo_url ? "has-cover" : ""}`} aria-label="Profil autor">
-      <div className="profile-cover" style={coverStyle} aria-hidden="true" />
-      <div className="profile-head">
-        <img className="profile-avatar" src={profileAvatarUrl(owner)} alt="" aria-hidden="true" />
-        <div className="profile-head-main">
-          <div className="profile-name-row">
-            <span className="piece-card-kicker">autor</span>
-            {owner.is_premium ? <span className="piece-card-status">premium</span> : null}
-          </div>
-          {owner.location ? (
-            <div className="profile-location">
-              <FiMapPin aria-hidden="true" />
-              <span>{owner.location}</span>
+      <div className="profile-cover" style={coverStyle}>
+        <div className="profile-identity">
+          <img className="profile-avatar" src={profileAvatarUrl(owner)} alt="" aria-hidden="true" />
+          <div className="profile-identity-main">
+            <h1 className="profile-username">{owner.username}</h1>
+            <div className="profile-name-row">
+              <span className={`profile-tier-badge ${tierBadge.className}`}>{tierBadge.label}</span>
             </div>
-          ) : null}
-          {owner.subtitle ? <RichTextContent html={owner.subtitle} className="profile-bio" /> : <p className="profile-bio-text">Texte publicate pe călimara.ro.</p>}
+          </div>
         </div>
       </div>
+      <ExternalProfileLinks links={profileIconLinks} className="profile-icon-row" />
+      {owner.subtitle ? (
+        <blockquote className="profile-motto">
+          <span className="profile-motto-mark">„</span>
+          <RichTextContent html={owner.subtitle} className="profile-motto-text" />
+          <span className="profile-motto-mark">”</span>
+        </blockquote>
+      ) : null}
+      {owner.location ? (
+        <div className="profile-location">
+          <FiMapPin aria-hidden="true" />
+          <span>{owner.location}</span>
+        </div>
+      ) : null}
       <div className="profile-stat-row" aria-label="Statistici autor">
         <ProfileStat Icon={FiBookOpen} value={postCount} label="texte" />
         <ProfileStat Icon={FiHeart} value={data.total_likes} label="aprecieri" />
         <ProfileStat Icon={FiMessageCircle} value={data.total_comments} label="comentarii" />
-        <ProfileStat Icon={FiAward} value={categoryCount} label="categorii" />
       </div>
-      <ExternalProfileLinks links={socialLinks} />
-      <ExternalProfileLinks links={supportLinks} className="support" />
+      <div className="profile-stat-row profile-economy-row" aria-label="Inventar și Gologani">
+        <ProfileStatLink Icon={FiBookOpen} href={`${blogUrl(owner.username)}/toate-operele`} label="Toate operele" />
+        <ProfileStat Icon={FaCoins} value={owner.gologani_balance} label="Gologani" />
+        <ProfileStatLink Icon={FaShirt} href={`${blogUrl(owner.username)}/inventar`} label="Inventar" />
+      </div>
       {owner.youtube_playlist_url ? (
         <a className="profile-playlist-link" href={owner.youtube_playlist_url} target="_blank" rel="noreferrer">
           <SiYoutube aria-hidden="true" />
@@ -1484,8 +1596,7 @@ function ProfileHero({ data, postCount }) {
 function ProfileHighlights({ data }) {
   const friends = data?.best_friends || [];
   const awards = data?.user_awards || [];
-  const categories = (data?.category_counts || []).filter((item) => item.count > 0);
-  if (!friends.length && !awards.length && !categories.length) return null;
+  if (!friends.length && !awards.length) return null;
   return (
     <section className="profile-highlights" aria-label="Repere profil">
       {friends.length ? (
@@ -1513,19 +1624,6 @@ function ProfileHighlights({ data }) {
           <div className="profile-chip-list">
             {awards.slice(0, 4).map((award) => (
               <span className="profile-chip" key={award.id}><FiAward aria-hidden="true" />{award.award_title}</span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {categories.length ? (
-        <div className="profile-panel">
-          <div className="profile-panel-heading">
-            <FiBookOpen aria-hidden="true" />
-            <div className="piece-card-kicker">categorii</div>
-          </div>
-          <div className="profile-chip-list">
-            {categories.map((category) => (
-              <span className="profile-chip" key={category.category}><FiBookOpen aria-hidden="true" />{category.category_name} · {formatNumber(category.count)}</span>
             ))}
           </div>
         </div>
@@ -1561,7 +1659,7 @@ function BlogView({ username }) {
   const uniquePosts = posts.filter((post, index, all) => all.findIndex((item) => item.id === post.id) === index);
   const totalPostCount = (data?.category_counts || []).reduce((sum, item) => sum + Number(item.count || 0), 0) || uniquePosts.length;
   return (
-    <PageShell kicker="profil" title={data?.blog_owner?.username ?? username}>
+    <PageShell kicker="profil" title={data ? null : username}>
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca blogul">{error}</StatusPanel> : null}
       {data ? (
@@ -1586,6 +1684,69 @@ function BlogView({ username }) {
   );
 }
 
+function AllWorksView({ username }) {
+  const { data, error, loading } = useAsync(() => fetchAllWorks(username), [username]);
+  const [category, setCategory] = useState("toate");
+  const [sortBy, setSortBy] = useState("newest");
+  const owner = data?.blog_owner;
+  const categories = (data?.category_counts || []).filter((item) => item.count > 0);
+  const posts = useMemo(() => {
+    const source = data?.posts || [];
+    const filtered = category === "toate" ? source : source.filter((post) => post.category === category);
+    const valueForSort = (post) => {
+      if (sortBy === "comments") return Number(post.comments_count || 0);
+      if (sortBy === "likes") return Number(post.likes_count || 0);
+      if (sortBy === "super_likes") return Number(post.super_likes_count || 0);
+      return new Date(post.created_at || 0).getTime();
+    };
+    return [...filtered].sort((a, b) => {
+      const primary = valueForSort(b) - valueForSort(a);
+      if (primary !== 0) return primary;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [data?.posts, category, sortBy]);
+
+  return (
+    <PageShell
+      kicker="opere"
+      title={owner?.username ? `Toate operele lui ${owner.username}` : "Toate operele"}
+      sub={owner ? `${formatNumber(data?.posts?.length || 0)} texte publicate.` : ""}
+    >
+      {loading ? <StatusPanel title="Se încarcă" /> : null}
+      {error ? <StatusPanel title="Nu am putut încărca operele">{error}</StatusPanel> : null}
+      {data ? (
+        <div className="all-works-controls" aria-label="Filtre opere">
+          <label className="profile-inline-label" htmlFor="all-works-category">Categorie</label>
+          <select id="all-works-category" className="cal-input" value={category} onChange={(event) => setCategory(event.target.value)}>
+            <option value="toate">Toate</option>
+            {categories.map((item) => (
+              <option key={item.category} value={item.category}>
+                {item.category_name} · {formatNumber(item.count)}
+              </option>
+            ))}
+          </select>
+          <label className="profile-inline-label" htmlFor="all-works-sort">Sortare</label>
+          <select id="all-works-sort" className="cal-input" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            {ALL_WORKS_SORT_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      {posts.length ? (
+        <div className="list-grid">
+          {posts.map((post, index) => (
+            <Fragment key={post.id}>
+              <PostCard post={{ ...post, owner }} />
+              {index === 1 ? <AdSlot placement="inline" /> : null}
+            </Fragment>
+          ))}
+        </div>
+      ) : data && !loading && !error ? <StatusPanel title="Nu există texte pentru filtrul ales" /> : null}
+    </PageShell>
+  );
+}
+
 function SeriesView({ slug }) {
   const { data, error, loading } = useAsync(() => fetchSeries(slug), [slug]);
   const posts = data?.posts?.map((entry) => entry.post).filter(Boolean) ?? [];
@@ -1595,7 +1756,7 @@ function SeriesView({ slug }) {
     <PageShell
       kicker="serie"
       title={data?.title ?? "Serie"}
-      sub={data?.description || (data?.owner?.username ? `Serie de ${data.owner.username}.` : "Texte în ordine pe călimara.ro.")}
+      sub={data?.description || (data?.owner?.username ? <>Serie de <AuthorLink user={data.owner} />.</> : "Texte în ordine pe călimara.ro.")}
     >
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca seria">{error}</StatusPanel> : null}
@@ -1611,13 +1772,15 @@ function SeriesView({ slug }) {
             <div className="list-grid">
               {posts.map((post, index) => (
                 <Fragment key={post.id}>
-                  <a className={`piece-card ${post.super_likes_count > 0 ? "has-super-like" : ""}`} href={postHref(post)}>
+                  <article className={`piece-card ${post.super_likes_count > 0 ? "has-super-like" : ""}`}>
                     <div className="piece-card-kicker">{categoryLabel(post.category)}</div>
-                    <h2 className="piece-card-title">{post.title}</h2>
+                    <h2 className="piece-card-title">
+                      <PostTitleLink post={post}>{post.title}</PostTitleLink>
+                    </h2>
                     <div className="piece-card-meta">
-                      {post.owner?.username ? <span>{post.owner.username}</span> : null}
+                      {post.owner?.username ? <AuthorLink user={post.owner} /> : null}
                     </div>
-                  </a>
+                  </article>
                   {index === 1 ? <AdSlot placement="inline" /> : null}
                 </Fragment>
               ))}
@@ -2536,21 +2699,71 @@ function AdminJournalRow({ log }) {
   );
 }
 
+function AdminPanel({ title, children, actions }) {
+  return (
+    <section className="admin-panel">
+      <div className="admin-panel-head">
+        <h2>{title}</h2>
+        {actions ? <div className="admin-panel-actions">{actions}</div> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function adminPrompt(label, fallback = "") {
+  const value = window.prompt(label, fallback);
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function adminReason(label = "Motiv administrativ") {
+  return adminPrompt(label);
+}
+
+function AdminDataRow({ kicker, title, meta, preview, children }) {
+  return (
+    <article className="admin-row">
+      <div className="admin-row-head">
+        <div>
+          <div className="admin-badges">
+            {kicker ? <span className="piece-card-status">{kicker}</span> : null}
+          </div>
+          <h2 className="admin-row-title">{title}</h2>
+        </div>
+        {meta ? <div className="admin-row-meta">{meta}</div> : null}
+      </div>
+      {preview ? <p className="admin-preview">{preview}</p> : null}
+      {children ? <div className="admin-actions">{children}</div> : null}
+    </article>
+  );
+}
+
 function AdminDashboardView({ user }) {
-  const [activeTab, setActiveTab] = useState("pending");
+  const canAdmin = Boolean(user?.is_admin);
+  const canModerate = Boolean(user?.is_admin || user?.is_moderator);
+  const [activeTab, setActiveTab] = useState(canAdmin ? "overview" : "pending");
+  const [userSearch, setUserSearch] = useState("");
+  const [contentSearch, setContentSearch] = useState("");
+  const [contentType, setContentType] = useState("all");
   const [state, setState] = useState({
+    overview: null,
     stats: null,
     extendedStats: null,
     pending: [],
     flagged: [],
     logs: [],
+    users: [],
+    content: [],
+    jobs: [],
+    audit: [],
+    shop: [],
     error: "",
     loading: true
   });
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
-
-  const canModerate = Boolean(user?.is_admin || user?.is_moderator);
 
   const loadAdminData = useCallback(async () => {
     if (!canModerate) {
@@ -2566,23 +2779,50 @@ function AdminDashboardView({ user }) {
         fetchModerationQueue(),
         fetchModerationLogs({ limit: 100 })
       ]);
+      let adminData = {
+        overview: null,
+        users: [],
+        content: [],
+        jobs: [],
+        audit: [],
+        shop: []
+      };
+      if (canAdmin) {
+        const [overview, users, content, jobs, audit, shop] = await Promise.all([
+          fetchAdminOverview(),
+          fetchAdminUsers({ q: userSearch, limit: 50 }),
+          fetchAdminContent({ q: contentSearch, content_type: contentType, limit: 50 }),
+          fetchAdminJobs({ limit: 50 }),
+          fetchAdminAuditLog({ limit: 100 }),
+          fetchAdminShopItems()
+        ]);
+        adminData = {
+          overview,
+          users: users.users || [],
+          content: content.content || [],
+          jobs: jobs.jobs || [],
+          audit: audit.logs || [],
+          shop: Array.isArray(shop) ? shop : []
+        };
+      }
       setState({
         stats,
         extendedStats,
         pending: pending.content || [],
         flagged: flagged.queue || [],
         logs: logs.logs || [],
+        ...adminData,
         error: "",
         loading: false
       });
     } catch (requestError) {
       setState((current) => ({
         ...current,
-        error: requestError.message || "Nu am putut încărca moderarea.",
+        error: requestError.message || "Nu am putut încărca adminul.",
         loading: false
       }));
     }
-  }, [canModerate]);
+  }, [canAdmin, canModerate, contentSearch, contentType, userSearch]);
 
   useEffect(() => {
     loadAdminData();
@@ -2590,9 +2830,7 @@ function AdminDashboardView({ user }) {
 
   if (!user) return <AuthRequired />;
   if (!canModerate) {
-    return (
-      <PageShell kicker="admin" title="Acces refuzat" sub="Contul curent nu are drepturi de moderare." />
-    );
+    return <PageShell kicker="admin" title="Acces refuzat" sub="Contul curent nu are drepturi de moderare." />;
   }
 
   const runAction = async (key, action) => {
@@ -2611,7 +2849,7 @@ function AdminDashboardView({ user }) {
 
   const approvePending = (item) => runAction(
     `pending:${item.type}:${item.id}:approve`,
-    () => moderateContent(item.type, item.id, { action: "approve", reason: "Aprobat din panoul de moderare" })
+    () => moderateContent(item.type, item.id, { action: "approve", reason: "Aprobat din panoul de administrare" })
   );
   const rejectPending = (item, reason) => runAction(
     `pending:${item.type}:${item.id}:reject`,
@@ -2619,41 +2857,143 @@ function AdminDashboardView({ user }) {
   );
   const approveFlagged = (item) => runAction(
     `flagged:${item.log_id}:approve`,
-    () => reviewModerationLog(item.log_id, { action: "approved", reason: "Aprobat din panoul de moderare" })
+    () => reviewModerationLog(item.log_id, { action: "approved", reason: "Aprobat din panoul de administrare" })
   );
   const rejectFlagged = (item, reason) => runAction(
     `flagged:${item.log_id}:reject`,
     () => reviewModerationLog(item.log_id, { action: "rejected", reason })
   );
 
-  const tabs = [
-    ["pending", "În așteptare AI", state.pending.length],
-    ["flagged", "Marcate", state.flagged.length],
-    ["journal", "Jurnal", state.logs.length]
-  ];
+  const changeRoles = (target, next) => {
+    const reason = adminReason("Motiv schimbare roluri");
+    if (!reason) return;
+    runAction(`user:${target.id}:roles`, () => updateAdminUserRoles(target.id, { ...next, reason }));
+  };
+  const suspendTarget = (target) => {
+    const reason = adminReason("Motiv suspendare");
+    if (!reason) return;
+    runAction(`user:${target.id}:suspend`, () => suspendAdminUser(target.id, reason));
+  };
+  const reactivateTarget = (target) => {
+    const reason = adminReason("Motiv reactivare");
+    if (!reason) return;
+    runAction(`user:${target.id}:reactivate`, () => reactivateAdminUser(target.id, reason));
+  };
+  const premiumTarget = (target) => {
+    const tier = adminPrompt("Tier premium: free, premium, audio, author_audio", target.premium_tier || "free");
+    if (!tier) return;
+    const reason = adminReason("Motiv modificare premium");
+    if (!reason) return;
+    const days = tier === "free" ? 0 : Number(adminPrompt("Valabilitate în zile", "30") || 30);
+    const premiumUntil = tier === "free" ? null : new Date(Date.now() + Math.max(days, 1) * 86400000).toISOString();
+    runAction(`user:${target.id}:premium`, () => updateAdminUserPremium(target.id, { premium_tier: tier, premium_until: premiumUntil, reason }));
+  };
+  const adjustCoins = (target) => {
+    const amount = Number(adminPrompt("Ajustare Gologani (+/-)", "25"));
+    if (!Number.isFinite(amount) || amount === 0) return;
+    const reason = adminReason("Motiv ajustare Gologani");
+    if (!reason) return;
+    runAction(`user:${target.id}:coins`, () => adjustAdminUserGologani(target.id, { amount, reason }));
+  };
+  const deleteTarget = (target) => {
+    if (!window.confirm(`Ștergi definitiv utilizatorul ${target.username}?`)) return;
+    const reason = adminReason("Motiv ștergere definitivă");
+    if (!reason) return;
+    runAction(`user:${target.id}:delete`, () => deleteAdminUser(target.id, reason));
+  };
+
+  const moderateListedContent = (item, action) => {
+    const reason = action === "approve" ? "Aprobat din panoul de administrare" : adminReason("Motiv acțiune conținut");
+    if (!reason) return;
+    runAction(`content:${item.type}:${item.id}:${action}`, () => moderateAdminContent(item.type, item.id, { action, reason }));
+  };
+  const flagListedContent = (item) => {
+    const reason = adminReason("Motiv marcare conținut");
+    if (!reason) return;
+    runAction(`content:${item.type}:${item.id}:flag`, () => updateAdminContent(item.type, item.id, { moderation_status: "flagged", reason }));
+  };
+  const editContentTitle = (item) => {
+    const title = adminPrompt("Titlu nou", item.title || "");
+    if (!title) return;
+    const reason = adminReason("Motiv editare conținut");
+    if (!reason) return;
+    runAction(`content:${item.type}:${item.id}:title`, () => updateAdminContent(item.type, item.id, { title, reason }));
+  };
+  const deleteListedContent = (item) => {
+    if (!window.confirm(`Ștergi definitiv ${contentTypeLabel(item.type)} #${item.id}?`)) return;
+    const reason = adminReason("Motiv ștergere conținut");
+    if (!reason) return;
+    runAction(`content:${item.type}:${item.id}:delete`, () => deleteAdminContent(item.type, item.id, reason));
+  };
+
+  const retryJob = (job) => {
+    const reason = adminReason("Motiv retry job");
+    if (!reason) return;
+    runAction(`job:${job.id}:retry`, () => retryAdminJob(job.id, reason));
+  };
+  const cancelJob = (job) => {
+    const reason = adminReason("Motiv anulare job");
+    if (!reason) return;
+    runAction(`job:${job.id}:cancel`, () => cancelAdminJob(job.id, reason));
+  };
+
+  const createShopItem = () => {
+    const slug = adminPrompt("Slug obiect magazin");
+    const name = slug ? adminPrompt("Nume obiect") : null;
+    const price = name ? Number(adminPrompt("Preț", "25")) : NaN;
+    const slot = Number.isFinite(price) ? adminPrompt("Slot: profile_badge, costume, frame, background, title", "profile_badge") : null;
+    if (!slug || !name || !slot || !Number.isFinite(price)) return;
+    runAction("shop:create", () => createAdminShopItem({ slug, name, price, slot }));
+  };
+  const toggleShopItem = (item) => runAction(`shop:${item.id}:toggle`, () => updateAdminShopItem(item.id, { is_active: !item.is_active }));
+  const repriceShopItem = (item) => {
+    const price = Number(adminPrompt("Preț nou", String(item.price ?? 0)));
+    if (!Number.isFinite(price)) return;
+    runAction(`shop:${item.id}:price`, () => updateAdminShopItem(item.id, { price }));
+  };
+
+  const runRollup = () => {
+    const date = adminPrompt("Dată rollup YYYY-MM-DD, gol pentru ieri", "");
+    runAction("metrics:rollup", () => rollupAdminMetrics(date || undefined));
+  };
+
+  const tabs = canAdmin
+    ? [
+        ["overview", "Ansamblu", state.overview?.cards?.pending_moderation],
+        ["users", "Utilizatori", state.users.length],
+        ["content", "Conținut", state.content.length],
+        ["pending", "Moderare", state.pending.length + state.flagged.length],
+        ["economy", "Economie", state.shop.length],
+        ["premium", "Premium", state.overview?.cards?.active_premium_users],
+        ["jobs", "Joburi", state.jobs.length],
+        ["audit", "Audit", state.audit.length]
+      ]
+    : [
+        ["pending", "În așteptare AI", state.pending.length],
+        ["flagged", "Marcate", state.flagged.length],
+        ["journal", "Jurnal", state.logs.length]
+      ];
+
+  const cards = state.overview?.cards || {};
+  const premiumByTier = state.overview?.premium?.by_tier || {};
+  const jobsByStatus = state.overview?.jobs?.by_status || {};
+  const traffic = state.overview?.traffic || {};
 
   return (
-    <PageShell kicker="admin" title="Moderare" sub={`Conectat ca ${user.username}.`}>
+    <PageShell kicker="admin" title={canAdmin ? "Admin" : "Moderare"} sub={`Conectat ca ${user.username}.`}>
       <div className="admin-stat-grid">
-        <AdminStat label="În așteptare" value={state.stats?.pending_count} sub="în coadă" />
-        <AdminStat label="Marcate" value={state.stats?.flagged_count} sub="AI / manual" />
-        <AdminStat label="Azi" value={state.stats?.today_actions} sub="decizii" />
-        <AdminStat label="Jurnal" value={state.extendedStats?.total_logs} sub="intrări" />
-        <AdminStat label="Revizie" value={state.extendedStats?.pending_review_count} sub="umană" />
+        <AdminStat label="Utilizatori" value={canAdmin ? cards.total_users : state.stats?.pending_count} sub={canAdmin ? `${formatNumber(cards.new_users)} noi` : "în coadă"} />
+        <AdminStat label="Conținut" value={canAdmin ? cards.total_posts : state.stats?.flagged_count} sub={canAdmin ? `${formatNumber(cards.pending_moderation)} pending` : "marcate"} />
+        <AdminStat label="Vizualizări" value={canAdmin ? traffic.unique_views : state.stats?.today_actions} sub={canAdmin ? "reale" : "decizii azi"} />
+        <AdminStat label="Premium" value={canAdmin ? cards.active_premium_users : state.extendedStats?.total_logs} sub={canAdmin ? "active" : "jurnal"} />
+        <AdminStat label="Joburi" value={canAdmin ? cards.failed_jobs : state.extendedStats?.pending_review_count} sub={canAdmin ? "eșuate" : "revizie"} />
       </div>
 
-      <div className="admin-tabs" role="tablist" aria-label="Moderare">
+      <div className="admin-tabs" role="tablist" aria-label="Admin">
         {tabs.map(([key, label, count]) => (
-          <button
-            key={key}
-            className={`admin-tab ${activeTab === key ? "active" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === key}
-            onClick={() => setActiveTab(key)}
-          >
+          <button key={key} className={`admin-tab ${activeTab === key ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
             <span>{label}</span>
-            <strong>{Number(count || 0).toLocaleString("ro-RO")}</strong>
+            <strong>{formatNumber(count || 0)}</strong>
           </button>
         ))}
       </div>
@@ -2662,46 +3002,173 @@ function AdminDashboardView({ user }) {
       {state.error ? <StatusPanel title="Nu am putut încărca adminul">{state.error}</StatusPanel> : null}
       {status ? <div className="inline-error">{status}</div> : null}
 
-      {!state.loading && !state.error && activeTab === "pending" ? (
-        state.pending.length ? (
+      {!state.loading && !state.error && canAdmin && activeTab === "overview" ? (
+        <div className="admin-grid">
+          <AdminPanel title="Operațiuni" actions={<button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={runRollup}>Rulează rollup</button>}>
+            <div className="admin-mini-grid">
+              <AdminStat label="Comentarii" value={cards.total_comments} sub={`${formatNumber(cards.new_comments)} noi`} />
+              <AdminStat label="Suspendați" value={cards.suspended_users} sub="conturi" />
+              <AdminStat label="Marcate" value={cards.flagged_moderation} sub="moderare" />
+              <AdminStat label="Magazin" value={cards.shop_items} sub="obiecte" />
+            </div>
+          </AdminPanel>
+          <AdminPanel title="Trafic">
+            <div className="admin-mini-grid">
+              <AdminStat label="Total" value={traffic.total_views} sub="views" />
+              <AdminStat label="Reale" value={traffic.unique_views} sub="dedup" />
+              <AdminStat label="Boți" value={traffic.bot_views} sub={`${traffic.bot_percentage || 0}%`} />
+            </div>
+          </AdminPanel>
+        </div>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "users" ? (
+        <AdminPanel
+          title="Utilizatori"
+          actions={<input className="cal-input admin-search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Caută username sau email" />}
+        >
           <div className="admin-feed">
-            {state.pending.map((item) => (
-              <AdminWorkRow
-                key={`${item.type}-${item.id}`}
-                item={item}
-                mode="pending"
-                busy={busy}
-                onApprove={approvePending}
-                onReject={rejectPending}
-              />
+            {state.users.map((target) => (
+              <AdminDataRow
+                key={target.id}
+                kicker={`${target.is_admin ? "admin" : target.is_moderator ? "moderator" : "utilizator"} · ${target.is_suspended ? "suspendat" : "activ"}`}
+                title={target.username}
+                meta={<><span>{target.email}</span><span>{formatDateTime(target.created_at)}</span></>}
+                preview={`${target.premium_tier || "free"} · ${formatGologani(target.gologani_balance)} · ${formatNumber(target.counts?.posts)} texte`}
+              >
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => changeRoles(target, { is_admin: !target.is_admin, is_moderator: target.is_moderator })}>{target.is_admin ? "Scoate admin" : "Fă admin"}</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => changeRoles(target, { is_admin: target.is_admin, is_moderator: !target.is_moderator })}>{target.is_moderator ? "Scoate moderator" : "Fă moderator"}</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => target.is_suspended ? reactivateTarget(target) : suspendTarget(target)}>{target.is_suspended ? "Reactivează" : "Suspendă"}</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => premiumTarget(target)}>Premium</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => adjustCoins(target)}>Gologani</button>
+                <button className="cal-btn danger" disabled={Boolean(busy)} onClick={() => deleteTarget(target)}>Șterge</button>
+              </AdminDataRow>
             ))}
           </div>
-        ) : <StatusPanel title="Nu există conținut în așteptare AI" />
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "content" ? (
+        <AdminPanel
+          title="Conținut"
+          actions={(
+            <div className="admin-controls">
+              <select className="cal-input" value={contentType} onChange={(event) => setContentType(event.target.value)}>
+                <option value="all">Toate</option>
+                <option value="post">Texte</option>
+                <option value="comment">Comentarii</option>
+                <option value="audio">Audio</option>
+                <option value="forum_thread">Discuții</option>
+                <option value="forum_reply">Răspunsuri</option>
+              </select>
+              <input className="cal-input admin-search" value={contentSearch} onChange={(event) => setContentSearch(event.target.value)} placeholder="Caută conținut" />
+            </div>
+          )}
+        >
+          <div className="admin-feed">
+            {state.content.map((item) => (
+              <AdminDataRow
+                key={`${item.type}-${item.id}`}
+                kicker={`${contentTypeLabel(item.type)} · ${decisionLabel(item.status)}`}
+                title={item.title || contentTypeLabel(item.type)}
+                meta={<><span>{item.author || "Necunoscut"}</span><span>{formatDateTime(item.created_at)}</span></>}
+                preview={htmlToText(item.content || "")}
+              >
+                <button className="cal-btn primary" disabled={Boolean(busy)} onClick={() => moderateListedContent(item, "approve")}>Aprobă</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => moderateListedContent(item, "reject")}>Respinge</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => flagListedContent(item)}>Marchează</button>
+                {item.type === "post" || item.type === "forum_thread" ? <button className="cal-btn" disabled={Boolean(busy)} onClick={() => editContentTitle(item)}>Titlu</button> : null}
+                <button className="cal-btn danger" disabled={Boolean(busy)} onClick={() => deleteListedContent(item)}>Șterge</button>
+              </AdminDataRow>
+            ))}
+          </div>
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && activeTab === "pending" ? (
+        <div className="admin-grid">
+          <AdminPanel title="În așteptare AI">
+            {state.pending.length ? (
+              <div className="admin-feed">
+                {state.pending.map((item) => <AdminWorkRow key={`${item.type}-${item.id}`} item={item} mode="pending" busy={busy} onApprove={approvePending} onReject={rejectPending} />)}
+              </div>
+            ) : <StatusPanel title="Nu există conținut în așteptare AI" />}
+          </AdminPanel>
+          <AdminPanel title="Marcate">
+            {state.flagged.length ? (
+              <div className="admin-feed">
+                {state.flagged.map((item) => <AdminWorkRow key={item.log_id} item={item} mode="flagged" busy={busy} onApprove={approveFlagged} onReject={rejectFlagged} />)}
+              </div>
+            ) : <StatusPanel title="Nu există conținut marcat" />}
+          </AdminPanel>
+        </div>
       ) : null}
 
       {!state.loading && !state.error && activeTab === "flagged" ? (
         state.flagged.length ? (
           <div className="admin-feed">
-            {state.flagged.map((item) => (
-              <AdminWorkRow
-                key={item.log_id}
-                item={item}
-                mode="flagged"
-                busy={busy}
-                onApprove={approveFlagged}
-                onReject={rejectFlagged}
-              />
-            ))}
+            {state.flagged.map((item) => <AdminWorkRow key={item.log_id} item={item} mode="flagged" busy={busy} onApprove={approveFlagged} onReject={rejectFlagged} />)}
           </div>
         ) : <StatusPanel title="Nu există conținut marcat" />
       ) : null}
 
-      {!state.loading && !state.error && activeTab === "journal" ? (
-        state.logs.length ? (
-          <div className="admin-feed">
-            {state.logs.map((log) => <AdminJournalRow key={log.id} log={log} />)}
+      {!state.loading && !state.error && (activeTab === "journal" || activeTab === "audit") ? (
+        activeTab === "journal" ? (
+          state.logs.length ? <div className="admin-feed">{state.logs.map((log) => <AdminJournalRow key={log.id} log={log} />)}</div> : <StatusPanel title="Jurnalul este gol" />
+        ) : (
+          <AdminPanel title="Audit administrativ">
+            <div className="admin-feed">
+              {state.audit.map((log) => (
+                <AdminDataRow key={log.id} kicker={log.action} title={`${log.target_type} #${log.target_id || "n/a"}`} meta={<><span>{log.actor_username}</span><span>{formatDateTime(log.created_at)}</span></>} preview={log.reason || ""} />
+              ))}
+            </div>
+          </AdminPanel>
+        )
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "economy" ? (
+        <AdminPanel title="Magazin și Gologani" actions={<button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={createShopItem}>Obiect nou</button>}>
+          <div className="admin-mini-grid">
+            <AdminStat label="Obiecte active" value={state.overview?.economy?.shop_items_active} sub="magazin" />
+            <AdminStat label="Inventar" value={state.overview?.economy?.inventory_items} sub="cumpărări" />
+            <AdminStat label="Gologani" value={state.overview?.economy?.gologani_balance_total} sub="în conturi" />
           </div>
-        ) : <StatusPanel title="Jurnalul este gol" />
+          <div className="admin-feed">
+            {state.shop.map((item) => (
+              <AdminDataRow key={item.id} kicker={`${slotLabel(item.slot)} · ${item.is_active ? "activ" : "inactiv"}`} title={item.name} meta={<><span>{item.slug}</span><span>{formatGologani(item.price)}</span></>}>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => toggleShopItem(item)}>{item.is_active ? "Dezactivează" : "Activează"}</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => repriceShopItem(item)}>Preț</button>
+              </AdminDataRow>
+            ))}
+          </div>
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "premium" ? (
+        <AdminPanel title="Premium">
+          <div className="admin-mini-grid">
+            <AdminStat label="Active" value={cards.active_premium_users} sub="abonamente" />
+            <AdminStat label="Cronicar" value={premiumByTier.premium} sub="tier" />
+            <AdminStat label="Audio" value={premiumByTier.audio} sub="tier" />
+            <AdminStat label="Autor audio" value={premiumByTier.author_audio} sub="tier" />
+          </div>
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "jobs" ? (
+        <AdminPanel title="Joburi AI">
+          <div className="admin-mini-grid">
+            {Object.entries(jobsByStatus).map(([key, value]) => <AdminStat key={key} label={key} value={value} sub="joburi" />)}
+          </div>
+          <div className="admin-feed">
+            {state.jobs.map((job) => (
+              <AdminDataRow key={job.id} kicker={`${job.job_type} · ${job.status}`} title={`${job.target_type} #${job.target_id}`} meta={<><span>{job.attempts}/{job.max_attempts}</span><span>{formatDateTime(job.created_at)}</span></>} preview={job.error_message || ""}>
+                <button className="cal-btn primary" disabled={Boolean(busy)} onClick={() => retryJob(job)}>Retry</button>
+                <button className="cal-btn danger" disabled={Boolean(busy)} onClick={() => cancelJob(job)}>Anulează</button>
+              </AdminDataRow>
+            ))}
+          </div>
+        </AdminPanel>
       ) : null}
     </PageShell>
   );
@@ -2966,7 +3433,7 @@ function CreatePostView({ user }) {
           ))}
         </select>
         <label className="auth-field" htmlFor="post-content">Text</label>
-        <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} />
+        <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} enterMode="soft-break" />
         <div className="draft-actions-row">
           <button className="cal-btn" type="button" onClick={() => saveDraft("manual")} disabled={submitting || draftSaving || !canSaveDraft}>
             {draftSaving ? "Se salvează..." : "Salvează ca ciornă"}
@@ -3257,6 +3724,59 @@ function InventoryView({ user }) {
   );
 }
 
+function PublicInventoryView({ username }) {
+  const { data, error, loading } = useAsync(() => fetchPublicInventory(username), [username]);
+  const owner = data?.owner;
+
+  return (
+    <PageShell
+      kicker="inventar"
+      title={owner?.username ? `Inventarul lui ${owner.username}` : "Inventar"}
+      sub={owner ? `${formatGologani(owner.gologani_balance)} în cont.` : ""}
+    >
+      {loading ? <StatusPanel title="Se încarcă" /> : null}
+      {error ? <StatusPanel title="Nu am putut încărca inventarul">{error}</StatusPanel> : null}
+      {data?.equipped?.length ? (
+        <section className="inventory-section" aria-label="Echipate">
+          <div className="piece-card-kicker">echipate</div>
+          <div className="inventory-list">
+            {data.equipped.map((entry) => (
+              <article className="inventory-row" key={entry.slot}>
+                <CosmeticPreview item={entry.item} />
+                <div>
+                  <div className="inventory-title">{entry.item.name}</div>
+                  <div className="inventory-meta">{slotLabel(entry.slot)}</div>
+                </div>
+                <span className="shop-price">echipat</span>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {data?.inventory?.length ? (
+        <section className="inventory-section" aria-label="Inventar">
+          <div className="piece-card-kicker">obiecte</div>
+          <div className="shop-grid">
+            {data.inventory.map((entry) => (
+              <article className="shop-card" key={entry.id}>
+                <CosmeticPreview item={entry.item} />
+                <div className="piece-card-kicker">{slotLabel(entry.item.slot)}</div>
+                <h2 className="piece-card-title">{entry.item.name}</h2>
+                <p className="piece-card-excerpt">{entry.item.description || "Obiect cosmetic pentru profil."}</p>
+                <div className="shop-card-foot">
+                  <span className="shop-price">{entry.item.equipped ? "echipat" : "în inventar"}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : !loading && !error ? (
+        <StatusPanel title="Inventarul este gol" />
+      ) : null}
+    </PageShell>
+  );
+}
+
 function ForumListView({ user }) {
   const [section, setSection] = useState("general");
   const { data, error, loading } = useAsync(
@@ -3294,15 +3814,17 @@ function ForumListView({ user }) {
       {data?.threads?.length ? (
         <div className="list-grid">
           {data.threads.map((thread) => (
-            <a className="piece-card" key={thread.id} href={mainPath(`/discutii/${thread.slug}`)}>
+            <article className="piece-card" key={thread.id}>
               <div className="piece-card-kicker">{forumSectionLabel(thread.section)}</div>
-              <h2 className="piece-card-title">{thread.title}</h2>
+              <h2 className="piece-card-title">
+                <a className="post-title-link" href={mainPath(`/discutii/${thread.slug}`)}>{thread.title}</a>
+              </h2>
               <div className="piece-card-meta">
-                {thread.author?.username ? <span>{thread.author.username}</span> : null}
+                {thread.author?.username ? <AuthorLink user={thread.author} /> : null}
                 <span>{thread.reply_count} răspunsuri</span>
                 {thread.last_activity_at ? <span>{formatDateTime(thread.last_activity_at)}</span> : null}
               </div>
-            </a>
+            </article>
           ))}
         </div>
       ) : !loading && !error ? <StatusPanel title="Nu există thread-uri aici" /> : null}
@@ -3446,7 +3968,11 @@ function ForumThreadDetailView({ user, slug }) {
   };
 
   return (
-    <PageShell kicker={data ? forumSectionLabel(data.section) : "discuții"} title={data?.title ?? "Discuții"} sub={data?.author?.username ? `Pornit de ${data.author.username}` : ""}>
+    <PageShell
+      kicker={data ? forumSectionLabel(data.section) : "discuții"}
+      title={data?.title ?? "Discuții"}
+      sub={data?.author?.username ? <>Pornit de <AuthorLink user={data.author} /></> : ""}
+    >
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca discuția">{error}</StatusPanel> : null}
       {data ? (
@@ -3456,7 +3982,7 @@ function ForumThreadDetailView({ user, slug }) {
           ) : null}
           <article className="forum-post">
             <div className="piece-card-meta">
-              <span>{data.author?.username ?? "anonim"}</span>
+              {data.author?.username ? <AuthorLink user={data.author} /> : <span>anonim</span>}
               <span>{formatDateTime(data.created_at)}</span>
               {data.moderation_status !== "approved" ? <span>{data.moderation_status}</span> : null}
             </div>
@@ -3469,7 +3995,7 @@ function ForumThreadDetailView({ user, slug }) {
                 {data.replies.map((item) => (
                   <article className="forum-reply" key={item.id}>
                     <div className="piece-card-meta">
-                      <span>{item.author?.username ?? "anonim"}</span>
+                      {item.author?.username ? <AuthorLink user={item.author} /> : <span>anonim</span>}
                       <span>{formatDateTime(item.created_at)}</span>
                       {item.moderation_status !== "approved" ? <span>{item.moderation_status}</span> : null}
                     </div>
@@ -3742,6 +4268,8 @@ function routeForLocation() {
 
   if (userFromHost) {
     if (path === "/") return { name: "blog", username: userFromHost };
+    if (path === "/toate-operele") return { name: "allWorks", username: userFromHost };
+    if (path === "/inventar") return { name: "publicInventory", username: userFromHost };
     if (path === "/panou") return { name: "dashboard" };
     if (path === "/profil") return { name: "profileSettings" };
     if (path === "/scrie" || path === "/create-post") return { name: "create" };
@@ -3754,7 +4282,7 @@ function routeForLocation() {
   if (path === "/profil") return { name: "profileSettings" };
   if (path === "/scrie" || path === "/create-post") return { name: "create" };
   if (path === "/mesaje") return { name: "messages" };
-  if (path === "/moderare") return { name: "admin" };
+  if (path === "/admin" || path === "/moderare") return { name: "admin" };
   if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/cluburi") return { name: "clubs" };
@@ -3786,6 +4314,8 @@ function RouteView({ route, user, authLoaded, onUserUpdate }) {
   if (route.name === "clubs") return <ClubsView />;
   if (route.name === "club") return <ClubDetailView slug={route.slug} />;
   if (route.name === "blog") return <BlogView username={route.username} />;
+  if (route.name === "allWorks") return <AllWorksView username={route.username} />;
+  if (route.name === "publicInventory") return <PublicInventoryView username={route.username} />;
   if (route.name === "post") return <PostDetailView username={route.username} slug={route.slug} user={user} />;
   if (route.name === "series") return <SeriesView slug={route.slug} />;
   if (route.name === "dashboard") return <DashboardView user={user} />;
@@ -3833,6 +4363,199 @@ class ErrorBoundary extends Component {
   }
 }
 
+const FLOATING_BACKGROUND_SHAPES = [
+  { kind: "circle", size: 5, left: "7%", top: "18%", velocityX: 14, velocityY: -18, rotation: "0deg", spin: 4 },
+  { kind: "square", size: 14, left: "83%", top: "13%", velocityX: -20, velocityY: 16, rotation: "12deg", spin: -5 },
+  { kind: "line", width: 42, height: 8, left: "48%", top: "21%", velocityX: -18, velocityY: 23, rotation: "-18deg", spin: 3 },
+  { kind: "triangle", size: 28, left: "21%", top: "72%", velocityX: 22, velocityY: -17, rotation: "-14deg", spin: 5 },
+  { kind: "circle", size: 44, left: "72%", top: "61%", velocityX: -24, velocityY: -14, rotation: "0deg", spin: 2 },
+  { kind: "line", width: 76, height: 8, left: "5%", top: "64%", velocityX: 21, velocityY: -19, rotation: "24deg", spin: -3 },
+  { kind: "square", size: 64, left: "12%", top: "46%", velocityX: 17, velocityY: 20, rotation: "-8deg", spin: 3 },
+  { kind: "triangle", size: 88, left: "90%", top: "36%", velocityX: -22, velocityY: 16, rotation: "18deg", spin: -4 },
+  { kind: "line", width: 118, height: 8, left: "65%", top: "29%", velocityX: -19, velocityY: 15, rotation: "9deg", spin: 2 },
+  { kind: "circle", size: 116, left: "36%", top: "8%", velocityX: 13, velocityY: 17, rotation: "0deg", spin: 1.5 },
+  { kind: "line", width: 156, height: 8, left: "30%", top: "88%", velocityX: 18, velocityY: -13, rotation: "-7deg", spin: -2 },
+  { kind: "square", size: 148, left: "58%", top: "76%", velocityX: -15, velocityY: -18, rotation: "10deg", spin: 2 },
+  { kind: "triangle", size: 176, left: "3%", top: "80%", velocityX: 16, velocityY: -12, rotation: "-22deg", spin: 2.5 },
+  { kind: "line", width: 192, height: 8, left: "74%", top: "48%", velocityX: -17, velocityY: -11, rotation: "-28deg", spin: 1 },
+  { kind: "circle", size: 200, left: "78%", top: "82%", velocityX: -12, velocityY: -14, rotation: "0deg", spin: 1 }
+];
+
+function clampNumber(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function resolveViewportOffset(value, viewportSize) {
+  const text = String(value).trim();
+  if (text.endsWith("%")) return (Number.parseFloat(text) / 100) * viewportSize;
+  return Number.parseFloat(text) || 0;
+}
+
+function FloatingShapeIcon({ kind }) {
+  if (kind === "line") {
+    return <line className="bg-shape-outline" x1="4" y1="50" x2="96" y2="50" />;
+  }
+  if (kind === "triangle") {
+    return <polygon className="bg-shape-outline" points="50 8 92 88 8 88" />;
+  }
+  if (kind === "square") {
+    return <rect className="bg-shape-outline" x="8" y="8" width="84" height="84" />;
+  }
+  return <circle className="bg-shape-outline" cx="50" cy="50" r="44" />;
+}
+
+function FloatingBackgroundShapes() {
+  const shapeRefs = useRef([]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const items = FLOATING_BACKGROUND_SHAPES.map((shape, index) => {
+      const width = shape.width ?? shape.size;
+      const height = shape.height ?? shape.size;
+      return {
+        el: shapeRefs.current[index],
+        shape,
+        width,
+        height,
+        x: null,
+        y: null,
+        velocityX: shape.velocityX,
+        velocityY: shape.velocityY,
+        angle: Number.parseFloat(shape.rotation) || 0,
+        spin: shape.spin || 0,
+        baseX: 0,
+        baseY: 0,
+        maxX: 0,
+        maxY: 0
+      };
+    }).filter((item) => item.el);
+    let animationFrame = 0;
+    let lastTime = 0;
+
+    const applyTransform = (item) => {
+      item.el.style.transform = `translate3d(${item.x - item.baseX}px, ${item.y - item.baseY}px, 0) rotate(${item.angle}deg)`;
+    };
+
+    const syncBounds = (resetPosition = false) => {
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      items.forEach((item) => {
+        item.baseX = resolveViewportOffset(item.shape.left, viewportWidth);
+        item.baseY = resolveViewportOffset(item.shape.top, viewportHeight);
+        item.maxX = Math.max(0, viewportWidth - item.width);
+        item.maxY = Math.max(0, viewportHeight - item.height);
+        if (resetPosition || item.x === null || item.y === null) {
+          item.x = clampNumber(item.baseX, 0, item.maxX);
+          item.y = clampNumber(item.baseY, 0, item.maxY);
+        } else {
+          item.x = clampNumber(item.x, 0, item.maxX);
+          item.y = clampNumber(item.y, 0, item.maxY);
+        }
+        applyTransform(item);
+      });
+    };
+
+    const step = (time) => {
+      if (!lastTime) lastTime = time;
+      const deltaSeconds = Math.min((time - lastTime) / 1000, 0.05);
+      lastTime = time;
+
+      items.forEach((item) => {
+        item.x += item.velocityX * deltaSeconds;
+        item.y += item.velocityY * deltaSeconds;
+        item.angle += item.spin * deltaSeconds;
+
+        if (item.x <= 0) {
+          item.x = 0;
+          item.velocityX = Math.abs(item.velocityX);
+        } else if (item.x >= item.maxX) {
+          item.x = item.maxX;
+          item.velocityX = -Math.abs(item.velocityX);
+        }
+
+        if (item.y <= 0) {
+          item.y = 0;
+          item.velocityY = Math.abs(item.velocityY);
+        } else if (item.y >= item.maxY) {
+          item.y = item.maxY;
+          item.velocityY = -Math.abs(item.velocityY);
+        }
+
+        applyTransform(item);
+      });
+
+      animationFrame = window.requestAnimationFrame(step);
+    };
+
+    const startAnimation = () => {
+      if (mediaQuery.matches || animationFrame) return;
+      lastTime = 0;
+      animationFrame = window.requestAnimationFrame(step);
+    };
+
+    const stopAnimation = () => {
+      if (!animationFrame) return;
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+    };
+
+    const handleMotionPreference = () => {
+      if (mediaQuery.matches) {
+        stopAnimation();
+        syncBounds(true);
+      } else {
+        startAnimation();
+      }
+    };
+    const handleResize = () => syncBounds(false);
+
+    syncBounds(true);
+    handleMotionPreference();
+    window.addEventListener("resize", handleResize);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", handleMotionPreference);
+    } else {
+      mediaQuery.addListener(handleMotionPreference);
+    }
+
+    return () => {
+      stopAnimation();
+      window.removeEventListener("resize", handleResize);
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener("change", handleMotionPreference);
+      } else {
+        mediaQuery.removeListener(handleMotionPreference);
+      }
+    };
+  }, []);
+
+  return (
+    <div className="bg-shape-scene">
+      {FLOATING_BACKGROUND_SHAPES.map((shape, index) => (
+        <span
+          className={`bg-shape bg-shape-${shape.kind}`}
+          ref={(node) => {
+            shapeRefs.current[index] = node;
+          }}
+          key={`${shape.kind}-${shape.size ?? shape.width}-${index}`}
+          style={{
+            "--shape-size": `${shape.size ?? shape.width}px`,
+            "--shape-width": `${shape.width ?? shape.size}px`,
+            "--shape-height": `${shape.height ?? shape.size}px`,
+            "--shape-left": shape.left,
+            "--shape-top": shape.top,
+            "--shape-rotation": shape.rotation
+          }}
+        >
+          <svg className="bg-shape-svg" viewBox="0 0 100 100" focusable="false">
+            <FloatingShapeIcon kind={shape.kind} />
+          </svg>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [routeVersion, setRouteVersion] = useState(0);
@@ -3876,7 +4599,9 @@ export function App() {
 
   return (
     <div className="site" data-logged={loggedIn ? "in" : "out"} data-bg="on">
-      <div className="bg-atmos" aria-hidden="true" />
+      <div className="bg-atmos" aria-hidden="true">
+        <FloatingBackgroundShapes />
+      </div>
       <NavBar loggedIn={loggedIn} user={auth.user} onMenu={() => setMenuOpen((open) => !open)} menuOpen={menuOpen} />
       <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
         <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>

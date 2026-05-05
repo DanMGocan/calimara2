@@ -39,8 +39,8 @@ pip install -r requirements.txt
 # Run the application (checks PostgreSQL, initializes DB if needed, starts uvicorn)
 python run.py
 
-# Initialize/reset database only (WARNING: wipes all data)
-python scripts/initdb.py
+# Rebuild database from schema.sql while starting (WARNING: wipes all data)
+CALIMARA_RESET_DATABASE=true python run.py
 ```
 
 ### PostgreSQL Setup
@@ -52,7 +52,7 @@ sudo apt install postgresql
 sudo -u postgres createuser --createdb calimara_user
 sudo -u postgres psql -c "ALTER USER calimara_user PASSWORD 'calimara_pass';"
 
-# The database itself is created automatically by run.py or initdb.py
+# The database itself is created automatically by run.py
 ```
 
 ### Test Data
@@ -124,8 +124,8 @@ Use `get_common_context(request, current_user)` for consistent template variable
 
 ### Database Initialization
 - **schema.sql**: PostgreSQL schema with sample data
-- **initdb.py**: Creates database if needed, executes schema.sql
-- **Database Initialization**: Existing databases are preserved by default. Set `CALIMARA_RESET_DATABASE=true` to rebuild from `schema.sql` and seed data.
+- **No migration scripts**: Do not add SQL migration scripts or runtime incremental schema patches. Put the complete current schema directly in `schema.sql`.
+- **Database Initialization**: `run.py` creates or resets the database from `schema.sql`. Existing databases are preserved and never migrated; destroy the DB or set `CALIMARA_RESET_DATABASE=true` after schema changes.
 
 ## Code Patterns
 
@@ -145,3 +145,4 @@ Check `request.state.is_subdomain` and `request.state.username` (set by Subdomai
 - do not try to use git, I will do that
 - do not have css or js in the html files, all should be put in the appropriate files, in the static folder
 - use only the latest libraries and APIs
+- do not create database migration scripts; keep the whole PostgreSQL schema in `schema.sql` and let `run.py` rebuild from it when the DB is destroyed/reset

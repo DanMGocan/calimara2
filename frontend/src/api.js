@@ -58,8 +58,19 @@ export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: "POST", body }),
   put: (path, body) => request(path, { method: "PUT", body }),
-  delete: (path) => request(path, { method: "DELETE" })
+  delete: (path, body) => request(path, { method: "DELETE", body })
 };
+
+function buildQuery(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
 
 export const AUTH_GOOGLE_PATH = "/autentificare/google";
 export const AUTH_GOOGLE_CALLBACK_PATH = "/autentificare/google/raspuns";
@@ -117,6 +128,10 @@ export function fetchCategory(categoryKey, sortBy = "newest") {
 
 export function fetchBlog(username) {
   return api.get(`/api/bloguri/${encodeURIComponent(username)}`);
+}
+
+export function fetchAllWorks(username) {
+  return api.get(`/api/bloguri/${encodeURIComponent(username)}/toate-operele`);
 }
 
 export function fetchPostDetail(username, slug) {
@@ -445,6 +460,10 @@ export function fetchShopState() {
   return api.get("/api/magazin/eu");
 }
 
+export function fetchPublicInventory(username) {
+  return api.get(`/api/utilizator/${encodeURIComponent(username)}/inventar`);
+}
+
 export function purchaseShopItem(itemId) {
   return api.post(`/api/magazin/obiecte/${encodeURIComponent(itemId)}/cumpara`, {});
 }
@@ -458,15 +477,15 @@ export function unequipInventorySlot(slot) {
 }
 
 export function fetchAdminShopItems() {
-  return api.get("/api/moderare/magazin/obiecte");
+  return api.get("/api/admin/shop/items");
 }
 
 export function createAdminShopItem(data) {
-  return api.post("/api/moderare/magazin/obiecte", data);
+  return api.post("/api/admin/shop/items", data);
 }
 
 export function updateAdminShopItem(itemId, data) {
-  return api.put(`/api/moderare/magazin/obiecte/${encodeURIComponent(itemId)}`, data);
+  return api.put(`/api/admin/shop/items/${encodeURIComponent(itemId)}`, data);
 }
 
 export function startPremiumCheckout(tier = "premium") {
@@ -556,6 +575,78 @@ export function reviewModerationLog(logId, data) {
 
 export function fetchExtendedModerationStats() {
   return api.get("/api/moderare/statistici/extinse");
+}
+
+export function fetchAdminOverview(params = {}) {
+  return api.get(`/api/admin/overview${buildQuery(params)}`);
+}
+
+export function rollupAdminMetrics(date) {
+  return api.post(`/api/admin/metrics/rollup${buildQuery({ date })}`, {});
+}
+
+export function fetchAdminUsers(params = {}) {
+  return api.get(`/api/admin/users${buildQuery(params)}`);
+}
+
+export function fetchAdminUser(userId) {
+  return api.get(`/api/admin/users/${encodeURIComponent(userId)}`);
+}
+
+export function updateAdminUserRoles(userId, data) {
+  return api.put(`/api/admin/users/${encodeURIComponent(userId)}/roles`, data);
+}
+
+export function suspendAdminUser(userId, reason) {
+  return api.post(`/api/admin/users/${encodeURIComponent(userId)}/suspend`, { reason });
+}
+
+export function reactivateAdminUser(userId, reason) {
+  return api.post(`/api/admin/users/${encodeURIComponent(userId)}/reactivate`, { reason });
+}
+
+export function updateAdminUserPremium(userId, data) {
+  return api.put(`/api/admin/users/${encodeURIComponent(userId)}/premium`, data);
+}
+
+export function adjustAdminUserGologani(userId, data) {
+  return api.post(`/api/admin/users/${encodeURIComponent(userId)}/gologani-adjustments`, data);
+}
+
+export function deleteAdminUser(userId, reason) {
+  return api.delete(`/api/admin/users/${encodeURIComponent(userId)}`, { reason });
+}
+
+export function fetchAdminContent(params = {}) {
+  return api.get(`/api/admin/content${buildQuery(params)}`);
+}
+
+export function updateAdminContent(contentType, contentId, data) {
+  return api.put(`/api/admin/content/${encodeURIComponent(contentType)}/${encodeURIComponent(contentId)}`, data);
+}
+
+export function moderateAdminContent(contentType, contentId, data) {
+  return api.post(`/api/admin/content/${encodeURIComponent(contentType)}/${encodeURIComponent(contentId)}/moderate`, data);
+}
+
+export function deleteAdminContent(contentType, contentId, reason) {
+  return api.delete(`/api/admin/content/${encodeURIComponent(contentType)}/${encodeURIComponent(contentId)}`, { reason });
+}
+
+export function fetchAdminJobs(params = {}) {
+  return api.get(`/api/admin/jobs${buildQuery(params)}`);
+}
+
+export function retryAdminJob(jobId, reason) {
+  return api.post(`/api/admin/jobs/${encodeURIComponent(jobId)}/retry`, { reason });
+}
+
+export function cancelAdminJob(jobId, reason) {
+  return api.post(`/api/admin/jobs/${encodeURIComponent(jobId)}/cancel`, { reason });
+}
+
+export function fetchAdminAuditLog(params = {}) {
+  return api.get(`/api/admin/audit-log${buildQuery(params)}`);
 }
 
 export function completeAuthSetup(data) {

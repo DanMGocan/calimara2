@@ -42,6 +42,15 @@ def test_content_schemas_store_sanitized_html_strings():
     assert reply.content == "<blockquote>Răspuns</blockquote><u>ok</u>"
 
 
+def test_poetry_line_breaks_are_preserved_inside_paragraphs():
+    content = "<p>vers 1<br>vers 2</p><p>strofa 2</p>"
+    post = schemas.PostCreate(title="Titlu", category="poezie", content=content)
+
+    assert post.content == content
+    assert rich_text.sanitize_rich_text(content) == content
+    assert rich_text.rich_text_to_plain_text(content) == "vers 1\nvers 2\n\nstrofa 2"
+
+
 def test_profile_subtitle_is_sanitized_and_limited_by_visible_text():
     setup = schemas.UserSetup(
         username="autor",

@@ -2,8 +2,8 @@
 """
 Populate the database with sample Romanian content for local development.
 
-Runs after `scripts/initdb.py` / `run.py`'s `init_database()` has produced an
-empty schema. Creates a handful of authors with short poetry and prose,
+Runs after `run.py`'s `init_database()` has produced an empty schema. Creates a
+handful of authors with short poetry and prose,
 comments, likes, best-friend links, featured posts, and one award each — just
 enough to make every page of the app feel alive when the user clicks around.
 

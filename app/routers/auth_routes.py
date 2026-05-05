@@ -48,6 +48,7 @@ async def google_login(request: Request):
         raise HTTPException(status_code=500, detail="Nu am putut iniția autentificarea")
 
 
+@router.get("/auth/google/callback", include_in_schema=False)
 @router.get("/autentificare/google/raspuns")
 @limiter.limit("5/minute")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
