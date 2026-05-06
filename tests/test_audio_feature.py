@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
-from app import audio_service, crud, models
+from app import audio_service, crud, models, statistics
 from app.week_util import utcnow_naive
 
 
@@ -44,12 +44,13 @@ class AudioFeatureTests(unittest.TestCase):
         self.db.refresh(user)
         return user
 
-    def post(self, owner: models.User) -> models.Post:
+    def post(self, owner: models.User, category: str = "poezie", slug: str = "poem") -> models.Post:
         post = models.Post(
             user_id=owner.id,
             title="Poem",
-            slug="poem",
+            slug=slug,
             content="<p>Text pentru citire.</p>",
+            category=category,
             moderation_status="approved",
         )
         self.db.add(post)
@@ -58,9 +59,9 @@ class AudioFeatureTests(unittest.TestCase):
         return post
 
     def test_audio_access_requires_audio_tier(self):
-        regular = self.user("regular", "premium")
-        audio = self.user("audio", "audio")
-        author_audio = self.user("authoraudio", "author_audio")
+        regular = self.user("regular", "trubadur")
+        audio = self.user("audio", "cronicar")
+        author_audio = self.user("authoraudio", "rapsod")
 
         self.assertTrue(regular.is_premium)
         self.assertFalse(regular.has_audio_access)
@@ -116,7 +117,7 @@ class AudioFeatureTests(unittest.TestCase):
 
     def test_post_audio_status_returns_url_without_audio_tier(self):
         owner = self.user("owner")
-        listener = self.user("listener", "premium")
+        listener = self.user("listener", "trubadur")
         post = self.post(owner)
         audio = crud.create_post_audio(
             self.db,
@@ -136,7 +137,7 @@ class AudioFeatureTests(unittest.TestCase):
 
     def test_post_audio_status_returns_local_stream_for_audio_tier(self):
         owner = self.user("owner")
-        listener = self.user("listener", "audio")
+        listener = self.user("listener", "cronicar")
         post = self.post(owner)
         audio = crud.create_post_audio(
             self.db,
@@ -153,7 +154,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(payload["playback_url"], f"/api/audio/redare/{audio.id}")
 
     def test_audio_quota_payload_for_audio_tier(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         payload = audio_service.audio_quota_payload(self.db, owner)
         self.assertTrue(payload["can_request"])
         self.assertEqual(payload["limit"], 100000)
@@ -161,14 +162,14 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(payload["remaining"], 100000)
 
     def test_audio_quota_payload_for_author_audio_tier(self):
-        owner = self.user("owner", "author_audio")
+        owner = self.user("owner", "rapsod")
         payload = audio_service.audio_quota_payload(self.db, owner)
         self.assertTrue(payload["can_request"])
         self.assertEqual(payload["limit"], 250000)
         self.assertEqual(payload["remaining"], 250000)
 
     def test_audio_quota_ignores_failed_tts_rows(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = self.post(owner)
         period_start, period_end = crud.audio_tts_quota_period_for_user(owner)
         failed = crud.create_tts_audio_request(
@@ -187,7 +188,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(payload["remaining"], 100000)
 
     def test_manual_tts_request_queues_and_counts_characters(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = self.post(owner)
         previous = os.environ.get("AUDIO_ENABLED")
         os.environ["AUDIO_ENABLED"] = "False"
@@ -207,7 +208,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(result["quota"]["used"], audio.tts_character_count)
 
     def test_manual_tts_request_rejects_over_quota_without_creating_audio(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = models.Post(
             user_id=owner.id,
             title="Long",
@@ -225,7 +226,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 0)
 
     def test_manual_tts_request_skips_existing_ready_audio_without_charge(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = self.post(owner)
         existing = crud.create_post_audio(
             self.db,
@@ -245,7 +246,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 1)
 
     def test_manual_tts_request_cancels_legacy_pending_and_queues_manual(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = self.post(owner)
         legacy = crud.create_post_audio(
             self.db,
@@ -262,7 +263,7 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 2)
 
     def test_manual_tts_request_retries_after_failed_audio_without_double_charging(self):
-        owner = self.user("owner", "audio")
+        owner = self.user("owner", "cronicar")
         post = self.post(owner)
         period_start, period_end = crud.audio_tts_quota_period_for_user(owner)
         failed = crud.create_tts_audio_request(
@@ -290,6 +291,102 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(result["queued"][0]["character_count"], expected_count)
         self.assertEqual(result["quota"]["used"], expected_count)
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 2)
+
+    def test_random_listen_audio_requires_audio_tier(self):
+        owner = self.user("owner")
+        listener = self.user("listener", "trubadur")
+        post = self.post(owner)
+        crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            source="tts",
+            status="ready",
+        )
+
+        with self.assertRaises(audio_service.AudioListenForbidden):
+            audio_service.random_listen_audio_track(self.db, listener, "poezie")
+
+    def test_random_listen_audio_filters_by_mode(self):
+        owner = self.user("owner")
+        listener = self.user("listener", "cronicar")
+        poem = self.post(owner, category="poezie", slug="poem-audio")
+        story = self.post(owner, category="proza_scurta", slug="story-audio")
+        crud.create_post_audio(self.db, post_id=poem.id, source="tts", status="ready")
+        crud.create_post_audio(self.db, post_id=story.id, source="tts", status="ready")
+
+        audio = audio_service.random_listen_audio_track(self.db, listener, "proza_scurta")
+
+        self.assertEqual(audio.post.category, "proza_scurta")
+
+    def test_record_listen_seconds_counts_author_and_post_once(self):
+        owner = self.user("owner")
+        listener = self.user("listener", "rapsod")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        first = audio_service.record_listen_seconds(
+            self.db,
+            listener,
+            event_id="listen-event-1",
+            audio_id=audio.id,
+            seconds=12,
+            mode="poezie",
+        )
+        second = audio_service.record_listen_seconds(
+            self.db,
+            listener,
+            event_id="listen-event-1",
+            audio_id=audio.id,
+            seconds=12,
+            mode="poezie",
+        )
+
+        self.db.refresh(owner)
+        self.db.refresh(post)
+        self.assertTrue(first["recorded"])
+        self.assertFalse(second["recorded"])
+        self.assertEqual(post.seconds_listened, 12)
+        self.assertEqual(owner.seconds_listened, 12)
+        self.assertEqual(self.db.query(models.AudioListenEvent).count(), 1)
+
+    def test_record_listen_seconds_rejects_wrong_mode(self):
+        owner = self.user("owner")
+        listener = self.user("listener", "cronicar")
+        post = self.post(owner, category="poezie")
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        with self.assertRaises(audio_service.AudioListenInvalid):
+            audio_service.record_listen_seconds(
+                self.db,
+                listener,
+                event_id="listen-event-2",
+                audio_id=audio.id,
+                seconds=5,
+                mode="proza_scurta",
+            )
+
+    def test_listen_stats_include_seconds(self):
+        owner = self.user("owner")
+        listener = self.user("listener", "cronicar")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+        audio_service.record_listen_seconds(
+            self.db,
+            listener,
+            event_id="listen-event-3",
+            audio_id=audio.id,
+            seconds=21,
+            mode="poezie",
+        )
+
+        post_stats = statistics.get_post_stats(self.db, post.id)
+        author_stats = statistics.get_author_stats(self.db, owner.id)
+        my_stats = statistics.get_my_stats(self.db, owner.id)
+
+        self.assertEqual(post_stats["seconds_listened"], 21)
+        self.assertEqual(author_stats["seconds_listened"], 21)
+        self.assertEqual(my_stats["seconds_listened"], 21)
+        self.assertEqual(my_stats["posts_detail"][0]["seconds_listened"], 21)
 
 
 if __name__ == "__main__":

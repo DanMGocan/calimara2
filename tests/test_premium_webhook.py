@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,22 +12,22 @@ os.environ.setdefault("DB_PASSWORD", "test")
 os.environ["STRIPE_ENABLED"] = "True"
 os.environ["STRIPE_SECRET_KEY"] = "sk_test_dummy"
 os.environ["STRIPE_WEBHOOK_SECRET"] = "whsec_dummy"
-os.environ["STRIPE_PRICE_ID_PREMIUM_MONTHLY"] = "price_dummy"
-os.environ["STRIPE_PRICE_ID_AUDIO_MONTHLY"] = "price_audio_dummy"
-os.environ["STRIPE_PRICE_ID_AUTHOR_AUDIO_MONTHLY"] = "price_author_audio_dummy"
+os.environ["STRIPE_PRICE_ID_TRUBADUR_MONTHLY"] = "price_dummy"
+os.environ["STRIPE_PRICE_ID_CRONICAR_MONTHLY"] = "price_cronicar_dummy"
+os.environ["STRIPE_PRICE_ID_RAPSOD_MONTHLY"] = "price_rapsod_dummy"
 os.environ["STRIPE_SUCCESS_URL"] = "http://x/success"
 os.environ["STRIPE_CANCEL_URL"] = "http://x/cancel"
 os.environ["STRIPE_CUSTOMER_PORTAL_RETURN_URL"] = "http://x/panou"
 
-from app import crud, models
+from app import crud, models, stripe_service
 from app.week_util import utcnow_naive
 
 
-def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, period_start_ts=None, tier="premium"):
+def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, period_start_ts=None, tier="trubadur"):
     price_id = {
-        "premium": "price_dummy",
-        "audio": "price_audio_dummy",
-        "author_audio": "price_author_audio_dummy",
+        "trubadur": "price_dummy",
+        "cronicar": "price_cronicar_dummy",
+        "rapsod": "price_rapsod_dummy",
     }.get(tier, "price_dummy")
     return {
         "id": event_id,
@@ -44,6 +45,45 @@ def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_
             }
         },
     }
+
+
+def _mk_price(unit_amount, interval="month", active=True):
+    return {
+        "unit_amount": unit_amount,
+        "currency": "eur",
+        "recurring": {"interval": interval},
+        "active": active,
+    }
+
+
+class PremiumPlanTests(unittest.TestCase):
+    def test_plan_prices_come_from_stripe_for_every_tier(self):
+        prices = {
+            "price_dummy": _mk_price(399),
+            "price_cronicar_dummy": _mk_price(799),
+            "price_rapsod_dummy": _mk_price(1299),
+        }
+
+        with patch.object(stripe_service.stripe.Price, "retrieve", side_effect=lambda price_id: prices[price_id]):
+            plans = stripe_service.list_premium_plans()
+
+        plan_by_key = {plan["key"]: plan for plan in plans}
+        self.assertEqual(plan_by_key["trubadur"]["price"], "3,99 €")
+        self.assertEqual(plan_by_key["cronicar"]["price"], "7,99 €")
+        self.assertEqual(plan_by_key["rapsod"]["price"], "12,99 €")
+        self.assertTrue(all(plan["available"] for plan in plans))
+        self.assertTrue(all(plan["cadence"] == "/ lună" for plan in plans))
+
+    def test_missing_stripe_price_id_marks_plan_unavailable(self):
+        with (
+            patch.object(stripe_service, "PRICE_ID_CRONICAR", ""),
+            patch.object(stripe_service.stripe.Price, "retrieve", return_value=_mk_price(399)),
+        ):
+            plans = stripe_service.list_premium_plans()
+
+        plan_by_key = {plan["key"]: plan for plan in plans}
+        self.assertFalse(plan_by_key["cronicar"]["available"])
+        self.assertEqual(plan_by_key["cronicar"]["price"], "Indisponibil")
 
 
 class WebhookIdempotencyTests(unittest.TestCase):
@@ -87,25 +127,25 @@ class WebhookIdempotencyTests(unittest.TestCase):
         self.assertIsNotNone(self.user.premium_until)
         self.assertIsNotNone(self.user.premium_period_start)
         self.assertEqual(self.user.stripe_subscription_id, "sub_1")
-        self.assertEqual(self.user.premium_tier, "premium")
+        self.assertEqual(self.user.premium_tier, "trubadur")
 
     def test_process_audio_subscription_sets_audio_tier(self):
         from app.routers.premium_routes import _apply_subscription_event
 
-        event = _mk_event("evt_audio", "customer.subscription.updated", tier="audio")
+        event = _mk_event("evt_audio", "customer.subscription.updated", tier="cronicar")
         _apply_subscription_event(self.db, event)
         self.db.refresh(self.user)
-        self.assertEqual(self.user.premium_tier, "audio")
+        self.assertEqual(self.user.premium_tier, "cronicar")
         self.assertTrue(self.user.has_audio_access)
         self.assertFalse(self.user.has_author_audio_access)
 
     def test_process_author_audio_subscription_sets_author_audio_tier(self):
         from app.routers.premium_routes import _apply_subscription_event
 
-        event = _mk_event("evt_author_audio", "customer.subscription.updated", tier="author_audio")
+        event = _mk_event("evt_author_audio", "customer.subscription.updated", tier="rapsod")
         _apply_subscription_event(self.db, event)
         self.db.refresh(self.user)
-        self.assertEqual(self.user.premium_tier, "author_audio")
+        self.assertEqual(self.user.premium_tier, "rapsod")
         self.assertTrue(self.user.has_audio_access)
         self.assertTrue(self.user.has_author_audio_access)
 

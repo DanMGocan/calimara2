@@ -1,12 +1,13 @@
 import os
 import logging
-from datetime import datetime
+import time
 from authlib.integrations.starlette_client import OAuth
 from authlib.integrations.starlette_client import OAuthError
 from fastapi import HTTPException, Request
 import httpx
 from sqlalchemy.orm import Session
 from . import crud, models, schemas
+from .utils import default_cover_seed
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def get_google_auth_url(request: Request) -> str:
     # Generate state with embedded session info for cross-domain validation
     state_data = {
         'csrf_token': secrets.token_urlsafe(32),
-        'timestamp': int(datetime.now().timestamp()),
+        'timestamp': int(time.time()),
         'host': request.headers.get('host', 'calimara.ro')
     }
     
@@ -98,7 +99,7 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
                 raise HTTPException(status_code=400, detail="Parametru OAuth state invalid")
         else:
             # Validate timestamp is recent (within 10 minutes) as fallback
-            current_time = int(datetime.now().timestamp())
+            current_time = int(time.time())
             if current_time - timestamp > 600:  # 10 minutes
                 logger.error(f"OAuth state expired: {current_time - timestamp} seconds old")
                 raise HTTPException(status_code=400, detail="Parametrul OAuth state a expirat")
@@ -205,7 +206,8 @@ def create_user_from_google(db: Session, google_user: schemas.GoogleUserInfo, se
         'email': google_user.email.lower(),
         'google_id': google_user.google_id,
         'subtitle': setup_data.subtitle,
-        'avatar_seed': setup_data.avatar_seed
+        'avatar_seed': setup_data.avatar_seed,
+        'cover_seed': setup_data.cover_seed or default_cover_seed(setup_data.username.lower())
     }
     
     new_user = crud.create_user_from_google(db, user_data)

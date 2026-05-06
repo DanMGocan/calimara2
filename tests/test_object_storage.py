@@ -125,7 +125,7 @@ def test_public_profile_media_redirects_to_signed_s3_url(monkeypatch):
             username="author",
             email="author@example.com",
             google_id="google-author",
-            premium_tier="premium",
+            premium_tier="trubadur",
             premium_until=utcnow_naive() + timedelta(days=30),
             profile_photo_storage_backend="s3",
             profile_photo_storage_key="users/1/profil.webp",

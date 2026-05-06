@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -13,13 +13,16 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
 from app import auth, crud, models, moderation, schemas, statistics
-from app.routers import api_pages, auth_routes, moderation_routes, post_routes, series_routes, user_routes
+from app.routers import admin_routes, api_pages, auth_routes, forum_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
 class DummyRequest:
-    def __init__(self, session, scheme="http"):
+    def __init__(self, session, scheme="http", headers=None, cookies=None, client_host="127.0.0.1"):
         self.session = session
         self.url = SimpleNamespace(scheme=scheme)
+        self.headers = headers or {}
+        self.cookies = cookies or {}
+        self.client = SimpleNamespace(host=client_host)
 
 
 class BackendStabilizationTests(unittest.TestCase):
@@ -280,6 +283,53 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertFalse(any("DROP DATABASE" in sql for sql in executed_sql))
         self.assertFalse(any("CREATE DATABASE" in sql for sql in executed_sql))
 
+    def test_admin_routes_tolerate_missing_optional_admin_tables(self):
+        admin_user = self.make_user("missingadmintables")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        self.db.commit()
+        self.db.refresh(admin_user)
+        self.make_post(admin_user, "Admin Visible Post")
+
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE admin_daily_metrics")
+            connection.exec_driver_sql("DROP TABLE admin_audit_logs")
+
+        overview = admin_routes.admin_overview(
+            Response(),
+            db=self.db,
+            current_user=admin_user,
+            from_date=None,
+            to_date=None,
+        )
+        self.assertEqual(overview["daily_metrics"], [])
+        self.assertGreaterEqual(overview["cards"]["total_users"], 1)
+
+        audit_log = admin_routes.list_admin_audit_log(
+            limit=100,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(audit_log["logs"], [])
+        self.assertTrue(audit_log["unavailable"])
+
+        detail = admin_routes.get_admin_user_detail(
+            admin_user.id,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(detail["audit"], [])
+
+        rollup = admin_routes.rollup_admin_metrics(
+            request=None,
+            target_date=None,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertFalse(rollup["persisted"])
+        self.assertEqual(rollup["date"], (datetime.now().date() - timedelta(days=1)).isoformat())
+
     def test_get_current_user_uses_id_lookup_and_clears_missing_sessions(self):
         user = self.make_user("alice")
         db_epoch = auth.get_db_epoch()
@@ -304,28 +354,58 @@ class BackendStabilizationTests(unittest.TestCase):
                 "google_id": "google-123",
                 "subtitle": "new user",
                 "avatar_seed": "seed-google",
+                "cover_seed": "cover-google",
             },
         )
 
         self.assertEqual(created_user.username, "googleuser")
+        self.assertEqual(created_user.cover_seed, "cover-google")
         self.assertEqual(crud.get_user_by_id(self.db, created_user.id).email, "google@example.com")
 
         alias_payload = schemas.MessageToUser.model_validate({"username": "reader", "content": "Salut"})
         canonical_payload = schemas.MessageToUser.model_validate(
             {"recipient_username": "reader", "content": "Salut"}
         )
-        profile_update = schemas.UserProfileUpdate.model_validate({"avatar_seed": "new-seed"})
+        profile_update = schemas.UserProfileUpdate.model_validate({"avatar_seed": "new-seed", "cover_seed": "new-cover"})
 
         self.assertEqual(alias_payload.recipient_username, "reader")
         self.assertEqual(canonical_payload.recipient_username, "reader")
         self.assertEqual(profile_update.avatar_seed, "new-seed")
+        self.assertEqual(profile_update.cover_seed, "new-cover")
         self.assertIsNone(profile_update.subtitle)
+
+    def test_auth_setup_persists_cover_seed(self):
+        request = DummyRequest(
+            {
+                "google_user": {
+                    "google_id": "google-cover-user",
+                    "email": "coveruser@example.com",
+                    "name": "Cover User",
+                }
+            }
+        )
+        payload = schemas.UserSetup.model_validate(
+            {
+                "username": "coveruser",
+                "subtitle": "setup",
+                "avatar_seed": "coveruser-shapes",
+                "cover_seed": "coveruser-cover-forest",
+            }
+        )
+
+        response = auth_routes.complete_user_setup(request, payload, self.db)
+        created = crud.get_user_by_username(self.db, "coveruser")
+
+        self.assertEqual(response["username"], "coveruser")
+        self.assertEqual(created.cover_seed, "coveruser-cover-forest")
+        self.assertEqual(request.session["user_id"], created.id)
 
     def test_profile_settings_update_links_location_and_donations(self):
         user = self.make_user("profilelinks")
         payload = schemas.UserProfileSettingsUpdate.model_validate(
             {
                 "location": "Iași",
+                "cover_seed": "profilelinks-cover-garden",
                 "youtube_playlist_url": "https://www.youtube.com/playlist?list=PL123",
                 "paypal_url": "https://paypal.me/profilelinks",
                 "patreon_url": "https://patreon.com/profilelinks",
@@ -336,6 +416,8 @@ class BackendStabilizationTests(unittest.TestCase):
         response = user_routes.update_profile_settings(payload, db=self.db, current_user=user)
 
         self.assertEqual(response["location"], "Iași")
+        self.assertEqual(response["cover_seed"], "profilelinks-cover-garden")
+        self.assertIn("profilelinks-cover-garden", response["cover_url"])
         self.assertEqual(response["youtube_playlist_url"], "https://www.youtube.com/playlist?list=PL123")
         self.assertEqual(response["paypal_url"], "https://paypal.me/profilelinks")
         self.assertEqual(response["patreon_url"], "https://patreon.com/profilelinks")
@@ -357,6 +439,7 @@ class BackendStabilizationTests(unittest.TestCase):
         expired_payload = api_pages.serialize_user(user)
         self.assertIsNone(expired_payload["profile_photo_url"])
         self.assertIsNone(expired_payload["cover_photo_url"])
+        self.assertIn("profilemedia-cover-sky", expired_payload["cover_url"])
         self.assertTrue(expired_payload["has_profile_photo"])
 
         user.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
@@ -364,6 +447,7 @@ class BackendStabilizationTests(unittest.TestCase):
         active_payload = api_pages.serialize_user(user)
         self.assertEqual(active_payload["profile_photo_url"], "/api/utilizatori/profilemedia/media/profil")
         self.assertEqual(active_payload["cover_photo_url"], "/api/utilizatori/profilemedia/media/coperta")
+        self.assertEqual(active_payload["cover_url"], "/api/utilizatori/profilemedia/media/coperta")
 
     def test_public_inventory_returns_read_only_user_items(self):
         user = self.make_user("publicinventory")
@@ -547,6 +631,116 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertIsNotNone(crud.get_post_draft(self.db, other_draft.id, other_user.id))
         enqueue.assert_called_once()
 
+    def test_landing_render_counts_returned_post_view_once_per_dedup_window(self):
+        author = self.make_user("landingwriter")
+        post = self.make_post(author, "Landing Poem", category="poezie")
+        request = DummyRequest(
+            {},
+            headers={"user-agent": "Mozilla/5.0 Calimara landing test"},
+            client_host="203.0.113.10",
+        )
+
+        with patch.object(statistics, "STATS_ENABLED", True), patch.object(
+            api_pages.crud,
+            "get_weighted_random_posts",
+            return_value=[post],
+        ):
+            first_payload = api_pages.landing_data(
+                request=request,
+                category="toate",
+                db=self.db,
+                current_user=None,
+            )
+
+            second_payload = api_pages.landing_data(
+                request=request,
+                category="toate",
+                db=self.db,
+                current_user=None,
+            )
+
+        self.db.refresh(post)
+        self.assertEqual(post.view_count, 1)
+        self.assertEqual(first_payload["random_posts"][0]["view_count"], 1)
+        self.assertEqual(first_payload["random_posts"][0]["vizualizari"], 1)
+        self.assertEqual(second_payload["random_posts"][0]["view_count"], 1)
+        self.assertEqual(second_payload["random_posts"][0]["vizualizari"], 1)
+
+        post_views = (
+            self.db.query(models.PageView)
+            .filter(
+                models.PageView.content_type == "post",
+                models.PageView.content_id == post.id,
+            )
+            .order_by(models.PageView.id.asc())
+            .all()
+        )
+        self.assertEqual(len(post_views), 2)
+        self.assertFalse(post_views[0].is_duplicate)
+        self.assertTrue(post_views[1].is_duplicate)
+
+    def test_post_detail_counts_unique_views_by_ip(self):
+        author = self.make_user("detailwriter")
+        post = self.make_post(author, "Detail Poem", category="poezie")
+        first_request = DummyRequest(
+            {},
+            headers={"user-agent": "Mozilla/5.0 Calimara detail test"},
+            client_host="203.0.113.20",
+        )
+        duplicate_request = DummyRequest(
+            {},
+            headers={"user-agent": "Mozilla/5.0 Calimara detail test"},
+            client_host="203.0.113.20",
+        )
+        different_ip_request = DummyRequest(
+            {},
+            headers={"user-agent": "Mozilla/5.0 Calimara detail test"},
+            client_host="203.0.113.21",
+        )
+
+        with patch.object(statistics, "STATS_ENABLED", True):
+            first_payload = api_pages.post_detail_data(
+                request=first_request,
+                username=author.username,
+                slug=post.slug,
+                db=self.db,
+                current_user=None,
+            )
+            duplicate_payload = api_pages.post_detail_data(
+                request=duplicate_request,
+                username=author.username,
+                slug=post.slug,
+                db=self.db,
+                current_user=None,
+            )
+            different_ip_payload = api_pages.post_detail_data(
+                request=different_ip_request,
+                username=author.username,
+                slug=post.slug,
+                db=self.db,
+                current_user=None,
+            )
+
+        self.db.refresh(post)
+        self.assertEqual(post.view_count, 2)
+        self.assertEqual(first_payload["post"]["view_count"], 1)
+        self.assertEqual(duplicate_payload["post"]["view_count"], 1)
+        self.assertEqual(different_ip_payload["post"]["view_count"], 2)
+
+        post_views = (
+            self.db.query(models.PageView)
+            .filter(
+                models.PageView.content_type == "post",
+                models.PageView.content_id == post.id,
+            )
+            .order_by(models.PageView.id.asc())
+            .all()
+        )
+        self.assertEqual(len(post_views), 3)
+        self.assertFalse(post_views[0].is_duplicate)
+        self.assertTrue(post_views[1].is_duplicate)
+        self.assertFalse(post_views[2].is_duplicate)
+
     def test_dev_seed_marks_gocandan_as_admin_and_moderator(self):
         import run
 
@@ -603,6 +797,33 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(popen.call_args.kwargs["cwd"], str(run.PROJECT_ROOT))
         self.assertIn(fake_process, run.child_processes)
         run.child_processes.clear()
+
+    def test_ai_worker_loop_survives_iteration_errors(self):
+        import scripts.process_ai_jobs as process_ai_jobs
+
+        calls = []
+
+        def fake_run_once(limit, worker_id):
+            calls.append((limit, worker_id))
+            if len(calls) == 1:
+                raise RuntimeError("database warming up")
+            raise KeyboardInterrupt()
+
+        argv = ["process_ai_jobs.py", "--loop", "--limit", "7", "--sleep", "0.01"]
+        with patch.object(process_ai_jobs.sys, "argv", argv), patch.object(
+            process_ai_jobs.ai_queue, "worker_id", return_value="test-worker"
+        ), patch.object(
+            process_ai_jobs, "run_once", side_effect=fake_run_once
+        ), patch.object(
+            process_ai_jobs.time, "sleep"
+        ) as sleep, patch.object(
+            process_ai_jobs.traceback, "print_exc"
+        ):
+            result = process_ai_jobs.main()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [(7, "test-worker"), (7, "test-worker")])
+        sleep.assert_called_once_with(0.01)
 
     def test_two_pass_moderation_sends_flagged_text_to_llm_review(self):
         classifier_response = SimpleNamespace(
@@ -849,11 +1070,15 @@ class BackendStabilizationTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/autentificare/google/raspuns"},
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
         ), patch.object(
             auth_routes,
             "MAIN_DOMAIN",
             "lvh.me:8000",
+        ), patch.object(
+            auth_routes,
+            "SUBDOMAIN_SUFFIX",
+            ".lvh.me:8000",
         ), patch.object(
             auth_routes.google_oauth,
             "handle_google_callback",
@@ -868,9 +1093,30 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(
             response.headers["location"],
-            "http://lvh.me:8000/autentificare/raspuns?status=success",
+            "http://oauthuser.lvh.me:8000",
         )
         self.assertEqual(request.session["user_id"], user.id)
+
+    def test_google_callback_failure_returns_to_landing_with_error_flag(self):
+        request = DummyRequest({}, scheme="https")
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes.google_oauth,
+            "handle_google_callback",
+            new=AsyncMock(side_effect=HTTPException(status_code=400, detail="bad oauth")),
+        ):
+            response = self.async_run(auth_routes.google_callback.__wrapped__(request, self.db))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "http://lvh.me:8000/?auth_error=google")
+        self.assertNotIn("user_id", request.session)
 
     def test_google_callback_sends_new_users_to_setup_and_clears_stale_login(self):
         existing_user = self.make_user("olduser")
@@ -884,7 +1130,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/autentificare/google/raspuns"},
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
         ), patch.object(
             auth_routes,
             "MAIN_DOMAIN",
@@ -990,6 +1236,79 @@ class BackendStabilizationTests(unittest.TestCase):
         deleted_comment = crud.delete_comment(self.db, comment.id)
         self.assertEqual(deleted_comment.id, comment.id)
         self.assertIsNone(self.db.query(models.Comment).filter(models.Comment.id == comment.id).first())
+
+    def test_mentions_create_notifications_after_public_approval(self):
+        author = self.make_user("mentionauthor")
+        commenter = self.make_user("mentioncommenter")
+        target = self.make_user("mentiontarget")
+        other_target = self.make_user("mentionother")
+        post = self.make_post(author, "Mention Post")
+
+        self.assertEqual(
+            crud.extract_mentioned_usernames("<p>@mentiontarget @mentiontarget a@ignored @MentionOther</p>"),
+            ["mentiontarget", "MentionOther"],
+        )
+        linked = crud.link_mentions_in_rich_text(
+            self.db,
+            '<p>Salut @mentiontarget și @missing.</p><script>bad()</script>',
+        )
+        self.assertIn('href="//mentiontarget.calimara.ro"', linked)
+        self.assertIn(">@mentiontarget</a>", linked)
+        self.assertIn("@missing", linked)
+        self.assertNotIn("<script", linked)
+
+        comment = crud.create_comment(
+            self.db,
+            schemas.CommentCreate(content="<p>Salut @mentiontarget @mentiontarget și @mentioncommenter.</p>"),
+            post_id=post.id,
+            user_id=commenter.id,
+        )
+        self.assertEqual(crud.get_unread_notification_count(self.db, target.id), 0)
+        crud.approve_comment(self.db, comment.id)
+        self.assertEqual(crud.get_unread_notification_count(self.db, target.id), 1)
+        self.assertEqual(crud.get_unread_notification_count(self.db, commenter.id), 0)
+        comment_notification = crud.get_notifications_for_user(self.db, target.id)[0]
+        self.assertEqual(comment_notification.type, "mention")
+        self.assertEqual(comment_notification.extra_data["source_type"], "comment")
+        self.assertIn(f"/{post.slug}#comment-{comment.id}", comment_notification.link)
+        comment_payload = api_pages.serialize_comment(comment, self.db)
+        self.assertIn('class="mention-link"', comment_payload["content"])
+        self.assertIn('href="//mentiontarget.calimara.ro"', comment_payload["content"])
+
+        approved = SimpleNamespace(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="ok",
+        )
+        thread = crud.create_forum_thread(
+            self.db,
+            author,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Mentions in forum",
+                content="Discuție pentru @mentiontarget și @mentionother.",
+            ),
+        )
+        crud.apply_forum_thread_moderation_result(self.db, thread, approved)
+        self.assertEqual(crud.get_unread_notification_count(self.db, target.id), 2)
+        self.assertEqual(crud.get_unread_notification_count(self.db, other_target.id), 1)
+        thread_payload = forum_routes._thread_detail_payload(self.db, thread, author)
+        self.assertIn('href="//mentiontarget.calimara.ro"', thread_payload["content"])
+        self.assertIn('href="//mentionother.calimara.ro"', thread_payload["content"])
+
+        reply, error = crud.create_forum_reply(
+            self.db,
+            commenter,
+            thread,
+            schemas.ForumReplyCreate(content="Răspuns pentru @mentiontarget."),
+        )
+        self.assertIsNone(error)
+        crud.apply_forum_reply_moderation_result(self.db, reply, approved)
+        latest_target_notification = crud.get_notifications_for_user(self.db, target.id)[0]
+        self.assertEqual(latest_target_notification.extra_data["source_type"], "forum_reply")
+        self.assertEqual(latest_target_notification.link, f"/discutii/{thread.slug}#reply-{reply.id}")
+        reply_payload = forum_routes._thread_detail_payload(self.db, thread, author)["replies"][0]
+        self.assertIn('href="//mentiontarget.calimara.ro"', reply_payload["content"])
 
     def test_message_crud_restores_conversation_lifecycle(self):
         alice = self.make_user("alice")
@@ -1130,7 +1449,7 @@ class BackendStabilizationTests(unittest.TestCase):
             schemas.ForumThreadCreate(
                 section="feedback",
                 title="Critică pentru un fragment",
-                content="Aș vrea feedback pe ritm.",
+                content="Aș vrea feedback pe ritm de la @bob.",
             ),
         )
         crud.apply_forum_thread_moderation_result(self.db, thread, flagged)
@@ -1140,6 +1459,7 @@ class BackendStabilizationTests(unittest.TestCase):
         crud.approve_content(self.db, "forum_thread", thread.id, moderator_user.id, "ok")
         self.db.refresh(thread)
         self.assertEqual(thread.moderation_status, "approved")
+        self.assertEqual(crud.get_unread_notification_count(self.db, bob.id), 1)
 
         reply, error = crud.create_forum_reply(
             self.db,

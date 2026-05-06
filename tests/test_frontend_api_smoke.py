@@ -82,7 +82,7 @@ def _create_user(
         avatar_seed=f"{username}-seed",
         is_admin=is_admin,
         is_moderator=is_moderator,
-        premium_tier="author_audio" if premium else "free",
+        premium_tier="rapsod" if premium else "free",
         premium_period_start=(
             datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
         ) if premium else None,
@@ -381,6 +381,22 @@ def smoke_client(monkeypatch, tmp_path):
         lambda customer_id: "https://stripe.test/portal",
     )
     monkeypatch.setattr(
+        stripe_service,
+        "list_premium_plans",
+        lambda: [
+            {
+                "key": "trubadur",
+                "name": "Trubadur",
+                "eyebrow": "Premium",
+                "price": "3,99 €",
+                "cadence": "/ lună",
+                "summary": "Smoke premium plan",
+                "benefits": ["Smoke benefit"],
+                "available": True,
+            }
+        ],
+    )
+    monkeypatch.setattr(
         diacritics,
         "add_diacritics",
         lambda **kwargs: {
@@ -441,6 +457,7 @@ SMOKE_CASES = [
     SmokeCase("fetchMe", "GET", _path("/api/utilizator/eu"), {200}),
     SmokeCase("updateMe", "PUT", _path("/api/utilizator/eu"), {200}, _json({"subtitle": "Updated smoke profile", "avatar_seed": "updated-seed"})),
     SmokeCase("updateProfileSettings", "PUT", _path("/api/utilizator/profil"), {200}, _json({
+        "cover_seed": "smokeauthor-cover-stars",
         "location": "București",
         "youtube_playlist_url": "https://www.youtube.com/playlist?list=PLsmoke123",
         "paypal_url": "https://paypal.me/smokeauthor",
@@ -543,12 +560,22 @@ SMOKE_CASES = [
     SmokeCase("fetchAdminShopItems", "GET", _path("/api/moderare/magazin/obiecte"), {200}),
     SmokeCase("createAdminShopItem", "POST", _path("/api/moderare/magazin/obiecte"), {201}, _json({"slug": "admin-smoke-item", "name": "Admin Smoke Item", "price": 5, "slot": "title"})),
     SmokeCase("updateAdminShopItem", "PUT", lambda data: f"/api/moderare/magazin/obiecte/{data.shop_item_id}", {200}, _json({"name": "Updated Smoke Item"})),
-    SmokeCase("startPremiumCheckout", "POST", _path("/api/premium/plata"), {200}, _json({"tier": "premium"})),
+    SmokeCase("fetchAdminOverview", "GET", _path("/api/admin/overview"), {200}),
+    SmokeCase("fetchAdminOverviewDateRange", "GET", _path("/api/admin/overview?from=2000-01-01&to=2099-12-31"), {200}),
+    SmokeCase("rollupAdminMetrics", "POST", _path("/api/admin/metrics/rollup?date=2026-01-01"), {200}, _json({})),
+    SmokeCase("fetchAdminUsers", "GET", _path("/api/admin/users"), {200}),
+    SmokeCase("fetchAdminContent", "GET", _path("/api/admin/content"), {200}),
+    SmokeCase("fetchAdminJobs", "GET", _path("/api/admin/jobs"), {200}),
+    SmokeCase("fetchAdminAuditLog", "GET", _path("/api/admin/audit-log"), {200}),
+    SmokeCase("fetchPremiumPlans", "GET", _path("/api/premium/planuri"), {200}),
+    SmokeCase("startPremiumCheckout", "POST", _path("/api/premium/plata"), {200}, _json({"tier": "trubadur"})),
     SmokeCase("openPremiumPortal", "POST", _path("/api/premium/portal"), {200}, _json({})),
     SmokeCase("fetchAudioConversionQuota", "GET", _path("/api/audio/cota-conversie"), {200}),
     SmokeCase("requestTtsConversions", "POST", _path("/api/audio/cereri-tts"), {200}, lambda data: {"post_ids": [data.post_id]}),
     SmokeCase("fetchSeriesAudioPlaylist", "GET", lambda data: f"/api/audio/serii/{data.series_id}/lista-redare", {200}),
     SmokeCase("fetchRandomAudio", "GET", _path("/api/audio/aleatoriu?category=poezie"), {200}),
+    SmokeCase("fetchListeningRandomAudio", "GET", _path("/api/audio/asculta/aleatoriu?mode=poezie"), {200}),
+    SmokeCase("recordAudioListenSeconds", "POST", _path("/api/audio/asculta/secunde"), {200}, lambda data: {"event_id": "smoke-listen-1", "audio_id": data.audio_id, "seconds": 3, "mode": "poezie"}),
     SmokeCase("audioStreamUrl", "GET", lambda data: f"/api/audio/redare/{data.audio_id}", {200}),
     SmokeCase("audioDownloadUrl", "GET", lambda data: f"/api/audio/descarcare/{data.audio_id}", {200}),
     SmokeCase(

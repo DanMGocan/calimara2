@@ -1,0 +1,65 @@
+import { FiBookOpen } from "react-icons/fi";
+import { fetchPostDetail, postPdfUrl } from "../api/public.js";
+import { TEXT_MODERATION_MESSAGE } from "../app/constants.js";
+import { PieceCol, postHref, postToPiece } from "../app/content.jsx";
+import { formatNumber } from "../app/format.js";
+import { useAsync } from "../app/hooks.js";
+import { AdSlot, StatusPanel } from "../app/layout.jsx";
+import { mainPath } from "../app/paths.js";
+import { PostActionTools } from "../app/post-actions.jsx";
+function SeriesContextPanel({ context }) {
+  if (!context?.series) return null;
+  const { series, previous_post: previousPost, next_post: nextPost } = context;
+  return (
+    <section className="piece-series" aria-label="Context serie">
+      <div className="piece-series-head">
+        <div>
+          <div className="piece-series-kicker">serie · {formatNumber(context.position)} din {formatNumber(context.total_posts)}</div>
+          <a className="piece-series-name" href={mainPath(`/serii/${series.slug}`)}>{series.title}</a>
+        </div>
+        <FiBookOpen aria-hidden="true" />
+      </div>
+      <div className="piece-series-links">
+        {previousPost ? (
+          <a className="piece-series-link" href={postHref(previousPost)}>Anterior: {previousPost.title}</a>
+        ) : <span className="piece-series-empty">Primul text din serie</span>}
+        {nextPost ? (
+          <a className="piece-series-link" href={postHref(nextPost)}>Următor: {nextPost.title}</a>
+        ) : <span className="piece-series-empty">Ultimul text din serie</span>}
+      </div>
+    </section>
+  );
+}
+function PostDetailView({ username, slug, user }) {
+  const { data, error, loading } = useAsync(() => fetchPostDetail(username, slug), [username, slug, user?.id]);
+  const piece = data ? postToPiece({ ...data.post, owner: data.blog_owner }) : null;
+  const actionPost = data ? { ...data.post, owner: data.blog_owner } : null;
+  const pdfHref = data?.blog_owner?.username && data?.post?.slug
+    ? postPdfUrl(data.blog_owner.username, data.post.slug)
+    : "#";
+  return (
+    <main className="stage stage-single">
+      {loading ? <StatusPanel title="Se încarcă" /> : null}
+      {error ? <StatusPanel title="Nu am putut încărca textul">{error}</StatusPanel> : null}
+      {piece ? (
+        <div className={`piece-wrap ${data.post.super_likes_count > 0 ? "has-super-like" : ""}`}>
+          <div className="detail-stack">
+            {data.post.moderation_status !== "approved" ? (
+              <StatusPanel title="Text în curs de moderare">{TEXT_MODERATION_MESSAGE}</StatusPanel>
+            ) : null}
+            <PieceCol piece={piece} animKey={slug} />
+            <SeriesContextPanel context={data.series_context} />
+            {data.post.moderation_status === "approved" ? (
+              <PostActionTools post={actionPost} user={user} pdfHref={pdfHref} className="detail-actions" />
+            ) : null}
+            <AdSlot placement="postFooter" />
+          </div>
+        </div>
+      ) : null}
+    </main>
+  );
+}
+
+export default function PostRoute({ route, user }) {
+  return <PostDetailView username={route.username} slug={route.slug} user={user} />;
+}

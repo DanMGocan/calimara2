@@ -205,6 +205,37 @@ def _views_by_day(db: Session, base_filters: list, from_date: Optional[date] = N
     return [{"date": str(r.day), "total": r.total, "real": r.real} for r in rows]
 
 
+def _listen_date_filter(from_date: Optional[date] = None, to_date: Optional[date] = None):
+    filters = []
+    if from_date:
+        filters.append(models.AudioListenEvent.created_at >= datetime.combine(from_date, datetime.min.time()))
+    if to_date:
+        filters.append(models.AudioListenEvent.created_at < datetime.combine(to_date + timedelta(days=1), datetime.min.time()))
+    return filters
+
+
+def _listened_seconds(db: Session, base_filters: list, date_filters: list) -> int:
+    value = (
+        db.query(func.coalesce(func.sum(models.AudioListenEvent.seconds), 0))
+        .filter(*base_filters, *date_filters)
+        .scalar()
+    )
+    return int(value or 0)
+
+
+def _listens_by_day(db: Session, base_filters: list, from_date: Optional[date] = None, to_date: Optional[date] = None) -> list[dict]:
+    date_filters = _listen_date_filter(from_date, to_date)
+    rows = db.query(
+        func.date(models.AudioListenEvent.created_at).label("day"),
+        func.coalesce(func.sum(models.AudioListenEvent.seconds), 0).label("seconds"),
+    ).filter(
+        *base_filters,
+        *date_filters,
+    ).group_by("day").order_by("day").all()
+
+    return [{"date": str(r.day), "seconds": int(r.seconds or 0)} for r in rows]
+
+
 def _device_breakdown(db: Session, base_filters: list, date_filters: list) -> dict:
     rows = db.query(
         models.PageView.device_type,
@@ -239,6 +270,8 @@ def get_post_stats(
     total = db.query(func.count()).filter(*base, *date_f).scalar()
     unique = db.query(func.count()).filter(*base, *date_f, _real_views_filter()).scalar()
     bot_count = db.query(func.count()).filter(*base, *date_f, models.PageView.is_bot == True).scalar()
+    listen_base = [models.AudioListenEvent.post_id == post_id]
+    listen_date_f = _listen_date_filter(from_date, to_date)
 
     top_referrers = db.query(
         models.PageView.referrer_url,
@@ -252,7 +285,9 @@ def get_post_stats(
         "total_views": total,
         "unique_views": unique,
         "bot_views": bot_count,
+        "seconds_listened": _listened_seconds(db, listen_base, listen_date_f),
         "views_by_day": _views_by_day(db, base, from_date, to_date),
+        "listens_by_day": _listens_by_day(db, listen_base, from_date, to_date),
         "devices": _device_breakdown(db, base, date_f),
         "visitors": _visitor_breakdown(db, base, date_f),
         "top_referrers": [{"url": r.referrer_url, "count": r.count} for r in top_referrers],
@@ -269,6 +304,8 @@ def get_author_stats(
     total = db.query(func.count()).filter(*base, *date_f).scalar()
     unique = db.query(func.count()).filter(*base, *date_f, _real_views_filter()).scalar()
     bot_count = db.query(func.count()).filter(*base, *date_f, models.PageView.is_bot == True).scalar()
+    listen_base = [models.AudioListenEvent.content_owner_id == user_id]
+    listen_date_f = _listen_date_filter(from_date, to_date)
 
     # Top posts
     top_posts = db.query(
@@ -301,9 +338,11 @@ def get_author_stats(
         "total_views": total,
         "unique_views": unique,
         "bot_views": bot_count,
+        "seconds_listened": _listened_seconds(db, listen_base, listen_date_f),
         "total_likes": total_likes,
         "total_comments": total_comments,
         "views_by_day": _views_by_day(db, base, from_date, to_date),
+        "listens_by_day": _listens_by_day(db, listen_base, from_date, to_date),
         "top_posts": [{"id": r.content_id, "slug": r.content_key, "views": r.views} for r in top_posts],
         "category_breakdown": [{"category": r.category, "views": r.views} for r in category_stats],
         "devices": _device_breakdown(db, base, date_f),
@@ -363,6 +402,7 @@ def get_overview_stats(
     total = db.query(func.count()).select_from(models.PageView).filter(*date_f).scalar()
     unique = db.query(func.count()).select_from(models.PageView).filter(*date_f, _real_views_filter()).scalar()
     bot_count = db.query(func.count()).select_from(models.PageView).filter(*date_f, models.PageView.is_bot == True).scalar()
+    listen_date_f = _listen_date_filter(from_date, to_date)
 
     # Top authors by views
     top_authors = db.query(
@@ -405,8 +445,10 @@ def get_overview_stats(
         "total_views": total,
         "unique_views": unique,
         "bot_views": bot_count,
+        "seconds_listened": _listened_seconds(db, [], listen_date_f),
         "bot_percentage": round((bot_count / total * 100), 1) if total > 0 else 0,
         "views_by_day": _views_by_day(db, [], from_date, to_date),
+        "listens_by_day": _listens_by_day(db, [], from_date, to_date),
         "top_authors": [
             {"user_id": a.content_owner_id, "username": users_map.get(a.content_owner_id, "unknown"), "views": a.views}
             for a in top_authors
@@ -443,6 +485,19 @@ def get_my_stats(
     if post_ids:
         posts = db.query(models.Post).filter(models.Post.id.in_(post_ids)).all()
         posts_map = {p.id: {"title": p.title, "slug": p.slug, "likes": p.likes_count} for p in posts}
+    listen_date_f = _listen_date_filter(from_date, to_date)
+    post_listens = dict(
+        db.query(
+            models.AudioListenEvent.post_id,
+            func.coalesce(func.sum(models.AudioListenEvent.seconds), 0),
+        )
+        .filter(
+            models.AudioListenEvent.content_owner_id == user_id,
+            *listen_date_f,
+        )
+        .group_by(models.AudioListenEvent.post_id)
+        .all()
+    )
 
     stats["posts_detail"] = [
         {
@@ -451,9 +506,31 @@ def get_my_stats(
             "title": posts_map.get(pv.content_id, {}).get("title", ""),
             "slug": posts_map.get(pv.content_id, {}).get("slug", ""),
             "likes": posts_map.get(pv.content_id, {}).get("likes", 0),
+            "seconds_listened": int(post_listens.get(pv.content_id, 0) or 0),
         }
         for pv in sorted(post_views, key=lambda x: x.views, reverse=True)
     ]
+
+    listen_only_post_ids = [post_id for post_id in post_listens if post_id not in {pv.content_id for pv in post_views}]
+    if listen_only_post_ids:
+        listen_posts = db.query(models.Post).filter(models.Post.id.in_(listen_only_post_ids)).all()
+        listen_posts_map = {p.id: {"title": p.title, "slug": p.slug, "likes": p.likes_count} for p in listen_posts}
+        stats["posts_detail"].extend(
+            {
+                "id": post_id,
+                "views": 0,
+                "title": listen_posts_map.get(post_id, {}).get("title", ""),
+                "slug": listen_posts_map.get(post_id, {}).get("slug", ""),
+                "likes": listen_posts_map.get(post_id, {}).get("likes", 0),
+                "seconds_listened": int(seconds or 0),
+            }
+            for post_id, seconds in post_listens.items()
+            if post_id in listen_posts_map
+        )
+        stats["posts_detail"].sort(
+            key=lambda item: (item["views"], item["seconds_listened"]),
+            reverse=True,
+        )
 
     # Blog page views
     blog_views = db.query(func.count()).select_from(models.PageView).filter(

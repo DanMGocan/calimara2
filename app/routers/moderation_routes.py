@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
@@ -8,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import ai_queue, models, schemas, crud, admin, moderation
 from ..database import get_db
+from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def get_moderation_stats(
             models.User.is_suspended == True
         ).count()
 
-        today = datetime.now().date()
+        today = utcnow_naive().date()
         today_actions = db.query(models.Post).filter(
             models.Post.moderated_at >= today
         ).count() + db.query(models.Comment).filter(
@@ -394,7 +394,7 @@ def suspend_user(
         try:
             user.is_suspended = True
             user.suspension_reason = suspension_data.reason
-            user.suspended_at = datetime.now()
+            user.suspended_at = utcnow_naive()
             user.suspended_by = current_user.id
         except AttributeError:
             # If suspension fields don't exist, just log the action

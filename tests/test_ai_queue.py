@@ -175,6 +175,7 @@ class AIQueueTests(unittest.TestCase):
 
     def test_comment_moderation_job_updates_comment_without_blocking_create(self):
         user = self.make_user()
+        target = self.make_user("target")
         post = crud.create_user_post(
             self.db,
             schemas.PostCreate(title="Text", content="Conținut", category="proza_scurta", ai_critic=False),
@@ -184,7 +185,7 @@ class AIQueueTests(unittest.TestCase):
         self.db.commit()
         comment = crud.create_comment(
             self.db,
-            schemas.CommentCreate(content="Comentariu curat"),
+            schemas.CommentCreate(content="Comentariu curat pentru @target"),
             post_id=post.id,
             user_id=user.id,
         )
@@ -202,6 +203,7 @@ class AIQueueTests(unittest.TestCase):
         self.assertTrue(comment.approved)
         self.assertEqual(comment.moderation_status, "approved")
         self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="comment").count(), 1)
+        self.assertEqual(crud.get_unread_notification_count(self.db, target.id), 1)
 
     def test_final_moderation_failures_are_flagged_not_auto_approved(self):
         user = self.make_user()

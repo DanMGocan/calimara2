@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas, auth, crud, profile_media, rich_text
 from ..database import get_db
-from ..utils import get_avatar_url, validate_social_url, validate_youtube_playlist_url
+from ..utils import default_cover_seed, get_avatar_url, get_cover_url, validate_social_url, validate_youtube_playlist_url
 from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ SOCIAL_LINKS = {
 PROFILE_SETTINGS_FIELDS = (
     "subtitle",
     "avatar_seed",
+    "cover_seed",
     "location",
     "youtube_playlist_url",
     *SOCIAL_LINKS.keys(),
@@ -66,15 +67,18 @@ def _serialize_equipped_items(db: Session, user: models.User) -> list[dict]:
 def _current_user_payload(db: Session, user: models.User) -> dict:
     profile_photo_url = _media_url_if_visible(user, "profil")
     cover_photo_url = _media_url_if_visible(user, "coperta")
+    cover_seed = user.cover_seed or default_cover_seed(user)
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "subtitle": rich_text.sanitize_optional_rich_text(user.subtitle),
         "avatar_seed": user.avatar_seed,
+        "cover_seed": cover_seed,
         "avatar_url": profile_photo_url or get_avatar_url(user, size=160),
         "profile_photo_url": profile_photo_url,
         "cover_photo_url": cover_photo_url,
+        "cover_url": cover_photo_url or get_cover_url(cover_seed),
         "has_profile_photo": bool(user.profile_photo_storage_key),
         "has_cover_photo": bool(user.cover_photo_storage_key),
         "location": user.location,
@@ -97,6 +101,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "premium_period_start": user.premium_period_start.isoformat() if user.premium_period_start else None,
         "premium_until": user.premium_until.isoformat() if user.premium_until else None,
         "gologani_balance": user.gologani_balance or 0,
+        "seconds_listened": user.seconds_listened or 0,
         "equipped_items": _serialize_equipped_items(db, user),
     }
 
@@ -154,6 +159,8 @@ def update_current_user(
         current_user.subtitle = user_update.subtitle
     if "avatar_seed" in user_update.model_fields_set:
         current_user.avatar_seed = user_update.avatar_seed
+    if "cover_seed" in user_update.model_fields_set:
+        current_user.cover_seed = user_update.cover_seed
     if "location" in user_update.model_fields_set:
         current_user.location = user_update.location
 
@@ -336,19 +343,23 @@ def search_users(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
-    """Search for users by username for best friends selection"""
-    if len(q.strip()) < 2:
+    """Search for users by username for relationship pickers and mentions."""
+    term = q.strip()
+    if len(term) < 3:
         return []
 
     users = db.query(models.User).filter(
-        models.User.username.contains(q.strip()),
-        models.User.id != current_user.id  # Exclude current user
-    ).limit(10).all()
+        models.User.username.ilike(f"%{term}%"),
+        models.User.id != current_user.id,
+        models.User.is_suspended == False,
+    ).order_by(models.User.username.asc()).limit(10).all()
 
     return [
         {
+            "id": user.id,
             "username": user.username,
-            "subtitle": rich_text.sanitize_optional_rich_text(user.subtitle),
+            "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
+            "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
         }
         for user in users
     ]

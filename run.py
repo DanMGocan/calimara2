@@ -272,7 +272,7 @@ def check_env():
         sys.exit(1)
 
     google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "").strip()
-    expected_redirect_uri = f"{public_base_url()}/autentificare/google/raspuns"
+    expected_redirect_uri = f"{public_base_url()}/auth/google/callback"
     if google_redirect_uri and google_redirect_uri != expected_redirect_uri:
         print("  Warning: GOOGLE_REDIRECT_URI does not match the configured public domain.")
         print(f"  Expected: {expected_redirect_uri}")
@@ -322,13 +322,13 @@ def seed_dev_premium_user(database_url):
                         :avatar_seed,
                         TRUE,
                         TRUE,
-                        'author_audio',
+                        'rapsod',
                         CURRENT_TIMESTAMP + INTERVAL '10 years'
                     )
                     ON CONFLICT (email) DO UPDATE SET
                         is_admin = TRUE,
                         is_moderator = TRUE,
-                        premium_tier = 'author_audio',
+                        premium_tier = 'rapsod',
                         premium_until = CURRENT_TIMESTAMP + INTERVAL '10 years',
                         subtitle = EXCLUDED.subtitle,
                         avatar_seed = EXCLUDED.avatar_seed,
@@ -343,7 +343,7 @@ def seed_dev_premium_user(database_url):
                     "avatar_seed": "gocandan-premium",
                 },
             )
-        print(f"  Seed: {DEV_PREMIUM_USER_EMAIL} La cenaclu' Flacara account")
+        print(f"  Seed: {DEV_PREMIUM_USER_EMAIL} Rapsod account")
     finally:
         engine.dispose()
 

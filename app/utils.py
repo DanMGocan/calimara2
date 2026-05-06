@@ -7,6 +7,8 @@ from fastapi import Request
 # Configuration from environment variables
 MAIN_DOMAIN = os.getenv("MAIN_DOMAIN", "calimara.ro")
 SUBDOMAIN_SUFFIX = os.getenv("SUBDOMAIN_SUFFIX", ".calimara.ro")
+AVATAR_BACKGROUND_COLORS = "f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff"
+COVER_BACKGROUND_COLORS = "f1f4f8,dbeafe,d1fae5,fce7f3,f3e8ff,fff7ed"
 
 
 def get_avatar_url(user_or_seed, size=80):
@@ -18,7 +20,33 @@ def get_avatar_url(user_or_seed, size=80):
     else:
         seed = str(user_or_seed)
 
-    return f"https://api.dicebear.com/7.x/shapes/svg?seed={seed}&backgroundColor=f1f4f8,d1fae5,dbeafe,fce7f3,f3e8ff&size={size}"
+    return f"https://api.dicebear.com/7.x/shapes/svg?seed={seed}&backgroundColor={AVATAR_BACKGROUND_COLORS}&size={size}"
+
+
+def default_cover_seed(user_or_username) -> str:
+    """Return the deterministic cover seed used when a user has not picked one."""
+    username = getattr(user_or_username, "username", None) or str(user_or_username or "calimara")
+    return f"{username}-cover-sky"
+
+
+def get_cover_url(user_or_seed, size=1600):
+    """Generate a DiceBear cover URL for user or seed."""
+    if hasattr(user_or_seed, "cover_seed"):
+        seed = user_or_seed.cover_seed or default_cover_seed(user_or_seed)
+    elif hasattr(user_or_seed, "username"):
+        seed = default_cover_seed(user_or_seed)
+    else:
+        seed = str(user_or_seed)
+
+    query = urllib.parse.urlencode(
+        {
+            "seed": seed,
+            "backgroundColor": COVER_BACKGROUND_COLORS,
+            "backgroundType": "gradientLinear",
+            "size": str(size),
+        }
+    )
+    return f"https://api.dicebear.com/7.x/shapes/svg?{query}"
 
 
 def get_client_ip(request: Request):

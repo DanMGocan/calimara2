@@ -21,6 +21,8 @@ def _owner_payload(user: Optional[models.User]) -> Optional[dict]:
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
     }
 
 
@@ -33,6 +35,8 @@ def _board_author_payload(
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
         "role": membership_role,
     }
 
@@ -121,6 +125,8 @@ def _build_club_detail(
             "username": m.user.username if m.user else "",
             "avatar_seed": (m.user.avatar_seed if m.user else None)
                             or (f"{m.user.username}-shapes" if m.user else None),
+            "is_premium": getattr(m.user, "is_premium", False) if m.user else False,
+            "premium_tier": (getattr(m.user, "premium_tier", "free") or "free") if m.user else "free",
             "role": m.role,
             "joined_at": m.joined_at,
             "contribution_count": crud.count_member_contributions(db, club.id, m.user_id),

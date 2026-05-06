@@ -12,7 +12,7 @@ from slowapi.util import get_remote_address
 from .. import schemas, google_oauth
 from ..auth import get_db_epoch
 from ..database import get_db
-from ..utils import MAIN_DOMAIN
+from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,18 @@ def _frontend_base_url(request: Request) -> str:
     parsed_callback = urlparse(configured_callback)
     scheme = parsed_callback.scheme or request.url.scheme
     return f"{scheme}://{MAIN_DOMAIN}"
+
+
+def _user_blog_url(request: Request, user) -> str:
+    configured_callback = os.getenv("GOOGLE_REDIRECT_URI", "")
+    parsed_callback = urlparse(configured_callback)
+    scheme = parsed_callback.scheme or request.url.scheme
+    suffix = SUBDOMAIN_SUFFIX if SUBDOMAIN_SUFFIX.startswith(".") else f".{SUBDOMAIN_SUFFIX}"
+    return f"{scheme}://{user.username}{suffix}"
+
+
+def _auth_failure_url(request: Request) -> str:
+    return f"{_frontend_base_url(request)}/?auth_error=google"
 
 
 def _react_index_response() -> FileResponse:
@@ -45,7 +57,7 @@ async def google_login(request: Request):
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
         logger.error(f"Eroare la inițierea autentificării Google: {e}")
-        raise HTTPException(status_code=500, detail="Nu am putut iniția autentificarea")
+        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/auth/google/callback", include_in_schema=False)
@@ -67,7 +79,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             request.session["db_epoch"] = get_db_epoch()
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
             return RedirectResponse(
-                url=f"{_frontend_base_url(request)}/autentificare/raspuns?status=success",
+                url=_user_blog_url(request, user),
                 status_code=status.HTTP_302_FOUND
             )
         else:
@@ -85,11 +97,12 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 status_code=status.HTTP_302_FOUND
             )
 
-    except HTTPException:
-        raise
+    except HTTPException as exc:
+        logger.warning(f"Autentificarea Google a eșuat: {exc.detail}")
+        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
     except Exception as e:
         logger.error(f"Eroare în răspunsul Google: {e}")
-        raise HTTPException(status_code=500, detail="Autentificarea a eșuat")
+        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/autentificare/configurare")

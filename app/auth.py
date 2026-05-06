@@ -70,7 +70,7 @@ def require_premium_user(current_user: models.User = Depends(get_required_user))
     if not current_user.is_premium:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Necesită abonament Cronicar cu Letopiset",
+            detail="Necesită abonament Trubadur.",
         )
     return current_user
 
@@ -79,7 +79,7 @@ def require_audio_user(current_user: models.User = Depends(get_required_user)):
     if not current_user.has_audio_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Necesită abonament Membru Junimea pentru generare audio",
+            detail="Necesită abonament Cronicar sau Rapsod.",
         )
     return current_user
 
@@ -88,6 +88,6 @@ def require_author_audio_user(current_user: models.User = Depends(get_required_u
     if not current_user.has_author_audio_access:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Necesită abonament La cenaclu' Flacara",
+            detail="Necesită abonament Rapsod.",
         )
     return current_user

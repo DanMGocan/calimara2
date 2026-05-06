@@ -16,7 +16,7 @@ def _user(premium: bool = True) -> models.User:
         email="writer@example.com",
         google_id="google-writer",
         premium_until=utcnow_naive() + timedelta(days=30) if premium else None,
-        premium_tier="premium" if premium else "free",
+        premium_tier="trubadur" if premium else "free",
     )
     return user
 

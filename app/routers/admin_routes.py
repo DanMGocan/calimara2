@@ -1,9 +1,10 @@
 import logging
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 CONTENT_TYPES = {"post", "comment", "audio", "forum_thread", "forum_reply"}
 CONTENT_STATUSES = {"approved", "pending", "flagged", "rejected"}
-PREMIUM_TIERS = {"free", "premium", "audio", "author_audio"}
+PREMIUM_TIERS = {"free", "trubadur", "cronicar", "rapsod"}
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
@@ -37,15 +38,6 @@ def _date_filters(column, from_date: Optional[date], to_date: Optional[date]) ->
     return filters
 
 
-def _client_ip(request: Optional[Request]) -> Optional[str]:
-    if not request:
-        return None
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()
-    return request.client.host if request.client else None
-
-
 def _audit(
     db: Session,
     request: Optional[Request],
@@ -56,22 +48,17 @@ def _audit(
     target_id: Optional[int] = None,
     reason: Optional[str] = None,
     metadata: Optional[dict] = None,
-) -> models.AdminAuditLog:
-    entry = models.AdminAuditLog(
-        actor_user_id=actor.id,
-        actor_username=actor.username,
+) -> Optional[models.AdminAuditLog]:
+    return admin.write_admin_audit_log(
+        db,
+        actor,
         action=action,
         target_type=target_type,
         target_id=target_id,
         reason=reason,
-        ip_address=_client_ip(request),
-        user_agent=(request.headers.get("user-agent")[:2000] if request and request.headers.get("user-agent") else None),
-        extra_data=metadata or {},
+        request=request,
+        extra_data=metadata,
     )
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
-    return entry
 
 
 def _admin_count(db: Session) -> int:
@@ -110,6 +97,7 @@ def _user_payload(db: Session, user: models.User, include_counts: bool = False) 
         "stripe_customer_id": user.stripe_customer_id,
         "stripe_subscription_id": user.stripe_subscription_id,
         "gologani_balance": user.gologani_balance,
+        "seconds_listened": user.seconds_listened or 0,
         "created_at": _as_iso(user.created_at),
         "updated_at": _as_iso(user.updated_at),
     }
@@ -138,6 +126,26 @@ def _audit_payload(log: models.AdminAuditLog) -> dict:
         "metadata": log.extra_data or {},
         "created_at": _as_iso(log.created_at),
     }
+
+
+def _admin_daily_metrics_available(db: Session) -> bool:
+    if admin.db_table_exists(db, models.AdminDailyMetric.__tablename__):
+        return True
+    admin.warn_missing_table_once(
+        models.AdminDailyMetric.__tablename__,
+        "admin daily metrics are returned empty and rollups are computed without persistence",
+    )
+    return False
+
+
+def _admin_audit_logs_available(db: Session) -> bool:
+    if admin.db_table_exists(db, models.AdminAuditLog.__tablename__):
+        return True
+    admin.warn_missing_table_once(
+        models.AdminAuditLog.__tablename__,
+        "admin audit history is returned empty and new audit entries are skipped",
+    )
+    return False
 
 
 def _job_payload(job: models.AIJob) -> dict:
@@ -172,6 +180,7 @@ def _content_payload(item, content_type: str) -> dict:
             "toxicity_score": item.toxicity_score,
             "category": item.category,
             "views": item.view_count,
+            "seconds_listened": item.seconds_listened or 0,
             "created_at": _as_iso(item.created_at),
             "updated_at": _as_iso(item.updated_at),
         }
@@ -277,6 +286,7 @@ def _metric_counts_for_day(db: Session, target_date: date) -> dict:
     day_filter_post = [models.Post.created_at >= start, models.Post.created_at < end]
     day_filter_comment = [models.Comment.created_at >= start, models.Comment.created_at < end]
     day_filter_views = [models.PageView.created_at >= start, models.PageView.created_at < end]
+    day_filter_listens = [models.AudioListenEvent.created_at >= start, models.AudioListenEvent.created_at < end]
     day_filter_jobs = [models.AIJob.created_at >= start, models.AIJob.created_at < end]
 
     issued = db.query(func.coalesce(func.sum(models.GologaniTransaction.amount), 0)).filter(
@@ -295,6 +305,7 @@ def _metric_counts_for_day(db: Session, target_date: date) -> dict:
         "new_posts": db.query(models.Post).filter(*day_filter_post).count(),
         "new_comments": db.query(models.Comment).filter(*day_filter_comment).count(),
         "page_views": db.query(models.PageView).filter(*day_filter_views).count(),
+        "seconds_listened": int(db.query(func.coalesce(func.sum(models.AudioListenEvent.seconds), 0)).filter(*day_filter_listens).scalar() or 0),
         "unique_views": db.query(models.PageView).filter(
             *day_filter_views,
             models.PageView.is_bot == False,
@@ -311,7 +322,7 @@ def _metric_counts_for_day(db: Session, target_date: date) -> dict:
     }
 
 
-def aggregate_admin_daily_metrics(db: Session, target_date: date) -> models.AdminDailyMetric:
+def aggregate_admin_daily_metrics(db: Session, target_date: date):
     metrics = _metric_counts_for_day(db, target_date)
     metrics.update({
         "total_users": db.query(models.User).count(),
@@ -321,12 +332,15 @@ def aggregate_admin_daily_metrics(db: Session, target_date: date) -> models.Admi
         "pending_moderation": crud.get_moderation_stats(db)["total_pending"],
         "flagged_moderation": crud.get_moderation_stats(db)["total_flagged"],
         "total_comments": db.query(models.Comment).count(),
+        "total_seconds_listened": int(db.query(func.coalesce(func.sum(models.User.seconds_listened), 0)).scalar() or 0),
         "forum_threads": db.query(models.ForumThread).count(),
         "forum_replies": db.query(models.ForumReply).count(),
         "shop_items": db.query(models.ShopItem).count(),
         "ai_jobs_pending": db.query(models.AIJob).filter(models.AIJob.status == "pending").count(),
         "ai_jobs_failed_total": db.query(models.AIJob).filter(models.AIJob.status == "failed").count(),
     })
+    if not _admin_daily_metrics_available(db):
+        return SimpleNamespace(id=None, stat_date=target_date, metrics=metrics)
     row = db.query(models.AdminDailyMetric).filter(models.AdminDailyMetric.stat_date == target_date).first()
     if row:
         row.metrics = metrics
@@ -371,11 +385,17 @@ def admin_overview(
         "forum_replies": _count_by_status(db, models.ForumReply, models.ForumReply.moderation_status),
     }
 
-    metric_query = db.query(models.AdminDailyMetric).order_by(models.AdminDailyMetric.stat_date.desc()).limit(30)
-    if start:
-        metric_query = metric_query.filter(models.AdminDailyMetric.stat_date >= start)
-    if end:
-        metric_query = metric_query.filter(models.AdminDailyMetric.stat_date <= end)
+    daily_metrics = []
+    if _admin_daily_metrics_available(db):
+        metric_query = db.query(models.AdminDailyMetric)
+        if start:
+            metric_query = metric_query.filter(models.AdminDailyMetric.stat_date >= start)
+        if end:
+            metric_query = metric_query.filter(models.AdminDailyMetric.stat_date <= end)
+        daily_metrics = [
+            {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}}
+            for row in metric_query.order_by(models.AdminDailyMetric.stat_date.desc()).limit(30).all()
+        ]
 
     return {
         "cards": {
@@ -387,6 +407,7 @@ def admin_overview(
             "new_posts": db.query(models.Post).filter(*date_f_post).count(),
             "total_comments": db.query(models.Comment).count(),
             "new_comments": db.query(models.Comment).filter(*date_f_comment).count(),
+            "seconds_listened": int(db.query(func.coalesce(func.sum(models.AudioListenEvent.seconds), 0)).scalar() or 0),
             "pending_moderation": moderation_stats["total_pending"],
             "flagged_moderation": moderation_stats["total_flagged"],
             "failed_jobs": jobs_by_status.get("failed", 0),
@@ -402,10 +423,7 @@ def admin_overview(
             "inventory_items": db.query(models.UserInventoryItem).count(),
             "gologani_balance_total": int(db.query(func.coalesce(func.sum(models.User.gologani_balance), 0)).scalar() or 0),
         },
-        "daily_metrics": [
-            {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}}
-            for row in metric_query.all()
-        ],
+        "daily_metrics": daily_metrics,
     }
 
 
@@ -418,8 +436,8 @@ def rollup_admin_metrics(
 ):
     parsed = _parse_date(target_date) or (date.today() - timedelta(days=1))
     row = aggregate_admin_daily_metrics(db, parsed)
-    _audit(db, request, current_user, action="admin_metrics_rollup", target_type="admin_daily_metric", target_id=row.id, metadata={"date": parsed.isoformat()})
-    return {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}}
+    _audit(db, request, current_user, action="admin_metrics_rollup", target_type="admin_daily_metric", target_id=getattr(row, "id", None), metadata={"date": parsed.isoformat()})
+    return {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}, "persisted": getattr(row, "id", None) is not None}
 
 
 @router.get("/users")
@@ -469,7 +487,9 @@ def get_admin_user_detail(
         raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
     recent_posts = db.query(models.Post).filter(models.Post.user_id == user.id).order_by(models.Post.created_at.desc()).limit(10).all()
     transactions = db.query(models.GologaniTransaction).filter(models.GologaniTransaction.user_id == user.id).order_by(models.GologaniTransaction.created_at.desc()).limit(20).all()
-    audits = db.query(models.AdminAuditLog).filter(models.AdminAuditLog.target_type == "user", models.AdminAuditLog.target_id == user.id).order_by(models.AdminAuditLog.created_at.desc()).limit(20).all()
+    audits = []
+    if _admin_audit_logs_available(db):
+        audits = db.query(models.AdminAuditLog).filter(models.AdminAuditLog.target_type == "user", models.AdminAuditLog.target_id == user.id).order_by(models.AdminAuditLog.created_at.desc()).limit(20).all()
     return {
         "user": _user_payload(db, user, include_counts=True),
         "recent_posts": [_content_payload(post, "post") for post in recent_posts],
@@ -527,7 +547,7 @@ def suspend_admin_user(
     _ensure_can_remove_admin(db, user)
     user.is_suspended = True
     user.suspension_reason = data.reason
-    user.suspended_at = datetime.now()
+    user.suspended_at = utcnow_naive()
     user.suspended_by = current_user.id
     db.commit()
     db.refresh(user)
@@ -579,8 +599,8 @@ def update_admin_user_premium(
         user.stripe_subscription_id = None
     else:
         user.premium_tier = data.premium_tier
-        user.premium_period_start = data.premium_period_start or user.premium_period_start or datetime.now()
-        user.premium_until = data.premium_until or (datetime.now() + timedelta(days=30))
+        user.premium_period_start = data.premium_period_start or user.premium_period_start or utcnow_naive()
+        user.premium_until = data.premium_until or (utcnow_naive() + timedelta(days=30))
         if data.stripe_subscription_id is not None:
             user.stripe_subscription_id = data.stripe_subscription_id
     db.commit()
@@ -821,7 +841,7 @@ def retry_admin_job(
     job.locked_at = None
     job.locked_by = None
     job.error_message = None
-    job.run_after = datetime.now()
+    job.run_after = utcnow_naive()
     db.commit()
     db.refresh(job)
     _audit(db, request, current_user, action="ai_job_retry", target_type="ai_job", target_id=job.id, reason=data.reason)
@@ -859,6 +879,8 @@ def list_admin_audit_log(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
 ):
+    if not _admin_audit_logs_available(db):
+        return {"logs": [], "total": 0, "unavailable": True}
     query = db.query(models.AdminAuditLog)
     if actor:
         query = query.filter(models.AdminAuditLog.actor_username.ilike(f"%{actor.strip()}%"))
@@ -869,59 +891,3 @@ def list_admin_audit_log(
     total = query.count()
     logs = query.order_by(models.AdminAuditLog.created_at.desc(), models.AdminAuditLog.id.desc()).offset(offset).limit(limit).all()
     return {"logs": [_audit_payload(log) for log in logs], "total": total}
-
-
-@router.get("/shop/items")
-def list_admin_shop_items(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin),
-):
-    return [
-        {
-            "id": item.id,
-            "slug": item.slug,
-            "name": item.name,
-            "description": item.description,
-            "price": item.price,
-            "slot": item.slot,
-            "asset_url": item.asset_url,
-            "is_active": item.is_active,
-            "sort_order": item.sort_order,
-            "created_at": _as_iso(item.created_at),
-            "updated_at": _as_iso(item.updated_at),
-        }
-        for item in crud.list_shop_items(db, include_inactive=True)
-    ]
-
-
-@router.post("/shop/items", status_code=status.HTTP_201_CREATED)
-def create_admin_shop_item(
-    data: schemas.ShopItemCreate,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin),
-):
-    try:
-        item = crud.create_shop_item(db, data)
-    except crud.ShopItemDuplicateSlugError:
-        raise HTTPException(status_code=409, detail="Există deja un obiect cu acest slug")
-    _audit(db, request, current_user, action="shop_item_create", target_type="shop_item", target_id=item.id, metadata={"slug": item.slug})
-    return {"id": item.id, "slug": item.slug, "name": item.name, "price": item.price, "slot": item.slot, "is_active": item.is_active}
-
-
-@router.put("/shop/items/{item_id}")
-def update_admin_shop_item(
-    item_id: int,
-    data: schemas.ShopItemUpdate,
-    request: Request,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(admin.require_admin),
-):
-    try:
-        item = crud.update_shop_item(db, item_id, data)
-    except crud.ShopItemDuplicateSlugError:
-        raise HTTPException(status_code=409, detail="Există deja un obiect cu acest slug")
-    if not item:
-        raise HTTPException(status_code=404, detail="Obiectul nu a fost găsit")
-    _audit(db, request, current_user, action="shop_item_update", target_type="shop_item", target_id=item.id, metadata={"slug": item.slug})
-    return {"id": item.id, "slug": item.slug, "name": item.name, "price": item.price, "slot": item.slot, "is_active": item.is_active}

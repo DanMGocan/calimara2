@@ -32,6 +32,7 @@ DROP TABLE IF EXISTS series_posts CASCADE;
 DROP TABLE IF EXISTS series CASCADE;
 DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
+DROP TABLE IF EXISTS audio_listen_events CASCADE;
 DROP TABLE IF EXISTS post_audio CASCADE;
 DROP TABLE IF EXISTS post_drafts CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
@@ -47,6 +48,7 @@ CREATE TABLE users (
     google_id VARCHAR(100) UNIQUE NOT NULL,
     subtitle TEXT,
     avatar_seed VARCHAR(100),
+    cover_seed VARCHAR(100),
     location VARCHAR(120),
     youtube_playlist_url VARCHAR(500),
     profile_photo_storage_backend VARCHAR(20),
@@ -73,10 +75,13 @@ CREATE TABLE users (
     suspended_by INT,
     stripe_customer_id VARCHAR(100) UNIQUE,
     stripe_subscription_id VARCHAR(100) UNIQUE,
-    premium_tier VARCHAR(20) DEFAULT 'free' NOT NULL,
+    premium_tier VARCHAR(20) DEFAULT 'free' NOT NULL
+        CONSTRAINT ck_users_premium_tier
+        CHECK (premium_tier IN ('free', 'trubadur', 'cronicar', 'rapsod')),
     premium_period_start TIMESTAMP,
     premium_until TIMESTAMP,
     gologani_balance INT DEFAULT 0 NOT NULL,
+    seconds_listened INT DEFAULT 0 NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -125,6 +130,7 @@ CREATE TABLE posts (
     genre VARCHAR(100),
     ai_critic_requested BOOLEAN DEFAULT FALSE NOT NULL,
     view_count INT DEFAULT 0 NOT NULL,
+    seconds_listened INT DEFAULT 0 NOT NULL,
     moderation_status VARCHAR(20) DEFAULT 'approved' NOT NULL
         CHECK (moderation_status IN ('approved', 'pending', 'rejected', 'flagged')),
     moderation_reason TEXT,
@@ -194,6 +200,36 @@ CREATE INDEX idx_post_audio_requester_user_id ON post_audio(requester_user_id);
 CREATE INDEX idx_post_audio_status ON post_audio(status);
 CREATE INDEX idx_post_audio_source_status ON post_audio(source, status);
 CREATE INDEX idx_post_audio_tts_quota ON post_audio(requester_user_id, quota_period_start, quota_period_end);
+
+-- ===================================
+-- AUDIO LISTEN EVENTS TABLE
+-- ===================================
+CREATE TABLE audio_listen_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_id VARCHAR(64) NOT NULL UNIQUE,
+    audio_id INT NOT NULL,
+    post_id INT NOT NULL,
+    content_owner_id INT NOT NULL,
+    listener_user_id INT,
+    seconds INT NOT NULL
+        CONSTRAINT ck_audio_listen_events_seconds
+        CHECK (seconds > 0 AND seconds <= 60),
+    mode VARCHAR(20) NOT NULL
+        CONSTRAINT ck_audio_listen_events_mode
+        CHECK (mode IN ('poezie', 'proza_scurta', 'toate')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_audio_listen_audio FOREIGN KEY (audio_id) REFERENCES post_audio(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audio_listen_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audio_listen_owner FOREIGN KEY (content_owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audio_listen_listener FOREIGN KEY (listener_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_audio_listen_created_at ON audio_listen_events(created_at);
+CREATE INDEX idx_audio_listen_audio ON audio_listen_events(audio_id, created_at);
+CREATE INDEX idx_audio_listen_post ON audio_listen_events(post_id, created_at);
+CREATE INDEX idx_audio_listen_owner ON audio_listen_events(content_owner_id, created_at);
+CREATE INDEX idx_audio_listen_listener ON audio_listen_events(listener_user_id, created_at);
 
 -- ===================================
 -- COMMENTS TABLE

@@ -32,6 +32,8 @@ def _author_payload(user: Optional[models.User]) -> Optional[dict]:
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
     }
 
 
@@ -60,11 +62,11 @@ def _thread_summary_payload(db: Session, thread: models.ForumThread) -> dict:
     }
 
 
-def _reply_payload(reply: models.ForumReply) -> dict:
+def _reply_payload(db: Session, reply: models.ForumReply) -> dict:
     return {
         "id": reply.id,
         "thread_id": reply.thread_id,
-        "content": rich_text.sanitize_rich_text(reply.content),
+        "content": crud.link_mentions_in_rich_text(db, reply.content),
         "author": _author_payload(reply.author),
         "moderation_status": reply.moderation_status,
         "moderation_reason": reply.moderation_reason,
@@ -81,9 +83,9 @@ def _thread_detail_payload(
     replies = crud.list_forum_replies_for_thread(db, thread.id, current_user)
     return {
         **_thread_summary_payload(db, thread),
-        "content": rich_text.sanitize_rich_text(thread.content),
+        "content": crud.link_mentions_in_rich_text(db, thread.content),
         "moderation_reason": thread.moderation_reason,
-        "replies": [_reply_payload(reply) for reply in replies],
+        "replies": [_reply_payload(db, reply) for reply in replies],
     }
 
 
@@ -167,7 +169,7 @@ def create_forum_reply_api(
     if error:
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
     ai_queue.enqueue_forum_reply_moderation_job(db, reply)
-    return _reply_payload(reply)
+    return _reply_payload(db, reply)
 
 
 @router.delete("/api/forum/discutii/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

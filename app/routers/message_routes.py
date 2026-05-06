@@ -15,6 +15,17 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["messages"])
 
 
+def _user_payload(user: models.User) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "subtitle": user.subtitle,
+        "avatar_seed": user.avatar_seed,
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
+    }
+
+
 @router.get("/api/mesaje/conversatii")
 def get_user_conversations_api(
     db: Session = Depends(get_db),
@@ -39,12 +50,7 @@ def get_user_conversations_api(
 
             formatted_conversations.append({
                 "id": conv.id,
-                "other_user": {
-                    "id": other_user.id,
-                    "username": other_user.username,
-                    "subtitle": other_user.subtitle,
-                    "avatar_seed": other_user.avatar_seed
-                },
+                "other_user": _user_payload(other_user),
                 "latest_message": {
                     "id": latest_message.id,
                     "content": latest_message.content[:100] + "..." if len(latest_message.content) > 100 else latest_message.content,
@@ -102,12 +108,7 @@ def get_conversation_messages_api(
         return {
             "conversation": {
                 "id": conversation.id,
-                "other_user": {
-                    "id": other_user.id,
-                    "username": other_user.username,
-                    "subtitle": other_user.subtitle,
-                    "avatar_seed": other_user.avatar_seed
-                }
+                "other_user": _user_payload(other_user)
             },
             "messages": formatted_messages
         }
@@ -234,12 +235,7 @@ def search_conversations_api(
 
             formatted_conversations.append({
                 "id": conv.id,
-                "other_user": {
-                    "id": other_user.id,
-                    "username": other_user.username,
-                    "subtitle": other_user.subtitle,
-                    "avatar_seed": other_user.avatar_seed
-                },
+                "other_user": _user_payload(other_user),
                 "latest_message": {
                     "content": latest_message.content[:100] + "..." if len(latest_message.content) > 100 else latest_message.content,
                     "created_at": latest_message.created_at.isoformat()

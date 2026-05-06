@@ -148,6 +148,46 @@ def get_series_audio_playlist(
     }
 
 
+@router.get("/api/audio/asculta/aleatoriu", response_model=schemas.AudioTrack)
+def get_random_listen_audio(
+    mode: str = "toate",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_audio_user),
+):
+    try:
+        audio = audio_service.random_listen_audio_track(db, current_user, mode)
+    except audio_service.AudioListenForbidden as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except audio_service.AudioListenInvalid as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except audio_service.AudioListenNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return audio_service.audio_track_payload(audio)
+
+
+@router.post("/api/audio/asculta/secunde", response_model=schemas.AudioListenSecondsResponse)
+def record_listen_seconds(
+    body: schemas.AudioListenSecondsRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_audio_user),
+):
+    try:
+        return audio_service.record_listen_seconds(
+            db,
+            current_user,
+            event_id=body.event_id,
+            audio_id=body.audio_id,
+            seconds=body.seconds,
+            mode=body.mode,
+        )
+    except audio_service.AudioListenForbidden as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except audio_service.AudioListenInvalid as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except audio_service.AudioListenNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @router.get("/api/audio/aleatoriu", response_model=schemas.AudioTrack)
 def get_random_audio(
     category: Optional[str] = None,

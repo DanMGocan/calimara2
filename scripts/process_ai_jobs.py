@@ -5,6 +5,7 @@ import argparse
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -41,7 +42,13 @@ def main() -> int:
     print(f"Processing AI jobs as {worker_id}. Press Ctrl+C to stop.")
     try:
         while True:
-            processed = run_once(args.limit, worker_id)
+            try:
+                processed = run_once(args.limit, worker_id)
+            except Exception as exc:
+                print(f"AI worker iteration failed: {exc}", file=sys.stderr)
+                traceback.print_exc()
+                time.sleep(args.sleep)
+                continue
             if processed == 0:
                 time.sleep(args.sleep)
     except KeyboardInterrupt:

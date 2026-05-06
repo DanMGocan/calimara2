@@ -39,6 +39,22 @@ class TTSGenerationFailed(RuntimeError):
     pass
 
 
+class AudioListenError(Exception):
+    pass
+
+
+class AudioListenForbidden(AudioListenError):
+    pass
+
+
+class AudioListenInvalid(AudioListenError):
+    pass
+
+
+class AudioListenNotFound(AudioListenError):
+    pass
+
+
 def audio_enabled() -> bool:
     return os.getenv("AUDIO_ENABLED", "False").lower() in ("true", "1", "yes")
 
@@ -150,7 +166,7 @@ def request_tts_for_posts(db: Session, user: models.User, post_ids: list[int]) -
     if not unique_ids:
         raise TTSRequestInvalid("Selectează cel puțin un text.")
     if not user.has_audio_access:
-        raise TTSRequestForbidden("Necesită abonament Membru Junimea sau La cenaclu' Flacăra.")
+        raise TTSRequestForbidden("Necesită abonament Cronicar sau Rapsod.")
 
     period_start, period_end = crud.audio_tts_quota_period_for_user(user)
     limit = crud.audio_tts_quota_limit_for_user(user)
@@ -624,7 +640,81 @@ def audio_track_payload(audio: models.PostAudio) -> dict:
         "title": post.title,
         "slug": post.slug,
         "author_username": post.owner.username if post.owner else "",
+        "category": post.category,
         "source": audio.source,
         "playback_url": audio_storage.playback_url(audio),
         "content_type": audio.content_type,
+        "duration_seconds": audio.duration_seconds,
+    }
+
+
+def normalize_listen_mode(mode: str | None) -> str:
+    value = (mode or "toate").strip()
+    if value not in crud.AUDIO_LISTEN_MODES:
+        raise AudioListenInvalid("Mod de ascultare invalid.")
+    return value
+
+
+def random_listen_audio_track(
+    db: Session,
+    user: models.User,
+    mode: str,
+) -> models.PostAudio:
+    if not user or not user.has_audio_access:
+        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
+    normalized_mode = normalize_listen_mode(mode)
+    audio = crud.get_random_ready_audio_for_listen_mode(db, normalized_mode)
+    if not audio:
+        raise AudioListenNotFound("Nu există audio disponibil pentru acest mod.")
+    return (
+        db.query(models.PostAudio)
+        .options(joinedload(models.PostAudio.post).joinedload(models.Post.owner))
+        .filter(models.PostAudio.id == audio.id)
+        .first()
+    ) or audio
+
+
+def record_listen_seconds(
+    db: Session,
+    user: models.User,
+    *,
+    event_id: str,
+    audio_id: int,
+    seconds: int,
+    mode: str,
+) -> dict:
+    if not user or not user.has_audio_access:
+        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
+    normalized_mode = normalize_listen_mode(mode)
+    clean_event_id = (event_id or "").strip()
+    if not clean_event_id:
+        raise AudioListenInvalid("Identificatorul evenimentului lipsește.")
+    if seconds < 1 or seconds > 60:
+        raise AudioListenInvalid("Numărul de secunde trebuie să fie între 1 și 60.")
+
+    audio = crud.get_ready_audio_for_listen_recording(db, audio_id)
+    post = audio.post if audio else None
+    if not audio or audio.status != "ready" or not post or post.moderation_status != "approved":
+        raise AudioListenNotFound("Audio indisponibil.")
+    if normalized_mode != "toate" and post.category != normalized_mode:
+        raise AudioListenInvalid("Audio nu aparține modului de ascultare selectat.")
+
+    event, recorded = crud.record_audio_listen_event(
+        db,
+        event_id=clean_event_id,
+        audio=audio,
+        listener_user_id=user.id,
+        seconds=int(seconds),
+        mode=normalized_mode,
+    )
+    post = crud.get_post(db, event.post_id)
+    owner = crud.get_user_by_id(db, event.content_owner_id)
+    return {
+        "recorded": recorded,
+        "audio_id": event.audio_id,
+        "post_id": event.post_id,
+        "seconds": event.seconds,
+        "mode": event.mode,
+        "total_post_seconds": post.seconds_listened if post else 0,
+        "total_author_seconds": owner.seconds_listened if owner else 0,
     }

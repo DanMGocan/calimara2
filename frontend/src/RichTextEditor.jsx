@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Quill from "quill";
 import "quill/dist/quill.snow.css";
+import { avatarPreviewUrl } from "./app/paths.js";
 
 const SOFT_BREAK_BLOT = "softBreak";
 const SOFT_BREAK_CLASS = "cal-soft-break";
@@ -32,6 +33,8 @@ const TOOLBAR_OPTIONS = [
 const FORMATS = ["bold", "italic", "underline", "blockquote", "list", SOFT_BREAK_BLOT];
 const HTML_RE = /<[a-zA-Z][^>]*>/;
 const SOFT_BREAK_RE = new RegExp(`<br\\b[^>]*class=["'][^"']*\\b${SOFT_BREAK_CLASS}\\b[^"']*["'][^>]*>`, "gi");
+const MENTION_CONTEXT_RE = /(^|[\s([{])@([A-Za-z0-9]{0,40})$/;
+const MENTION_MIN_QUERY_LENGTH = 3;
 
 function escapeHtml(value) {
   return String(value)
@@ -122,6 +125,29 @@ function createSoftBreakMatcher() {
   return new Delta().insert({ [SOFT_BREAK_BLOT]: true });
 }
 
+function detectMention(quill) {
+  const range = quill.getSelection();
+  if (!range || range.length) return null;
+
+  const lookBehindLength = Math.min(range.index, 80);
+  const beforeCursor = quill.getText(range.index - lookBehindLength, lookBehindLength);
+  const match = beforeCursor.match(MENTION_CONTEXT_RE);
+  if (!match) return null;
+
+  const query = match[2] || "";
+  const start = range.index - query.length - 1;
+  const bounds = quill.getBounds(range.index);
+  return {
+    query,
+    start,
+    end: range.index,
+    position: {
+      left: Math.max(8, Math.min(bounds.left, 360)),
+      top: bounds.top + bounds.height + 8
+    }
+  };
+}
+
 function editorModules(enterMode) {
   const modules = {
     toolbar: TOOLBAR_OPTIONS
@@ -153,16 +179,149 @@ export function RichTextEditor({
   disabled = false,
   maxLength,
   enterMode = "paragraph",
+  mentionSearch,
 }) {
   const mountRef = useRef(null);
   const quillRef = useRef(null);
   const valueRef = useRef(value || "");
   const onChangeRef = useRef(onChange);
+  const mentionSearchRef = useRef(mentionSearch);
+  const disabledRef = useRef(disabled);
   const [empty, setEmpty] = useState(!value);
+  const [mentionState, setMentionState] = useState({
+    open: false,
+    query: "",
+    trigger: null,
+    position: null,
+    results: [],
+    loading: false,
+    activeIndex: 0
+  });
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    mentionSearchRef.current = mentionSearch;
+  }, [mentionSearch]);
+
+  useEffect(() => {
+    disabledRef.current = disabled;
+  }, [disabled]);
+
+  const closeMentionMenu = () => {
+    setMentionState((current) => current.open ? {
+      open: false,
+      query: "",
+      trigger: null,
+      position: null,
+      results: [],
+      loading: false,
+      activeIndex: 0
+    } : current);
+  };
+
+  const syncMentionMenu = (quill) => {
+    if (!mentionSearchRef.current || disabledRef.current) {
+      closeMentionMenu();
+      return;
+    }
+
+    const match = detectMention(quill);
+    if (!match) {
+      closeMentionMenu();
+      return;
+    }
+
+    setMentionState((current) => {
+      const sameTrigger = current.trigger?.start === match.start && current.trigger?.end === match.end;
+      const sameQuery = current.query === match.query;
+      return {
+        open: true,
+        query: match.query,
+        trigger: { start: match.start, end: match.end },
+        position: match.position,
+        results: sameTrigger && sameQuery ? current.results : [],
+        loading: match.query ? current.loading : false,
+        activeIndex: sameTrigger && sameQuery ? current.activeIndex : 0
+      };
+    });
+  };
+
+  useEffect(() => {
+    if (!mentionState.open || !mentionSearch || mentionState.query.length < MENTION_MIN_QUERY_LENGTH) {
+      if (mentionState.open && mentionState.results.length) {
+        setMentionState((current) => ({ ...current, results: [], loading: false, activeIndex: 0 }));
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setMentionState((current) => current.open ? { ...current, loading: true } : current);
+      mentionSearch(mentionState.query)
+        .then((users) => {
+          if (cancelled) return;
+          const results = Array.isArray(users) ? users : [];
+          setMentionState((current) => current.open && current.query === mentionState.query
+            ? { ...current, results, loading: false, activeIndex: 0 }
+            : current
+          );
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setMentionState((current) => current.open && current.query === mentionState.query
+            ? { ...current, results: [], loading: false, activeIndex: 0 }
+            : current
+          );
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mentionSearch, mentionState.open, mentionState.query]);
+
+  const insertMention = (user) => {
+    const quill = quillRef.current;
+    const trigger = mentionState.trigger;
+    const username = user?.username;
+    if (!quill || !trigger || !username) return;
+
+    quill.focus();
+    quill.deleteText(trigger.start, Math.max(0, trigger.end - trigger.start), Quill.sources.USER);
+    const text = `@${username} `;
+    quill.insertText(trigger.start, text, Quill.sources.USER);
+    quill.setSelection(trigger.start + text.length, 0, Quill.sources.SILENT);
+    closeMentionMenu();
+  };
+
+  const handleMentionKeyDown = (event) => {
+    if (!mentionState.open) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMentionMenu();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const count = mentionState.results.length;
+      if (!count) return;
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setMentionState((current) => ({
+        ...current,
+        activeIndex: (current.activeIndex + direction + count) % count
+      }));
+      return;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      if (!mentionState.results.length) return;
+      event.preventDefault();
+      insertMention(mentionState.results[mentionState.activeIndex] || mentionState.results[0]);
+    }
+  };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -195,13 +354,20 @@ export function RichTextEditor({
       valueRef.current = nextValue;
       setEmpty(!nextValue);
       onChangeRef.current?.(nextValue);
+      syncMentionMenu(quill);
+    };
+
+    const handleSelectionChange = () => {
+      syncMentionMenu(quill);
     };
 
     quill.on("text-change", handleTextChange);
+    quill.on("selection-change", handleSelectionChange);
     quill.enable(!disabled);
 
     return () => {
       quill.off("text-change", handleTextChange);
+      quill.off("selection-change", handleSelectionChange);
       quillRef.current = null;
       mount.innerHTML = "";
     };
@@ -229,6 +395,7 @@ export function RichTextEditor({
 
   useEffect(() => {
     quillRef.current?.enable(!disabled);
+    if (disabled) closeMentionMenu();
   }, [disabled]);
 
   return (
@@ -236,8 +403,37 @@ export function RichTextEditor({
       className={`rich-text-editor ${className}`.trim()}
       data-empty={empty ? "true" : "false"}
       data-disabled={disabled ? "true" : "false"}
+      onKeyDown={handleMentionKeyDown}
     >
       <div ref={mountRef} />
+      {mentionState.open && mentionSearch ? (
+        <div
+          className="mention-menu"
+          style={mentionState.position ? { left: mentionState.position.left, top: mentionState.position.top } : undefined}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          {mentionState.query.length < MENTION_MIN_QUERY_LENGTH ? (
+            <div className="mention-menu-empty">Scrie cel puțin 3 litere</div>
+          ) : mentionState.loading ? (
+            <div className="mention-menu-empty">Se caută...</div>
+          ) : mentionState.results.length ? (
+            mentionState.results.map((user, index) => (
+              <button
+                key={user.id ?? user.username}
+                className={`mention-option ${index === mentionState.activeIndex ? "active" : ""}`}
+                type="button"
+                onMouseEnter={() => setMentionState((current) => ({ ...current, activeIndex: index }))}
+                onClick={() => insertMention(user)}
+              >
+                <img className="mention-avatar" src={avatarPreviewUrl(user.avatar_seed || `${user.username}-shapes`, 32)} alt="" />
+                <span className="mention-name">@{user.username}</span>
+              </button>
+            ))
+          ) : (
+            <div className="mention-menu-empty">Niciun utilizator</div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

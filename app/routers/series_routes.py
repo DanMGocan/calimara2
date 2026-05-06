@@ -17,6 +17,8 @@ def _author_payload(user: Optional[models.User]) -> Optional[dict]:
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
     }
 
 

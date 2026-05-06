@@ -535,6 +535,7 @@ def seed(session: Session, *, quiet: bool = False) -> None:
             google_id=row["google_id"],
             subtitle=row["subtitle"],
             avatar_seed=row["avatar_seed"],
+            premium_tier="trubadur" if row["username"] == "mireasufletului" else "free",
             premium_until=premium_until if row["username"] == "mireasufletului" else None,
         )
         session.add(u)

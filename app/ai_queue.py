@@ -245,6 +245,7 @@ def _handle_comment_moderation(db: Session, job: models.AIJob) -> None:
         )
     elif comment.moderation_status == "approved":
         crud.award_content_approved(db, "comment", comment)
+        crud.notify_mentions_for_comment(db, comment)
 
 
 def _handle_forum_thread_moderation(db: Session, job: models.AIJob) -> None:

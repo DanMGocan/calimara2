@@ -12,7 +12,7 @@ from sqlalchemy import func
 
 from .. import models, crud, auth, statistics, pdf_exporter, profile_media, rich_text
 from ..database import get_db
-from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, get_avatar_url
+from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed, get_avatar_url, get_cover_url
 from ..categories import CATEGORIES, get_category_name
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ def serialize_user(user):
             profile_photo_url = profile_media.public_media_url(user.username, "profil")
         if getattr(user, "cover_photo_storage_key", None):
             cover_photo_url = profile_media.public_media_url(user.username, "coperta")
+    cover_seed = getattr(user, "cover_seed", None) or default_cover_seed(user)
     equipped_items = [
         {
             "slot": equipped.slot,
@@ -50,9 +51,11 @@ def serialize_user(user):
         "username": user.username,
         "subtitle": rich_text.sanitize_optional_rich_text(user.subtitle),
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "cover_seed": cover_seed,
         "avatar_url": profile_photo_url or get_avatar_url(user, size=160),
         "profile_photo_url": profile_photo_url,
         "cover_photo_url": cover_photo_url,
+        "cover_url": cover_photo_url or get_cover_url(cover_seed),
         "has_profile_photo": bool(getattr(user, "profile_photo_storage_key", None)),
         "has_cover_photo": bool(getattr(user, "cover_photo_storage_key", None)),
         "location": getattr(user, "location", None),
@@ -60,6 +63,7 @@ def serialize_user(user):
         "is_premium": getattr(user, "is_premium", False),
         "premium_tier": getattr(user, "premium_tier", "free") or "free",
         "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
+        "seconds_listened": getattr(user, "seconds_listened", 0) or 0,
         "equipped_items": equipped_items,
         "facebook_url": getattr(user, 'facebook_url', None),
         "tiktok_url": getattr(user, 'tiktok_url', None),
@@ -129,6 +133,8 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
         "category": post.category,
         "category_name": get_category_name(post.category) if post.category else "",
         "view_count": post.view_count,
+        "vizualizari": post.view_count,
+        "seconds_listened": post.seconds_listened or 0,
         "likes_count": post.likes_count,
         "comments_count": comments_count if comments_count is not None else len(post.approved_comments),
         "super_likes_count": super_likes_count,
@@ -143,6 +149,8 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
             "username": post.owner.username,
             "avatar_seed": post.owner.avatar_seed or f"{post.owner.username}-shapes",
             "subtitle": rich_text.sanitize_optional_rich_text(post.owner.subtitle),
+            "is_premium": getattr(post.owner, "is_premium", False),
+            "premium_tier": getattr(post.owner, "premium_tier", "free") or "free",
         }
     return result
 
@@ -192,20 +200,25 @@ def compute_approved_comment_counts(db: Session, posts):
     )
 
 
-def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False):
+def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False, include_comments=False):
     """Serialize a list of posts with efficient bulk super-like lookups."""
     counts, liked = compute_super_like_fields(db, posts, current_user)
     comment_counts = compute_approved_comment_counts(db, posts)
-    return [
-        serialize_post(
-            p,
+    serialized = []
+    for post in posts:
+        item = serialize_post(
+            post,
             include_owner=include_owner,
-            super_likes_count=counts.get(p.id, 0),
-            viewer_super_liked=liked.get(p.id, False),
-            comments_count=comment_counts.get(p.id, 0),
+            super_likes_count=counts.get(post.id, 0),
+            viewer_super_liked=liked.get(post.id, False),
+            comments_count=comment_counts.get(post.id, 0),
         )
-        for p in posts
-    ]
+        if include_comments:
+            item["approved_comments"] = [
+                serialize_comment(comment, db) for comment in (post.approved_comments or [])
+            ]
+        serialized.append(item)
+    return serialized
 
 
 def serialize_series_summary(db: Session, series):
@@ -220,6 +233,8 @@ def serialize_series_summary(db: Session, series):
             "id": owner.id,
             "username": owner.username,
             "avatar_seed": owner.avatar_seed or f"{owner.username}-shapes",
+            "is_premium": getattr(owner, "is_premium", False),
+            "premium_tier": getattr(owner, "premium_tier", "free") or "free",
         } if owner else None,
         "post_count": crud.count_series_posts(db, series.id, approved_only=True),
         "created_at": series.created_at.isoformat() if series.created_at else None,
@@ -227,15 +242,18 @@ def serialize_series_summary(db: Session, series):
     }
 
 
-def serialize_comment(comment):
+def serialize_comment(comment, db: Optional[Session] = None):
     """Serialize a comment for JSON response"""
+    content = rich_text.sanitize_rich_text(comment.content)
+    if db is not None:
+        content = crud.link_mentions_in_rich_text(db, comment.content)
     result = {
         "id": comment.id,
         "post_id": comment.post_id,
         "user_id": comment.user_id,
         "author_name": comment.author_name,
         "author_email": comment.author_email,
-        "content": rich_text.sanitize_rich_text(comment.content),
+        "content": content,
         "approved": comment.approved,
         "is_robot": getattr(comment, "is_robot", False),
         "moderation_status": comment.moderation_status,
@@ -246,6 +264,8 @@ def serialize_comment(comment):
         result["user"] = {
             "username": comment.commenter.username,
             "avatar_seed": comment.commenter.avatar_seed or f"{comment.commenter.username}-shapes",
+            "is_premium": getattr(comment.commenter, "is_premium", False),
+            "premium_tier": getattr(comment.commenter, "premium_tier", "free") or "free",
         }
     return result
 
@@ -267,8 +287,11 @@ def landing_data(
     else:
         random_posts = []
 
+    for post in random_posts:
+        statistics.record_view(db, request, "post", post.id, post.slug, post.user_id, current_user)
+
     return {
-        "random_posts": serialize_posts_with_super_likes(db, random_posts, current_user, include_owner=True),
+        "random_posts": serialize_posts_with_super_likes(db, random_posts, current_user, include_owner=True, include_comments=True),
         "stats": crud.get_platform_stats(db),
     }
 
@@ -439,7 +462,7 @@ def post_detail_data(
         viewer_super_liked=liked.get(post.id, False),
     )
     post_data["approved_comments"] = [
-        serialize_comment(c) for c in (post.approved_comments or [])
+        serialize_comment(c, db) for c in (post.approved_comments or [])
     ]
     series_context = crud.get_series_context_for_post(db, post, include_unapproved=can_view_pending)
 

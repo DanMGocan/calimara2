@@ -1,10 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .. import admin, auth, crud, models, schemas
 from ..database import get_db
 
 router = APIRouter(tags=["shop"])
+
+
+def _audit_shop_item_change(
+    db: Session,
+    request: Request,
+    actor: models.User,
+    *,
+    action: str,
+    item: models.ShopItem,
+) -> None:
+    admin.write_admin_audit_log(
+        db,
+        actor,
+        action=action,
+        target_type="shop_item",
+        target_id=item.id,
+        request=request,
+        extra_data={"slug": item.slug},
+    )
 
 
 def _item_payload(item: models.ShopItem, owned_ids=None, equipped_ids=None) -> dict:
@@ -132,6 +151,7 @@ def admin_list_shop_items_api(
 )
 def admin_create_shop_item_api(
     data: schemas.ShopItemCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
 ):
@@ -139,6 +159,7 @@ def admin_create_shop_item_api(
         item = crud.create_shop_item(db, data)
     except crud.ShopItemDuplicateSlugError:
         raise HTTPException(status_code=409, detail="Există deja un obiect cu acest slug")
+    _audit_shop_item_change(db, request, current_user, action="shop_item_create", item=item)
     return _item_payload(item)
 
 
@@ -146,6 +167,7 @@ def admin_create_shop_item_api(
 def admin_update_shop_item_api(
     item_id: int,
     data: schemas.ShopItemUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
 ):
@@ -155,4 +177,5 @@ def admin_update_shop_item_api(
         raise HTTPException(status_code=409, detail="Există deja un obiect cu acest slug")
     if not item:
         raise HTTPException(status_code=404, detail="Obiectul nu a fost găsit")
+    _audit_shop_item_change(db, request, current_user, action="shop_item_update", item=item)
     return _item_payload(item)

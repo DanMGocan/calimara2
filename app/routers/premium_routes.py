@@ -18,6 +18,11 @@ def _require_user(current_user: Optional[models.User]) -> models.User:
     return current_user
 
 
+@router.get("/api/premium/planuri", response_model=list[schemas.PremiumPlan])
+def list_plans():
+    return stripe_service.list_premium_plans()
+
+
 @router.post("/api/premium/plata", response_model=schemas.PremiumCheckoutResponse)
 def create_checkout(
     body: schemas.PremiumCheckoutRequest = schemas.PremiumCheckoutRequest(),
