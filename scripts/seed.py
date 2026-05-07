@@ -397,7 +397,6 @@ BEST_FRIENDS = [
     # (user, friend, position)
     ("mireasufletului", "vanatordecuvinte", 1),
     ("mireasufletului", "filedintramvai", 2),
-    ("mireasufletului", "noaptedetarziu", 3),
     ("vanatordecuvinte", "mireasufletului", 1),
     ("vanatordecuvinte", "noaptedetarziu", 2),
     ("filedintramvai", "noaptedetarziu", 1),

@@ -53,6 +53,7 @@ PREMIUM_TIER_DETAILS = {
             "100.000 caractere pentru generare audio",
             "Conversie text în fișier audio pentru textele tale",
             "Administrare audio din dashboard",
+            "Analitice avansate zilnice prin email",
         ],
     },
     "rapsod": {
@@ -83,8 +84,26 @@ CURRENCY_SYMBOLS = {
 
 
 def ensure_enabled() -> None:
+    _refresh_config_from_env_if_enabled()
     if not STRIPE_ENABLED:
         raise RuntimeError("Stripe is disabled. Set STRIPE_ENABLED=True in .env.")
+
+
+def _refresh_config_from_env_if_enabled() -> None:
+    global STRIPE_ENABLED, WEBHOOK_SECRET, PRICE_ID_TRUBADUR, PRICE_ID_CRONICAR, PRICE_ID_RAPSOD, SUCCESS_URL, CANCEL_URL, PORTAL_RETURN_URL
+    if STRIPE_ENABLED:
+        return
+    if os.getenv("STRIPE_ENABLED", "False").lower() not in ("true", "1", "yes"):
+        return
+    STRIPE_ENABLED = True
+    stripe.api_key = _require("STRIPE_SECRET_KEY")
+    WEBHOOK_SECRET = _require("STRIPE_WEBHOOK_SECRET")
+    PRICE_ID_TRUBADUR = _require("STRIPE_PRICE_ID_TRUBADUR_MONTHLY")
+    PRICE_ID_CRONICAR = os.getenv("STRIPE_PRICE_ID_CRONICAR_MONTHLY", "")
+    PRICE_ID_RAPSOD = os.getenv("STRIPE_PRICE_ID_RAPSOD_MONTHLY", "")
+    SUCCESS_URL = _require("STRIPE_SUCCESS_URL")
+    CANCEL_URL = _require("STRIPE_CANCEL_URL")
+    PORTAL_RETURN_URL = _require("STRIPE_CUSTOMER_PORTAL_RETURN_URL")
 
 
 def create_or_get_customer(email: str, user_id: int, existing_customer_id: Optional[str]) -> str:
@@ -99,6 +118,7 @@ def create_or_get_customer(email: str, user_id: int, existing_customer_id: Optio
 
 
 def configured_price_id_for_tier(tier: str) -> str:
+    _refresh_config_from_env_if_enabled()
     if tier == "rapsod":
         return PRICE_ID_RAPSOD
     if tier == "cronicar":
@@ -151,6 +171,7 @@ def _stripe_price_cadence(price) -> str:
 
 
 def _stripe_price_payload_for_tier(tier: str) -> dict:
+    _refresh_config_from_env_if_enabled()
     if not STRIPE_ENABLED:
         return {"price": PRICE_UNAVAILABLE_LABEL, "cadence": "", "available": False}
     price_id = configured_price_id_for_tier(tier)
@@ -184,6 +205,7 @@ def list_premium_plans() -> list[dict]:
 
 
 def subscription_tier_from_event_object(data) -> str:
+    _refresh_config_from_env_if_enabled()
     metadata_tier = (data.get("metadata") or {}).get("tier")
     if metadata_tier in {"trubadur", "cronicar", "rapsod"}:
         return metadata_tier

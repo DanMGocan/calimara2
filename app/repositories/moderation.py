@@ -3,6 +3,7 @@ from .economy import award_content_approved
 from .forum import _notify_forum_reply_approved
 from .mentions import notify_mentions_for_comment, notify_mentions_for_forum_reply, notify_mentions_for_forum_thread
 from .notifications import create_notification
+from .. import email_service
 
 def get_posts_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
     query = db.query(models.Post)
@@ -99,6 +100,7 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
         if not was_content_approved:
             if content_type == "comment":
                 notify_mentions_for_comment(db, content)
+                email_service.queue_comment_approved_email(db, content)
             elif content_type == "forum_thread":
                 notify_mentions_for_forum_thread(db, content)
             elif content_type == "forum_reply":

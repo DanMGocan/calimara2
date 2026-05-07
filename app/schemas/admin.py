@@ -3,6 +3,7 @@ from typing import Literal, Optional, List
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator, model_validator
 
+from .. import rich_text
 from .common import *
 
 AdminPremiumTier = Literal["free", "trubadur", "cronicar", "rapsod"]
@@ -52,6 +53,43 @@ class AdminGologaniAdjustment(BaseModel):
     def amount_must_not_be_zero(cls, value: int) -> int:
         if value == 0:
             raise ValueError("Suma trebuie să fie diferită de zero")
+        return value
+
+
+class AdminEmailAudience(BaseModel):
+    q: str = Field("", max_length=255)
+    role: Literal["all", "admin", "moderator", "member"] = "all"
+    status: Literal["all", "active", "suspended"] = "active"
+    premium: AdminPremiumTier | Literal["all"] = "all"
+    joined_from: Optional[str] = None
+    joined_to: Optional[str] = None
+    last_login_from: Optional[str] = None
+    last_login_to: Optional[str] = None
+    min_posts: Optional[int] = Field(None, ge=0)
+    max_posts: Optional[int] = Field(None, ge=0)
+    selected_user_ids: List[int] = Field(default_factory=list, max_length=5000)
+
+    @model_validator(mode="after")
+    def validate_post_range(self):
+        if self.min_posts is not None and self.max_posts is not None and self.min_posts > self.max_posts:
+            raise ValueError("Numărul minim de postări nu poate depăși maximul.")
+        return self
+
+
+class AdminEmailPreviewRequest(BaseModel):
+    audience: AdminEmailAudience = Field(default_factory=AdminEmailAudience)
+
+
+class AdminEmailCampaignCreate(BaseModel):
+    audience: AdminEmailAudience = Field(default_factory=AdminEmailAudience)
+    subject: str = Field(..., min_length=1, max_length=255)
+    html_content: str = Field(..., min_length=1, max_length=200000)
+
+    @field_validator("html_content")
+    @classmethod
+    def html_must_have_text(cls, value: str) -> str:
+        if not rich_text.rich_text_to_plain_text(value):
+            raise ValueError("Emailul trebuie să conțină text.")
         return value
 
 

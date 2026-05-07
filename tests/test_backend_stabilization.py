@@ -1,6 +1,8 @@
 import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -199,6 +201,47 @@ class BackendStabilizationTests(unittest.TestCase):
             )
         self.assertEqual(unsuspend_error.exception.status_code, 404)
 
+    def test_profile_promotions_cover_all_slot_types(self):
+        owner = self.make_user("promoter")
+        peer = self.make_user("peerwriter")
+        target = self.make_user("targetwriter")
+        own_posts = [self.make_post(owner, f"Own Text {index}") for index in range(1, 5)]
+        extra_own_post = self.make_post(owner, "Own Text Five")
+        peer_post = self.make_post(peer, "Peer Text")
+        target_post = self.make_post(target, "Target Text")
+
+        payload = user_routes.update_my_promotions(
+            schemas.UserPromotionsUpdate(
+                own_post_ids=[post.id for post in own_posts],
+                author_ids=[peer.id, target.id],
+                other_post_ids=[peer_post.id, target_post.id],
+            ),
+            db=self.db,
+            current_user=owner,
+        )
+
+        self.assertEqual(len(payload["own_posts"]), 4)
+        self.assertEqual(len(payload["authors"]), 2)
+        self.assertEqual(len(payload["other_posts"]), 2)
+
+        blog_payload = api_pages.blog_data(
+            DummyRequest(session={}),
+            owner.username,
+            db=self.db,
+            current_user=owner,
+        )
+        self.assertEqual(len(blog_payload["promoted_own_posts"]), 4)
+        self.assertEqual(len(blog_payload["promoted_authors"]), 2)
+        self.assertEqual(len(blog_payload["promoted_external_posts"]), 2)
+
+        with self.assertRaises(HTTPException) as own_limit:
+            user_routes.add_promoted_post(
+                extra_own_post.id,
+                db=self.db,
+                current_user=owner,
+            )
+        self.assertEqual(own_limit.exception.status_code, 400)
+
     def test_statistics_uses_configured_session_cookie(self):
         current_cookie = SimpleNamespace(cookies={"calimara_sess": "session-token"})
         old_cookie = SimpleNamespace(cookies={"session": "session-token"})
@@ -230,7 +273,124 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertIsInstance(log_entry.ai_details, dict)
         self.assertTrue(log_entry.ai_details["nested"]["ok"])
 
-    def test_run_init_database_skips_existing_schema_without_migrations(self):
+    def test_post_reports_are_deduped_and_hidden_posts_cannot_be_reported(self):
+        owner = self.make_user("reportowner")
+        reporter = self.make_user("reportreader")
+        post = self.make_post(owner, "Reportable Text")
+
+        report_post = post_routes.report_post_api.__wrapped__
+        created = report_post(
+            post.id,
+            schemas.PostReportCreate(
+                reason_type="plagiarism",
+                details="Text copiat",
+                evidence_url="https://example.com/source",
+            ),
+            DummyRequest({}),
+            db=self.db,
+            current_user=reporter,
+        )
+
+        self.assertEqual(created["post_id"], post.id)
+        self.assertEqual(created["reason_type"], "plagiarism")
+        self.assertEqual(created["status"], "open")
+        self.assertEqual(created["reporter_username"], "reportreader")
+
+        with self.assertRaises(HTTPException) as duplicate:
+            report_post(
+                post.id,
+                schemas.PostReportCreate(reason_type="plagiarism"),
+                DummyRequest({}),
+                db=self.db,
+                current_user=reporter,
+            )
+        self.assertEqual(duplicate.exception.status_code, 409)
+
+        pending = self.make_post(owner, "Pending Report Text", moderation_status="pending")
+        with self.assertRaises(HTTPException) as pending_error:
+            report_post(
+                pending.id,
+                schemas.PostReportCreate(reason_type="offensive"),
+                DummyRequest({}),
+                db=self.db,
+                current_user=reporter,
+            )
+        self.assertEqual(pending_error.exception.status_code, 400)
+
+    def test_moderators_can_review_post_reports(self):
+        owner = self.make_user("reportedowner")
+        reporter = self.make_user("reportedreader")
+        moderator_user = self.make_user("reportmod")
+        moderator_user.is_moderator = True
+        self.db.commit()
+        self.db.refresh(moderator_user)
+
+        dismiss_post = self.make_post(owner, "Dismissed Report Text")
+        reject_post = self.make_post(owner, "Rejected Report Text")
+        delete_post = self.make_post(owner, "Deleted Report Text")
+
+        dismiss_report = crud.create_post_report(
+            self.db,
+            post=dismiss_post,
+            reporter_user_id=reporter.id,
+            report=schemas.PostReportCreate(reason_type="offensive", details="Nu pare ok"),
+        )
+        reject_report = crud.create_post_report(
+            self.db,
+            post=reject_post,
+            reporter_user_id=reporter.id,
+            report=schemas.PostReportCreate(reason_type="plagiarism", evidence_url="https://example.com/original"),
+        )
+        delete_report = crud.create_post_report(
+            self.db,
+            post=delete_post,
+            reporter_user_id=reporter.id,
+            report=schemas.PostReportCreate(reason_type="offensive"),
+        )
+
+        listed = moderation_routes.get_post_reports(
+            status_filter="open",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=moderator_user,
+        )
+        self.assertEqual({item["id"] for item in listed["reports"]}, {dismiss_report.id, reject_report.id, delete_report.id})
+
+        dismissed = moderation_routes.review_post_report(
+            dismiss_report.id,
+            schemas.PostReportReview(action="dismiss", reason="Nu confirmă problema"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=moderator_user,
+        )
+        self.assertEqual(dismissed["report"]["status"], "dismissed")
+        self.assertEqual(dismissed["report"]["reviewer_username"], "reportmod")
+
+        rejected = moderation_routes.review_post_report(
+            reject_report.id,
+            schemas.PostReportReview(action="reject_post", reason="Plagiat confirmat"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=moderator_user,
+        )
+        self.db.refresh(reject_post)
+        self.assertEqual(rejected["report"]["status"], "resolved")
+        self.assertEqual(reject_post.moderation_status, "rejected")
+        self.assertEqual(reject_post.moderation_reason, "Plagiat confirmat")
+
+        deleted = moderation_routes.review_post_report(
+            delete_report.id,
+            schemas.PostReportReview(action="delete_post", reason="Șters după raportare"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=moderator_user,
+        )
+        self.assertEqual(deleted["report"]["status"], "resolved")
+        self.assertIsNone(deleted["report"]["post_id"])
+        self.assertIsNone(self.db.query(models.Post).filter(models.Post.id == delete_post.id).first())
+
+    def test_run_init_database_can_preserve_existing_schema_without_migrations(self):
         import run
 
         executed_sql = []
@@ -283,6 +443,65 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertFalse(any("DROP DATABASE" in sql for sql in executed_sql))
         self.assertFalse(any("CREATE DATABASE" in sql for sql in executed_sql))
 
+    def test_run_init_database_resets_existing_schema_by_default(self):
+        import run
+
+        executed_sql = []
+
+        class FakeResult:
+            def __init__(self, *, exists=False):
+                self.exists = exists
+
+            def first(self):
+                return object() if self.exists else None
+
+        class FakeConnection:
+            def execute(self, statement, params=None):
+                sql = str(statement)
+                executed_sql.append(sql)
+                if "FROM pg_database" in sql:
+                    return FakeResult(exists=True)
+                return FakeResult()
+
+            def commit(self):
+                executed_sql.append("COMMIT")
+
+        class FakeConnect:
+            def __enter__(self):
+                return FakeConnection()
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        class FakeEngine:
+            def connect(self):
+                return FakeConnect()
+
+            def dispose(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            schema_file = Path(temp_dir) / "schema.sql"
+            schema_file.write_text("CREATE TABLE users (id INT);\n", encoding="utf-8")
+
+            with patch.dict(os.environ, {}, clear=False), patch(
+                "sqlalchemy.create_engine",
+                return_value=FakeEngine(),
+            ), patch.object(run, "SCHEMA_FILE", schema_file), patch(
+                "scripts.seed.main"
+            ), patch.object(
+                run, "seed_dev_premium_user"
+            ), patch.object(
+                run, "verify_seed_data"
+            ):
+                os.environ.pop("CALIMARA_RESET_DATABASE", None)
+                run.init_database()
+
+        self.assertTrue(any("FROM pg_database" in sql for sql in executed_sql))
+        self.assertTrue(any("DROP DATABASE" in sql for sql in executed_sql))
+        self.assertTrue(any("CREATE DATABASE" in sql for sql in executed_sql))
+        self.assertTrue(any("CREATE TABLE users" in sql for sql in executed_sql))
+
     def test_admin_routes_tolerate_missing_optional_admin_tables(self):
         admin_user = self.make_user("missingadmintables")
         admin_user.is_admin = True
@@ -329,6 +548,53 @@ class BackendStabilizationTests(unittest.TestCase):
         )
         self.assertFalse(rollup["persisted"])
         self.assertEqual(rollup["date"], (datetime.now().date() - timedelta(days=1)).isoformat())
+
+    def test_site_feedback_submission_and_admin_status_workflow(self):
+        user = self.make_user("feedbackuser")
+        admin_user = self.make_user("feedbackadmin")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        self.db.commit()
+        self.db.refresh(admin_user)
+
+        created = user_routes.create_site_feedback(
+            DummyRequest({}, headers={"user-agent": "pytest-browser"}),
+            schemas.SiteFeedbackCreate(
+                kind="bug",
+                message="  Butonul nu răspunde  ",
+                page_url="https://calimara.test/panou",
+                client_context={"viewport": "1280x720"},
+            ),
+            db=self.db,
+            current_user=user,
+        )
+
+        self.assertEqual(created["kind"], "bug")
+        self.assertEqual(created["message"], "Butonul nu răspunde")
+        self.assertEqual(created["status"], "open")
+        self.assertEqual(created["username_snapshot"], "feedbackuser")
+
+        listed = admin_routes.list_site_feedback(
+            kind="all",
+            status_filter="open",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(listed["total"], 1)
+        self.assertEqual(listed["submissions"][0]["id"], created["id"])
+
+        updated = admin_routes.update_site_feedback(
+            created["id"],
+            schemas.SiteFeedbackUpdate(status="closed", admin_note="Rezolvat în test"),
+            DummyRequest({}, headers={"user-agent": "pytest-admin"}),
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(updated["status"], "closed")
+        self.assertEqual(updated["admin_note"], "Rezolvat în test")
+        self.assertEqual(updated["resolver_username"], "feedbackadmin")
 
     def test_get_current_user_uses_id_lookup_and_clears_missing_sessions(self):
         user = self.make_user("alice")

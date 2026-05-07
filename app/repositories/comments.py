@@ -1,6 +1,7 @@
 from ._shared import *
 from .economy import award_content_approved
 from .mentions import notify_mentions_for_comment
+from .. import email_service
 
 def create_comment(db: Session, comment: schemas.CommentCreate, post_id: int, user_id: Optional[int] = None):
     db_comment = models.Comment(
@@ -50,6 +51,7 @@ def approve_comment(db: Session, comment_id: int):
         if not was_approved:
             award_content_approved(db, "comment", comment)
             notify_mentions_for_comment(db, comment)
+            email_service.queue_comment_approved_email(db, comment)
     return comment
 
 def delete_comment(db: Session, comment_id: int):

@@ -49,6 +49,10 @@ export function createComment(postId, data) {
   return api.post(`/api/postari/${encodeURIComponent(postId)}/comentarii`, data);
 }
 
+export function reportPost(postId, data) {
+  return api.post(`/api/postari/${encodeURIComponent(postId)}/raportari`, data);
+}
+
 export function approveComment(commentId) {
   return api.put(`/api/comentarii/${encodeURIComponent(commentId)}/aproba`, {});
 }
@@ -64,4 +68,3 @@ export function likePost(postId) {
 export function fetchLikeCount(postId) {
   return api.get(`/api/postari/${encodeURIComponent(postId)}/aprecieri/numar`);
 }
-

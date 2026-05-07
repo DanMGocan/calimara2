@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -68,6 +68,7 @@ class Post(Base):
     audio_versions: Mapped[List["PostAudio"]] = relationship(
         "PostAudio", back_populates="post", cascade="all, delete-orphan"
     )
+    reports: Mapped[List["PostReport"]] = relationship("PostReport", back_populates="post")
 
     @hybrid_property
     def likes_count(self) -> int:
@@ -136,6 +137,35 @@ class PostAudio(Base):
     requester: Mapped[Optional["User"]] = relationship("User", foreign_keys=[requester_user_id])
 
 
+class PostReport(Base):
+    __tablename__ = "post_reports"
+    __table_args__ = (
+        CheckConstraint("reason_type IN ('offensive', 'plagiarism')", name="ck_post_reports_reason_type"),
+        CheckConstraint("status IN ('open', 'resolved', 'dismissed')", name="ck_post_reports_status"),
+        UniqueConstraint("post_id", "reporter_user_id", "reason_type", name="uq_post_reports_post_reporter_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True, index=True)
+    reporter_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reason_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    post_title_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    post_slug_snapshot: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    post_author_username_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="open", nullable=False, index=True)
+    reviewed_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    post: Mapped[Optional["Post"]] = relationship("Post", back_populates="reports")
+    reporter: Mapped["User"] = relationship("User", foreign_keys=[reporter_user_id])
+    reviewer: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewed_by])
+
+
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -193,4 +223,3 @@ class SuperLike(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "post_id", name="uq_super_likes_user_post"),
     )
-

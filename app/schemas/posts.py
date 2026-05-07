@@ -53,6 +53,61 @@ class Post(PostBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+PostReportReason = Literal["offensive", "plagiarism"]
+PostReportStatus = Literal["open", "resolved", "dismissed"]
+PostReportAction = Literal["dismiss", "reject_post", "delete_post"]
+
+
+class PostReportCreate(BaseModel):
+    reason_type: PostReportReason
+    details: Optional[str] = Field(None, max_length=2000)
+    evidence_url: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("details", "evidence_url")
+    @classmethod
+    def trim_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
+
+
+class PostReportReview(BaseModel):
+    action: PostReportAction
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def trim_reason(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Motivul este obligatoriu.")
+        return trimmed
+
+
+class PostReport(BaseModel):
+    id: int
+    post_id: Optional[int] = None
+    reporter_user_id: int
+    reason_type: PostReportReason
+    details: Optional[str] = None
+    evidence_url: Optional[str] = None
+    post_title: Optional[str] = None
+    post_slug: Optional[str] = None
+    post_author: Optional[str] = None
+    post_author_id: Optional[int] = None
+    reporter_username: Optional[str] = None
+    status: PostReportStatus
+    reviewed_by: Optional[int] = None
+    reviewer_username: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    review_note: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 
 class PostDraftSave(BaseModel):
     title: str = Field(default="", max_length=TITLE_CHARACTER_LIMIT)

@@ -46,7 +46,19 @@ export function reviewModerationLog(logId, data) {
   return api.post(`/api/moderare/revizie/${encodeURIComponent(logId)}`, data);
 }
 
+export function fetchPostReports({ status = "open", limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (limit) params.set("limit", String(limit));
+  if (offset) params.set("offset", String(offset));
+  const query = params.toString();
+  return api.get(`/api/moderare/raportari${query ? `?${query}` : ""}`);
+}
+
+export function reviewPostReport(reportId, data) {
+  return api.post(`/api/moderare/raportari/${encodeURIComponent(reportId)}/revizie`, data);
+}
+
 export function fetchExtendedModerationStats() {
   return api.get("/api/moderare/statistici/extinse");
 }
-

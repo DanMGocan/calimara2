@@ -1,9 +1,9 @@
 from .common import PostCategory
-from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, BestFriendsUpdate, FeaturedPostsUpdate
-from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, CommentBase, CommentCreate, Comment, Like
+from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, EmailPreferences, BestFriendsUpdate, FeaturedPostsUpdate, UserPromotionsUpdate
+from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentBase, CommentCreate, Comment, Like
 from .writing import DiacriticsKind, DiacriticsRequest, DiacriticsResponse
 from .messages import MessageCreate, MessageToUser, MessageBase, Message, ConversationBase, Conversation, ConversationSummary
-from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminContentUpdate
+from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
 from .notifications import NotificationResponse
 from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut
 from .forum import ForumSection, ForumModerationStatus, ForumAuthorRef, ForumThreadCreate, ForumReplyCreate, ForumThreadModerationAction, ForumThreadSummary, ForumReplyOut, ForumThreadDetail
@@ -12,6 +12,7 @@ from .clubs import ClubSpeciality, ClubMemberRole, ClubOwnerRef, ClubMemberRef, 
 from .super_likes import SuperLike, SuperLikeQuota
 from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus
 from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse
+from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackOut
 
 __all__ = [
     "PostCategory",
@@ -22,8 +23,10 @@ __all__ = [
     "UserInDB",
     "SocialLinksUpdate",
     "UserProfileSettingsUpdate",
+    "EmailPreferences",
     "BestFriendsUpdate",
     "FeaturedPostsUpdate",
+    "UserPromotionsUpdate",
     "PostBase",
     "PostCreate",
     "PostUpdate",
@@ -31,6 +34,12 @@ __all__ = [
     "PostDraftSave",
     "PostDraft",
     "PostDraftList",
+    "PostReportReason",
+    "PostReportStatus",
+    "PostReportAction",
+    "PostReportCreate",
+    "PostReportReview",
+    "PostReport",
     "CommentBase",
     "CommentCreate",
     "Comment",
@@ -54,6 +63,9 @@ __all__ = [
     "AdminRoleUpdate",
     "AdminPremiumUpdate",
     "AdminGologaniAdjustment",
+    "AdminEmailAudience",
+    "AdminEmailPreviewRequest",
+    "AdminEmailCampaignCreate",
     "AdminContentUpdate",
     "NotificationResponse",
     "ShopItemSlot",
@@ -120,4 +132,9 @@ __all__ = [
     "TTSConversionResponse",
     "AudioListenSecondsRequest",
     "AudioListenSecondsResponse",
+    "SiteFeedbackKind",
+    "SiteFeedbackStatus",
+    "SiteFeedbackCreate",
+    "SiteFeedbackUpdate",
+    "SiteFeedbackOut",
 ]

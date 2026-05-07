@@ -52,6 +52,7 @@ class SmokeData:
     super_liked_post_id: int
     audio_id: int
     moderation_log_id: int
+    site_feedback_id: int
 
 
 @dataclass(frozen=True)
@@ -300,6 +301,17 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         human_decision="pending",
     )
     db.add(moderation_log)
+    site_feedback = models.SiteFeedback(
+        kind="feedback",
+        user_id=user.id,
+        username_snapshot=user.username,
+        email_snapshot=user.email,
+        message="Smoke feedback",
+        page_url="https://calimara.test/smoke",
+        client_context={"viewport": "1200x800"},
+        status="open",
+    )
+    db.add(site_feedback)
 
     db.commit()
     for item in (
@@ -325,6 +337,7 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         unowned_item,
         audio,
         moderation_log,
+        site_feedback,
     ):
         db.refresh(item)
 
@@ -354,6 +367,7 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         super_liked_post_id=super_liked_post.id,
         audio_id=audio.id,
         moderation_log_id=moderation_log.id,
+        site_feedback_id=site_feedback.id,
     )
 
 
@@ -470,6 +484,17 @@ SMOKE_CASES = [
     SmokeCase("deleteProfileMedia", "DELETE", _path("/api/utilizator/media/profil"), {200}),
     SmokeCase("updateBestFriends", "PUT", _path("/api/utilizator/prieteni-apropiati"), {200}, _json({"friends": ["smokereader"]})),
     SmokeCase("searchUsers", "GET", _path("/api/utilizatori/cauta?q=smoke"), {200}),
+    SmokeCase("fetchPromotions", "GET", _path("/api/utilizator/promovari"), {200}),
+    SmokeCase("searchPromotions", "GET", _path("/api/utilizator/promovari/cauta?q=smoke"), {200}),
+    SmokeCase("updatePromotions", "PUT", _path("/api/utilizator/promovari"), {200}, lambda data: {
+        "own_post_ids": [data.post_id],
+        "author_ids": [data.peer_id],
+        "other_post_ids": [data.peer_post_id],
+    }),
+    SmokeCase("promoteAuthor", "POST", lambda data: f"/api/utilizator/promovari/autori/{data.target_id}", {200}),
+    SmokeCase("unpromoteAuthor", "DELETE", lambda data: f"/api/utilizator/promovari/autori/{data.target_id}", {200}),
+    SmokeCase("promotePost", "POST", lambda data: f"/api/utilizator/promovari/postari/{data.peer_post_id}", {200}),
+    SmokeCase("unpromotePost", "DELETE", lambda data: f"/api/utilizator/promovari/postari/{data.peer_post_id}", {200}),
     SmokeCase("fetchPublicProfile", "GET", _path("/api/utilizator/smokeauthor/profil"), {200}),
     SmokeCase("updateFeaturedPosts", "PUT", _path("/api/utilizator/postari-recomandate"), {200}, lambda data: {"post_ids": [data.post_id]}),
     SmokeCase("fetchLanding", "GET", _path("/api/prima-pagina?category=toate"), {200}),
@@ -567,6 +592,9 @@ SMOKE_CASES = [
     SmokeCase("fetchAdminContent", "GET", _path("/api/admin/content"), {200}),
     SmokeCase("fetchAdminJobs", "GET", _path("/api/admin/jobs"), {200}),
     SmokeCase("fetchAdminAuditLog", "GET", _path("/api/admin/audit-log"), {200}),
+    SmokeCase("createSiteFeedback", "POST", _path("/api/site-feedback"), {201}, _json({"kind": "bug", "message": "Smoke bug report", "page_url": "https://calimara.test/smoke", "client_context": {"viewport": "1200x800"}})),
+    SmokeCase("fetchAdminSiteFeedback", "GET", _path("/api/admin/site-feedback?status=all"), {200}),
+    SmokeCase("updateAdminSiteFeedback", "PUT", lambda data: f"/api/admin/site-feedback/{data.site_feedback_id}", {200}, _json({"status": "closed", "admin_note": "smoke closed"})),
     SmokeCase("fetchPremiumPlans", "GET", _path("/api/premium/planuri"), {200}),
     SmokeCase("startPremiumCheckout", "POST", _path("/api/premium/plata"), {200}, _json({"tier": "trubadur"})),
     SmokeCase("openPremiumPortal", "POST", _path("/api/premium/portal"), {200}, _json({})),

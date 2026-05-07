@@ -36,11 +36,11 @@ Calimara is a Romanian microblogging platform for writers and poets. Each writer
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the application (checks PostgreSQL, initializes DB if needed, starts uvicorn)
+# Run the application (rebuilds DB from schema.sql by default, starts uvicorn)
 python run.py
 
-# Rebuild database from schema.sql while starting (WARNING: wipes all data)
-CALIMARA_RESET_DATABASE=true python run.py
+# Preserve the existing database while starting
+CALIMARA_RESET_DATABASE=false python run.py
 ```
 
 ### PostgreSQL Setup
@@ -127,7 +127,7 @@ Use `get_common_context(request, current_user)` for consistent template variable
 ### Database Initialization
 - **schema.sql**: PostgreSQL schema with sample data
 - **No migration scripts**: Do not add SQL migration scripts or runtime incremental schema patches. Put the complete current schema directly in `schema.sql`.
-- **Database Initialization**: `run.py` creates or resets the database from `schema.sql`. Existing databases are preserved and never migrated; destroy the DB or set `CALIMARA_RESET_DATABASE=true` after schema changes.
+- **Database Initialization**: `run.py` drops and recreates the database from `schema.sql` by default. Set `CALIMARA_RESET_DATABASE=false` only when intentionally preserving the current database; no migrations are run.
 
 ## Code Patterns
 

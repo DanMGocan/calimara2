@@ -1,8 +1,9 @@
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, cause) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.cause = cause;
   }
 }
 
@@ -18,12 +19,20 @@ export async function request(path, options = {}) {
     body = JSON.stringify(body);
   }
 
-  const response = await fetch(path, {
-    credentials: "include",
-    ...options,
-    headers,
-    body
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      credentials: "include",
+      ...options,
+      headers,
+      body
+    });
+  } catch (error) {
+    const message = error?.name === "AbortError"
+      ? "Cererea a fost întreruptă."
+      : "Nu am putut contacta serverul. Verifică conexiunea și încearcă din nou.";
+    throw new ApiError(0, message, error);
+  }
 
   if (!response.ok) {
     const text = await response.text();

@@ -16,3 +16,4 @@ export * from "./api/premium.js";
 export * from "./api/audio.js";
 export * from "./api/moderation.js";
 export * from "./api/admin.js";
+export * from "./api/feedback.js";

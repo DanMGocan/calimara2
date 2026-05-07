@@ -16,6 +16,7 @@ from .repositories.forum import *
 from .repositories.messages import *
 from .repositories.notifications import *
 from .repositories.moderation import *
+from .repositories.reports import *
 from .repositories.series import *
 from .repositories.reactions import *
 from .repositories.premium import *

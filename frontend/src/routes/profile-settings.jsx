@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { FiAlertTriangle, FiExternalLink, FiHeart, FiImage, FiMapPin, FiTrash2, FiUpload } from "react-icons/fi";
+import { FiAlertTriangle, FiBookOpen, FiExternalLink, FiHeart, FiImage, FiMail, FiMapPin, FiSearch, FiStar, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
-import { deleteProfileMedia, updateProfileSettings, uploadProfileMedia } from "../api/users.js";
+import { deleteProfileMedia, fetchPromotions, promoteAuthor, promotePost, searchPromotions, unpromoteAuthor, unpromotePost, updateEmailPreferences, updateProfileSettings, uploadProfileMedia } from "../api/users.js";
 import { AUTH_COVER_OPTIONS, PROFILE_DESCRIPTION_CHARACTER_LIMIT } from "../app/constants.js";
 import { RichTextEditor } from "../app/editor.jsx";
-import { formatNumber, htmlToText } from "../app/format.js";
+import { formatNumber, htmlToText, usernameHandle } from "../app/format.js";
 import { AuthRequired, PageShell } from "../app/layout.jsx";
 import { blogUrl, coverPreviewUrl, mainPath, profileAvatarUrl, profileCoverUrl } from "../app/paths.js";
 import { SOCIAL_PROFILE_LINKS, SUPPORT_PROFILE_LINKS } from "../app/profile-links.jsx";
@@ -30,6 +30,21 @@ const PROFILE_MEDIA_RECOMMENDATIONS = {
   profil: "512 x 512 px",
   coperta: "1600 x 600 px"
 };
+const EMAIL_PREFERENCE_OPTIONS = [
+  ["email_comment_notifications", "Comentarii noi"],
+  ["email_mention_notifications", "Mențiuni"],
+  ["email_analytics_digest", "Analitice avansate"],
+  ["email_admin_announcements", "Anunțuri administrative"]
+];
+
+function emailPrefsFromUser(user) {
+  return {
+    email_comment_notifications: user?.email_comment_notifications ?? true,
+    email_mention_notifications: user?.email_mention_notifications ?? true,
+    email_analytics_digest: user?.email_analytics_digest ?? true,
+    email_admin_announcements: user?.email_admin_announcements ?? true
+  };
+}
 
 function CoverChoiceField({ username, selectedSeed, onChange }) {
   const usernameSeed = username || "calimara";
@@ -130,19 +145,204 @@ function ProfileMediaPanel({ user, kind, title, description, previewUrl, hasMedi
     </section>
   );
 }
+
+function promotionPostUrl(post) {
+  return post?.owner?.username && post?.slug ? `${blogUrl(post.owner.username)}/${post.slug}` : "#";
+}
+
+function PromotionItem({ item, kind, promoted, busy, disabled, onToggle }) {
+  const isAuthor = kind === "author";
+  const title = isAuthor ? usernameHandle(item.username) : item.title;
+  const meta = isAuthor ? htmlToText(item.subtitle || "") : item.owner?.username ? usernameHandle(item.owner.username) : "";
+  const href = isAuthor ? blogUrl(item.username) : promotionPostUrl(item);
+  return (
+    <div className="promotion-item">
+      <a className="promotion-item-main" href={href}>
+        {isAuthor ? <img className="promotion-avatar" src={profileAvatarUrl(item, 64)} alt="" aria-hidden="true" /> : <FiBookOpen aria-hidden="true" />}
+        <span>
+          <strong>{title}</strong>
+          {meta ? <small>{meta}</small> : null}
+        </span>
+      </a>
+      <button className={`cal-btn ${promoted ? "" : "primary"}`.trim()} type="button" onClick={onToggle} disabled={busy || disabled}>
+        <FiStar aria-hidden="true" />
+        {promoted ? "Elimină" : "Promovează"}
+      </button>
+    </div>
+  );
+}
+
+function PromotionGroup({ title, Icon, items, kind, empty, busyKey, promotedIds, limitReached, onToggle }) {
+  return (
+    <div className="promotion-group">
+      <div className="promotion-group-head">
+        <Icon aria-hidden="true" />
+        <span>{title}</span>
+      </div>
+      {items.length ? (
+        <div className="promotion-item-list">
+          {items.map((item) => {
+            const promoted = promotedIds.has(item.id);
+            return (
+              <PromotionItem
+                key={`${kind}-${item.id}`}
+                item={item}
+                kind={kind}
+                promoted={promoted}
+                busy={busyKey === `${kind}-${item.id}`}
+                disabled={!promoted && limitReached}
+                onToggle={() => onToggle(kind, item, promoted)}
+              />
+            );
+          })}
+        </div>
+      ) : <p className="auth-sub">{empty}</p>}
+    </div>
+  );
+}
+
+function PromotionSettingsPanel() {
+  const [promotions, setPromotions] = useState(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState({ own_posts: [], authors: [], other_posts: [] });
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [busyKey, setBusyKey] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchPromotions()
+      .then((data) => {
+        if (!cancelled) {
+          setPromotions(data);
+          setStatus("");
+        }
+      })
+      .catch((requestError) => {
+        if (!cancelled) setStatus(requestError.message || "Nu am putut încărca promovările.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) {
+      setResults({ own_posts: [], authors: [], other_posts: [] });
+      setSearching(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      searchPromotions(term)
+        .then((data) => {
+          if (!cancelled) setResults(data);
+        })
+        .catch((requestError) => {
+          if (!cancelled) setStatus(requestError.message || "Nu am putut căuta promovări.");
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  const limits = promotions?.limits || { own_posts: 4, authors: 2, other_posts: 2 };
+  const ownPostIds = new Set((promotions?.own_posts || []).map((item) => item.id));
+  const authorIds = new Set((promotions?.authors || []).map((item) => item.id));
+  const otherPostIds = new Set((promotions?.other_posts || []).map((item) => item.id));
+  const allPostIds = new Set([...ownPostIds, ...otherPostIds]);
+
+  const toggle = async (kind, item, promoted) => {
+    const key = `${kind}-${item.id}`;
+    setBusyKey(key);
+    setStatus("");
+    try {
+      const response = kind === "author"
+        ? (promoted ? await unpromoteAuthor(item.id) : await promoteAuthor(item.id))
+        : (promoted ? await unpromotePost(item.id) : await promotePost(item.id));
+      setPromotions(response.promotions);
+      setStatus(promoted ? "Promovarea a fost eliminată." : "Promovarea a fost salvată.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut actualiza promovarea.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  return (
+    <section className="profile-settings-section promotion-settings-section">
+      <div className="profile-panel-heading">
+        <FiStar aria-hidden="true" />
+        <div className="piece-card-kicker">promovări</div>
+      </div>
+      {loading ? <p className="auth-sub">Se încarcă promovările.</p> : null}
+      {promotions ? (
+        <div className="promotion-current-grid">
+          <PromotionGroup title={`Textele tale (${promotions.own_posts.length}/${limits.own_posts})`} Icon={FiBookOpen} items={promotions.own_posts} kind="own-post" empty="Nu ai texte proprii promovate." busyKey={busyKey} promotedIds={ownPostIds} limitReached={false} onToggle={toggle} />
+          <PromotionGroup title={`Autori (${promotions.authors.length}/${limits.authors})`} Icon={FiUsers} items={promotions.authors} kind="author" empty="Nu ai autori promovați." busyKey={busyKey} promotedIds={authorIds} limitReached={false} onToggle={toggle} />
+          <PromotionGroup title={`Texte de la alți autori (${promotions.other_posts.length}/${limits.other_posts})`} Icon={FiBookOpen} items={promotions.other_posts} kind="other-post" empty="Nu ai texte externe promovate." busyKey={busyKey} promotedIds={otherPostIds} limitReached={false} onToggle={toggle} />
+        </div>
+      ) : null}
+      <label className="auth-field profile-inline-label" htmlFor="promotion-search"><FiSearch aria-hidden="true" />Caută promovări</label>
+      <input id="promotion-search" className="cal-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="titlu sau autor" />
+      <div className="promotion-search-results">
+        <PromotionGroup title="Textele tale" Icon={FiBookOpen} items={results.own_posts || []} kind="own-post" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."} busyKey={busyKey} promotedIds={allPostIds} limitReached={(promotions?.own_posts?.length || 0) >= limits.own_posts} onToggle={toggle} />
+        <PromotionGroup title="Autori" Icon={FiUsers} items={results.authors || []} kind="author" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun autor găsit."} busyKey={busyKey} promotedIds={authorIds} limitReached={(promotions?.authors?.length || 0) >= limits.authors} onToggle={toggle} />
+        <PromotionGroup title="Texte de la alți autori" Icon={FiBookOpen} items={results.other_posts || []} kind="other-post" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."} busyKey={busyKey} promotedIds={allPostIds} limitReached={(promotions?.other_posts?.length || 0) >= limits.other_posts} onToggle={toggle} />
+      </div>
+      {status ? <div className={status.includes("Nu am putut") || status.includes("Poți") ? "inline-error" : "inline-status"}>{status}</div> : null}
+    </section>
+  );
+}
+
 function ProfileSettingsView({ user, onUserUpdate }) {
   const [form, setForm] = useState(() => profileFormFromUser(user));
+  const [emailPrefs, setEmailPrefs] = useState(() => emailPrefsFromUser(user));
   const [status, setStatus] = useState("");
+  const [emailStatus, setEmailStatus] = useState("");
+  const [savingEmailPrefs, setSavingEmailPrefs] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(profileFormFromUser(user));
+    setEmailPrefs(emailPrefsFromUser(user));
   }, [user?.id]);
 
   if (!user) return <AuthRequired />;
 
   const setField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+  const setEmailField = (field, value) => {
+    setEmailPrefs((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveEmailPreferences = async () => {
+    if (savingEmailPrefs) return;
+    setSavingEmailPrefs(true);
+    setEmailStatus("");
+    try {
+      const nextPrefs = await updateEmailPreferences(emailPrefs);
+      setEmailPrefs(nextPrefs);
+      onUserUpdate({ ...user, ...nextPrefs });
+      setEmailStatus("Preferințele de email au fost salvate.");
+    } catch (requestError) {
+      setEmailStatus(requestError.message || "Nu am putut salva preferințele de email.");
+    } finally {
+      setSavingEmailPrefs(false);
+    }
   };
 
   const submit = async (event) => {
@@ -221,6 +421,31 @@ function ProfileSettingsView({ user, onUserUpdate }) {
         </div>
         {status ? <div className={status.includes("Nu am putut") || status.includes("cel mult") ? "inline-error" : "inline-status"}>{status}</div> : null}
       </form>
+      <PromotionSettingsPanel />
+      <section className="profile-settings-section email-preferences-section">
+        <div className="profile-panel-heading">
+          <FiMail aria-hidden="true" />
+          <div className="piece-card-kicker">email</div>
+        </div>
+        <div className="email-preference-grid">
+          {EMAIL_PREFERENCE_OPTIONS.map(([field, label]) => (
+            <label className="email-preference-toggle" key={field}>
+              <input
+                type="checkbox"
+                checked={Boolean(emailPrefs[field])}
+                onChange={(event) => setEmailField(field, event.target.checked)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+        <div className="button-row">
+          <button className="cal-btn" type="button" disabled={savingEmailPrefs} onClick={saveEmailPreferences}>
+            {savingEmailPrefs ? "Se salvează..." : "Salvează emailurile"}
+          </button>
+        </div>
+        {emailStatus ? <div className={emailStatus.includes("Nu am putut") ? "inline-error" : "inline-status"}>{emailStatus}</div> : null}
+      </section>
       <div className="profile-media-grid">
         <ProfileMediaPanel
           user={user}

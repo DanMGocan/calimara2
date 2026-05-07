@@ -1,6 +1,6 @@
 from .base import Base
 from .users import User
-from .content import PostDraft, Post, PostAudio, Comment, Like, SuperLike
+from .content import PostDraft, Post, PostAudio, PostReport, Comment, Like, SuperLike
 from .premium import StripeEvent
 from .jobs import AIJob
 from .profile import BestFriend, FeaturedPost, UserAward
@@ -12,7 +12,8 @@ from .messaging import Conversation, Message
 from .moderation import ModerationLog
 from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
-from .admin import AdminAuditLog, AdminDailyMetric
+from .admin import AdminAuditLog, AdminDailyMetric, SiteFeedback
+from .email import EmailCampaign, EmailOutbox
 
 __all__ = [
     "Base",
@@ -20,6 +21,7 @@ __all__ = [
     "PostDraft",
     "Post",
     "PostAudio",
+    "PostReport",
     "Comment",
     "Like",
     "SuperLike",
@@ -49,4 +51,7 @@ __all__ = [
     "DailyStat",
     "AdminAuditLog",
     "AdminDailyMetric",
+    "SiteFeedback",
+    "EmailCampaign",
+    "EmailOutbox",
 ]

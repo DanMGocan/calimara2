@@ -1,6 +1,8 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AUTH_GOOGLE_PATH } from "../api/auth.js";
+import { createSiteFeedback } from "../api/feedback.js";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../api/notifications.js";
+import { FiMessageSquare } from "react-icons/fi";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
 import { authorPath, blogUrl, mainPath } from "./paths.js";
@@ -101,7 +103,7 @@ function notificationBadgeLabel(count) {
   return value > 99 ? "99+" : String(value);
 }
 
-export function NavBar({ loggedIn, user, notificationCount = 0, onMenu, menuOpen }) {
+export function NavBar({ loggedIn, user, notificationCount = 0, onProfile, profilePanelOpen, onMenu, menuOpen }) {
   const badgeLabel = notificationBadgeLabel(notificationCount);
   const profileLabel = loggedIn && user
     ? `Conectat ca ${usernameHandle(user.username)}${badgeLabel ? `, ${badgeLabel} notificări necitite` : ""}`
@@ -116,11 +118,13 @@ export function NavBar({ loggedIn, user, notificationCount = 0, onMenu, menuOpen
       </a>
       <div className="nav-right">
         <button
-          className="icon-btn profile-btn"
+          className={`icon-btn profile-btn ${profilePanelOpen ? "open" : ""}`.trim()}
           aria-label={profileLabel}
-          title={loggedIn && user ? `Conectat ca ${usernameHandle(user.username)}` : "Autentificare"}
+          title={loggedIn && user ? "Notificări" : "Autentificare"}
+          aria-expanded={loggedIn ? profilePanelOpen : undefined}
+          aria-controls={loggedIn ? "profile-notification-panel" : undefined}
           onClick={() => {
-            if (loggedIn) onMenu();
+            if (loggedIn) onProfile();
             else window.location.href = AUTH_GOOGLE_PATH;
           }}
           type="button"
@@ -159,7 +163,7 @@ export function ActionRow({ number, icon, label, sub, active, disabled, compact,
     </button>
   );
 }
-function MenuNotifications({ open, user, notificationCount = 0, onNotificationsRefresh, onClose }) {
+export function NotificationPanel({ open, user, notificationCount = 0, onNotificationsRefresh, onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
@@ -179,12 +183,32 @@ function MenuNotifications({ open, user, notificationCount = 0, onNotificationsR
     if (!user) setItems([]);
   }, [open, user?.id]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   if (!user) return null;
 
   const markOne = async (notification) => {
     try {
       if (!notification.is_read) {
         await markNotificationRead(notification.id);
+        setItems((current) => current.map((item) => (
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )));
       }
       await onNotificationsRefresh?.();
       if (notification.link) {
@@ -207,37 +231,61 @@ function MenuNotifications({ open, user, notificationCount = 0, onNotificationsR
   };
 
   return (
-    <section className="menu-notifications" aria-label="Notificări">
-      <div className="menu-notifications-head">
-        <span className="menu-kicker">notificări</span>
-        {notificationCount > 0 ? (
-          <button className="menu-mark-read" type="button" onClick={markAll}>Citește toate</button>
-        ) : null}
-      </div>
-      {loading ? <div className="menu-notification-empty">Se încarcă...</div> : null}
-      {status ? <div className="menu-notification-empty error">{status}</div> : null}
-      {!loading && !status && items.length ? (
-        <div className="menu-notification-list">
-          {items.slice(0, 5).map((notification) => (
-            <button
-              key={notification.id}
-              className={`menu-notification ${notification.is_read ? "" : "unread"}`.trim()}
-              type="button"
-              onClick={() => markOne(notification)}
-            >
-              <span className="menu-notification-title">{notification.title}</span>
-              {notification.message ? <span className="menu-notification-message">{notification.message}</span> : null}
-              {notification.created_at ? <span className="menu-notification-date">{formatDateTime(notification.created_at)}</span> : null}
-            </button>
-          ))}
+    <>
+      <div className={`profile-panel-scrim ${open ? "open" : ""}`} onClick={onClose} aria-hidden="true" />
+      <aside
+        id="profile-notification-panel"
+        className={`profile-notification-panel ${open ? "open" : ""}`}
+        aria-hidden={!open}
+        aria-label="Notificări"
+      >
+        <div className="profile-notification-head">
+          <div>
+            <span className="menu-kicker">notificări</span>
+            <h2 className="profile-notification-title">Notificări</h2>
+          </div>
+          <button className="menu-close" onClick={onClose} aria-label="Închide" type="button">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-      ) : null}
-      {!loading && !status && !items.length ? <div className="menu-notification-empty">Nu ai notificări.</div> : null}
-    </section>
+        <div className="profile-notification-toolbar">
+          <span className="profile-notification-count">
+            {notificationCount > 0 ? `${notificationCount} necitite` : "Toate citite"}
+          </span>
+          <div className="profile-notification-actions">
+            {status ? <button className="menu-mark-read" type="button" onClick={loadNotifications}>Reîncarcă</button> : null}
+            {notificationCount > 0 ? (
+              <button className="menu-mark-read" type="button" onClick={markAll}>Citește toate</button>
+            ) : null}
+          </div>
+        </div>
+        {loading ? <div className="menu-notification-empty">Se încarcă...</div> : null}
+        {status ? <div className="menu-notification-empty error">{status}</div> : null}
+        {!loading && !status && items.length ? (
+          <div className="menu-notification-list">
+            {items.map((notification) => (
+              <button
+                key={notification.id}
+                className={`menu-notification ${notification.is_read ? "" : "unread"}`.trim()}
+                type="button"
+                onClick={() => markOne(notification)}
+              >
+                <span className="menu-notification-title">{notification.title}</span>
+                {notification.message ? <span className="menu-notification-message">{notification.message}</span> : null}
+                {notification.created_at ? <span className="menu-notification-date">{formatDateTime(notification.created_at)}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {!loading && !status && !items.length ? <div className="menu-notification-empty">Nu ai notificări.</div> : null}
+      </aside>
+    </>
   );
 }
 
-export function SideMenu({ open, onClose, user, notificationCount = 0, onNotificationsRefresh }) {
+export function SideMenu({ open, onClose, user }) {
   useEffect(() => {
     const onKey = (event) => {
       if (event.key === "Escape") onClose();
@@ -311,18 +359,126 @@ export function SideMenu({ open, onClose, user, notificationCount = 0, onNotific
             </a>
           ))}
         </nav>
-        <MenuNotifications
-          open={open}
-          user={user}
-          notificationCount={notificationCount}
-          onNotificationsRefresh={onNotificationsRefresh}
-          onClose={onClose}
-        />
       </aside>
     </>
   );
 }
-export function Footer() {
+const SITE_FEEDBACK_ENTRY = { kind: "feedback", label: "Feedback", Icon: FiMessageSquare };
+
+function feedbackClientContext() {
+  if (typeof window === "undefined") return {};
+  const timezone = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      return "";
+    }
+  })();
+  return {
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    language: navigator.language || "",
+    platform: navigator.platform || "",
+    timezone
+  };
+}
+
+function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setMessage("");
+    setStatus("");
+    setError("");
+    setSubmitting(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!user || submitting) return;
+    const text = message.trim();
+    if (!text) {
+      setError("Mesajul este obligatoriu.");
+      return;
+    }
+    setSubmitting(true);
+    setStatus("");
+    setError("");
+    try {
+      await createSiteFeedback({
+        kind: SITE_FEEDBACK_ENTRY.kind,
+        message: text,
+        page_url: window.location.href,
+        client_context: feedbackClientContext()
+      });
+      setMessage("");
+      setStatus("Mesajul a fost trimis.");
+    } catch (requestError) {
+      setError(requestError.message || "Nu am putut trimite mesajul.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const Icon = SITE_FEEDBACK_ENTRY.Icon;
+  return (
+    <div className="feedback-modal-scrim" role="presentation" onClick={onClose}>
+      <section className="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="site-feedback-title" onClick={(event) => event.stopPropagation()}>
+        <button className="feedback-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
+        <div className="feedback-modal-head">
+          <span className="feedback-modal-icon" aria-hidden="true"><Icon /></span>
+          <h2 id="site-feedback-title" className="feedback-modal-title">{SITE_FEEDBACK_ENTRY.label}</h2>
+        </div>
+        {!authLoaded ? (
+          <p className="feedback-modal-body">Se verifică sesiunea...</p>
+        ) : !user ? (
+          <div className="feedback-auth">
+            <p className="feedback-modal-body">Autentificarea este necesară pentru trimitere.</p>
+            <a className="cal-btn primary" href={AUTH_GOOGLE_PATH}>Autentificare cu Google</a>
+          </div>
+        ) : (
+          <form className="feedback-form" onSubmit={submit}>
+            <label className="cal-label" htmlFor="site-feedback-message">Mesaj</label>
+            <textarea
+              id="site-feedback-message"
+              className="cal-textarea feedback-textarea"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              maxLength={2000}
+              rows={6}
+              required
+            />
+            <div className="feedback-form-foot">
+              <span className="feedback-counter">{message.trim().length}/2000</span>
+              <button className="cal-btn primary" type="submit" disabled={submitting || !message.trim()}>
+                {submitting ? "Se trimite..." : "Trimite"}
+              </button>
+            </div>
+            {status ? <div className="inline-status">{status}</div> : null}
+            {error ? <div className="inline-error">{error}</div> : null}
+          </form>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export function Footer({ user, authLoaded = false }) {
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const FeedbackIcon = SITE_FEEDBACK_ENTRY.Icon;
   return (
     <footer className="site-foot">
       <div className="foot-inner">
@@ -332,11 +488,20 @@ export function Footer() {
           <a href="mailto:contact@calimara.ro">Contact</a>
         </nav>
         <div className="foot-mark">© 2026 călimara.ro</div>
-        <div className="foot-social">
-          <a href="https://facebook.com" className="social-btn" aria-label="Facebook">f</a>
-          <a href="https://x.com" className="social-btn" aria-label="X">x</a>
+        <div className="foot-tools">
+          <div className="foot-feedback-actions">
+            <button className="foot-feedback-btn" type="button" onClick={() => setFeedbackOpen(true)}>
+              <FeedbackIcon aria-hidden="true" />
+              <span>{SITE_FEEDBACK_ENTRY.label}</span>
+            </button>
+          </div>
+          <div className="foot-social">
+            <a href="https://facebook.com" className="social-btn" aria-label="Facebook">f</a>
+            <a href="https://x.com" className="social-btn" aria-label="X">x</a>
+          </div>
         </div>
       </div>
+      <SiteFeedbackModal open={feedbackOpen} user={user} authLoaded={authLoaded} onClose={() => setFeedbackOpen(false)} />
     </footer>
   );
 }

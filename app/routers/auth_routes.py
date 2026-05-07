@@ -13,6 +13,7 @@ from .. import schemas, google_oauth
 from ..auth import get_db_epoch
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
+from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,10 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
         if user:
             # Existing user - log them in (clear session first to prevent fixation)
+            user.last_login_at = utcnow_naive()
+            db.add(user)
+            db.commit()
+            db.refresh(user)
             request.session.clear()
             request.session["user_id"] = user.id
             request.session["db_epoch"] = get_db_epoch()
@@ -131,6 +136,10 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
 
         # Create the user
         new_user = google_oauth.create_user_from_google(db, google_user, setup_data)
+        new_user.last_login_at = utcnow_naive()
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
 
         # Clear session and set authenticated user
         request.session.clear()

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FiPause, FiPlay } from "react-icons/fi";
+import { FiPause, FiPlay, FiX } from "react-icons/fi";
 import { GiPerspectiveDiceSixFacesRandom } from "react-icons/gi";
 import { fetchListeningRandomAudio, recordAudioListenSeconds } from "../api/audio.js";
 import { fetchLanding, postPdfUrl } from "../api/public.js";
@@ -13,6 +13,26 @@ const LISTEN_MODES = [
   { mode: "proza_scurta", label: "Asculta proza" },
   { mode: "toate", label: "Asculta de toate" }
 ];
+const LANDING_NETWORK_RETRY_DELAYS = [350, 900];
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchLandingWithNetworkRetry(category) {
+  let lastError;
+  for (let attempt = 0; attempt <= LANDING_NETWORK_RETRY_DELAYS.length; attempt += 1) {
+    try {
+      return await fetchLanding(category);
+    } catch (error) {
+      lastError = error;
+      const canRetry = error?.status === 0 && attempt < LANDING_NETWORK_RETRY_DELAYS.length;
+      if (!canRetry) throw error;
+      await wait(LANDING_NETWORK_RETRY_DELAYS[attempt]);
+    }
+  }
+  throw lastError;
+}
 
 function listenAccessMessage(user) {
   if (!user) return "Autentifică-te și activează Cronicar sau Rapsod pentru ascultare continuă.";
@@ -103,28 +123,27 @@ function LandingLinks() {
   );
 }
 
-function ListenActions({ user, onStart }) {
+function ListenActions({ user, onOpen, playerOpen }) {
   const canListen = Boolean(user?.has_audio_access);
   const disabledMessage = listenAccessMessage(user);
 
   return (
     <aside className="landing-listen-rail" aria-label="Ascultare audio">
       <div className="side-kicker">ascultare</div>
-      <div className="landing-listen-actions">
-        {LISTEN_MODES.map((item) => (
-          <span className="landing-listen-tooltip" title={canListen ? item.label : disabledMessage} key={item.mode}>
-            <button
-              className={`landing-listen-button ${canListen ? "" : "is-disabled"}`.trim()}
-              type="button"
-              disabled={!canListen}
-              aria-disabled={!canListen || undefined}
-              onClick={() => onStart(item.mode)}
-            >
-              {item.label}
-            </button>
-          </span>
-        ))}
-      </div>
+      <span className="landing-listen-tooltip" title={canListen ? "Deschide player audio" : disabledMessage}>
+        <button
+          className={`landing-listen-toggle ${canListen ? "" : "is-disabled"}`.trim()}
+          type="button"
+          disabled={!canListen}
+          aria-disabled={!canListen || undefined}
+          aria-haspopup="dialog"
+          aria-expanded={canListen ? playerOpen : undefined}
+          aria-controls="landing-listen-player"
+          onClick={onOpen}
+        >
+          Deschide player audio
+        </button>
+      </span>
     </aside>
   );
 }
@@ -132,11 +151,14 @@ function ListenActions({ user, onStart }) {
 function ListeningOverlay({
   open,
   audioRef,
+  activeMode,
   track,
   loading,
   error,
   playing,
+  onSelectMode,
   onToggle,
+  onClose,
   onEnded,
   onPlay,
   onPause,
@@ -148,7 +170,10 @@ function ListeningOverlay({
   const author = track?.author_username ? `@${track.author_username}` : "";
 
   return (
-    <section className="landing-listen-overlay" aria-label="Player audio">
+    <section className="landing-listen-overlay" id="landing-listen-player" aria-label="Player audio">
+      <button className="landing-player-close" type="button" aria-label="Închide playerul audio" onClick={onClose}>
+        <FiX aria-hidden="true" />
+      </button>
       <audio
         ref={audioRef}
         className="landing-listen-native"
@@ -165,11 +190,28 @@ function ListeningOverlay({
       <div className="landing-player-minimal">
         <h2 className="landing-player-title">{title}</h2>
         {author ? <div className="landing-player-author">{author}</div> : null}
+        <div className="landing-player-mode-grid" role="group" aria-label="Alege ce vrei să asculți">
+          {LISTEN_MODES.map((item) => {
+            const selected = activeMode === item.mode;
+            return (
+              <button
+                className={`landing-player-mode ${selected ? "active" : ""}`.trim()}
+                type="button"
+                disabled={loading}
+                aria-pressed={selected}
+                onClick={() => onSelectMode(item.mode)}
+                key={item.mode}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
         <button
           className="landing-player-toggle"
           type="button"
           onClick={onToggle}
-          disabled={loading || (!track && !error)}
+          disabled={loading || (!track && !error && !activeMode)}
           aria-label={playing ? "Pauză" : "Redă"}
         >
           {playing ? <FiPause aria-hidden="true" /> : <FiPlay aria-hidden="true" />}
@@ -201,6 +243,7 @@ function LandingView({ user }) {
   const pendingSecondsRef = useRef(0);
   const lastAudioTimeRef = useRef(0);
   const shouldAutoplayRef = useRef(false);
+  const suppressPauseFlushRef = useRef(false);
   const [piece, setPiece] = useState(fallbackPiece("poem"));
   const [landingPost, setLandingPost] = useState(null);
   const [stats, setStats] = useState(null);
@@ -210,6 +253,7 @@ function LandingView({ user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [authErrorOpen, setAuthErrorOpen] = useState(false);
+  const [listenOpen, setListenOpen] = useState(false);
   const [listenMode, setListenMode] = useState("");
   const [listenTrack, setListenTrack] = useState(null);
   const [listenLoading, setListenLoading] = useState(false);
@@ -239,6 +283,11 @@ function LandingView({ user }) {
     }
     lastAudioTimeRef.current = Number.isFinite(current) ? current : 0;
   }, []);
+
+  const openListening = useCallback(() => {
+    if (!user?.has_audio_access) return;
+    setListenOpen(true);
+  }, [user?.has_audio_access]);
 
   const flushListeningSeconds = useCallback((keepalive = false) => {
     capturePlayedDelta();
@@ -297,6 +346,14 @@ function LandingView({ user }) {
 
   const startListening = useCallback(async (mode) => {
     if (!user?.has_audio_access) return;
+    setListenOpen(true);
+    if (mode === activeModeRef.current && currentTrackRef.current) return;
+    const audio = audioRef.current;
+    if (audio && !audio.paused) {
+      capturePlayedDelta();
+      suppressPauseFlushRef.current = true;
+      audio.pause();
+    }
     await flushListeningSeconds();
     pendingSecondsRef.current = 0;
     lastAudioTimeRef.current = 0;
@@ -306,27 +363,33 @@ function LandingView({ user }) {
     setListenError("");
     setListenPlaying(false);
     loadListenTrack(mode);
-  }, [flushListeningSeconds, loadListenTrack, user?.has_audio_access]);
+  }, [capturePlayedDelta, flushListeningSeconds, loadListenTrack, user?.has_audio_access]);
 
   const stopListening = useCallback(() => {
-    flushListeningSeconds(true);
     const audio = audioRef.current;
-    if (audio) audio.pause();
+    if (audio && !audio.paused) {
+      capturePlayedDelta();
+      suppressPauseFlushRef.current = true;
+      audio.pause();
+    }
+    flushListeningSeconds(true);
     pendingSecondsRef.current = 0;
     lastAudioTimeRef.current = 0;
     shouldAutoplayRef.current = false;
     activeModeRef.current = "";
+    setListenOpen(false);
     setListenMode("");
     setListenTrack(null);
     setListenError("");
     setListenPlaying(false);
-  }, [flushListeningSeconds]);
+  }, [capturePlayedDelta, flushListeningSeconds]);
 
   const toggleListeningPlayback = useCallback(async () => {
     const audio = audioRef.current;
     if (!audio) return;
     if (!currentTrackRef.current) {
-      loadListenTrack(activeModeRef.current || "toate");
+      const mode = activeModeRef.current;
+      if (mode) loadListenTrack(mode);
       return;
     }
     if (!audio.paused) {
@@ -372,13 +435,13 @@ function LandingView({ user }) {
   }, [flushListeningSeconds, listenMode]);
 
   useEffect(() => {
-    if (!listenMode) return undefined;
+    if (!listenOpen) return undefined;
     const onKeyDown = (event) => {
       if (event.key === "Escape") stopListening();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [listenMode, stopListening]);
+  }, [listenOpen, stopListening]);
 
   useEffect(() => {
     const onPageHide = () => {
@@ -403,7 +466,7 @@ function LandingView({ user }) {
     if (!initial) setDiceSpinning(true);
     setError("");
     try {
-      const data = await fetchLanding("toate");
+      const data = await fetchLandingWithNetworkRetry("toate");
       const post = data.random_posts?.[0];
       setStats(data.stats ?? null);
       setLandingPost(post ?? null);
@@ -449,7 +512,7 @@ function LandingView({ user }) {
           spinning={diceSpinning}
         />
         <Rail stats={stats} />
-        <ListenActions user={user} onStart={startListening} />
+        <ListenActions user={user} onOpen={openListening} playerOpen={listenOpen} />
         <LandingLinks />
         <AdSlot placement="rail" />
         {error ? <div className="inline-error">{error}</div> : null}
@@ -459,19 +522,27 @@ function LandingView({ user }) {
         <PostActionTools post={landingPost} user={user} onPostChange={setLandingPost} pdfHref={landingPdfHref} />
       </div>
       <ListeningOverlay
-        open={Boolean(listenMode)}
+        open={listenOpen}
         audioRef={audioRef}
+        activeMode={listenMode}
         track={listenTrack}
         loading={listenLoading}
         error={listenError}
         playing={listenPlaying}
+        onSelectMode={startListening}
         onToggle={toggleListeningPlayback}
+        onClose={stopListening}
         onEnded={handleListenEnded}
         onPlay={() => {
           lastAudioTimeRef.current = audioRef.current?.currentTime || 0;
           setListenPlaying(true);
         }}
         onPause={() => {
+          if (suppressPauseFlushRef.current) {
+            suppressPauseFlushRef.current = false;
+            setListenPlaying(false);
+            return;
+          }
           capturePlayedDelta();
           flushListeningSeconds();
           setListenPlaying(false);

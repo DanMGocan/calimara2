@@ -220,6 +220,32 @@ def add_comment_to_post(
     return db_comment
 
 
+@router.post("/api/postari/{post_id}/raportari", response_model=schemas.PostReport, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+def report_post_api(
+    post_id: int,
+    report: schemas.PostReportCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    db_post = crud.get_post(db, post_id=post_id)
+    if not db_post:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
+    if db_post.moderation_status != "approved":
+        raise HTTPException(status_code=400, detail="Postarea nu este disponibilă pentru raportare")
+
+    db_report = crud.create_post_report(
+        db,
+        post=db_post,
+        reporter_user_id=current_user.id,
+        report=report,
+    )
+    if not db_report:
+        raise HTTPException(status_code=409, detail="Ai raportat deja această postare pentru acest motiv")
+    return crud.post_report_payload(db_report)
+
+
 @router.put("/api/comentarii/{comment_id}/aproba", response_model=schemas.Comment)
 def approve_comment_api(
     comment_id: int,

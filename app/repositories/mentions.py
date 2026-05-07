@@ -2,6 +2,7 @@ import html
 
 from ._shared import *
 from .notifications import create_notification
+from .. import email_service
 from ..utils import SUBDOMAIN_SUFFIX
 
 MENTION_RE = re.compile(r"(?<![A-Za-z0-9])@([A-Za-z0-9]{1,255})")
@@ -134,6 +135,15 @@ def _create_mention_notifications(
                 "actor_id": actor.id,
                 "actor_username": actor.username,
             },
+        )
+        email_service.queue_mention_email(
+            db=db,
+            target=user,
+            actor=actor,
+            source_type=source_type,
+            source_id=source_id,
+            source_title=source_title,
+            link=link,
         )
 
 

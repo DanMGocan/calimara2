@@ -115,7 +115,14 @@ def serialize_equipped_item(entry):
     }
 
 
-def serialize_post(post, include_owner=False, super_likes_count=None, viewer_super_liked=False, comments_count=None):
+def serialize_post(
+    post,
+    include_owner=False,
+    super_likes_count=None,
+    viewer_super_liked=False,
+    comments_count=None,
+    viewer_promoted=False,
+):
     """Serialize a post object to dict for JSON response.
 
     super_likes_count/viewer_super_liked are accepted as precomputed values so
@@ -139,6 +146,7 @@ def serialize_post(post, include_owner=False, super_likes_count=None, viewer_sup
         "comments_count": comments_count if comments_count is not None else len(post.approved_comments),
         "super_likes_count": super_likes_count,
         "viewer_super_liked": viewer_super_liked,
+        "viewer_promoted": viewer_promoted,
         "moderation_status": post.moderation_status,
         "created_at": post.created_at.isoformat() if post.created_at else None,
         "updated_at": post.updated_at.isoformat() if post.updated_at else None,
@@ -200,10 +208,27 @@ def compute_approved_comment_counts(db: Session, posts):
     )
 
 
+def compute_promoted_post_fields(db: Session, posts, current_user):
+    if not posts or not current_user:
+        return {}
+    post_ids = [p.id for p in posts]
+    promoted_ids = {
+        row[0]
+        for row in db.query(models.FeaturedPost.post_id)
+        .filter(
+            models.FeaturedPost.user_id == current_user.id,
+            models.FeaturedPost.post_id.in_(post_ids),
+        )
+        .all()
+    }
+    return {pid: (pid in promoted_ids) for pid in post_ids}
+
+
 def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False, include_comments=False):
     """Serialize a list of posts with efficient bulk super-like lookups."""
     counts, liked = compute_super_like_fields(db, posts, current_user)
     comment_counts = compute_approved_comment_counts(db, posts)
+    promoted = compute_promoted_post_fields(db, posts, current_user)
     serialized = []
     for post in posts:
         item = serialize_post(
@@ -212,6 +237,7 @@ def serialize_posts_with_super_likes(db, posts, current_user, include_owner=Fals
             super_likes_count=counts.get(post.id, 0),
             viewer_super_liked=liked.get(post.id, False),
             comments_count=comment_counts.get(post.id, 0),
+            viewer_promoted=promoted.get(post.id, False),
         )
         if include_comments:
             item["approved_comments"] = [
@@ -312,9 +338,11 @@ def blog_data(
 
     statistics.record_view(db, request, "blog", user.id, username, user.id, current_user)
 
-    # Featured posts
-    featured_posts_data = crud.get_featured_posts_for_user(db, user.id)
-    featured_posts = [fp.post for fp in featured_posts_data]
+    # Promoted slots on the public profile.
+    promoted_own_entries = crud.get_promoted_own_post_entries_for_user(db, user.id)
+    promoted_other_entries = crud.get_promoted_other_post_entries_for_user(db, user.id)
+    promoted_own_posts = [entry.post for entry in promoted_own_entries if entry.post]
+    promoted_other_posts = [entry.post for entry in promoted_other_entries if entry.post]
 
     # Latest posts
     latest_posts = crud.get_latest_posts_for_user(db, user.id, limit=3)
@@ -328,13 +356,13 @@ def blog_data(
     # Available months
     available_months = crud.get_available_months_for_user(db, user.id)
 
-    # Best friends
-    best_friends_data = crud.get_best_friends_for_user(db, user.id)
-    best_friends = []
-    for bf in best_friends_data:
+    # Promoted authors
+    promoted_author_entries = crud.get_promoted_authors_for_user(db, user.id)
+    promoted_authors = []
+    for bf in promoted_author_entries:
         friend_user = bf.friend if hasattr(bf, 'friend') else None
         if friend_user:
-            best_friends.append({
+            promoted_authors.append({
                 "user": serialize_user(friend_user),
                 "position": bf.position,
             })
@@ -355,7 +383,10 @@ def blog_data(
 
     return {
         "blog_owner": serialize_user(user),
-        "featured_posts": serialize_posts_with_super_likes(db, featured_posts, current_user),
+        "featured_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user),
+        "promoted_own_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, include_owner=True),
+        "promoted_authors": promoted_authors,
+        "promoted_external_posts": serialize_posts_with_super_likes(db, promoted_other_posts, current_user, include_owner=True),
         "latest_posts": serialize_posts_with_super_likes(db, latest_posts, current_user),
         "all_posts": serialize_posts_with_super_likes(db, all_posts, current_user),
         "available_months": [
@@ -363,7 +394,13 @@ def blog_data(
             for m in available_months
         ] if available_months else [],
         "blog_categories": blog_categories or [],
-        "best_friends": best_friends,
+        "best_friends": promoted_authors,
+        "viewer_promoted_author": (
+            bool(current_user)
+            and current_user.id != user.id
+            and crud.is_author_promoted_by_user(db, current_user.id, user.id)
+        ),
+        "promotion_limits": crud.promotion_limits(),
         "user_awards": [
             {
                 "id": a.id,
@@ -455,11 +492,14 @@ def post_detail_data(
     other_authors = [u for u in other_authors if u.id != user.id][:5]
 
     # Serialize post with comments (bulk-compute super-like fields for post + related posts in one pass)
-    counts, liked = compute_super_like_fields(db, [post] + list(related_posts), current_user)
+    post_group = [post] + list(related_posts)
+    counts, liked = compute_super_like_fields(db, post_group, current_user)
+    promoted = compute_promoted_post_fields(db, post_group, current_user)
     post_data = serialize_post(
         post,
         super_likes_count=counts.get(post.id, 0),
         viewer_super_liked=liked.get(post.id, False),
+        viewer_promoted=promoted.get(post.id, False),
     )
     post_data["approved_comments"] = [
         serialize_comment(c, db) for c in (post.approved_comments or [])
@@ -475,6 +515,7 @@ def post_detail_data(
                 p,
                 super_likes_count=counts.get(p.id, 0),
                 viewer_super_liked=liked.get(p.id, False),
+                viewer_promoted=promoted.get(p.id, False),
             )
             for p in related_posts
         ],

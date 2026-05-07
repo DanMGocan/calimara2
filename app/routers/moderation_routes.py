@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException, Response
+from fastapi import APIRouter, Request, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -269,6 +269,85 @@ def get_flagged_content(
     except Exception as e:
         logger.error(f"Eroare la obținerea conținutului marcat: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut încărca conținutul marcat")
+
+
+@router.get("/api/moderare/raportari")
+def get_post_reports(
+    status_filter: str = Query("open", alias="status"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator),
+):
+    """Get post reports submitted by readers."""
+    if status_filter not in {"all", "open", "resolved", "dismissed"}:
+        raise HTTPException(status_code=400, detail="Status de raportare invalid")
+    reports = crud.list_post_reports(db, status_filter=status_filter, skip=offset, limit=limit)
+    return {"reports": [crud.post_report_payload(report) for report in reports]}
+
+
+@router.post("/api/moderare/raportari/{report_id}/revizie")
+def review_post_report(
+    report_id: int,
+    review_data: schemas.PostReportReview,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_moderator),
+):
+    """Review a reader-submitted post report."""
+    report = crud.get_post_report(db, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Raportarea nu a fost găsită")
+    if report.status != "open":
+        raise HTTPException(status_code=400, detail="Raportarea a fost deja revizuită")
+
+    action = review_data.action
+    reason = review_data.reason
+    post_id = report.post_id
+
+    if action == "dismiss":
+        reviewed = crud.update_post_report_review(
+            db,
+            report,
+            status="dismissed",
+            reviewer_id=current_user.id,
+            note=reason,
+        )
+        return {"success": True, "message": "Raportarea a fost închisă", "report": crud.post_report_payload(reviewed)}
+
+    if not post_id:
+        raise HTTPException(status_code=404, detail="Postarea raportată nu mai există")
+
+    if action == "reject_post":
+        post = crud.reject_content(db, "post", post_id, current_user.id, reason)
+        if not post:
+            raise HTTPException(status_code=404, detail="Postarea raportată nu mai există")
+        crud.resolve_open_post_reports_for_post(
+            db,
+            post_id=post_id,
+            reviewer_id=current_user.id,
+            note=reason,
+        )
+        reviewed = crud.get_post_report(db, report_id)
+        return {"success": True, "message": "Postarea a fost respinsă", "report": crud.post_report_payload(reviewed)}
+
+    if action == "delete_post":
+        post = db.query(models.Post).filter(models.Post.id == post_id).first()
+        if not post:
+            raise HTTPException(status_code=404, detail="Postarea raportată nu mai există")
+        crud.resolve_open_post_reports_for_post(
+            db,
+            post_id=post_id,
+            reviewer_id=current_user.id,
+            note=reason,
+        )
+        db.delete(post)
+        db.commit()
+        db.expire_all()
+        reviewed = crud.get_post_report(db, report_id)
+        return {"success": True, "message": "Postarea a fost ștearsă", "report": crud.post_report_payload(reviewed)}
+
+    raise HTTPException(status_code=400, detail="Acțiune invalidă")
 
 
 @router.post("/api/moderare/modereaza/{content_type}/{content_id}")

@@ -12,6 +12,14 @@ export function updateProfileSettings(data) {
   return api.put("/api/utilizator/profil", data);
 }
 
+export function fetchEmailPreferences() {
+  return api.get("/api/utilizator/email-preferinte");
+}
+
+export function updateEmailPreferences(data) {
+  return api.put("/api/utilizator/email-preferinte", data);
+}
+
 export function updateSocialLinks(data) {
   return api.put("/api/utilizator/linkuri-sociale", data);
 }
@@ -42,7 +50,34 @@ export function updateFeaturedPosts(postIds) {
   return api.put("/api/utilizator/postari-recomandate", { post_ids: postIds });
 }
 
+export function fetchPromotions() {
+  return api.get("/api/utilizator/promovari");
+}
+
+export function updatePromotions(data) {
+  return api.put("/api/utilizator/promovari", data);
+}
+
+export function searchPromotions(query) {
+  return api.get(`/api/utilizator/promovari/cauta?q=${encodeURIComponent(query)}`);
+}
+
+export function promotePost(postId) {
+  return api.post(`/api/utilizator/promovari/postari/${encodeURIComponent(postId)}`, {});
+}
+
+export function unpromotePost(postId) {
+  return api.delete(`/api/utilizator/promovari/postari/${encodeURIComponent(postId)}`);
+}
+
+export function promoteAuthor(authorId) {
+  return api.post(`/api/utilizator/promovari/autori/${encodeURIComponent(authorId)}`, {});
+}
+
+export function unpromoteAuthor(authorId) {
+  return api.delete(`/api/utilizator/promovari/autori/${encodeURIComponent(authorId)}`);
+}
+
 export function fetchRandomUser() {
   return api.get("/api/utilizatori/aleatoriu");
 }
-

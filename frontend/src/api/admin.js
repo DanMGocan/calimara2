@@ -72,3 +72,22 @@ export function fetchAdminAuditLog(params = {}) {
   return api.get(`/api/admin/audit-log${buildQuery(params)}`);
 }
 
+export function fetchAdminSiteFeedback(params = {}) {
+  return api.get(`/api/admin/site-feedback${buildQuery(params)}`);
+}
+
+export function updateAdminSiteFeedback(feedbackId, data) {
+  return api.put(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}`, data);
+}
+
+export function previewAdminEmail(data) {
+  return api.post("/api/admin/email/preview", data);
+}
+
+export function createAdminEmailCampaign(data) {
+  return api.post("/api/admin/email/campaigns", data);
+}
+
+export function fetchAdminEmailCampaigns(params = {}) {
+  return api.get(`/api/admin/email/campaigns${buildQuery(params)}`);
+}

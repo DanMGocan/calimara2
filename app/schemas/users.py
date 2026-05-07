@@ -84,10 +84,22 @@ class UserInDB(UserBase):
     premium_until: Optional[datetime] = None
     gologani_balance: int = 0
     seconds_listened: int = 0
+    last_login_at: Optional[datetime] = None
+    email_comment_notifications: bool = True
+    email_mention_notifications: bool = True
+    email_analytics_digest: bool = True
+    email_admin_announcements: bool = True
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class EmailPreferences(BaseModel):
+    email_comment_notifications: bool = True
+    email_mention_notifications: bool = True
+    email_analytics_digest: bool = True
+    email_admin_announcements: bool = True
 
 class SocialLinksUpdate(BaseModel):
     facebook_url: Optional[str] = None
@@ -171,8 +183,14 @@ class UserProfileSettingsUpdate(BaseModel):
 
 
 class BestFriendsUpdate(BaseModel):
-    friends: List[str] = Field(default_factory=list, max_length=3, description="List of friend usernames (max 3)")
+    friends: List[str] = Field(default_factory=list, max_length=2, description="List of promoted author usernames (max 2)")
 
 
 class FeaturedPostsUpdate(BaseModel):
-    post_ids: List[Optional[int]] = Field(default_factory=list, max_length=3, description="List of post IDs (max 3)")
+    post_ids: List[Optional[int]] = Field(default_factory=list, max_length=4, description="List of own post IDs (max 4)")
+
+
+class UserPromotionsUpdate(BaseModel):
+    own_post_ids: List[int] = Field(default_factory=list, max_length=4)
+    author_ids: List[int] = Field(default_factory=list, max_length=2)
+    other_post_ids: List[int] = Field(default_factory=list, max_length=2)

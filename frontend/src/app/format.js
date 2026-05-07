@@ -51,6 +51,9 @@ export function decisionLabel(value) {
   if (value === "flagged") return "marcat";
   if (value === "rejected") return "respins";
   if (value === "pending") return "în așteptare";
+  if (value === "open") return "deschis";
+  if (value === "resolved") return "rezolvat";
+  if (value === "dismissed") return "închis";
   return value;
 }
 export function formatScore(value) {

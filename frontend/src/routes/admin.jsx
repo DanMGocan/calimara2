@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { cancelAdminJob, deleteAdminContent, deleteAdminUser, fetchAdminAuditLog, fetchAdminContent, fetchAdminJobs, fetchAdminOverview, fetchAdminUsers, moderateAdminContent, reactivateAdminUser, retryAdminJob, rollupAdminMetrics, suspendAdminUser, updateAdminContent, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { cancelAdminJob, createAdminEmailCampaign, deleteAdminContent, deleteAdminUser, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminSiteFeedback, fetchAdminUsers, moderateAdminContent, previewAdminEmail, reactivateAdminUser, retryAdminJob, rollupAdminMetrics, suspendAdminUser, updateAdminContent, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
 import { createAdminShopItem, fetchAdminShopItems, updateAdminShopItem } from "../api/economy.js";
-import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, moderateContent, reviewModerationLog } from "../api/moderation.js";
+import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
 
@@ -11,9 +11,41 @@ const PREMIUM_TIER_LABELS = {
   cronicar: "Cronicar",
   rapsod: "Rapsod"
 };
+const SITE_FEEDBACK_KIND_LABELS = {
+  feedback: "Feedback",
+  bug: "Bug"
+};
+const SITE_FEEDBACK_STATUS_LABELS = {
+  open: "Deschis",
+  closed: "Închis"
+};
 
 function premiumTierLabel(tier) {
   return PREMIUM_TIER_LABELS[tier] || tier || PREMIUM_TIER_LABELS.free;
+}
+
+const DEFAULT_USER_FILTERS = {
+  role: "all",
+  status: "all",
+  premium: "all",
+  joined_from: "",
+  joined_to: "",
+  last_login_from: "",
+  last_login_to: "",
+  min_posts: "",
+  max_posts: ""
+};
+
+const DEFAULT_EMAIL_FILTERS = {
+  ...DEFAULT_USER_FILTERS,
+  q: "",
+  status: "active"
+};
+
+function cleanFilters(filters) {
+  return Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== "" && value !== null && value !== undefined)
+  );
 }
 
 function AdminStat({ label, value, sub }) {
@@ -114,6 +146,49 @@ function AdminJournalRow({ log }) {
     </article>
   );
 }
+function reportTypeLabel(type) {
+  if (type === "offensive") return "Conținut ofensiv";
+  if (type === "plagiarism") return "Plagiat";
+  return type || "Raportare";
+}
+function AdminReportRow({ report, busy, onDismiss, onRejectPost, onDeletePost }) {
+  const reportBusy = busy?.startsWith(`report:${report.id}:`);
+  const evidence = report.evidence_url ? String(report.evidence_url) : "";
+  const details = report.details ? String(report.details) : "";
+  const title = report.post_title || "Postare ștearsă";
+  return (
+    <article className="admin-row">
+      <div className="admin-row-head">
+        <div>
+          <div className="admin-badges">
+            <span className="piece-card-status">{reportTypeLabel(report.reason_type)}</span>
+            <span className="piece-card-status">{decisionLabel(report.status)}</span>
+          </div>
+          <h2 className="admin-row-title">{title}</h2>
+        </div>
+        <div className="admin-row-meta">
+          {report.post_author ? <span>{report.post_author}</span> : null}
+          {report.created_at ? <span>{formatDateTime(report.created_at)}</span> : null}
+        </div>
+      </div>
+      {details ? <p className="admin-preview">{details}</p> : null}
+      {evidence ? <p className="admin-reason">{evidence}</p> : null}
+      <div className="admin-journal-grid">
+        {report.reporter_username ? <span>raportat de {report.reporter_username}</span> : null}
+        {report.reviewer_username ? <span>revizuit de {report.reviewer_username}</span> : null}
+        {report.reviewed_at ? <span>{formatDateTime(report.reviewed_at)}</span> : null}
+      </div>
+      {report.review_note ? <p className="admin-reason">{report.review_note}</p> : null}
+      {report.status === "open" ? (
+        <div className="admin-actions">
+          <button className="cal-btn" type="button" disabled={Boolean(reportBusy)} onClick={() => onDismiss(report)}>Închide raportarea</button>
+          <button className="cal-btn" type="button" disabled={Boolean(reportBusy) || !report.post_id} onClick={() => onRejectPost(report)}>Respinge postarea</button>
+          <button className="cal-btn danger" type="button" disabled={Boolean(reportBusy) || !report.post_id} onClick={() => onDeletePost(report)}>Șterge postarea</button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
 function AdminPanel({ title, children, actions }) {
   return (
     <section className="admin-panel">
@@ -156,20 +231,33 @@ function AdminDashboardView({ user }) {
   const canModerate = Boolean(user?.is_admin || user?.is_moderator);
   const [activeTab, setActiveTab] = useState(canAdmin ? "overview" : "pending");
   const [userSearch, setUserSearch] = useState("");
+  const [userFilters, setUserFilters] = useState(DEFAULT_USER_FILTERS);
   const [contentSearch, setContentSearch] = useState("");
   const [contentType, setContentType] = useState("all");
+  const [feedbackKind, setFeedbackKind] = useState("all");
+  const [feedbackStatus, setFeedbackStatus] = useState("open");
+  const [selectedUserIds, setSelectedUserIds] = useState(() => new Set());
+  const [emailFilters, setEmailFilters] = useState(DEFAULT_EMAIL_FILTERS);
+  const [emailMode, setEmailMode] = useState("filters");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailHtml, setEmailHtml] = useState("<p>Bună,</p>\n<p></p>");
+  const [emailPreview, setEmailPreview] = useState(null);
   const [state, setState] = useState({
     overview: null,
     stats: null,
     extendedStats: null,
     pending: [],
     flagged: [],
+    postReports: [],
     logs: [],
     users: [],
     content: [],
     jobs: [],
     audit: [],
     shop: [],
+    submissions: [],
+    submissionsTotal: 0,
+    emailCampaigns: [],
     error: "",
     loading: true
   });
@@ -183,11 +271,12 @@ function AdminDashboardView({ user }) {
     }
     setState((current) => ({ ...current, loading: true, error: "" }));
     try {
-      const [stats, extendedStats, pending, flagged, logs] = await Promise.all([
+      const [stats, extendedStats, pending, flagged, reports, logs] = await Promise.all([
         fetchModerationStats(),
         fetchExtendedModerationStats(),
         fetchPendingModerationContent(),
         fetchModerationQueue(),
+        fetchPostReports({ status: "open", limit: 50 }),
         fetchModerationLogs({ limit: 100 })
       ]);
       let adminData = {
@@ -196,16 +285,20 @@ function AdminDashboardView({ user }) {
         content: [],
         jobs: [],
         audit: [],
-        shop: []
+        shop: [],
+        submissions: [],
+        submissionsTotal: 0
       };
       if (canAdmin) {
-        const [overview, users, content, jobs, audit, shop] = await Promise.all([
+        const [overview, users, content, jobs, audit, shop, submissions, emailCampaigns] = await Promise.all([
           fetchAdminOverview(),
-          fetchAdminUsers({ q: userSearch, limit: 50 }),
+          fetchAdminUsers({ q: userSearch, ...cleanFilters(userFilters), limit: 50 }),
           fetchAdminContent({ q: contentSearch, content_type: contentType, limit: 50 }),
           fetchAdminJobs({ limit: 50 }),
           fetchAdminAuditLog({ limit: 100 }),
-          fetchAdminShopItems()
+          fetchAdminShopItems(),
+          fetchAdminSiteFeedback({ kind: feedbackKind, status: feedbackStatus, limit: 50 }),
+          fetchAdminEmailCampaigns({ limit: 20 })
         ]);
         adminData = {
           overview,
@@ -213,7 +306,10 @@ function AdminDashboardView({ user }) {
           content: content.content || [],
           jobs: jobs.jobs || [],
           audit: audit.logs || [],
-          shop: Array.isArray(shop) ? shop : []
+          shop: Array.isArray(shop) ? shop : [],
+          submissions: submissions.submissions || [],
+          submissionsTotal: submissions.total || 0,
+          emailCampaigns: emailCampaigns.campaigns || []
         };
       }
       setState({
@@ -221,6 +317,7 @@ function AdminDashboardView({ user }) {
         extendedStats,
         pending: pending.content || [],
         flagged: flagged.queue || [],
+        postReports: reports.reports || [],
         logs: logs.logs || [],
         ...adminData,
         error: "",
@@ -233,7 +330,7 @@ function AdminDashboardView({ user }) {
         loading: false
       }));
     }
-  }, [canAdmin, canModerate, contentSearch, contentType, userSearch]);
+  }, [canAdmin, canModerate, contentSearch, contentType, feedbackKind, feedbackStatus, userFilters, userSearch]);
 
   useEffect(() => {
     loadAdminData();
@@ -274,6 +371,22 @@ function AdminDashboardView({ user }) {
     `flagged:${item.log_id}:reject`,
     () => reviewModerationLog(item.log_id, { action: "rejected", reason })
   );
+  const dismissReport = (report) => {
+    const reason = adminReason("Motiv închidere raportare");
+    if (!reason) return;
+    runAction(`report:${report.id}:dismiss`, () => reviewPostReport(report.id, { action: "dismiss", reason }));
+  };
+  const rejectReportedPost = (report) => {
+    const reason = adminReason("Motiv respingere postare");
+    if (!reason) return;
+    runAction(`report:${report.id}:reject`, () => reviewPostReport(report.id, { action: "reject_post", reason }));
+  };
+  const deleteReportedPost = (report) => {
+    if (!window.confirm(`Ștergi definitiv postarea raportată "${report.post_title || report.post_id}"?`)) return;
+    const reason = adminReason("Motiv ștergere postare");
+    if (!reason) return;
+    runAction(`report:${report.id}:delete`, () => reviewPostReport(report.id, { action: "delete_post", reason }));
+  };
 
   const changeRoles = (target, next) => {
     const reason = adminReason("Motiv schimbare roluri");
@@ -311,6 +424,66 @@ function AdminDashboardView({ user }) {
     const reason = adminReason("Motiv ștergere definitivă");
     if (!reason) return;
     runAction(`user:${target.id}:delete`, () => deleteAdminUser(target.id, reason));
+  };
+  const setUserFilter = (field, value) => {
+    setUserFilters((current) => ({ ...current, [field]: value }));
+  };
+  const setEmailFilter = (field, value) => {
+    setEmailFilters((current) => ({ ...current, [field]: value }));
+    setEmailPreview(null);
+  };
+  const toggleSelectedUser = (target, checked) => {
+    setSelectedUserIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(target.id);
+      else next.delete(target.id);
+      return next;
+    });
+  };
+  const emailSelectedUsers = () => {
+    if (!selectedUserIds.size) return;
+    setEmailMode("selected");
+    setActiveTab("email");
+    setEmailPreview(null);
+  };
+  const emailAudiencePayload = () => (
+    emailMode === "selected"
+      ? { selected_user_ids: [...selectedUserIds] }
+      : { ...cleanFilters(emailFilters), selected_user_ids: [] }
+  );
+  const previewEmailAudience = async () => {
+    setBusy("email:preview");
+    setStatus("");
+    try {
+      const response = await previewAdminEmail({ audience: emailAudiencePayload() });
+      setEmailPreview(response);
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut calcula destinatarii.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const sendAdminEmail = async () => {
+    if (!emailSubject.trim() || !htmlToText(emailHtml).trim()) {
+      setStatus("Completează subiectul și conținutul HTML.");
+      return;
+    }
+    setBusy("email:send");
+    setStatus("");
+    try {
+      const response = await createAdminEmailCampaign({
+        audience: emailAudiencePayload(),
+        subject: emailSubject.trim(),
+        html_content: emailHtml
+      });
+      setStatus(`Campania a fost pusă în coadă: ${formatNumber(response.queued_count)} emailuri.`);
+      setEmailPreview(null);
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut pune campania în coadă.");
+    } finally {
+      setBusy("");
+    }
   };
 
   const moderateListedContent = (item, action) => {
@@ -368,12 +541,24 @@ function AdminDashboardView({ user }) {
     runAction("metrics:rollup", () => rollupAdminMetrics(date || undefined));
   };
 
+  const changeFeedbackStatus = (item, nextStatus) => {
+    const note = window.prompt("Notă admin (opțional)", item.admin_note || "");
+    if (note === null) return;
+    runAction(
+      `site-feedback:${item.id}:${nextStatus}`,
+      () => updateAdminSiteFeedback(item.id, { status: nextStatus, admin_note: note.trim() || null })
+    );
+  };
+
   const tabs = canAdmin
     ? [
         ["overview", "Ansamblu", state.overview?.cards?.pending_moderation],
         ["users", "Utilizatori", state.users.length],
         ["content", "Conținut", state.content.length],
+        ["submissions", "Sesizări", state.submissionsTotal],
+        ["email", "Email", state.emailCampaigns.length],
         ["pending", "Moderare", state.pending.length + state.flagged.length],
+        ["reports", "Raportări", state.postReports.length],
         ["journal", "Jurnal", state.logs.length],
         ["economy", "Economie", state.shop.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
@@ -383,6 +568,7 @@ function AdminDashboardView({ user }) {
     : [
         ["pending", "În așteptare AI", state.pending.length],
         ["flagged", "Marcate", state.flagged.length],
+        ["reports", "Raportări", state.postReports.length],
         ["journal", "Jurnal", state.logs.length]
       ];
 
@@ -437,7 +623,36 @@ function AdminDashboardView({ user }) {
       {!state.loading && !state.error && canAdmin && activeTab === "users" ? (
         <AdminPanel
           title="Utilizatori"
-          actions={<input className="cal-input admin-search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Caută username sau email" />}
+          actions={(
+            <div className="admin-controls admin-filter-controls">
+              <input className="cal-input admin-search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Caută username sau email" />
+              <select className="cal-input" value={userFilters.role} onChange={(event) => setUserFilter("role", event.target.value)}>
+                <option value="all">Rol: toate</option>
+                <option value="admin">Admin</option>
+                <option value="moderator">Moderator</option>
+                <option value="member">Utilizator</option>
+              </select>
+              <select className="cal-input" value={userFilters.status} onChange={(event) => setUserFilter("status", event.target.value)}>
+                <option value="all">Status: toate</option>
+                <option value="active">Activ</option>
+                <option value="suspended">Suspendat</option>
+              </select>
+              <select className="cal-input" value={userFilters.premium} onChange={(event) => setUserFilter("premium", event.target.value)}>
+                <option value="all">Premium: toate</option>
+                <option value="free">Gratuit</option>
+                <option value="trubadur">Trubadur</option>
+                <option value="cronicar">Cronicar</option>
+                <option value="rapsod">Rapsod</option>
+              </select>
+              <input className="cal-input compact-date" type="date" value={userFilters.joined_from} onChange={(event) => setUserFilter("joined_from", event.target.value)} aria-label="Înscris de la" />
+              <input className="cal-input compact-date" type="date" value={userFilters.joined_to} onChange={(event) => setUserFilter("joined_to", event.target.value)} aria-label="Înscris până la" />
+              <input className="cal-input compact-date" type="date" value={userFilters.last_login_from} onChange={(event) => setUserFilter("last_login_from", event.target.value)} aria-label="Ultima autentificare de la" />
+              <input className="cal-input compact-date" type="date" value={userFilters.last_login_to} onChange={(event) => setUserFilter("last_login_to", event.target.value)} aria-label="Ultima autentificare până la" />
+              <input className="cal-input compact-number" type="number" min="0" value={userFilters.min_posts} onChange={(event) => setUserFilter("min_posts", event.target.value)} placeholder="Min texte" />
+              <input className="cal-input compact-number" type="number" min="0" value={userFilters.max_posts} onChange={(event) => setUserFilter("max_posts", event.target.value)} placeholder="Max texte" />
+              <button className="cal-btn" type="button" disabled={!selectedUserIds.size} onClick={emailSelectedUsers}>Email selectați</button>
+            </div>
+          )}
         >
           <div className="admin-feed">
             {state.users.map((target) => (
@@ -446,8 +661,12 @@ function AdminDashboardView({ user }) {
                 kicker={`${target.is_admin ? "admin" : target.is_moderator ? "moderator" : "utilizator"} · ${target.is_suspended ? "suspendat" : "activ"}`}
                 title={target.username}
                 meta={<><span>{target.email}</span><span>{formatDateTime(target.created_at)}</span></>}
-                preview={`${premiumTierLabel(target.premium_tier)} · ${formatGologani(target.gologani_balance)} · ${formatNumber(target.counts?.posts)} texte`}
+                preview={`${premiumTierLabel(target.premium_tier)} · ${formatGologani(target.gologani_balance)} · ${formatNumber(target.counts?.posts)} texte · login ${target.last_login_at ? formatDateTime(target.last_login_at) : "niciodată"}`}
               >
+                <label className="admin-select-user">
+                  <input type="checkbox" checked={selectedUserIds.has(target.id)} onChange={(event) => toggleSelectedUser(target, event.target.checked)} />
+                  <span>Selectează</span>
+                </label>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => changeRoles(target, { is_admin: !target.is_admin, is_moderator: target.is_moderator })}>{target.is_admin ? "Scoate admin" : "Fă admin"}</button>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => changeRoles(target, { is_admin: target.is_admin, is_moderator: !target.is_moderator })}>{target.is_moderator ? "Scoate moderator" : "Fă moderator"}</button>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => target.is_suspended ? reactivateTarget(target) : suspendTarget(target)}>{target.is_suspended ? "Reactivează" : "Suspendă"}</button>
@@ -458,6 +677,86 @@ function AdminDashboardView({ user }) {
             ))}
           </div>
         </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "email" ? (
+        <div className="admin-grid">
+          <AdminPanel title="Campanie email">
+            <div className="admin-email-compose">
+              <div className="admin-controls">
+                <label className="admin-mode-option">
+                  <input type="radio" name="email-mode" checked={emailMode === "filters"} onChange={() => { setEmailMode("filters"); setEmailPreview(null); }} />
+                  <span>Filtre</span>
+                </label>
+                <label className="admin-mode-option">
+                  <input type="radio" name="email-mode" checked={emailMode === "selected"} onChange={() => { setEmailMode("selected"); setEmailPreview(null); }} disabled={!selectedUserIds.size} />
+                  <span>Selectați ({formatNumber(selectedUserIds.size)})</span>
+                </label>
+              </div>
+              {emailMode === "filters" ? (
+                <div className="admin-controls admin-filter-controls">
+                  <input className="cal-input admin-search" value={emailFilters.q} onChange={(event) => setEmailFilter("q", event.target.value)} placeholder="Caută username sau email" />
+                  <select className="cal-input" value={emailFilters.role} onChange={(event) => setEmailFilter("role", event.target.value)}>
+                    <option value="all">Rol: toate</option>
+                    <option value="admin">Admin</option>
+                    <option value="moderator">Moderator</option>
+                    <option value="member">Utilizator</option>
+                  </select>
+                  <select className="cal-input" value={emailFilters.status} onChange={(event) => setEmailFilter("status", event.target.value)}>
+                    <option value="all">Status: toate</option>
+                    <option value="active">Activ</option>
+                    <option value="suspended">Suspendat</option>
+                  </select>
+                  <select className="cal-input" value={emailFilters.premium} onChange={(event) => setEmailFilter("premium", event.target.value)}>
+                    <option value="all">Premium: toate</option>
+                    <option value="free">Gratuit</option>
+                    <option value="trubadur">Trubadur</option>
+                    <option value="cronicar">Cronicar</option>
+                    <option value="rapsod">Rapsod</option>
+                  </select>
+                  <input className="cal-input compact-date" type="date" value={emailFilters.joined_from} onChange={(event) => setEmailFilter("joined_from", event.target.value)} aria-label="Înscris de la" />
+                  <input className="cal-input compact-date" type="date" value={emailFilters.joined_to} onChange={(event) => setEmailFilter("joined_to", event.target.value)} aria-label="Înscris până la" />
+                  <input className="cal-input compact-date" type="date" value={emailFilters.last_login_from} onChange={(event) => setEmailFilter("last_login_from", event.target.value)} aria-label="Ultima autentificare de la" />
+                  <input className="cal-input compact-date" type="date" value={emailFilters.last_login_to} onChange={(event) => setEmailFilter("last_login_to", event.target.value)} aria-label="Ultima autentificare până la" />
+                  <input className="cal-input compact-number" type="number" min="0" value={emailFilters.min_posts} onChange={(event) => setEmailFilter("min_posts", event.target.value)} placeholder="Min texte" />
+                  <input className="cal-input compact-number" type="number" min="0" value={emailFilters.max_posts} onChange={(event) => setEmailFilter("max_posts", event.target.value)} placeholder="Max texte" />
+                </div>
+              ) : (
+                <div className="inline-status">Campania va fi trimisă către utilizatorii selectați din tabul Utilizatori.</div>
+              )}
+              <input className="cal-input" value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} placeholder="Subiect email" maxLength="255" />
+              <textarea className="cal-input admin-email-html" value={emailHtml} onChange={(event) => setEmailHtml(event.target.value)} spellCheck="false" />
+              <div className="button-row">
+                <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={previewEmailAudience}>{busy === "email:preview" ? "Se calculează..." : "Previzualizează destinatarii"}</button>
+                <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={sendAdminEmail}>{busy === "email:send" ? "Se trimite..." : "Pune în coadă"}</button>
+              </div>
+              {emailPreview ? (
+                <div className="admin-email-preview">
+                  <strong>{formatNumber(emailPreview.recipient_count)} destinatari eligibili</strong>
+                  <span>{formatNumber(emailPreview.matched_count)} potriviți înainte de opt-out.</span>
+                  {emailPreview.sample?.length ? (
+                    <div className="admin-preview-users">
+                      {emailPreview.sample.map((sampleUser) => <span key={sampleUser.id}>{sampleUser.username}</span>)}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </AdminPanel>
+          <AdminPanel title="Campanii recente">
+            <div className="admin-feed">
+              {state.emailCampaigns.length ? state.emailCampaigns.map((campaign) => (
+                <AdminDataRow
+                  key={campaign.id}
+                  kicker={`email #${campaign.id}`}
+                  title={campaign.subject}
+                  meta={<><span>{formatNumber(campaign.sent_count)} trimise</span><span>{formatDateTime(campaign.created_at)}</span></>}
+                  preview={`${formatNumber(campaign.pending_count)} în coadă · ${formatNumber(campaign.failed_count)} eșuate · ${formatNumber(campaign.recipient_count)} destinatari`}
+                />
+              )) : <StatusPanel title="Nu există campanii email" />}
+            </div>
+          </AdminPanel>
+        </div>
       ) : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "content" ? (
@@ -497,6 +796,48 @@ function AdminDashboardView({ user }) {
         </AdminPanel>
       ) : null}
 
+      {!state.loading && !state.error && canAdmin && activeTab === "submissions" ? (
+        <AdminPanel
+          title="Sesizări"
+          actions={(
+            <div className="admin-controls">
+              <select className="cal-input" value={feedbackKind} onChange={(event) => setFeedbackKind(event.target.value)}>
+                <option value="all">Toate</option>
+                <option value="feedback">Feedback</option>
+                <option value="bug">Buguri</option>
+              </select>
+              <select className="cal-input" value={feedbackStatus} onChange={(event) => setFeedbackStatus(event.target.value)}>
+                <option value="open">Deschise</option>
+                <option value="closed">Închise</option>
+                <option value="all">Toate statusurile</option>
+              </select>
+            </div>
+          )}
+        >
+          {state.submissions.length ? (
+            <div className="admin-feed">
+              {state.submissions.map((item) => (
+                <AdminDataRow
+                  key={item.id}
+                  kicker={`${SITE_FEEDBACK_KIND_LABELS[item.kind] || item.kind} · ${SITE_FEEDBACK_STATUS_LABELS[item.status] || item.status}`}
+                  title={item.username_snapshot || item.email_snapshot || `Utilizator #${item.user_id || "n/a"}`}
+                  meta={<><span>{item.email_snapshot || "fără email"}</span><span>{formatDateTime(item.created_at)}</span></>}
+                  preview={item.message}
+                >
+                  {item.page_url ? <a className="cal-btn" href={item.page_url} target="_blank" rel="noreferrer">Pagina</a> : null}
+                  {item.status === "open" ? (
+                    <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "closed")}>Închide</button>
+                  ) : (
+                    <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "open")}>Redeschide</button>
+                  )}
+                  <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, item.status)}>Notă</button>
+                </AdminDataRow>
+              ))}
+            </div>
+          ) : <StatusPanel title="Nu există sesizări" />}
+        </AdminPanel>
+      ) : null}
+
       {!state.loading && !state.error && activeTab === "pending" ? (
         <div className="admin-grid">
           <AdminPanel title="În așteptare AI">
@@ -522,6 +863,23 @@ function AdminDashboardView({ user }) {
             {state.flagged.map((item) => <AdminWorkRow key={item.log_id} item={item} mode="flagged" busy={busy} onApprove={approveFlagged} onReject={rejectFlagged} />)}
           </div>
         ) : <StatusPanel title="Nu există conținut marcat" />
+      ) : null}
+
+      {!state.loading && !state.error && activeTab === "reports" ? (
+        state.postReports.length ? (
+          <div className="admin-feed">
+            {state.postReports.map((report) => (
+              <AdminReportRow
+                key={report.id}
+                report={report}
+                busy={busy}
+                onDismiss={dismissReport}
+                onRejectPost={rejectReportedPost}
+                onDeletePost={deleteReportedPost}
+              />
+            ))}
+          </div>
+        ) : <StatusPanel title="Nu există raportări deschise" />
       ) : null}
 
       {!state.loading && !state.error && (activeTab === "journal" || activeTab === "audit") ? (

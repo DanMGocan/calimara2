@@ -68,6 +68,11 @@ class User(Base):
     premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     gologani_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     seconds_listened: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    email_comment_notifications: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_mention_notifications: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_analytics_digest: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_admin_announcements: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -143,6 +148,11 @@ class User(Base):
         "Notification",
         back_populates="user",
         cascade="all, delete-orphan"
+    )
+    email_outbox_items: Mapped[List["EmailOutbox"]] = relationship(
+        "EmailOutbox",
+        foreign_keys="EmailOutbox.recipient_user_id",
+        back_populates="recipient_user",
     )
     forum_threads: Mapped[List["ForumThread"]] = relationship(
         "ForumThread",

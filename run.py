@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Calimara development/server runner.
-Initializes the database from schema.sql, installs frontend
+Rebuilds the database from schema.sql by default, installs frontend
 dependencies, and starts uvicorn.
 """
 import os
@@ -244,7 +244,8 @@ def manage_systemd_service_if_needed():
     print(f"    sudo systemctl stop {service_unit_name()}")
     print()
     print("  Note: run.py does not run database migrations.")
-    print("  Existing database data is preserved unless CALIMARA_RESET_DATABASE=true is set.")
+    print("  Existing database data is reset from schema.sql by default.")
+    print("  Set CALIMARA_RESET_DATABASE=false to preserve the existing database.")
     sys.exit(0)
 
 
@@ -438,7 +439,7 @@ def init_database():
         print(f"  Refusing to reset PostgreSQL system database: {DB_NAME}")
         sys.exit(1)
 
-    reset_database = env_bool("CALIMARA_RESET_DATABASE", False)
+    reset_database = env_bool("CALIMARA_RESET_DATABASE", True)
 
     # 1. Check PostgreSQL connectivity and current database state.
     try:
@@ -479,7 +480,7 @@ def init_database():
         finally:
             engine.dispose()
 
-    # 2. Create the database if missing, or reset it only when explicitly requested.
+    # 2. Create the database if missing, or reset it unless explicitly preserved.
     if not database_exists or reset_database:
         try:
             server_engine = create_engine(

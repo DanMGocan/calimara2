@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { FiDownload } from "react-icons/fi";
+import { FiDownload, FiFlag, FiStar } from "react-icons/fi";
 import { AUTH_GOOGLE_PATH } from "../api/auth.js";
 import { fetchPostAudioStatus } from "../api/audio.js";
-import { createComment, likePost } from "../api/posts.js";
+import { createComment, likePost, reportPost } from "../api/posts.js";
 import { addSuperLike, removeSuperLike } from "../api/super-likes.js";
-import { searchUsers } from "../api/users.js";
+import { promotePost, searchUsers, unpromotePost } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
 import { COMMENT_CHARACTER_LIMIT, COMMENT_MODERATION_MESSAGE } from "./constants.js";
 import { CompactAudioPlayer, RichTextContent } from "./content.jsx";
@@ -14,6 +14,10 @@ import { formatDateTime, formatNumber, htmlToText, usernameHandle } from "./form
 import { mainPath } from "./paths.js";
 
 const NO_AUDIO_TITLE = "Utilizatorul nu a convertit inca textul in fisier audio";
+const REPORT_TITLES = {
+  offensive: "Raportează conținut ofensiv",
+  plagiarism: "Raportează plagiat"
+};
 
 function AccessModal({ modal, onClose }) {
   if (!modal) return null;
@@ -28,6 +32,47 @@ function AccessModal({ modal, onClose }) {
           {modal.actionHref ? <a className="cal-btn primary" href={modal.actionHref}>{modal.actionLabel}</a> : null}
           <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function ReportModal({
+  modal,
+  busy,
+  details,
+  evidenceUrl,
+  onDetailsChange,
+  onEvidenceUrlChange,
+  onClose,
+  onSubmit
+}) {
+  if (!modal) return null;
+  const isPlagiarism = modal.reasonType === "plagiarism";
+  return (
+    <div className="access-modal-scrim" role="presentation" onClick={onClose}>
+      <section className="access-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title" onClick={(event) => event.stopPropagation()}>
+        <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
+        <div className="piece-card-kicker">raportare</div>
+        <h2 id="report-modal-title" className="access-modal-title">{REPORT_TITLES[modal.reasonType]}</h2>
+        <form className="report-form" onSubmit={onSubmit}>
+          {isPlagiarism ? (
+            <label className="auth-field">
+              Link sursă
+              <input className="cal-input" type="url" value={evidenceUrl} onChange={(event) => onEvidenceUrlChange(event.target.value)} placeholder="https://..." maxLength={1000} />
+            </label>
+          ) : null}
+          <label className="auth-field">
+            Detalii
+            <textarea className="cal-input" value={details} onChange={(event) => onDetailsChange(event.target.value)} rows={4} maxLength={2000} />
+          </label>
+          <div className="button-row">
+            <button className="cal-btn primary" type="submit" disabled={busy === "report"}>
+              {busy === "report" ? "Se trimite..." : "Trimite raportarea"}
+            </button>
+            <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
+          </div>
+        </form>
       </section>
     </div>
   );
@@ -119,6 +164,9 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [modal, setModal] = useState(null);
+  const [reportModal, setReportModal] = useState(null);
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportEvidenceUrl, setReportEvidenceUrl] = useState("");
   const [audioState, setAudioState] = useState({ loading: false, data: null, error: "" });
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -136,6 +184,9 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     setLiked(false);
     setStatus("");
     setModal(null);
+    setReportModal(null);
+    setReportDetails("");
+    setReportEvidenceUrl("");
     setCommentOpen(false);
     setCommentText("");
     setCommentReview(null);
@@ -246,6 +297,74 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     }
   };
 
+  const handlePromotion = async () => {
+    if (!user) {
+      showLoginModal("Pentru promovare trebuie să intri în cont.");
+      return;
+    }
+    setBusy("promotion");
+    setStatus("");
+    try {
+      if (postState.viewer_promoted) {
+        await unpromotePost(postState.id);
+        updatePost((current) => ({ ...current, viewer_promoted: false }));
+        setStatus("Textul nu mai este promovat pe Călimara mea.");
+      } else {
+        await promotePost(postState.id);
+        updatePost((current) => ({ ...current, viewer_promoted: true }));
+        setStatus("Textul este promovat pe Călimara mea.");
+      }
+    } catch (requestError) {
+      setModal({
+        kicker: "promovare",
+        title: "Promovare indisponibilă",
+        message: requestError.message || "Nu am putut actualiza promovarea."
+      });
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const openReportModal = (reasonType) => {
+    if (!user) {
+      showLoginModal("Pentru raportări trebuie să intri în cont.");
+      return;
+    }
+    setStatus("");
+    setReportDetails("");
+    setReportEvidenceUrl("");
+    setReportModal({ reasonType });
+  };
+
+  const closeReportModal = () => {
+    if (busy === "report") return;
+    setReportModal(null);
+    setReportDetails("");
+    setReportEvidenceUrl("");
+  };
+
+  const submitReport = async (event) => {
+    event.preventDefault();
+    if (!reportModal) return;
+    setBusy("report");
+    setStatus("");
+    try {
+      await reportPost(postState.id, {
+        reason_type: reportModal.reasonType,
+        details: reportDetails,
+        evidence_url: reportModal.reasonType === "plagiarism" ? reportEvidenceUrl : ""
+      });
+      setStatus("Raportarea a fost trimisă către moderatori.");
+      setReportModal(null);
+      setReportDetails("");
+      setReportEvidenceUrl("");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut trimite raportarea.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const submitComment = async (event) => {
     event.preventDefault();
     if (!user) {
@@ -291,6 +410,10 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
           Super-aprecieri
           <span className="react-count">{formatNumber(postState.super_likes_count)}</span>
         </button>
+        <button className={`react-btn react-promote ${postState.viewer_promoted ? "on" : ""}`} type="button" onClick={handlePromotion} disabled={busy === "promotion"} aria-pressed={Boolean(postState.viewer_promoted)}>
+          <FiStar aria-hidden="true" />
+          <span>{postState.viewer_promoted ? "Promovat" : "Promovează"}</span>
+        </button>
         <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={busy === "like"} aria-pressed={liked}>
           Aprecieri
           <span className="react-count">{formatNumber(postState.likes_count)}</span>
@@ -307,6 +430,14 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
           <FiDownload aria-hidden="true" />
           <span>{filename}</span>
         </a>
+        <button className="react-btn" type="button" onClick={() => openReportModal("offensive")} disabled={busy === "report"}>
+          <FiFlag aria-hidden="true" />
+          <span>Raportează conținut ofensiv</span>
+        </button>
+        <button className="react-btn" type="button" onClick={() => openReportModal("plagiarism")} disabled={busy === "report"}>
+          <FiFlag aria-hidden="true" />
+          <span>Raportează plagiat</span>
+        </button>
       </div>
 
       <div className="post-audio-row">
@@ -341,6 +472,16 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
       {status ? <div className="inline-error">{status}</div> : null}
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       <AccessModal modal={modal} onClose={() => setModal(null)} />
+      <ReportModal
+        modal={reportModal}
+        busy={busy}
+        details={reportDetails}
+        evidenceUrl={reportEvidenceUrl}
+        onDetailsChange={setReportDetails}
+        onEvidenceUrlChange={setReportEvidenceUrl}
+        onClose={closeReportModal}
+        onSubmit={submitReport}
+      />
     </div>
   );
 }

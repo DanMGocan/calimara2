@@ -137,12 +137,15 @@ function detectMention(quill) {
   const query = match[2] || "";
   const start = range.index - query.length - 1;
   const bounds = quill.getBounds(range.index);
+  const editorWidth = quill.root?.getBoundingClientRect?.().width || window.innerWidth || 360;
+  const menuWidth = Math.min(280, Math.max(180, editorWidth - 16), Math.max(180, (window.innerWidth || 360) - 32));
+  const left = Math.max(8, Math.min(bounds.left, Math.max(8, editorWidth - menuWidth - 8)));
   return {
     query,
     start,
     end: range.index,
     position: {
-      left: Math.max(8, Math.min(bounds.left, 360)),
+      left,
       top: bounds.top + bounds.height + 8
     }
   };

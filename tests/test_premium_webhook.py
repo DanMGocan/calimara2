@@ -22,6 +22,8 @@ os.environ["STRIPE_CUSTOMER_PORTAL_RETURN_URL"] = "http://x/panou"
 from app import crud, models, stripe_service
 from app.week_util import utcnow_naive
 
+stripe_service._refresh_config_from_env_if_enabled()
+
 
 def _mk_event(event_id, event_type, customer_id="cus_1", sub_id="sub_1", period_end_ts=None, period_start_ts=None, tier="trubadur"):
     price_id = {

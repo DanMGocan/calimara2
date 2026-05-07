@@ -1,8 +1,9 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { FaCoins, FaShirt } from "react-icons/fa6";
-import { FiAward, FiBookOpen, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiUsers } from "react-icons/fi";
+import { FiAward, FiBookOpen, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUsers } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
 import { fetchAllWorks, fetchBlog } from "../api/public.js";
+import { promoteAuthor, unpromoteAuthor } from "../api/users.js";
 import { ALL_WORKS_SORT_OPTIONS, PROFILE_LINK_MISSING_MESSAGE } from "../app/constants.js";
 import { AuthorLink, EquippedStrip, PostCard, RichTextContent } from "../app/content.jsx";
 import { categoryLabel, formatNumber, usernameHandle } from "../app/format.js";
@@ -65,6 +66,49 @@ function ProfileStatLink({ Icon, href, label }) {
     </a>
   );
 }
+function PromoteAuthorButton({ owner, user, initialPromoted }) {
+  const [promoted, setPromoted] = useState(Boolean(initialPromoted));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPromoted(Boolean(initialPromoted));
+    setBusy(false);
+  }, [owner?.id, user?.id, initialPromoted]);
+
+  if (!owner || !user || owner.id === user.id) return null;
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (promoted) {
+        await unpromoteAuthor(owner.id);
+        setPromoted(false);
+      } else {
+        await promoteAuthor(owner.id);
+        setPromoted(true);
+      }
+    } catch {
+      setPromoted((current) => current);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      className={`profile-link-btn profile-promote-author ${promoted ? "is-promoted" : ""}`.trim()}
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={promoted}
+      aria-label={promoted ? "Elimină autorul din promovări" : "Promovează autorul pe Călimara mea"}
+      title={promoted ? "Elimină autorul din promovări" : "Promovează autorul pe Călimara mea"}
+    >
+      <FiStar aria-hidden="true" />
+    </button>
+  );
+}
 function ProfileHero({ data, postCount, user }) {
   const owner = data?.blog_owner;
   if (!owner) return null;
@@ -92,7 +136,9 @@ function ProfileHero({ data, postCount, user }) {
           <a className="profile-link-btn profile-settings-btn" href={authorPath(user, "/profil")} aria-label="Setări profil" title="Setări profil">
             <FiSettings aria-hidden="true" />
           </a>
-        ) : null}
+        ) : (
+          <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
+        )}
       </ExternalProfileLinks>
       {owner.subtitle ? (
         <blockquote className="profile-motto">
@@ -134,19 +180,48 @@ function ProfileHero({ data, postCount, user }) {
   );
 }
 function ProfileHighlights({ data }) {
-  const friends = data?.best_friends || [];
   const awards = data?.user_awards || [];
-  if (!friends.length && !awards.length) return null;
+  if (!awards.length) return null;
   return (
     <section className="profile-highlights" aria-label="Repere profil">
-      {friends.length ? (
-        <div className="profile-panel">
-          <div className="profile-panel-heading">
-            <FiUsers aria-hidden="true" />
-            <div className="piece-card-kicker">prieteni apropiați</div>
+      <div className="profile-panel">
+        <div className="profile-panel-heading">
+          <FiAward aria-hidden="true" />
+          <div className="piece-card-kicker">distincții</div>
+        </div>
+        <div className="profile-chip-list">
+          {awards.slice(0, 4).map((award) => (
+            <span className="profile-chip" key={award.id}><FiAward aria-hidden="true" />{award.award_title}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+function ProfilePromotions({ data }) {
+  const ownPosts = data?.promoted_own_posts || data?.featured_posts || [];
+  const authors = data?.promoted_authors || data?.best_friends || [];
+  const otherPosts = data?.promoted_external_posts || [];
+  if (!ownPosts.length && !authors.length && !otherPosts.length) return null;
+  return (
+    <section className="profile-promotions" aria-label="Promovări pe Călimara mea">
+      <div className="profile-panel-heading">
+        <FiStar aria-hidden="true" />
+        <div className="piece-card-kicker">promovări pe Călimara mea</div>
+      </div>
+      {ownPosts.length ? (
+        <div className="profile-promotion-block">
+          <div className="profile-promotion-label">texte proprii</div>
+          <div className="profile-promotion-grid">
+            {ownPosts.map((post) => <PostCard key={`own-${post.id}`} post={post} />)}
           </div>
+        </div>
+      ) : null}
+      {authors.length ? (
+        <div className="profile-promotion-block">
+          <div className="profile-promotion-label">autori</div>
           <div className="profile-chip-list">
-            {friends.map((entry) => (
+            {authors.map((entry) => (
               <a className="profile-chip" key={entry.user.username} href={blogUrl(entry.user.username)}>
                 <FiUsers aria-hidden="true" />
                 {usernameHandle(entry.user.username)}
@@ -155,16 +230,11 @@ function ProfileHighlights({ data }) {
           </div>
         </div>
       ) : null}
-      {awards.length ? (
-        <div className="profile-panel">
-          <div className="profile-panel-heading">
-            <FiAward aria-hidden="true" />
-            <div className="piece-card-kicker">distincții</div>
-          </div>
-          <div className="profile-chip-list">
-            {awards.slice(0, 4).map((award) => (
-              <span className="profile-chip" key={award.id}><FiAward aria-hidden="true" />{award.award_title}</span>
-            ))}
+      {otherPosts.length ? (
+        <div className="profile-promotion-block">
+          <div className="profile-promotion-label">texte de la alți autori</div>
+          <div className="profile-promotion-grid compact">
+            {otherPosts.map((post) => <PostCard key={`other-${post.id}`} post={post} />)}
           </div>
         </div>
       ) : null}
@@ -193,8 +263,9 @@ function ProfileSeriesList({ series }) {
 }
 function BlogView({ username, user }) {
   const { data, error, loading } = useAsync(() => fetchBlog(username), [username]);
-  const posts = data ? [...(data.featured_posts || []), ...(data.latest_posts || []), ...(data.all_posts || [])] : [];
-  const uniquePosts = posts.filter((post, index, all) => all.findIndex((item) => item.id === post.id) === index);
+  const promotedOwnIds = new Set((data?.promoted_own_posts || data?.featured_posts || []).map((post) => post.id));
+  const posts = data ? [...(data.latest_posts || []), ...(data.all_posts || [])] : [];
+  const uniquePosts = posts.filter((post, index, all) => !promotedOwnIds.has(post.id) && all.findIndex((item) => item.id === post.id) === index);
   const totalPostCount = (data?.category_counts || []).reduce((sum, item) => sum + Number(item.count || 0), 0) || uniquePosts.length;
   return (
     <PageShell kicker="profil" title={data ? null : usernameHandle(username)}>
@@ -204,6 +275,7 @@ function BlogView({ username, user }) {
         <>
           <ProfileHero data={data} postCount={totalPostCount} user={user} />
           <EquippedStrip items={data.blog_owner?.equipped_items} />
+          <ProfilePromotions data={data} />
           <ProfileHighlights data={data} />
           <ProfileSeriesList series={data.series} />
         </>

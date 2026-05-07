@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, models, schemas, statistics
+from .. import admin, crud, email_service, models, schemas, statistics
 from ..database import get_db
 from ..week_util import utcnow_naive
 
@@ -98,6 +98,11 @@ def _user_payload(db: Session, user: models.User, include_counts: bool = False) 
         "stripe_subscription_id": user.stripe_subscription_id,
         "gologani_balance": user.gologani_balance,
         "seconds_listened": user.seconds_listened or 0,
+        "last_login_at": _as_iso(user.last_login_at),
+        "email_comment_notifications": user.email_comment_notifications,
+        "email_mention_notifications": user.email_mention_notifications,
+        "email_analytics_digest": user.email_analytics_digest,
+        "email_admin_announcements": user.email_admin_announcements,
         "created_at": _as_iso(user.created_at),
         "updated_at": _as_iso(user.updated_at),
     }
@@ -125,6 +130,27 @@ def _audit_payload(log: models.AdminAuditLog) -> dict:
         "ip_address": log.ip_address,
         "metadata": log.extra_data or {},
         "created_at": _as_iso(log.created_at),
+    }
+
+
+def _site_feedback_payload(item: models.SiteFeedback) -> dict:
+    return {
+        "id": item.id,
+        "kind": item.kind,
+        "user_id": item.user_id,
+        "username_snapshot": item.username_snapshot,
+        "email_snapshot": item.email_snapshot,
+        "message": item.message,
+        "page_url": item.page_url,
+        "user_agent": item.user_agent,
+        "client_context": item.client_context or {},
+        "status": item.status,
+        "admin_note": item.admin_note,
+        "resolved_by": item.resolved_by,
+        "resolver_username": item.resolver.username if item.resolver else None,
+        "resolved_at": _as_iso(item.resolved_at),
+        "created_at": _as_iso(item.created_at),
+        "updated_at": _as_iso(item.updated_at),
     }
 
 
@@ -277,6 +303,110 @@ def _count_by_status(db: Session, model, column) -> dict:
 
 def _premium_filter():
     return and_(models.User.premium_until != None, models.User.premium_until > utcnow_naive())
+
+
+def _apply_admin_user_filters(
+    db: Session,
+    query,
+    *,
+    q: str = "",
+    role: str = "all",
+    status_filter: str = "all",
+    premium: str = "all",
+    joined_from: Optional[date] = None,
+    joined_to: Optional[date] = None,
+    last_login_from: Optional[date] = None,
+    last_login_to: Optional[date] = None,
+    min_posts: Optional[int] = None,
+    max_posts: Optional[int] = None,
+    selected_user_ids: Optional[list[int]] = None,
+):
+    if selected_user_ids:
+        return query.filter(models.User.id.in_(selected_user_ids))
+
+    term = q.strip()
+    if term:
+        like = f"%{term}%"
+        query = query.filter(or_(models.User.username.ilike(like), models.User.email.ilike(like)))
+    if role == "admin":
+        query = query.filter(models.User.is_admin == True)
+    elif role == "moderator":
+        query = query.filter(models.User.is_moderator == True, models.User.is_admin == False)
+    elif role == "member":
+        query = query.filter(models.User.is_admin == False, models.User.is_moderator == False)
+    if status_filter == "suspended":
+        query = query.filter(models.User.is_suspended == True)
+    elif status_filter == "active":
+        query = query.filter(models.User.is_suspended == False)
+    if premium in PREMIUM_TIERS and premium != "all":
+        if premium == "free":
+            query = query.filter(or_(models.User.premium_until == None, models.User.premium_until <= utcnow_naive()))
+        else:
+            query = query.filter(_premium_filter(), models.User.premium_tier == premium)
+    query = query.filter(*_date_filters(models.User.created_at, joined_from, joined_to))
+    query = query.filter(*_date_filters(models.User.last_login_at, last_login_from, last_login_to))
+    if min_posts is not None or max_posts is not None:
+        post_counts = (
+            db.query(models.Post.user_id.label("user_id"), func.count(models.Post.id).label("post_count"))
+            .group_by(models.Post.user_id)
+            .subquery()
+        )
+        count_value = func.coalesce(post_counts.c.post_count, 0)
+        query = query.outerjoin(post_counts, post_counts.c.user_id == models.User.id)
+        if min_posts is not None:
+            query = query.filter(count_value >= min_posts)
+        if max_posts is not None:
+            query = query.filter(count_value <= max_posts)
+    return query
+
+
+def _audience_filters_dict(audience: schemas.AdminEmailAudience) -> dict:
+    return {
+        "q": audience.q,
+        "role": audience.role,
+        "status": audience.status,
+        "premium": audience.premium,
+        "joined_from": audience.joined_from,
+        "joined_to": audience.joined_to,
+        "last_login_from": audience.last_login_from,
+        "last_login_to": audience.last_login_to,
+        "min_posts": audience.min_posts,
+        "max_posts": audience.max_posts,
+    }
+
+
+def _admin_email_recipients(db: Session, audience: schemas.AdminEmailAudience) -> tuple[list[models.User], int]:
+    joined_from = _parse_date(audience.joined_from)
+    joined_to = _parse_date(audience.joined_to)
+    last_login_from = _parse_date(audience.last_login_from)
+    last_login_to = _parse_date(audience.last_login_to)
+    selected_ids = [int(user_id) for user_id in audience.selected_user_ids if int(user_id) > 0]
+    query = _apply_admin_user_filters(
+        db,
+        db.query(models.User),
+        q=audience.q,
+        role=audience.role,
+        status_filter=audience.status,
+        premium=audience.premium,
+        joined_from=joined_from,
+        joined_to=joined_to,
+        last_login_from=last_login_from,
+        last_login_to=last_login_to,
+        min_posts=audience.min_posts,
+        max_posts=audience.max_posts,
+        selected_user_ids=selected_ids or None,
+    )
+    matched_count = query.count()
+    recipients = (
+        query.filter(
+            models.User.email_admin_announcements == True,
+            models.User.email != None,
+            models.User.is_suspended == False,
+        )
+        .order_by(models.User.created_at.desc(), models.User.id.desc())
+        .all()
+    )
+    return recipients, matched_count
 
 
 def _metric_counts_for_day(db: Session, target_date: date) -> dict:
@@ -446,34 +576,132 @@ def list_admin_users(
     role: str = "all",
     status_filter: str = Query("all", alias="status"),
     premium: str = "all",
+    joined_from: Optional[str] = Query(None),
+    joined_to: Optional[str] = Query(None),
+    last_login_from: Optional[str] = Query(None),
+    last_login_to: Optional[str] = Query(None),
+    min_posts: Optional[int] = Query(None, ge=0),
+    max_posts: Optional[int] = Query(None, ge=0),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
 ):
-    query = db.query(models.User)
-    term = q.strip()
-    if term:
-        like = f"%{term}%"
-        query = query.filter(or_(models.User.username.ilike(like), models.User.email.ilike(like)))
-    if role == "admin":
-        query = query.filter(models.User.is_admin == True)
-    elif role == "moderator":
-        query = query.filter(models.User.is_moderator == True, models.User.is_admin == False)
-    elif role == "member":
-        query = query.filter(models.User.is_admin == False, models.User.is_moderator == False)
-    if status_filter == "suspended":
-        query = query.filter(models.User.is_suspended == True)
-    elif status_filter == "active":
-        query = query.filter(models.User.is_suspended == False)
-    if premium in PREMIUM_TIERS and premium != "all":
-        if premium == "free":
-            query = query.filter(or_(models.User.premium_until == None, models.User.premium_until <= utcnow_naive()))
-        else:
-            query = query.filter(_premium_filter(), models.User.premium_tier == premium)
+    if min_posts is not None and max_posts is not None and min_posts > max_posts:
+        raise HTTPException(status_code=400, detail="Numărul minim de postări nu poate depăși maximul.")
+    query = _apply_admin_user_filters(
+        db,
+        db.query(models.User),
+        q=q,
+        role=role,
+        status_filter=status_filter,
+        premium=premium,
+        joined_from=_parse_date(joined_from),
+        joined_to=_parse_date(joined_to),
+        last_login_from=_parse_date(last_login_from),
+        last_login_to=_parse_date(last_login_to),
+        min_posts=min_posts,
+        max_posts=max_posts,
+    )
     total = query.count()
     users = query.order_by(models.User.created_at.desc(), models.User.id.desc()).offset(offset).limit(limit).all()
     return {"users": [_user_payload(db, user, include_counts=True) for user in users], "total": total}
+
+
+@router.post("/email/preview")
+def preview_admin_email(
+    data: schemas.AdminEmailPreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    recipients, matched_count = _admin_email_recipients(db, data.audience)
+    sample = recipients[:10]
+    return {
+        "matched_count": matched_count,
+        "recipient_count": len(recipients),
+        "sample": [_user_payload(db, user, include_counts=True) for user in sample],
+    }
+
+
+@router.post("/email/campaigns")
+def create_admin_email_campaign(
+    data: schemas.AdminEmailCampaignCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    recipients, matched_count = _admin_email_recipients(db, data.audience)
+    if not recipients:
+        raise HTTPException(status_code=400, detail="Nu există destinatari eligibili pentru această campanie.")
+    campaign = email_service.queue_admin_campaign(
+        db,
+        actor=current_user,
+        subject=data.subject.strip(),
+        html_content=data.html_content,
+        recipients=recipients,
+        filters=_audience_filters_dict(data.audience),
+        selected_user_ids=data.audience.selected_user_ids,
+        matched_count=matched_count,
+    )
+    _audit(
+        db,
+        request,
+        current_user,
+        action="admin_email_campaign_queue",
+        target_type="email_campaign",
+        target_id=campaign.id,
+        metadata={
+            "subject": campaign.subject,
+            "matched_count": matched_count,
+            "recipient_count": campaign.recipient_count,
+            "queued_count": campaign.queued_count,
+            "filters": campaign.filters or {},
+        },
+    )
+    return {
+        "id": campaign.id,
+        "matched_count": campaign.matched_count,
+        "recipient_count": campaign.recipient_count,
+        "queued_count": campaign.queued_count,
+        "status": campaign.status,
+    }
+
+
+@router.get("/email/campaigns")
+def list_admin_email_campaigns(
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    campaigns = db.query(models.EmailCampaign).order_by(models.EmailCampaign.created_at.desc(), models.EmailCampaign.id.desc()).limit(limit).all()
+    payload = []
+    for campaign in campaigns:
+        sent_count = db.query(models.EmailOutbox).filter(
+            models.EmailOutbox.campaign_id == campaign.id,
+            models.EmailOutbox.status == "sent",
+        ).count()
+        failed_count = db.query(models.EmailOutbox).filter(
+            models.EmailOutbox.campaign_id == campaign.id,
+            models.EmailOutbox.status == "failed",
+        ).count()
+        queued_count = db.query(models.EmailOutbox).filter(
+            models.EmailOutbox.campaign_id == campaign.id,
+            models.EmailOutbox.status.in_(("queued", "sending")),
+        ).count()
+        payload.append({
+            "id": campaign.id,
+            "subject": campaign.subject,
+            "actor_user_id": campaign.actor_user_id,
+            "matched_count": campaign.matched_count,
+            "recipient_count": campaign.recipient_count,
+            "queued_count": campaign.queued_count,
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "pending_count": queued_count,
+            "status": campaign.status,
+            "created_at": _as_iso(campaign.created_at),
+        })
+    return {"campaigns": payload}
 
 
 @router.get("/users/{user_id}")
@@ -867,6 +1095,83 @@ def cancel_admin_job(
     db.refresh(job)
     _audit(db, request, current_user, action="ai_job_cancel", target_type="ai_job", target_id=job.id, reason=data.reason)
     return _job_payload(job)
+
+
+@router.get("/site-feedback")
+def list_site_feedback(
+    kind: str = Query("all"),
+    status_filter: str = Query("open", alias="status"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    query = db.query(models.SiteFeedback).options(joinedload(models.SiteFeedback.resolver))
+    if kind != "all":
+        if kind not in {"feedback", "bug"}:
+            raise HTTPException(status_code=400, detail="Tip de sesizare invalid.")
+        query = query.filter(models.SiteFeedback.kind == kind)
+    if status_filter != "all":
+        if status_filter not in {"open", "closed"}:
+            raise HTTPException(status_code=400, detail="Status de sesizare invalid.")
+        query = query.filter(models.SiteFeedback.status == status_filter)
+    total = query.count()
+    submissions = (
+        query.order_by(models.SiteFeedback.created_at.desc(), models.SiteFeedback.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "submissions": [_site_feedback_payload(item) for item in submissions],
+        "total": total,
+        "open_count": db.query(models.SiteFeedback).filter(models.SiteFeedback.status == "open").count(),
+        "closed_count": db.query(models.SiteFeedback).filter(models.SiteFeedback.status == "closed").count(),
+    }
+
+
+@router.put("/site-feedback/{feedback_id}")
+def update_site_feedback(
+    feedback_id: int,
+    data: schemas.SiteFeedbackUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    item = (
+        db.query(models.SiteFeedback)
+        .options(joinedload(models.SiteFeedback.resolver))
+        .filter(models.SiteFeedback.id == feedback_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Sesizarea nu a fost găsită.")
+
+    before = {"status": item.status, "admin_note": item.admin_note}
+    item.status = data.status
+    if "admin_note" in data.model_fields_set:
+        item.admin_note = data.admin_note
+    if data.status == "closed":
+        item.resolved_by = current_user.id
+        item.resolved_at = utcnow_naive()
+    else:
+        item.resolved_by = None
+        item.resolved_at = None
+
+    db.commit()
+    db.refresh(item)
+    _audit(
+        db,
+        request,
+        current_user,
+        action="site_feedback_update",
+        target_type="site_feedback",
+        target_id=item.id,
+        reason=item.admin_note,
+        metadata={"before": before, "after": {"status": item.status, "admin_note": item.admin_note}},
+    )
+    db.refresh(item)
+    return _site_feedback_payload(item)
 
 
 @router.get("/audit-log")

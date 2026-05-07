@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session, joinedload
 
-from . import ai_critic, audio_service, category_classifier, crud, models, moderation, theme_analysis
+from . import ai_critic, audio_service, category_classifier, crud, email_service, models, moderation, theme_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,7 @@ def _handle_comment_moderation(db: Session, job: models.AIJob) -> None:
     elif comment.moderation_status == "approved":
         crud.award_content_approved(db, "comment", comment)
         crud.notify_mentions_for_comment(db, comment)
+        email_service.queue_comment_approved_email(db, comment)
 
 
 def _handle_forum_thread_moderation(db: Session, job: models.AIJob) -> None:

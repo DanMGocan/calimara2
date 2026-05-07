@@ -5,8 +5,11 @@
 
 -- Drop tables in reverse order of dependency
 DROP TABLE IF EXISTS stripe_events CASCADE;
+DROP TABLE IF EXISTS email_outbox CASCADE;
+DROP TABLE IF EXISTS email_campaigns CASCADE;
 DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
+DROP TABLE IF EXISTS site_feedback CASCADE;
 DROP TABLE IF EXISTS super_likes CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS ai_jobs CASCADE;
@@ -34,6 +37,7 @@ DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
 DROP TABLE IF EXISTS audio_listen_events CASCADE;
 DROP TABLE IF EXISTS post_audio CASCADE;
+DROP TABLE IF EXISTS post_reports CASCADE;
 DROP TABLE IF EXISTS post_drafts CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -82,6 +86,11 @@ CREATE TABLE users (
     premium_until TIMESTAMP,
     gologani_balance INT DEFAULT 0 NOT NULL,
     seconds_listened INT DEFAULT 0 NOT NULL,
+    last_login_at TIMESTAMP,
+    email_comment_notifications BOOLEAN DEFAULT TRUE NOT NULL,
+    email_mention_notifications BOOLEAN DEFAULT TRUE NOT NULL,
+    email_analytics_digest BOOLEAN DEFAULT TRUE NOT NULL,
+    email_admin_announcements BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -97,6 +106,68 @@ CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
+CREATE INDEX idx_users_last_login_at ON users(last_login_at);
+
+-- ===================================
+-- EMAIL CAMPAIGNS TABLE
+-- ===================================
+CREATE TABLE email_campaigns (
+    id SERIAL PRIMARY KEY,
+    actor_user_id INT,
+    subject VARCHAR(255) NOT NULL,
+    html_content TEXT NOT NULL,
+    text_content TEXT NOT NULL,
+    filters JSONB DEFAULT '{}'::jsonb,
+    selected_user_ids JSONB DEFAULT '[]'::jsonb,
+    matched_count INT DEFAULT 0 NOT NULL,
+    recipient_count INT DEFAULT 0 NOT NULL,
+    queued_count INT DEFAULT 0 NOT NULL,
+    status VARCHAR(20) DEFAULT 'queued' NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    queued_at TIMESTAMP,
+
+    CONSTRAINT fk_email_campaign_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_email_campaign_actor ON email_campaigns(actor_user_id);
+CREATE INDEX idx_email_campaign_created ON email_campaigns(created_at);
+CREATE INDEX idx_email_campaign_status ON email_campaigns(status);
+
+-- ===================================
+-- EMAIL OUTBOX TABLE
+-- ===================================
+CREATE TABLE email_outbox (
+    id BIGSERIAL PRIMARY KEY,
+    campaign_id INT,
+    recipient_user_id INT,
+    recipient_email VARCHAR(255) NOT NULL,
+    recipient_name VARCHAR(255),
+    email_type VARCHAR(50) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    html_content TEXT NOT NULL,
+    text_content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    dedupe_key VARCHAR(255) UNIQUE,
+    status VARCHAR(20) DEFAULT 'queued' NOT NULL,
+    attempts INT DEFAULT 0 NOT NULL,
+    max_attempts INT DEFAULT 3 NOT NULL,
+    run_after TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    locked_at TIMESTAMP,
+    locked_by VARCHAR(100),
+    provider_message_id VARCHAR(255),
+    error_message TEXT,
+    sent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_email_outbox_campaign FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE SET NULL,
+    CONSTRAINT fk_email_outbox_user FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_email_outbox_campaign ON email_outbox(campaign_id);
+CREATE INDEX idx_email_outbox_user ON email_outbox(recipient_user_id);
+CREATE INDEX idx_email_outbox_type ON email_outbox(email_type);
+CREATE INDEX idx_email_outbox_status_run ON email_outbox(status, run_after);
 
 -- ===================================
 -- POST DRAFTS TABLE
@@ -202,6 +273,41 @@ CREATE INDEX idx_post_audio_source_status ON post_audio(source, status);
 CREATE INDEX idx_post_audio_tts_quota ON post_audio(requester_user_id, quota_period_start, quota_period_end);
 
 -- ===================================
+-- POST REPORTS TABLE
+-- ===================================
+CREATE TABLE post_reports (
+    id SERIAL PRIMARY KEY,
+    post_id INT,
+    reporter_user_id INT NOT NULL,
+    reason_type VARCHAR(30) NOT NULL
+        CHECK (reason_type IN ('offensive', 'plagiarism')),
+    details TEXT,
+    evidence_url VARCHAR(1000),
+    post_title_snapshot VARCHAR(255),
+    post_slug_snapshot VARCHAR(300),
+    post_author_username_snapshot VARCHAR(255),
+    status VARCHAR(20) DEFAULT 'open' NOT NULL
+        CHECK (status IN ('open', 'resolved', 'dismissed')),
+    reviewed_by INT,
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_post_reports_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
+    CONSTRAINT fk_post_reports_reporter FOREIGN KEY (reporter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_post_reports_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT uq_post_reports_post_reporter_type UNIQUE (post_id, reporter_user_id, reason_type)
+);
+
+CREATE INDEX idx_post_reports_post_id ON post_reports(post_id);
+CREATE INDEX idx_post_reports_reporter_user_id ON post_reports(reporter_user_id);
+CREATE INDEX idx_post_reports_reason_type ON post_reports(reason_type);
+CREATE INDEX idx_post_reports_status ON post_reports(status);
+CREATE INDEX idx_post_reports_created_at ON post_reports(created_at);
+CREATE INDEX idx_post_reports_reviewed_by ON post_reports(reviewed_by);
+
+-- ===================================
 -- AUDIO LISTEN EVENTS TABLE
 -- ===================================
 CREATE TABLE audio_listen_events (
@@ -299,7 +405,7 @@ CREATE TABLE best_friends (
     CONSTRAINT unique_bf_user_friend UNIQUE (user_id, friend_user_id),
     CONSTRAINT fk_bf_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_bf_friend FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT chk_bf_position CHECK (position BETWEEN 1 AND 3),
+    CONSTRAINT chk_bf_position CHECK (position BETWEEN 1 AND 2),
     CONSTRAINT chk_bf_no_self_friend CHECK (user_id != friend_user_id)
 );
 
@@ -322,7 +428,7 @@ CREATE TABLE featured_posts (
     CONSTRAINT unique_fp_user_post UNIQUE (user_id, post_id),
     CONSTRAINT fk_fp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_fp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    CONSTRAINT chk_fp_position CHECK (position BETWEEN 1 AND 3)
+    CONSTRAINT chk_fp_position CHECK (position BETWEEN 1 AND 6)
 );
 
 CREATE INDEX idx_fp_user_id ON featured_posts(user_id);
@@ -858,6 +964,39 @@ CREATE TABLE admin_daily_metrics (
 CREATE INDEX idx_admin_daily_metrics_date ON admin_daily_metrics(stat_date);
 
 -- ===================================
+-- SITE FEEDBACK AND BUG REPORTS
+-- ===================================
+CREATE TABLE site_feedback (
+    id SERIAL PRIMARY KEY,
+    kind VARCHAR(20) NOT NULL
+        CONSTRAINT ck_site_feedback_kind
+        CHECK (kind IN ('feedback', 'bug')),
+    user_id INT,
+    username_snapshot VARCHAR(255),
+    email_snapshot VARCHAR(255),
+    message TEXT NOT NULL,
+    page_url VARCHAR(1000),
+    user_agent TEXT,
+    client_context JSONB DEFAULT '{}'::jsonb NOT NULL,
+    status VARCHAR(20) DEFAULT 'open' NOT NULL
+        CONSTRAINT ck_site_feedback_status
+        CHECK (status IN ('open', 'closed')),
+    admin_note TEXT,
+    resolved_by INT,
+    resolved_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_site_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_site_feedback_resolver FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_site_feedback_kind ON site_feedback(kind);
+CREATE INDEX idx_site_feedback_status_created ON site_feedback(status, created_at DESC);
+CREATE INDEX idx_site_feedback_user ON site_feedback(user_id);
+CREATE INDEX idx_site_feedback_resolved_by ON site_feedback(resolved_by);
+
+-- ===================================
 -- SUPER LIKES TABLE
 -- ===================================
 CREATE TABLE super_likes (
@@ -921,4 +1060,6 @@ CREATE TRIGGER trg_user_awards_updated_at BEFORE UPDATE ON user_awards
 CREATE TRIGGER trg_shop_items_updated_at BEFORE UPDATE ON shop_items
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_conversations_updated_at BEFORE UPDATE ON conversations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_site_feedback_updated_at BEFORE UPDATE ON site_feedback
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

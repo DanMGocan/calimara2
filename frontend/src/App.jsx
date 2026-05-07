@@ -2,12 +2,13 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchUnreadNotificationCount } from "./api/notifications.js";
 import { fetchMe } from "./api/users.js";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
-import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, PageShell, SideMenu } from "./app/layout.jsx";
+import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu } from "./app/layout.jsx";
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, subdomainUsername } from "./app/paths.js";
 
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profilePanelOpen, setProfilePanelOpen] = useState(false);
   const [routeVersion, setRouteVersion] = useState(0);
   const [auth, setAuth] = useState({ loaded: false, user: null });
   const [notificationCount, setNotificationCount] = useState(0);
@@ -37,6 +38,14 @@ export function App() {
   const updateAuthUser = useCallback((nextUser) => {
     setAuth((current) => ({ ...current, user: nextUser }));
   }, []);
+  const toggleProfilePanel = useCallback(() => {
+    setMenuOpen(false);
+    setProfilePanelOpen((open) => !open);
+  }, []);
+  const toggleMenu = useCallback(() => {
+    setProfilePanelOpen(false);
+    setMenuOpen((open) => !open);
+  }, []);
   const refreshNotificationCount = useCallback(() => {
     if (!auth.user) {
       setNotificationCount(0);
@@ -50,6 +59,7 @@ export function App() {
   useEffect(() => {
     if (!auth.loaded || !auth.user) {
       setNotificationCount(0);
+      setProfilePanelOpen(false);
       return undefined;
     }
 
@@ -78,7 +88,15 @@ export function App() {
       <div className="bg-atmos" aria-hidden="true">
         <FloatingBackgroundShapes />
       </div>
-      <NavBar loggedIn={loggedIn} user={auth.user} notificationCount={notificationCount} onMenu={() => setMenuOpen((open) => !open)} menuOpen={menuOpen} />
+      <NavBar
+        loggedIn={loggedIn}
+        user={auth.user}
+        notificationCount={notificationCount}
+        onProfile={toggleProfilePanel}
+        profilePanelOpen={profilePanelOpen}
+        onMenu={toggleMenu}
+        menuOpen={menuOpen}
+      />
       <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
         <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
           <Suspense fallback={<PageShell kicker="călimara.ro" title="Se încarcă" sub="Pregătim pagina." />}>
@@ -86,8 +104,15 @@ export function App() {
           </Suspense>
         </ErrorBoundary>
       </AdSenseProvider>
-      <Footer />
-      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} notificationCount={notificationCount} onNotificationsRefresh={refreshNotificationCount} />
+      <Footer user={auth.user} authLoaded={auth.loaded} />
+      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
+      <NotificationPanel
+        open={profilePanelOpen}
+        onClose={() => setProfilePanelOpen(false)}
+        user={auth.user}
+        notificationCount={notificationCount}
+        onNotificationsRefresh={refreshNotificationCount}
+      />
     </div>
   );
 }
