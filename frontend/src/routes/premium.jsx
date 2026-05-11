@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FiCheckCircle, FiCreditCard, FiHeadphones, FiStar, FiTrendingUp } from "react-icons/fi";
-import { AUTH_GOOGLE_PATH } from "../api/auth.js";
+import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { fetchAudioConversionQuota } from "../api/audio.js";
 import { fetchPremiumPlans, openPremiumPortal, startPremiumCheckout } from "../api/premium.js";
 import { PROFILE_TIER_BADGES } from "../app/constants.js";
@@ -120,7 +120,7 @@ function PremiumView({ user }) {
 
   const openStripe = async (tier = selectedTier) => {
     if (!user) {
-      window.location.href = AUTH_GOOGLE_PATH;
+      window.location.href = AUTH_LOGIN_PATH;
       return;
     }
     setBusy(true);

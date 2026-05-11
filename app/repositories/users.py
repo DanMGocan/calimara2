@@ -4,13 +4,20 @@ def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
 def get_user_by_email(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
+    return db.query(models.User).filter(func.lower(models.User.email) == (email or "").strip().lower()).first()
 
 def get_user_by_username(db: Session, username: str):
     return db.query(models.User).filter(models.User.username == username).first()
 
 def get_user_by_google_id(db: Session, google_id: str):
+    if not google_id:
+        return None
     return db.query(models.User).filter(models.User.google_id == google_id).first()
+
+def get_user_by_facebook_id(db: Session, facebook_id: str):
+    if not facebook_id:
+        return None
+    return db.query(models.User).filter(models.User.facebook_id == facebook_id).first()
 
 def create_user_from_google(db: Session, user_data: Dict[str, Any]):
     if "subtitle" in user_data:

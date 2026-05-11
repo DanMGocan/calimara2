@@ -1,17 +1,15 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { fetchUnreadNotificationCount } from "./api/notifications.js";
 import { fetchMe } from "./api/users.js";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
-import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu } from "./app/layout.jsx";
+import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, PageShell, SideMenu } from "./app/layout.jsx";
+import { ListeningOverlay, useListeningPlayer } from "./app/listening-player.jsx";
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, subdomainUsername } from "./app/paths.js";
 
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profilePanelOpen, setProfilePanelOpen] = useState(false);
   const [routeVersion, setRouteVersion] = useState(0);
   const [auth, setAuth] = useState({ loaded: false, user: null });
-  const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,40 +36,9 @@ export function App() {
   const updateAuthUser = useCallback((nextUser) => {
     setAuth((current) => ({ ...current, user: nextUser }));
   }, []);
-  const toggleProfilePanel = useCallback(() => {
-    setMenuOpen(false);
-    setProfilePanelOpen((open) => !open);
-  }, []);
   const toggleMenu = useCallback(() => {
-    setProfilePanelOpen(false);
     setMenuOpen((open) => !open);
   }, []);
-  const refreshNotificationCount = useCallback(() => {
-    if (!auth.user) {
-      setNotificationCount(0);
-      return Promise.resolve();
-    }
-    return fetchUnreadNotificationCount()
-      .then((data) => setNotificationCount(Number(data.unread_count || 0)))
-      .catch(() => {});
-  }, [auth.user?.id]);
-
-  useEffect(() => {
-    if (!auth.loaded || !auth.user) {
-      setNotificationCount(0);
-      setProfilePanelOpen(false);
-      return undefined;
-    }
-
-    refreshNotificationCount();
-    const interval = window.setInterval(refreshNotificationCount, 60000);
-    const onFocus = () => refreshNotificationCount();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [auth.loaded, auth.user?.id, refreshNotificationCount]);
 
   useEffect(() => {
     if (!auth.loaded || !auth.user) return;
@@ -83,6 +50,8 @@ export function App() {
     window.location.replace(destination);
   }, [auth.loaded, auth.user?.username, route.name]);
 
+  const listeningPlayer = useListeningPlayer(auth.user, auth.loaded);
+
   return (
     <div className="site" data-logged={loggedIn ? "in" : "out"} data-bg="on">
       <div className="bg-atmos" aria-hidden="true">
@@ -91,11 +60,12 @@ export function App() {
       <NavBar
         loggedIn={loggedIn}
         user={auth.user}
-        notificationCount={notificationCount}
-        onProfile={toggleProfilePanel}
-        profilePanelOpen={profilePanelOpen}
         onMenu={toggleMenu}
         menuOpen={menuOpen}
+        onOpenAudioPlayer={listeningPlayer.openListening}
+        audioPlayerDisabled={!listeningPlayer.canListen}
+        audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
+        audioPlayerOpen={listeningPlayer.open}
       />
       <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
         <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
@@ -104,15 +74,9 @@ export function App() {
           </Suspense>
         </ErrorBoundary>
       </AdSenseProvider>
+      <ListeningOverlay {...listeningPlayer.overlayProps} />
       <Footer user={auth.user} authLoaded={auth.loaded} />
       <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
-      <NotificationPanel
-        open={profilePanelOpen}
-        onClose={() => setProfilePanelOpen(false)}
-        user={auth.user}
-        notificationCount={notificationCount}
-        onNotificationsRefresh={refreshNotificationCount}
-      />
     </div>
   );
 }

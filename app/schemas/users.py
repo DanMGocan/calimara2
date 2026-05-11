@@ -8,7 +8,8 @@ from .common import *
 class UserBase(BaseModel):
     username: str
     email: EmailStr
-    google_id: str
+    google_id: Optional[str] = None
+    facebook_id: Optional[str] = None
     subtitle: Optional[str] = None # User motto
     avatar_seed: Optional[str] = None # DiceBear avatar seed
     cover_seed: Optional[str] = None # DiceBear cover seed
@@ -72,6 +73,40 @@ class GoogleUserInfo(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
+    email_verified: bool = True
+
+
+class FacebookUserInfo(BaseModel):
+    facebook_id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
+    email_verified: bool = True
+
+
+class PasswordRegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=10, max_length=128)
+
+
+class PasswordLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class AuthCodeVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=32)
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=32)
+    password: str = Field(..., min_length=10, max_length=128)
 
 
 class UserInDB(UserBase):

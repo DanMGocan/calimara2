@@ -1,5 +1,5 @@
 from .common import PostCategory
-from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, EmailPreferences, BestFriendsUpdate, FeaturedPostsUpdate, UserPromotionsUpdate
+from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, FacebookUserInfo, PasswordRegisterRequest, PasswordLoginRequest, AuthCodeVerifyRequest, PasswordResetRequest, PasswordResetConfirmRequest, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, EmailPreferences, BestFriendsUpdate, FeaturedPostsUpdate, UserPromotionsUpdate
 from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentBase, CommentCreate, Comment, Like
 from .writing import DiacriticsKind, DiacriticsRequest, DiacriticsResponse
 from .messages import MessageCreate, MessageToUser, MessageBase, Message, ConversationBase, Conversation, ConversationSummary
@@ -20,6 +20,12 @@ __all__ = [
     "UserSetup",
     "UserProfileUpdate",
     "GoogleUserInfo",
+    "FacebookUserInfo",
+    "PasswordRegisterRequest",
+    "PasswordLoginRequest",
+    "AuthCodeVerifyRequest",
+    "PasswordResetRequest",
+    "PasswordResetConfirmRequest",
     "UserInDB",
     "SocialLinksUpdate",
     "UserProfileSettingsUpdate",

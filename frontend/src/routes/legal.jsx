@@ -6,7 +6,7 @@ function PrivacyView() {
       <div className="legal-copy">
         <section className="legal-section">
           <h2>Datele contului</h2>
-          <p>Călimara folosește autentificare Google pentru conturi. Păstrăm datele necesare funcționării platformei: nume public, email, identificator Google, texte publicate, comentarii, reacții, mesaje, abonamente și preferințe de profil.</p>
+          <p>Călimara folosește autentificare prin email și parolă, Google sau Facebook. Păstrăm datele necesare funcționării platformei: nume public, email, identificatori de autentificare, texte publicate, comentarii, reacții, mesaje, abonamente și preferințe de profil.</p>
         </section>
         <section className="legal-section">
           <h2>Cookie-uri și sesiuni</h2>

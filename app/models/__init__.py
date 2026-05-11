@@ -14,6 +14,7 @@ from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
 from .admin import AdminAuditLog, AdminDailyMetric, SiteFeedback
 from .email import EmailCampaign, EmailOutbox
+from .auth import AuthEmailCode
 
 __all__ = [
     "Base",
@@ -54,4 +55,5 @@ __all__ = [
     "SiteFeedback",
     "EmailCampaign",
     "EmailOutbox",
+    "AuthEmailCode",
 ]

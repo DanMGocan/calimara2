@@ -1,8 +1,11 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { AUTH_GOOGLE_PATH } from "../api/auth.js";
+import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { createSiteFeedback } from "../api/feedback.js";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../api/notifications.js";
-import { FiMessageSquare } from "react-icons/fi";
+import { FaCoins } from "react-icons/fa6";
+import { FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiMessageSquare, FiPlay, FiUsers } from "react-icons/fi";
+import { GiQuillInk } from "react-icons/gi";
+import { IoShirtOutline } from "react-icons/io5";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
 import { authorPath, blogUrl, mainPath } from "./paths.js";
@@ -97,44 +100,85 @@ export function IconHouse(props) {
     </svg>
   );
 }
-function notificationBadgeLabel(count) {
-  const value = Number(count || 0);
-  if (value <= 0) return "";
-  return value > 99 ? "99+" : String(value);
+function NavIconLink({ href, label, children, className = "" }) {
+  return (
+    <a className={`icon-btn nav-action ${className}`.trim()} href={href} aria-label={label} title={label}>
+      {children}
+    </a>
+  );
 }
 
-export function NavBar({ loggedIn, user, notificationCount = 0, onProfile, profilePanelOpen, onMenu, menuOpen }) {
-  const badgeLabel = notificationBadgeLabel(notificationCount);
-  const profileLabel = loggedIn && user
-    ? `Conectat ca ${usernameHandle(user.username)}${badgeLabel ? `, ${badgeLabel} notificări necitite` : ""}`
-    : "Autentificare";
+export function NavBar({
+  loggedIn,
+  user,
+  onMenu,
+  menuOpen,
+  onOpenAudioPlayer,
+  audioPlayerDisabled = true,
+  audioPlayerTitle = "Player audio",
+  audioPlayerOpen = false
+}) {
   return (
     <nav className="nav">
-      <a href={mainPath("/")} className="nav-home" aria-label="Acasă">
-        <IconHouse className="nav-home-icon" width="22" height="22" />
-        <span className="nav-brand">
-          călimara<span className="nav-brand-dot">.ro</span>
-        </span>
-      </a>
+      <div className="nav-left">
+        <a href={mainPath("/")} className="nav-home icon-btn" aria-label="Acasă" title="Acasă">
+          <IconHouse className="nav-home-icon" />
+        </a>
+        {!loggedIn ? (
+          <NavIconLink href={AUTH_LOGIN_PATH} label="Autentificare">
+            <FiLogIn aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn && user ? (
+          <NavIconLink href={blogUrl(user.username)} label="Călimara mea" className="inkwell">
+            <GiQuillInk aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href={mainPath("/discutii")} label="Discuții">
+            <FiMessageCircle aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn && user ? (
+          <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje">
+            <FiMail aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href={mainPath("/cluburi")} label="Cluburi">
+            <FiUsers aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn && user ? (
+          <NavIconLink href={mainPath("/inventar")} label="Inventar">
+            <IoShirtOutline aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href={mainPath("/premium")} label="Premium" className="premium">
+            <FaCoins aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href="/api/deconectare" label="Deconectare" className="danger logout">
+            <FiLogOut aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+      </div>
       <div className="nav-right">
         <button
-          className={`icon-btn profile-btn ${profilePanelOpen ? "open" : ""}`.trim()}
-          aria-label={profileLabel}
-          title={loggedIn && user ? "Notificări" : "Autentificare"}
-          aria-expanded={loggedIn ? profilePanelOpen : undefined}
-          aria-controls={loggedIn ? "profile-notification-panel" : undefined}
-          onClick={() => {
-            if (loggedIn) onProfile();
-            else window.location.href = AUTH_GOOGLE_PATH;
-          }}
+          className="nav-audio-player"
           type="button"
+          onClick={onOpenAudioPlayer}
+          disabled={audioPlayerDisabled}
+          title={audioPlayerTitle}
+          aria-label="Player audio"
+          aria-haspopup="dialog"
+          aria-expanded={audioPlayerOpen || undefined}
+          aria-controls="landing-listen-player"
         >
-          <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
-            <circle cx="9" cy="7" r="3" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M3 15.5c1-2.6 3.2-4 6-4s5 1.4 6 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          <span className="profile-dot" />
-          {badgeLabel ? <span className="profile-notification-badge" aria-hidden="true">{badgeLabel}</span> : null}
+          <FiPlay aria-hidden="true" />
+          <span>Player audio</span>
         </button>
         <button className={`icon-btn burger ${menuOpen ? "open" : ""}`} onClick={onMenu} aria-label="Meniu" type="button" aria-expanded={menuOpen}>
           <span />
@@ -328,7 +372,7 @@ export function SideMenu({ open, onClose, user }) {
         ["Cluburi", "comunități", mainPath("/cluburi")],
         ["Discuții", "forum și întrebări", mainPath("/discutii")],
         ["Premium", "abonament și super-aprecieri", mainPath("/premium")],
-        ["Autentificare", "intră în cont", AUTH_GOOGLE_PATH]
+        ["Autentificare", "intră în cont", AUTH_LOGIN_PATH]
       ];
 
   return (
@@ -447,7 +491,7 @@ function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
         ) : !user ? (
           <div className="feedback-auth">
             <p className="feedback-modal-body">Autentificarea este necesară pentru trimitere.</p>
-            <a className="cal-btn primary" href={AUTH_GOOGLE_PATH}>Autentificare cu Google</a>
+            <a className="cal-btn primary" href={AUTH_LOGIN_PATH}>Autentificare</a>
           </div>
         ) : (
           <form className="feedback-form" onSubmit={submit}>
@@ -536,7 +580,7 @@ export function PageShell({ kicker, title, sub, side, children }) {
 export function AuthRequired() {
   return (
     <PageShell kicker="cont" title="Autentificare necesară" sub="Această zonă folosește sesiunea ta călimara.ro.">
-      <a className="cal-btn primary" href={AUTH_GOOGLE_PATH}>Autentificare cu Google</a>
+      <a className="cal-btn primary" href={AUTH_LOGIN_PATH}>Autentificare</a>
     </PageShell>
   );
 }

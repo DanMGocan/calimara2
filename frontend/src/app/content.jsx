@@ -189,7 +189,7 @@ export function RevealText({ text, keySeed }) {
     </div>
   );
 }
-export function PieceCol({ piece, animKey }) {
+export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = null }) {
   const scrollRef = useRef(null);
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(false);
@@ -208,6 +208,22 @@ export function PieceCol({ piece, animKey }) {
     setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 4);
   };
 
+  const titleContent = piece.sourceUrl && piece.sourceUrl !== "#" ? (
+    <a href={piece.sourceUrl}>{piece.title}</a>
+  ) : piece.title;
+  const titleNode = (
+    <h1 className="piece-title">
+      {titleContent}
+      {titleAction ? <span className="piece-title-action">{titleAction}</span> : null}
+    </h1>
+  );
+  const titleHeading = titlePrefix ? (
+    <div className="piece-title-row">
+      <span className="piece-title-prefix">{titlePrefix}</span>
+      {titleNode}
+    </div>
+  ) : titleNode;
+
   return (
     <div className="piece-col">
       <div className="piece-kind-row">
@@ -215,15 +231,11 @@ export function PieceCol({ piece, animKey }) {
         <span className="piece-kind-sep" />
         {piece.sourceUrl && piece.sourceUrl !== "#" ? (
           <a className="piece-kind-meta" href={piece.sourceUrl}>
-            citește pe blog
+            calimara.ro
           </a>
         ) : null}
       </div>
-      <h1 className="piece-title">
-        {piece.sourceUrl && piece.sourceUrl !== "#" ? (
-          <a href={piece.sourceUrl}>{piece.title}</a>
-        ) : piece.title}
-      </h1>
+      {titleHeading}
       <div className="piece-meta">
         {piece.authorUrl ? (
           <AuthorLink user={piece.authorUser} username={piece.author} className="piece-author">{piece.author}</AuthorLink>

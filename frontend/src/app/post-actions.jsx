@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { FiDownload, FiFlag, FiStar } from "react-icons/fi";
-import { AUTH_GOOGLE_PATH } from "../api/auth.js";
+import { useEffect, useRef, useState } from "react";
+import { FaFlag } from "react-icons/fa";
+import { FiChevronDown, FiDownload } from "react-icons/fi";
+import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { fetchPostAudioStatus } from "../api/audio.js";
 import { createComment, likePost, reportPost } from "../api/posts.js";
 import { addSuperLike, removeSuperLike } from "../api/super-likes.js";
-import { promotePost, searchUsers, unpromotePost } from "../api/users.js";
+import { promoteAuthor, promotePost, searchUsers } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
 import { COMMENT_CHARACTER_LIMIT, COMMENT_MODERATION_MESSAGE } from "./constants.js";
 import { CompactAudioPlayer, RichTextContent } from "./content.jsx";
@@ -44,35 +45,50 @@ function ReportModal({
   evidenceUrl,
   onDetailsChange,
   onEvidenceUrlChange,
+  onSelectReason,
   onClose,
   onSubmit
 }) {
   if (!modal) return null;
   const isPlagiarism = modal.reasonType === "plagiarism";
+  const choosingReason = !modal.reasonType;
   return (
     <div className="access-modal-scrim" role="presentation" onClick={onClose}>
       <section className="access-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title" onClick={(event) => event.stopPropagation()}>
         <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
         <div className="piece-card-kicker">raportare</div>
-        <h2 id="report-modal-title" className="access-modal-title">{REPORT_TITLES[modal.reasonType]}</h2>
-        <form className="report-form" onSubmit={onSubmit}>
-          {isPlagiarism ? (
-            <label className="auth-field">
-              Link sursă
-              <input className="cal-input" type="url" value={evidenceUrl} onChange={(event) => onEvidenceUrlChange(event.target.value)} placeholder="https://..." maxLength={1000} />
-            </label>
-          ) : null}
-          <label className="auth-field">
-            Detalii
-            <textarea className="cal-input" value={details} onChange={(event) => onDetailsChange(event.target.value)} rows={4} maxLength={2000} />
-          </label>
-          <div className="button-row">
-            <button className="cal-btn primary" type="submit" disabled={busy === "report"}>
-              {busy === "report" ? "Se trimite..." : "Trimite raportarea"}
+        <h2 id="report-modal-title" className="access-modal-title">
+          {choosingReason ? "Raportează" : REPORT_TITLES[modal.reasonType]}
+        </h2>
+        {choosingReason ? (
+          <div className="report-choice-list">
+            <button className="report-choice-btn" type="button" onClick={() => onSelectReason("offensive")}>
+              Raportează conținut ofensiv
             </button>
-            <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
+            <button className="report-choice-btn" type="button" onClick={() => onSelectReason("plagiarism")}>
+              Raportează plagiat
+            </button>
           </div>
-        </form>
+        ) : (
+          <form className="report-form" onSubmit={onSubmit}>
+            {isPlagiarism ? (
+              <label className="auth-field">
+                Link sursă
+                <input className="cal-input" type="url" value={evidenceUrl} onChange={(event) => onEvidenceUrlChange(event.target.value)} placeholder="https://..." maxLength={1000} />
+              </label>
+            ) : null}
+            <label className="auth-field">
+              Detalii
+              <textarea className="cal-input" value={details} onChange={(event) => onDetailsChange(event.target.value)} rows={4} maxLength={2000} />
+            </label>
+            <div className="button-row">
+              <button className="cal-btn primary" type="submit" disabled={busy === "report"}>
+                {busy === "report" ? "Se trimite..." : "Trimite raportarea"}
+              </button>
+              <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
+            </div>
+          </form>
+        )}
       </section>
     </div>
   );
@@ -81,6 +97,89 @@ function ReportModal({
 function pdfFilename(post) {
   const stem = String(post?.slug || "calimara-export").replace(/\.pdf$/i, "").trim();
   return `${stem || "calimara-export"}.pdf`;
+}
+
+export function PostPromotionMenu({ post, author, user }) {
+  const menuRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    setOpen(false);
+    setBusy("");
+    setStatus("");
+  }, [post?.id, author?.id, user?.id]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (!menuRef.current || menuRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const promoteCurrentPost = async () => {
+    if (!user) return;
+    if (!post?.id || busy) return;
+    setBusy("post");
+    setStatus("");
+    try {
+      await promotePost(post.id);
+      setStatus("Postarea este promovată pe profilul tău.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut promova postarea.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const promoteCurrentAuthor = async () => {
+    if (!user) return;
+    if (!author?.id || busy) return;
+    if (author.id === user.id) {
+      setStatus("Nu te poți promova pe tine ca autor extern.");
+      return;
+    }
+    setBusy("author");
+    setStatus("");
+    try {
+      await promoteAuthor(author.id);
+      setStatus("Autorul este promovat pe profilul tău.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut promova autorul.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <span className="title-promotion-menu" ref={menuRef}>
+      <button
+        className={`title-promotion-toggle ${open ? "open" : ""}`.trim()}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="Opțiuni de promovare"
+        aria-expanded={open}
+        title="Opțiuni de promovare"
+      >
+        <FiChevronDown aria-hidden="true" />
+      </button>
+      {open ? (
+        <span className="title-promotion-panel" role="menu" aria-label="Opțiuni de promovare">
+          <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentPost} disabled={!user || Boolean(busy)}>
+            {busy === "post" ? "Se promovează..." : "Promoveaza postarea pe profilul tau"}
+          </button>
+          <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentAuthor} disabled={!user || Boolean(busy)}>
+            {busy === "author" ? "Se promovează..." : "Promoveaza autorul pe profilul tau"}
+          </button>
+          {status ? <span className="title-promotion-status">{status}</span> : null}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 function CommentPanel({
@@ -151,7 +250,7 @@ function CommentPanel({
         </form>
       ) : (
         <div className="post-comment-auth">
-          <a className="cal-btn primary" href={AUTH_GOOGLE_PATH}>Autentifică-te ca să comentezi</a>
+          <a className="cal-btn primary" href={AUTH_LOGIN_PATH}>Autentifică-te ca să comentezi</a>
         </div>
       )}
     </div>
@@ -237,7 +336,7 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     setModal({
       title: "Autentificare necesară",
       message,
-      actionHref: AUTH_GOOGLE_PATH,
+      actionHref: AUTH_LOGIN_PATH,
       actionLabel: "Autentifică-te"
     });
   };
@@ -297,40 +396,18 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     }
   };
 
-  const handlePromotion = async () => {
-    if (!user) {
-      showLoginModal("Pentru promovare trebuie să intri în cont.");
-      return;
-    }
-    setBusy("promotion");
-    setStatus("");
-    try {
-      if (postState.viewer_promoted) {
-        await unpromotePost(postState.id);
-        updatePost((current) => ({ ...current, viewer_promoted: false }));
-        setStatus("Textul nu mai este promovat pe Călimara mea.");
-      } else {
-        await promotePost(postState.id);
-        updatePost((current) => ({ ...current, viewer_promoted: true }));
-        setStatus("Textul este promovat pe Călimara mea.");
-      }
-    } catch (requestError) {
-      setModal({
-        kicker: "promovare",
-        title: "Promovare indisponibilă",
-        message: requestError.message || "Nu am putut actualiza promovarea."
-      });
-    } finally {
-      setBusy("");
-    }
-  };
-
-  const openReportModal = (reasonType) => {
+  const openReportModal = () => {
     if (!user) {
       showLoginModal("Pentru raportări trebuie să intri în cont.");
       return;
     }
     setStatus("");
+    setReportDetails("");
+    setReportEvidenceUrl("");
+    setReportModal({});
+  };
+
+  const selectReportReason = (reasonType) => {
     setReportDetails("");
     setReportEvidenceUrl("");
     setReportModal({ reasonType });
@@ -410,10 +487,6 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
           Super-aprecieri
           <span className="react-count">{formatNumber(postState.super_likes_count)}</span>
         </button>
-        <button className={`react-btn react-promote ${postState.viewer_promoted ? "on" : ""}`} type="button" onClick={handlePromotion} disabled={busy === "promotion"} aria-pressed={Boolean(postState.viewer_promoted)}>
-          <FiStar aria-hidden="true" />
-          <span>{postState.viewer_promoted ? "Promovat" : "Promovează"}</span>
-        </button>
         <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={busy === "like"} aria-pressed={liked}>
           Aprecieri
           <span className="react-count">{formatNumber(postState.likes_count)}</span>
@@ -430,13 +503,8 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
           <FiDownload aria-hidden="true" />
           <span>{filename}</span>
         </a>
-        <button className="react-btn" type="button" onClick={() => openReportModal("offensive")} disabled={busy === "report"}>
-          <FiFlag aria-hidden="true" />
-          <span>Raportează conținut ofensiv</span>
-        </button>
-        <button className="react-btn" type="button" onClick={() => openReportModal("plagiarism")} disabled={busy === "report"}>
-          <FiFlag aria-hidden="true" />
-          <span>Raportează plagiat</span>
+        <button className="react-btn react-report-trigger" type="button" onClick={openReportModal} disabled={busy === "report"} aria-label="Raportează" title="Raportează">
+          <FaFlag aria-hidden="true" />
         </button>
       </div>
 
@@ -479,6 +547,7 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
         evidenceUrl={reportEvidenceUrl}
         onDetailsChange={setReportDetails}
         onEvidenceUrlChange={setReportEvidenceUrl}
+        onSelectReason={selectReportReason}
         onClose={closeReportModal}
         onSubmit={submitReport}
       />

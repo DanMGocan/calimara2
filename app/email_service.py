@@ -22,6 +22,7 @@ EMAIL_TYPE_COMMENT = "comment"
 EMAIL_TYPE_MENTION = "mention"
 EMAIL_TYPE_ANALYTICS = "analytics"
 EMAIL_TYPE_ADMIN = "admin"
+EMAIL_TYPE_AUTH = "auth"
 EMAIL_STATUSES_TO_CLAIM = ("queued",)
 UNSUBSCRIBE_PREFS = {
     EMAIL_TYPE_COMMENT: "email_comment_notifications",
@@ -201,6 +202,47 @@ def queue_email(
         db.commit()
         db.refresh(row)
     return row
+
+
+def queue_auth_code_email(
+    db: Session,
+    *,
+    recipient_email: str,
+    code: str,
+    purpose: str,
+    recipient_user_id: Optional[int] = None,
+    recipient_name: Optional[str] = None,
+) -> Optional[models.EmailOutbox]:
+    if purpose == "password_reset":
+        title = "Cod resetare parolă"
+        intro = "Folosește codul de mai jos pentru a seta o parolă nouă."
+    else:
+        title = "Cod activare cont"
+        intro = "Folosește codul de mai jos pentru a activa contul tău Călimara."
+    escaped_code = html.escape(code)
+    body = (
+        f"<p>{intro}</p>"
+        '<p style="font-family:Arial,sans-serif;font-size:30px;letter-spacing:.18em;'
+        f'font-weight:700;margin:18px 0;color:#1f1d1b;">{escaped_code}</p>'
+        "<p>Codul expiră în 15 minute. Dacă nu ai cerut acest email, îl poți ignora.</p>"
+    )
+    html_content = _email_page(title, body)
+    text_content = (
+        f"{title}\n\n"
+        f"{intro}\n\n"
+        f"{code}\n\n"
+        "Codul expiră în 15 minute. Dacă nu ai cerut acest email, îl poți ignora."
+    )
+    return queue_email(
+        db,
+        recipient_user_id=recipient_user_id,
+        recipient_email=recipient_email,
+        recipient_name=recipient_name,
+        subject=title,
+        html_content=html_content,
+        text_content=text_content,
+        email_type=EMAIL_TYPE_AUTH,
+    )
 
 
 def _send_with_brevo(email: models.EmailOutbox) -> str:

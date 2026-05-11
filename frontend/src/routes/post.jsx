@@ -6,7 +6,7 @@ import { formatNumber } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, StatusPanel } from "../app/layout.jsx";
 import { mainPath } from "../app/paths.js";
-import { PostActionTools } from "../app/post-actions.jsx";
+import { PostActionTools, PostPromotionMenu } from "../app/post-actions.jsx";
 function SeriesContextPanel({ context }) {
   if (!context?.series) return null;
   const { series, previous_post: previousPost, next_post: nextPost } = context;
@@ -47,7 +47,13 @@ function PostDetailView({ username, slug, user }) {
             {data.post.moderation_status !== "approved" ? (
               <StatusPanel title="Text în curs de moderare">{TEXT_MODERATION_MESSAGE}</StatusPanel>
             ) : null}
-            <PieceCol piece={piece} animKey={slug} />
+            <PieceCol
+              piece={piece}
+              animKey={slug}
+              titleAction={data.post.moderation_status === "approved" ? (
+                <PostPromotionMenu post={actionPost} author={data.blog_owner} user={user} />
+              ) : null}
+            />
             <SeriesContextPanel context={data.series_context} />
             {data.post.moderation_status === "approved" ? (
               <PostActionTools post={actionPost} user={user} pdfHref={pdfHref} className="detail-actions" />

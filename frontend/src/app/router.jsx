@@ -26,6 +26,7 @@ const ROUTE_COMPONENTS = {
   premium: lazy(() => import("../routes/premium.jsx")),
   privacy: lazy(() => import("../routes/legal.jsx")),
   terms: lazy(() => import("../routes/legal.jsx")),
+  authLogin: lazy(() => import("../routes/auth.jsx")),
   authSetup: lazy(() => import("../routes/auth.jsx")),
   authCallback: lazy(() => import("../routes/auth.jsx")),
   notFound: lazy(() => import("../routes/not-found.jsx"))
@@ -64,6 +65,7 @@ export function routeForLocation() {
   if (path === "/premium") return { name: "premium" };
   if (path === "/confidentialitate") return { name: "privacy" };
   if (path === "/termeni") return { name: "terms" };
+  if (path === "/autentificare") return { name: "authLogin" };
   if (path === "/autentificare/configurare") return { name: "authSetup" };
   if (path === "/autentificare/raspuns") return { name: "authCallback" };
   return { name: "notFound" };

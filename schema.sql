@@ -7,6 +7,7 @@
 DROP TABLE IF EXISTS stripe_events CASCADE;
 DROP TABLE IF EXISTS email_outbox CASCADE;
 DROP TABLE IF EXISTS email_campaigns CASCADE;
+DROP TABLE IF EXISTS auth_email_codes CASCADE;
 DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS site_feedback CASCADE;
@@ -49,7 +50,11 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    google_id VARCHAR(100) UNIQUE NOT NULL,
+    google_id VARCHAR(100) UNIQUE,
+    facebook_id VARCHAR(100) UNIQUE,
+    password_hash VARCHAR(255),
+    email_verified_at TIMESTAMP,
+    password_updated_at TIMESTAMP,
     subtitle TEXT,
     avatar_seed VARCHAR(100),
     cover_seed VARCHAR(100),
@@ -100,6 +105,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_google_id ON users(google_id);
+CREATE INDEX idx_users_facebook_id ON users(facebook_id);
 CREATE INDEX idx_users_created_at ON users(created_at);
 CREATE INDEX idx_users_is_suspended ON users(is_suspended);
 CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
@@ -107,6 +113,30 @@ CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
 CREATE INDEX idx_users_last_login_at ON users(last_login_at);
+
+-- ===================================
+-- AUTH EMAIL CODES TABLE
+-- ===================================
+CREATE TABLE auth_email_codes (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT,
+    email VARCHAR(255) NOT NULL,
+    purpose VARCHAR(40) NOT NULL,
+    code_hash VARCHAR(255) NOT NULL,
+    payload JSONB DEFAULT '{}'::jsonb,
+    attempts INT DEFAULT 0 NOT NULL,
+    max_attempts INT DEFAULT 5 NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    consumed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_auth_email_code_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_auth_email_codes_user ON auth_email_codes(user_id);
+CREATE INDEX idx_auth_email_codes_email_purpose ON auth_email_codes(email, purpose);
+CREATE INDEX idx_auth_email_codes_expires ON auth_email_codes(expires_at);
+CREATE INDEX idx_auth_email_codes_consumed ON auth_email_codes(consumed_at);
 
 -- ===================================
 -- EMAIL CAMPAIGNS TABLE

@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import schemas, google_oauth
+from .. import crud, email_service, facebook_oauth, google_oauth, local_auth, models, schemas
 from ..auth import get_db_epoch
 from ..database import get_db
-from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
+from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed
 from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,78 @@ def _user_blog_url(request: Request, user) -> str:
     return f"{scheme}://{user.username}{suffix}"
 
 
-def _auth_failure_url(request: Request) -> str:
-    return f"{_frontend_base_url(request)}/?auth_error=google"
+def _auth_failure_url(request: Request, provider: str = "auth") -> str:
+    return f"{_frontend_base_url(request)}/?auth_error={provider}"
+
+
+def _login_user(request: Request, db: Session, user: models.User) -> None:
+    user.last_login_at = utcnow_naive()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["db_epoch"] = get_db_epoch()
+
+
+def _pending_provider_payload(provider_user) -> dict:
+    if hasattr(provider_user, "model_dump"):
+        return provider_user.model_dump()
+    return {
+        "google_id": getattr(provider_user, "google_id", None),
+        "facebook_id": getattr(provider_user, "facebook_id", None),
+        "email": getattr(provider_user, "email", None),
+        "name": getattr(provider_user, "name", ""),
+        "picture": getattr(provider_user, "picture", None),
+        "email_verified": bool(getattr(provider_user, "email_verified", True)),
+    }
+
+
+def _store_pending_auth(request: Request, source: str, payload: dict) -> None:
+    request.session.clear()
+    request.session["pending_auth"] = {"source": source, **payload}
+
+
+def _pending_auth_from_session(request: Request) -> dict:
+    pending_auth = request.session.get("pending_auth")
+    if pending_auth:
+        return pending_auth
+    google_user_data = request.session.get("google_user")
+    if google_user_data:
+        return {"source": "google", "provider_user": google_user_data}
+    return {}
+
+
+def _auth_response_payload(request: Request, user: models.User) -> dict:
+    return {
+        "message": "Autentificare reușită",
+        "username": user.username,
+        "redirect_url": _user_blog_url(request, user),
+    }
+
+
+def _queue_activation_code(db: Session, *, email: str, password_hash: str) -> None:
+    _, code = local_auth.create_email_code(
+        db,
+        email=email,
+        purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
+        payload={"password_hash": password_hash},
+    )
+    email_service.queue_auth_code_email(
+        db,
+        recipient_email=email,
+        code=code,
+        purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
+    )
+
+
+def _auth_code_error_response(error: local_auth.AuthCodeError) -> HTTPException:
+    messages = {
+        "invalid_code": "Codul nu este valid.",
+        "expired_code": "Codul a expirat. Cere un cod nou.",
+        "too_many_attempts": "Ai încercat codul de prea multe ori. Cere un cod nou.",
+    }
+    return HTTPException(status_code=400, detail=messages.get(error.reason, "Codul nu este valid."))
 
 
 def _react_index_response() -> FileResponse:
@@ -58,7 +128,19 @@ async def google_login(request: Request):
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
         logger.error(f"Eroare la inițierea autentificării Google: {e}")
-        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=_auth_failure_url(request, "google"), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/autentificare/facebook")
+@limiter.limit("5/minute")
+async def facebook_login(request: Request):
+    """Initiate Facebook OAuth flow"""
+    try:
+        auth_url = facebook_oauth.get_facebook_auth_url(request)
+        return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
+    except Exception as e:
+        logger.error(f"Eroare la inițierea autentificării Facebook: {e}")
+        return RedirectResponse(url=_auth_failure_url(request, "facebook"), status_code=status.HTTP_302_FOUND)
 
 
 @router.get("/auth/google/callback", include_in_schema=False)
@@ -75,13 +157,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
         if user:
             # Existing user - log them in (clear session first to prevent fixation)
-            user.last_login_at = utcnow_naive()
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-            request.session.clear()
-            request.session["user_id"] = user.id
-            request.session["db_epoch"] = get_db_epoch()
+            _login_user(request, db, user)
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
             return RedirectResponse(
                 url=_user_blog_url(request, user),
@@ -89,13 +165,15 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             )
         else:
             # New user - store Google info in session and redirect to setup
-            request.session.clear()
-            request.session["google_user"] = {
+            google_payload = {
                 "google_id": google_user.google_id,
-                "email": google_user.email,
+                "email": google_user.email.lower(),
                 "name": google_user.name,
-                "picture": google_user.picture
+                "picture": google_user.picture,
+                "email_verified": bool(getattr(google_user, "email_verified", True)),
             }
+            _store_pending_auth(request, "google", {"provider_user": google_payload})
+            request.session["google_user"] = google_payload
             logger.info(f"New Google user detected: {google_user.email}. Redirecting to setup.")
             return RedirectResponse(
                 url=f"{_frontend_base_url(request)}/autentificare/configurare",
@@ -104,26 +182,217 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
     except HTTPException as exc:
         logger.warning(f"Autentificarea Google a eșuat: {exc.detail}")
-        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=_auth_failure_url(request, "google"), status_code=status.HTTP_302_FOUND)
     except Exception as e:
         logger.error(f"Eroare în răspunsul Google: {e}")
-        return RedirectResponse(url=_auth_failure_url(request), status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=_auth_failure_url(request, "google"), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/auth/facebook/callback", include_in_schema=False)
+@router.get("/autentificare/facebook/raspuns")
+@limiter.limit("5/minute")
+async def facebook_callback(request: Request, db: Session = Depends(get_db)):
+    """Handle Facebook OAuth callback"""
+    try:
+        facebook_user = await facebook_oauth.handle_facebook_callback(request)
+        user, is_new = facebook_oauth.find_or_create_user(db, facebook_user)
+        if user:
+            _login_user(request, db, user)
+            logger.info("Facebook OAuth login successful for existing user: %s", user.username)
+            return RedirectResponse(url=_user_blog_url(request, user), status_code=status.HTTP_302_FOUND)
+        _store_pending_auth(
+            request,
+            "facebook",
+            {"provider_user": _pending_provider_payload(facebook_user)},
+        )
+        logger.info("New Facebook user detected: %s. Redirecting to setup.", facebook_user.email)
+        return RedirectResponse(
+            url=f"{_frontend_base_url(request)}/autentificare/configurare",
+            status_code=status.HTTP_302_FOUND,
+        )
+    except HTTPException as exc:
+        logger.warning("Autentificarea Facebook a eșuat: %s", exc.detail)
+        return RedirectResponse(url=_auth_failure_url(request, "facebook"), status_code=status.HTTP_302_FOUND)
+    except Exception as e:
+        logger.error("Eroare în răspunsul Facebook: %s", e)
+        return RedirectResponse(url=_auth_failure_url(request, "facebook"), status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/api/autentificare/parola/inregistrare")
+@limiter.limit("5/minute")
+def register_with_password(
+    request: Request,
+    data: schemas.PasswordRegisterRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    if crud.get_user_by_email(db, email):
+        raise HTTPException(
+            status_code=400,
+            detail="Există deja un cont cu această adresă. Folosește resetarea parolei ca să setezi o parolă.",
+        )
+    try:
+        hashed_password = local_auth.password_hash(data.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _queue_activation_code(db, email=email, password_hash=hashed_password)
+    return {
+        "message": "Ți-am trimis un cod de activare pe email.",
+        "email": email,
+        "next": "activation_code",
+    }
+
+
+@router.post("/api/autentificare/parola/activeaza")
+@limiter.limit("8/minute")
+def activate_password_signup(
+    request: Request,
+    data: schemas.AuthCodeVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    if crud.get_user_by_email(db, email):
+        raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
+    try:
+        code_row = local_auth.verify_email_code(
+            db,
+            email=email,
+            purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
+            code=data.code,
+        )
+    except local_auth.AuthCodeError as exc:
+        raise _auth_code_error_response(exc)
+    password_hash = (code_row.payload or {}).get("password_hash")
+    if not password_hash:
+        raise HTTPException(status_code=400, detail="Codul nu mai poate fi folosit. Reia înregistrarea.")
+    _store_pending_auth(
+        request,
+        "password",
+        {"email": email, "password_hash": password_hash},
+    )
+    return {
+        "message": "Email verificat. Continuă configurarea contului.",
+        "setup_url": f"{_frontend_base_url(request)}/autentificare/configurare",
+    }
+
+
+@router.post("/api/autentificare/parola/retrimite-cod")
+@limiter.limit("4/minute")
+def resend_activation_code(
+    request: Request,
+    data: schemas.PasswordResetRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    if crud.get_user_by_email(db, email):
+        raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
+    active_code = local_auth.latest_active_email_code(
+        db,
+        email=email,
+        purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
+    )
+    password_hash = (active_code.payload or {}).get("password_hash") if active_code else None
+    if not password_hash:
+        raise HTTPException(status_code=400, detail="Reia înregistrarea ca să primești un cod nou.")
+    _queue_activation_code(db, email=email, password_hash=password_hash)
+    return {"message": "Ți-am trimis un cod nou pe email.", "email": email}
+
+
+@router.post("/api/autentificare/parola/login")
+@limiter.limit("10/minute")
+def login_with_password(
+    request: Request,
+    data: schemas.PasswordLoginRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    user = crud.get_user_by_email(db, email)
+    if not user or not local_auth.verify_password(data.password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Email sau parolă incorecte.")
+    if not user.email_verified_at:
+        raise HTTPException(status_code=403, detail="Adresa de email nu este verificată.")
+    _login_user(request, db, user)
+    logger.info("Password login successful for user: %s", user.username)
+    return _auth_response_payload(request, user)
+
+
+@router.post("/api/autentificare/parola/resetare")
+@limiter.limit("5/minute")
+def request_password_reset(
+    request: Request,
+    data: schemas.PasswordResetRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    user = crud.get_user_by_email(db, email)
+    if user:
+        _, code = local_auth.create_email_code(
+            db,
+            email=email,
+            purpose=local_auth.PURPOSE_PASSWORD_RESET,
+            user_id=user.id,
+        )
+        email_service.queue_auth_code_email(
+            db,
+            recipient_user_id=user.id,
+            recipient_email=user.email,
+            recipient_name=user.username,
+            code=code,
+            purpose=local_auth.PURPOSE_PASSWORD_RESET,
+        )
+    return {
+        "message": "Dacă adresa există, vei primi un cod de resetare.",
+        "email": email,
+        "next": "reset_code",
+    }
+
+
+@router.post("/api/autentificare/parola/resetare/confirma")
+@limiter.limit("8/minute")
+def confirm_password_reset(
+    request: Request,
+    data: schemas.PasswordResetConfirmRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    try:
+        code_row = local_auth.verify_email_code(
+            db,
+            email=email,
+            purpose=local_auth.PURPOSE_PASSWORD_RESET,
+            code=data.code,
+        )
+    except local_auth.AuthCodeError as exc:
+        raise _auth_code_error_response(exc)
+    user = code_row.user or crud.get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=400, detail="Codul nu este valid.")
+    try:
+        user.password_hash = local_auth.password_hash(data.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    now = utcnow_naive()
+    user.password_updated_at = now
+    if not user.email_verified_at:
+        user.email_verified_at = now
+    _login_user(request, db, user)
+    return _auth_response_payload(request, user)
 
 
 @router.get("/autentificare/configurare")
 def auth_setup_page(request: Request):
-    """Setup page for new Google OAuth users — served by React frontend"""
-    google_user_data = request.session.get("google_user")
-    if not google_user_data:
-        return RedirectResponse(url="/autentificare/google", status_code=status.HTTP_302_FOUND)
+    """Setup page for new authenticated users — served by React frontend"""
+    pending_auth = _pending_auth_from_session(request)
+    if not pending_auth:
+        return RedirectResponse(url="/autentificare", status_code=status.HTTP_302_FOUND)
     return _react_index_response()
 
 
 @router.post("/api/autentificare/finalizeaza-configurarea")
 def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
-    """Complete user setup after Google OAuth"""
-    google_user_data = request.session.get("google_user")
-    if not google_user_data:
+    """Complete user setup after OAuth or password email activation"""
+    pending_auth = _pending_auth_from_session(request)
+    if not pending_auth:
         raise HTTPException(status_code=400, detail="Nu există o sesiune de autentificare")
 
     try:
@@ -131,17 +400,46 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
         if not re.fullmatch(r"^[a-zA-Z0-9]+$", setup_data.username):
             raise HTTPException(status_code=400, detail="Numele de utilizator poate conține doar litere și cifre, fără spații sau simboluri speciale.")
 
-        # Create Google user info object
-        google_user = schemas.GoogleUserInfo(**google_user_data)
-
-        # Create the user
-        new_user = google_oauth.create_user_from_google(db, google_user, setup_data)
+        source = pending_auth.get("source")
+        provider_user_data = pending_auth.get("provider_user") or {}
+        if source == "google":
+            google_user = schemas.GoogleUserInfo(**provider_user_data)
+            new_user = google_oauth.create_user_from_google(db, google_user, setup_data)
+            if google_user.email_verified and not new_user.email_verified_at:
+                new_user.email_verified_at = utcnow_naive()
+        elif source == "facebook":
+            facebook_user = schemas.FacebookUserInfo(**provider_user_data)
+            new_user = facebook_oauth.create_user_from_facebook(db, facebook_user, setup_data)
+        elif source == "password":
+            email = local_auth.normalize_email(str(pending_auth.get("email") or ""))
+            password_hash = pending_auth.get("password_hash")
+            if not email or not password_hash:
+                raise HTTPException(status_code=400, detail="Sesiunea de activare nu este validă")
+            if crud.get_user_by_email(db, email):
+                raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă")
+            existing_user = crud.get_user_by_username(db, setup_data.username.lower())
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Numele de utilizator este deja folosit")
+            new_user = crud.create_user_from_google(
+                db,
+                {
+                    "username": setup_data.username.lower(),
+                    "email": email,
+                    "password_hash": password_hash,
+                    "email_verified_at": utcnow_naive(),
+                    "password_updated_at": utcnow_naive(),
+                    "subtitle": setup_data.subtitle,
+                    "avatar_seed": setup_data.avatar_seed,
+                    "cover_seed": setup_data.cover_seed or default_cover_seed(setup_data.username.lower()),
+                },
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Sesiunea de autentificare nu este validă")
         new_user.last_login_at = utcnow_naive()
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
 
-        # Clear session and set authenticated user
         request.session.clear()
         request.session["user_id"] = new_user.id
         request.session["db_epoch"] = get_db_epoch()

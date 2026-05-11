@@ -13,8 +13,9 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
+os.environ.setdefault("SESSION_SECRET_KEY", "test-secret")
 
-from app import auth, crud, models, moderation, schemas, statistics
+from app import auth, crud, local_auth, models, moderation, schemas, statistics
 from app.routers import admin_routes, api_pages, auth_routes, forum_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
@@ -665,6 +666,126 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response["username"], "coveruser")
         self.assertEqual(created.cover_seed, "coveruser-cover-forest")
         self.assertEqual(request.session["user_id"], created.id)
+
+    def test_password_signup_requires_activation_code_before_setup(self):
+        request = DummyRequest({})
+        with patch.object(auth_routes.local_auth, "generate_email_code", return_value="12345678"):
+            response = auth_routes.register_with_password.__wrapped__(
+                request,
+                schemas.PasswordRegisterRequest(email="NewAuthor@Example.com", password="long-enough-password"),
+                self.db,
+            )
+
+        self.assertEqual(response["email"], "newauthor@example.com")
+        email_row = self.db.query(models.EmailOutbox).one()
+        self.assertEqual(email_row.email_type, "auth")
+        self.assertIn("12345678", email_row.text_content)
+
+        activation = auth_routes.activate_password_signup.__wrapped__(
+            request,
+            schemas.AuthCodeVerifyRequest(email="newauthor@example.com", code="12345678"),
+            self.db,
+        )
+        self.assertIn("/autentificare/configurare", activation["setup_url"])
+        self.assertEqual(request.session["pending_auth"]["source"], "password")
+
+        setup_response = auth_routes.complete_user_setup(
+            request,
+            schemas.UserSetup(
+                username="parolauser",
+                subtitle="setup",
+                avatar_seed="parolauser-shapes",
+                cover_seed="parolauser-cover-sky",
+            ),
+            self.db,
+        )
+        created = crud.get_user_by_username(self.db, "parolauser")
+
+        self.assertEqual(setup_response["username"], "parolauser")
+        self.assertEqual(created.email, "newauthor@example.com")
+        self.assertIsNone(created.google_id)
+        self.assertIsNotNone(created.password_hash)
+        self.assertIsNotNone(created.email_verified_at)
+        self.assertTrue(local_auth.verify_password("long-enough-password", created.password_hash))
+        self.assertEqual(request.session["user_id"], created.id)
+
+    def test_password_reset_sets_password_for_existing_social_account(self):
+        user = self.make_user("socialonly")
+        user.email_verified_at = None
+        self.db.add(user)
+        self.db.commit()
+        request = DummyRequest({})
+
+        with patch.object(auth_routes.local_auth, "generate_email_code", return_value="87654321"):
+            response = auth_routes.request_password_reset.__wrapped__(
+                request,
+                schemas.PasswordResetRequest(email=user.email),
+                self.db,
+            )
+
+        self.assertEqual(response["next"], "reset_code")
+        email_row = self.db.query(models.EmailOutbox).one()
+        self.assertIn("87654321", email_row.text_content)
+
+        reset = auth_routes.confirm_password_reset.__wrapped__(
+            request,
+            schemas.PasswordResetConfirmRequest(
+                email=user.email,
+                code="87654321",
+                password="new-long-password",
+            ),
+            self.db,
+        )
+        self.db.refresh(user)
+
+        self.assertEqual(reset["username"], user.username)
+        self.assertEqual(request.session["user_id"], user.id)
+        self.assertIsNotNone(user.email_verified_at)
+        self.assertTrue(local_auth.verify_password("new-long-password", user.password_hash))
+
+    def test_facebook_callback_links_verified_email_to_existing_user(self):
+        user = self.make_user("facebooklink")
+        facebook_user = schemas.FacebookUserInfo(
+            facebook_id="fb-123",
+            email=user.email,
+            name="Facebook Link",
+            email_verified=True,
+        )
+        request = DummyRequest({})
+
+        with patch.object(auth_routes.facebook_oauth, "handle_facebook_callback", new=AsyncMock(return_value=facebook_user)):
+            response = self.async_run(auth_routes.facebook_callback.__wrapped__(request, self.db))
+
+        self.db.refresh(user)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(user.facebook_id, "fb-123")
+        self.assertEqual(request.session["user_id"], user.id)
+
+    def test_facebook_callback_sends_new_users_to_generic_setup(self):
+        facebook_user = schemas.FacebookUserInfo(
+            facebook_id="fb-new",
+            email="fbnew@example.com",
+            name="Facebook New",
+            email_verified=True,
+        )
+        request = DummyRequest({"user_id": 123})
+
+        with patch.dict(os.environ, {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"}), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes.facebook_oauth,
+            "handle_facebook_callback",
+            new=AsyncMock(return_value=facebook_user),
+        ):
+            response = self.async_run(auth_routes.facebook_callback.__wrapped__(request, self.db))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "http://lvh.me:8000/autentificare/configurare")
+        self.assertNotIn("user_id", request.session)
+        self.assertEqual(request.session["pending_auth"]["source"], "facebook")
+        self.assertEqual(request.session["pending_auth"]["provider_user"]["email"], "fbnew@example.com")
 
     def test_profile_settings_update_links_location_and_donations(self):
         user = self.make_user("profilelinks")

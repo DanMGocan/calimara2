@@ -148,9 +148,10 @@ async def handle_google_callback(request: Request) -> schemas.GoogleUserInfo:
         # Extract relevant information
         google_user = schemas.GoogleUserInfo(
             google_id=user_info['id'],  # Google's unique identifier
-            email=user_info['email'],
+            email=user_info['email'].lower(),
             name=user_info.get('name', ''),
-            picture=user_info.get('picture')
+            picture=user_info.get('picture'),
+            email_verified=bool(user_info.get("verified_email", True)),
         )
         
         logger.info(f"Successfully authenticated Google user: {google_user.email}")
@@ -171,20 +172,30 @@ def find_or_create_user(db: Session, google_user: schemas.GoogleUserInfo) -> tup
     Returns (user, is_new) tuple where is_new indicates if this is a new user
     """
     # First try to find by Google ID
+    email_verified = bool(getattr(google_user, "email_verified", True))
     user = crud.get_user_by_google_id(db, google_user.google_id)
     if user:
-        # Update email if it has changed
-        if user.email != google_user.email:
-            user.email = google_user.email
+        changed = False
+        if email_verified and user.email != google_user.email.lower():
+            user.email = google_user.email.lower()
+            changed = True
+        if email_verified and not user.email_verified_at:
+            from .week_util import utcnow_naive
+            user.email_verified_at = utcnow_naive()
+            changed = True
+        if changed:
             db.commit()
             db.refresh(user)
         return user, False
     
     # Then try to find by email (for migration of existing users)
-    user = crud.get_user_by_email(db, google_user.email)
+    user = crud.get_user_by_email(db, google_user.email) if email_verified else None
     if user:
         # Update the user with Google ID for future logins
         user.google_id = google_user.google_id
+        if not user.email_verified_at:
+            from .week_util import utcnow_naive
+            user.email_verified_at = utcnow_naive()
         db.commit()
         db.refresh(user)
         return user, False
@@ -199,6 +210,9 @@ def create_user_from_google(db: Session, google_user: schemas.GoogleUserInfo, se
     existing_user = crud.get_user_by_username(db, setup_data.username.lower())
     if existing_user:
         raise HTTPException(status_code=400, detail="Numele de utilizator este deja folosit")
+    existing_email = crud.get_user_by_email(db, google_user.email)
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă")
     
     # Create new user
     user_data = {

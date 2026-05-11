@@ -624,6 +624,11 @@ SMOKE_CASES = [
     SmokeCase("fetchModerationQueue", "GET", _path("/api/moderare/coada"), {200}),
     SmokeCase("reviewModerationLog", "POST", lambda data: f"/api/moderare/revizie/{data.moderation_log_id}", {200}, _json({"action": "approved", "reason": "smoke"})),
     SmokeCase("fetchExtendedModerationStats", "GET", _path("/api/moderare/statistici/extinse"), {200}),
+    SmokeCase("registerWithPassword", "POST", _path("/api/autentificare/parola/inregistrare"), {200}, _json({"email": "new-password-smoke@example.com", "password": "long-enough-password"})),
+    SmokeCase("activatePasswordSignupInvalidCode", "POST", _path("/api/autentificare/parola/activeaza"), {400}, _json({"email": "new-password-smoke@example.com", "code": "00000000"})),
+    SmokeCase("loginWithPasswordInvalid", "POST", _path("/api/autentificare/parola/login"), {400}, _json({"email": "smokeauthor@example.com", "password": "wrong"})),
+    SmokeCase("requestPasswordReset", "POST", _path("/api/autentificare/parola/resetare"), {200}, _json({"email": "smokeauthor@example.com"})),
+    SmokeCase("confirmPasswordResetInvalidCode", "POST", _path("/api/autentificare/parola/resetare/confirma"), {400}, _json({"email": "smokeauthor@example.com", "code": "00000000", "password": "new-long-password"})),
     SmokeCase("completeAuthSetup", "POST", _path("/api/autentificare/finalizeaza-configurarea"), {400}, _json({"username": "newsmoke", "subtitle": "setup", "avatar_seed": "setup-seed"})),
     SmokeCase("logout", "GET", _path("/api/deconectare"), {200}, headers={"accept": "application/json"}),
 ]
