@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPost, createPostDraft, fetchPostDraft, fetchPostDrafts, updatePostDraft } from "../api/posts.js";
+import { createPost, createPostDraft, fetchOwnedPostForEdit, fetchPostDraft, fetchPostDrafts, updatePost, updatePostDraft } from "../api/posts.js";
 import { addDiacritics } from "../api/writing.js";
 import { POST_CATEGORIES, POST_CONTENT_LIMITS, POST_DRAFT_AUTOSAVE_MS, SHORT_STORY_CHARACTER_LIMIT, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
 import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
@@ -12,6 +12,11 @@ import { authorPath, blogUrl } from "../app/paths.js";
 function CreatePostView({ user }) {
   const draftParam = useMemo(() => {
     const raw = new URLSearchParams(window.location.search).get("draft");
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, []);
+  const postParam = useMemo(() => {
+    const raw = new URLSearchParams(window.location.search).get("post");
     const parsed = Number(raw);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }, []);
@@ -44,8 +49,8 @@ function CreatePostView({ user }) {
     failDiacriticsProgress
   } = useDiacriticsProgress();
   const draftListState = useAsync(
-    () => (user ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
-    [user?.id, draftsRefreshKey]
+    () => (user && !postParam ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
+    [user?.id, postParam, draftsRefreshKey]
   );
 
   useEffect(() => {
@@ -69,14 +74,45 @@ function CreatePostView({ user }) {
     setDiacriticsReview(null);
     setDraftStatus("");
     setDraftError("");
-    if (!draftParam) {
+    if (postParam || !draftParam) {
       setDraftId(null);
       lastSavedFingerprintRef.current = "";
     }
-  }, [user?.id, user?.is_premium, draftParam]);
+  }, [user?.id, user?.is_premium, draftParam, postParam]);
 
   useEffect(() => {
-    if (!user || !draftParam) return undefined;
+    if (!user || !postParam) return undefined;
+    let cancelled = false;
+    setDraftLoading(true);
+    setDraftError("");
+    fetchOwnedPostForEdit(postParam)
+      .then((post) => {
+        if (cancelled) return;
+        const nextTitle = post.title || "";
+        const nextContent = post.content || "";
+        const nextCategory = post.category || "poezie";
+        setDraftId(null);
+        setTitle(nextTitle);
+        setContent(nextContent);
+        setCategory(nextCategory);
+        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent);
+        setDraftStatus("Postare încărcată pentru editare.");
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setDraftError(requestError.message || "Nu am putut încărca postarea.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDraftLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, postParam]);
+
+  useEffect(() => {
+    if (!user || !draftParam || postParam) return undefined;
     let cancelled = false;
     setDraftLoading(true);
     setDraftError("");
@@ -104,7 +140,7 @@ function CreatePostView({ user }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, draftParam]);
+  }, [user?.id, draftParam, postParam]);
 
   const saveDraft = useCallback(async (source = "manual") => {
     if (!user) return null;
@@ -183,17 +219,17 @@ function CreatePostView({ user }) {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user || postParam) return undefined;
     const timer = window.setInterval(() => {
       if (!submitting) saveDraft("auto");
     }, POST_DRAFT_AUTOSAVE_MS);
     return () => window.clearInterval(timer);
-  }, [user?.id, submitting, saveDraft]);
+  }, [user?.id, postParam, submitting, saveDraft]);
 
   if (!user) return <AuthRequired />;
 
-  const otherDrafts = (draftListState.data?.drafts ?? []).filter((draft) => draft.id !== draftId);
-  const canSaveDraft = draftHasContent(title, content);
+  const otherDrafts = postParam ? [] : (draftListState.data?.drafts ?? []).filter((draft) => draft.id !== draftId);
+  const canSaveDraft = !postParam && draftHasContent(title, content);
   const canPublishDirectly = Boolean(user?.is_premium && autoDiacritics && !diacriticsReview);
 
   const submitPost = async ({ skipDiacritics = false } = {}) => {
@@ -238,13 +274,13 @@ function CreatePostView({ user }) {
         return;
       }
       const payload = { title, content, category };
-      if (draftIdRef.current) payload.draft_id = draftIdRef.current;
-      const post = await createPost(payload);
+      if (!postParam && draftIdRef.current) payload.draft_id = draftIdRef.current;
+      const post = postParam ? await updatePost(postParam, payload) : await createPost(payload);
       lastSavedFingerprintRef.current = draftFingerprint(`${category}:${title}`, content);
       window.location.href = `${blogUrl(user.username)}/${post.slug}`;
     } catch (requestError) {
       failDiacriticsProgress();
-      setStatus(requestError.message || "Nu am putut publica textul.");
+      setStatus(requestError.message || (postParam ? "Nu am putut salva postarea." : "Nu am putut publica textul."));
       setSubmitting(false);
       setDirectPublishing(false);
     }
@@ -256,7 +292,11 @@ function CreatePostView({ user }) {
   };
 
   return (
-    <PageShell kicker="scrie" title="Text nou" sub="Publică un text în blogul tău.">
+    <PageShell
+      kicker="scrie"
+      title={postParam ? "Editează postarea" : "Text nou"}
+      sub={postParam ? "Modificările retrimit textul la moderare." : "Publică un text în blogul tău."}
+    >
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       <form className="form-stack" onSubmit={submit}>
         <label className="auth-field" htmlFor="post-title">Titlu</label>
@@ -279,12 +319,16 @@ function CreatePostView({ user }) {
         </select>
         <label className="auth-field" htmlFor="post-content">Text</label>
         <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} enterMode="soft-break" />
-        <div className="draft-actions-row">
-          <button className="cal-btn" type="button" onClick={() => saveDraft("manual")} disabled={submitting || draftSaving || !canSaveDraft}>
-            {draftSaving ? "Se salvează..." : "Salvează ca ciornă"}
-          </button>
-          <span className="draft-save-status">{draftLoading ? "Se încarcă ciorna..." : draftStatus}</span>
-        </div>
+        {postParam ? (
+          <span className="draft-save-status">{draftLoading ? "Se încarcă postarea..." : draftStatus}</span>
+        ) : (
+          <div className="draft-actions-row">
+            <button className="cal-btn" type="button" onClick={() => saveDraft("manual")} disabled={submitting || draftSaving || !canSaveDraft}>
+              {draftSaving ? "Se salvează..." : "Salvează ca ciornă"}
+            </button>
+            <span className="draft-save-status">{draftLoading ? "Se încarcă ciorna..." : draftStatus}</span>
+          </div>
+        )}
         {draftError ? <div className="inline-error">{draftError}</div> : null}
         {draftListState.error ? <div className="inline-error">{draftListState.error}</div> : null}
         {otherDrafts.length ? (
@@ -325,12 +369,12 @@ function CreatePostView({ user }) {
               submitting,
               reviewing: Boolean(diacriticsReview),
               enabled: Boolean(user.is_premium && autoDiacritics && !directPublishing),
-              submitLabel: "Publică"
+              submitLabel: postParam ? "Salvează" : "Publică"
             })}
           </button>
           {canPublishDirectly ? (
             <button className="cal-btn" type="button" onClick={() => submitPost({ skipDiacritics: true })} disabled={submitting}>
-              {directPublishing ? "Se publică..." : "Publică direct"}
+              {directPublishing ? (postParam ? "Se salvează..." : "Se publică...") : (postParam ? "Salvează direct" : "Publică direct")}
             </button>
           ) : null}
         </div>

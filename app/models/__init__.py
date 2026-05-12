@@ -9,10 +9,11 @@ from .clubs import Club, ClubMember, ClubJoinRequest, ClubBoardMessage
 from .economy import GologaniTransaction, ShopItem, UserInventoryItem, UserEquippedItem
 from .forum import ForumThread, ForumReply
 from .messaging import Conversation, Message
+from .social import Friendship
 from .moderation import ModerationLog
 from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
-from .admin import AdminAuditLog, AdminDailyMetric, SiteFeedback
+from .admin import AdminAuditLog, AdminDailyMetric, PlatformAccessSetting, PlatformAllowedEmail, SiteFeedback
 from .email import EmailCampaign, EmailOutbox
 from .auth import AuthEmailCode
 
@@ -45,6 +46,7 @@ __all__ = [
     "ForumReply",
     "Conversation",
     "Message",
+    "Friendship",
     "ModerationLog",
     "Notification",
     "AudioListenEvent",
@@ -52,6 +54,8 @@ __all__ = [
     "DailyStat",
     "AdminAuditLog",
     "AdminDailyMetric",
+    "PlatformAccessSetting",
+    "PlatformAllowedEmail",
     "SiteFeedback",
     "EmailCampaign",
     "EmailOutbox",

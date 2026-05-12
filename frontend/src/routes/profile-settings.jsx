@@ -258,7 +258,7 @@ function PromotionSettingsPanel() {
     };
   }, [query]);
 
-  const limits = promotions?.limits || { own_posts: 4, authors: 2, other_posts: 2 };
+  const limits = promotions?.limits || { own_posts: 2, authors: 3, other_posts: 3 };
   const ownPostIds = new Set((promotions?.own_posts || []).map((item) => item.id));
   const authorIds = new Set((promotions?.authors || []).map((item) => item.id));
   const otherPostIds = new Set((promotions?.other_posts || []).map((item) => item.id));

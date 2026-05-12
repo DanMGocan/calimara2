@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { FaCoins, FaShirt } from "react-icons/fa6";
-import { FiAward, FiBookOpen, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUsers } from "react-icons/fi";
+import { FiAward, FiBookOpen, FiCheck, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
+import { acceptFriendRequest, deleteFriendRequest, removeFriend, sendFriendRequest } from "../api/friends.js";
 import { fetchAllWorks, fetchBlog } from "../api/public.js";
 import { promoteAuthor, unpromoteAuthor } from "../api/users.js";
 import { ALL_WORKS_SORT_OPTIONS, PROFILE_LINK_MISSING_MESSAGE } from "../app/constants.js";
@@ -10,7 +11,7 @@ import { categoryLabel, formatNumber, usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, PageShell, StatusPanel } from "../app/layout.jsx";
 import { authorPath, blogUrl, mainPath, profileAvatarUrl, profileCoverUrl } from "../app/paths.js";
-import { SOCIAL_PROFILE_LINKS, SUPPORT_PROFILE_LINKS, profileLinks, profileTierBadge } from "../app/profile-links.jsx";
+import { SOCIAL_PROFILE_LINKS, SUPPORT_PROFILE_LINKS, profileLinks, profileTierBadge, safeExternalUrl } from "../app/profile-links.jsx";
 
 function ExternalProfileLinks({ links, className = "", children }) {
   if (!links.length && !children) return null;
@@ -109,7 +110,84 @@ function PromoteAuthorButton({ owner, user, initialPromoted }) {
     </button>
   );
 }
-function ProfileHero({ data, postCount, user }) {
+function ProfileFriendActions({ owner, user, initialStatus, initialFriendshipId, onUserRefresh }) {
+  const [status, setStatus] = useState(initialStatus || "none");
+  const [friendshipId, setFriendshipId] = useState(initialFriendshipId || null);
+  const [busy, setBusy] = useState("");
+
+  useEffect(() => {
+    setStatus(initialStatus || "none");
+    setFriendshipId(initialFriendshipId || null);
+    setBusy("");
+  }, [owner?.id, user?.id, initialStatus, initialFriendshipId]);
+
+  if (!owner || !user || owner.id === user.id) return null;
+
+  const syncFromResponse = (response) => {
+    setStatus(response?.status || "none");
+    setFriendshipId(response?.friendship?.id || response?.friendship_id || null);
+  };
+
+  const run = async (kind) => {
+    if (busy) return;
+    setBusy(kind);
+    try {
+      if (kind === "send") syncFromResponse(await sendFriendRequest(owner.id));
+      if (kind === "accept" && friendshipId) syncFromResponse(await acceptFriendRequest(friendshipId));
+      if (kind === "delete" && friendshipId) {
+        await deleteFriendRequest(friendshipId);
+        setStatus("none");
+        setFriendshipId(null);
+      }
+      if (kind === "remove") {
+        await removeFriend(owner.id);
+        setStatus("none");
+        setFriendshipId(null);
+      }
+      await onUserRefresh?.();
+    } catch (error) {
+      if (import.meta.env.DEV) console.warn("Friendship action failed", error);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  if (status === "incoming_pending") {
+    return (
+      <>
+        <button className="profile-link-btn profile-friend-action accept" type="button" onClick={() => run("accept")} disabled={Boolean(busy) || !friendshipId} aria-label="Acceptă cererea de prietenie" title="Acceptă cererea de prietenie">
+          <FiCheck aria-hidden="true" />
+        </button>
+        <button className="profile-link-btn profile-friend-action" type="button" onClick={() => run("delete")} disabled={Boolean(busy) || !friendshipId} aria-label="Refuză cererea de prietenie" title="Refuză cererea de prietenie">
+          <FiX aria-hidden="true" />
+        </button>
+      </>
+    );
+  }
+
+  if (status === "outgoing_pending") {
+    return (
+      <button className="profile-link-btn profile-friend-action pending" type="button" onClick={() => run("delete")} disabled={Boolean(busy) || !friendshipId} aria-label="Anulează cererea de prietenie" title="Anulează cererea de prietenie">
+        <FiX aria-hidden="true" />
+      </button>
+    );
+  }
+
+  if (status === "friends") {
+    return (
+      <button className="profile-link-btn profile-friend-action friends" type="button" onClick={() => run("remove")} disabled={Boolean(busy)} aria-label="Elimină din prieteni" title="Elimină din prieteni">
+        <FiUserMinus aria-hidden="true" />
+      </button>
+    );
+  }
+
+  return (
+    <button className="profile-link-btn profile-friend-action" type="button" onClick={() => run("send")} disabled={Boolean(busy)} aria-label="Trimite cerere de prietenie" title="Trimite cerere de prietenie">
+      <FiUserPlus aria-hidden="true" />
+    </button>
+  );
+}
+function ProfileHero({ data, postCount, user, onUserRefresh }) {
   const owner = data?.blog_owner;
   if (!owner) return null;
   const profileIconLinks = profileLinks(owner, [...SOCIAL_PROFILE_LINKS, ...SUPPORT_PROFILE_LINKS]);
@@ -117,6 +195,7 @@ function ProfileHero({ data, postCount, user }) {
   const coverStyle = coverUrl ? { backgroundImage: `url(${coverUrl})` } : undefined;
   const tierBadge = profileTierBadge(owner);
   const isOwnProfile = Boolean(user?.username && owner.username && user.username.toLowerCase() === owner.username.toLowerCase());
+  const playlistUrl = safeExternalUrl(owner.youtube_playlist_url);
 
   return (
     <section className={`profile-hero ${coverUrl ? "has-cover" : ""} ${tierBadge.className}`} aria-label="Profil autor">
@@ -137,7 +216,10 @@ function ProfileHero({ data, postCount, user }) {
             <FiSettings aria-hidden="true" />
           </a>
         ) : (
-          <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
+          <>
+            <ProfileFriendActions owner={owner} user={user} initialStatus={data.viewer_friendship_status} initialFriendshipId={data.viewer_friendship_id} onUserRefresh={onUserRefresh} />
+            <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
+          </>
         )}
       </ExternalProfileLinks>
       {owner.subtitle ? (
@@ -158,6 +240,7 @@ function ProfileHero({ data, postCount, user }) {
         <ProfileStat Icon={FiHeart} value={data.total_likes} label="aprecieri" />
         <ProfileStat Icon={FiMessageCircle} value={data.total_comments} label="comentarii" />
         <ProfileStat Icon={FiHeadphones} value={owner.seconds_listened} label="secunde ascultate" />
+        <ProfileStat Icon={FiUsers} value={data.friend_count} label="prieteni" />
         <ProfileStat Icon={FaCoins} value={owner.gologani_balance} label="Gologani" />
         {isOwnProfile ? (
           <a className="profile-write-btn" href={authorPath(user, "/panou")}>
@@ -170,8 +253,8 @@ function ProfileHero({ data, postCount, user }) {
         <ProfileStatLink Icon={FiBookOpen} href={`${blogUrl(owner.username)}/toate-operele`} label="Toate operele" />
         <ProfileStatLink Icon={FaShirt} href={`${blogUrl(owner.username)}/inventar`} label="Inventar" />
       </div>
-      {owner.youtube_playlist_url ? (
-        <a className="profile-playlist-link" href={owner.youtube_playlist_url} target="_blank" rel="noreferrer">
+      {playlistUrl ? (
+        <a className="profile-playlist-link" href={playlistUrl} target="_blank" rel="noreferrer">
           <SiYoutube aria-hidden="true" />
           <span>Playlist YouTube</span>
         </a>
@@ -199,9 +282,10 @@ function ProfileHighlights({ data }) {
   );
 }
 function ProfilePromotions({ data }) {
-  const ownPosts = data?.promoted_own_posts || data?.featured_posts || [];
-  const authors = data?.promoted_authors || data?.best_friends || [];
-  const otherPosts = data?.promoted_external_posts || [];
+  const limits = data?.promotion_limits || { own_posts: 2, authors: 3, other_posts: 3 };
+  const ownPosts = (data?.promoted_own_posts || data?.featured_posts || []).slice(0, limits.own_posts ?? 2);
+  const authors = (data?.promoted_authors || data?.best_friends || []).slice(0, limits.authors ?? 3);
+  const otherPosts = (data?.promoted_external_posts || []).slice(0, limits.other_posts ?? 3);
   if (!ownPosts.length && !authors.length && !otherPosts.length) return null;
   return (
     <section className="profile-promotions" aria-label="Promovări pe Călimara mea">
@@ -209,35 +293,37 @@ function ProfilePromotions({ data }) {
         <FiStar aria-hidden="true" />
         <div className="piece-card-kicker">promovări pe Călimara mea</div>
       </div>
-      {ownPosts.length ? (
-        <div className="profile-promotion-block">
-          <div className="profile-promotion-label">texte proprii</div>
-          <div className="profile-promotion-grid">
-            {ownPosts.map((post) => <PostCard key={`own-${post.id}`} post={post} />)}
+      <div className="profile-promotion-sections">
+        {ownPosts.length ? (
+          <div className="profile-promotion-block">
+            <div className="profile-promotion-label">Postari proprii promovate</div>
+            <div className="profile-promotion-grid">
+              {ownPosts.map((post) => <PostCard key={`own-${post.id}`} post={post} />)}
+            </div>
           </div>
-        </div>
-      ) : null}
-      {authors.length ? (
-        <div className="profile-promotion-block">
-          <div className="profile-promotion-label">autori</div>
-          <div className="profile-chip-list">
-            {authors.map((entry) => (
-              <a className="profile-chip" key={entry.user.username} href={blogUrl(entry.user.username)}>
-                <FiUsers aria-hidden="true" />
-                {usernameHandle(entry.user.username)}
-              </a>
-            ))}
+        ) : null}
+        {authors.length ? (
+          <div className="profile-promotion-block">
+            <div className="profile-promotion-label">Autori pe care ii promovez</div>
+            <div className="profile-chip-list">
+              {authors.map((entry) => (
+                <a className="profile-chip" key={entry.user.username} href={blogUrl(entry.user.username)}>
+                  <FiUsers aria-hidden="true" />
+                  {usernameHandle(entry.user.username)}
+                </a>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : null}
-      {otherPosts.length ? (
-        <div className="profile-promotion-block">
-          <div className="profile-promotion-label">texte de la alți autori</div>
-          <div className="profile-promotion-grid compact">
-            {otherPosts.map((post) => <PostCard key={`other-${post.id}`} post={post} />)}
+        ) : null}
+        {otherPosts.length ? (
+          <div className="profile-promotion-block">
+            <div className="profile-promotion-label">Lucrarile altor autori pe care le promovez</div>
+            <div className="profile-promotion-grid compact">
+              {otherPosts.map((post) => <PostCard key={`other-${post.id}`} post={post} />)}
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -261,7 +347,7 @@ function ProfileSeriesList({ series }) {
     </section>
   );
 }
-function BlogView({ username, user }) {
+function BlogView({ username, user, onUserRefresh }) {
   const { data, error, loading } = useAsync(() => fetchBlog(username), [username]);
   const promotedOwnIds = new Set((data?.promoted_own_posts || data?.featured_posts || []).map((post) => post.id));
   const posts = data ? [...(data.latest_posts || []), ...(data.all_posts || [])] : [];
@@ -273,7 +359,7 @@ function BlogView({ username, user }) {
       {error ? <StatusPanel title="Nu am putut încărca blogul">{error}</StatusPanel> : null}
       {data ? (
         <>
-          <ProfileHero data={data} postCount={totalPostCount} user={user} />
+          <ProfileHero data={data} postCount={totalPostCount} user={user} onUserRefresh={onUserRefresh} />
           <EquippedStrip items={data.blog_owner?.equipped_items} />
           <ProfilePromotions data={data} />
           <ProfileHighlights data={data} />
@@ -356,7 +442,7 @@ function AllWorksView({ username }) {
   );
 }
 
-export default function ProfileRoute({ route, user }) {
+export default function ProfileRoute({ route, user, onUserRefresh }) {
   if (route.name === "allWorks") return <AllWorksView username={route.username} />;
-  return <BlogView username={route.username} user={user} />;
+  return <BlogView username={route.username} user={user} onUserRefresh={onUserRefresh} />;
 }

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { cancelAdminJob, createAdminEmailCampaign, deleteAdminContent, deleteAdminUser, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminSiteFeedback, fetchAdminUsers, moderateAdminContent, previewAdminEmail, reactivateAdminUser, retryAdminJob, rollupAdminMetrics, suspendAdminUser, updateAdminContent, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { addAdminPlatformAllowedEmail, cancelAdminJob, createAdminEmailCampaign, deleteAdminContent, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPlatformAccess, fetchAdminSiteFeedback, fetchAdminUsers, moderateAdminContent, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, retryAdminJob, rollupAdminMetrics, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
 import { createAdminShopItem, fetchAdminShopItems, updateAdminShopItem } from "../api/economy.js";
 import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
+import { safeExternalUrl } from "../app/urls.js";
 
 const PREMIUM_TIER_LABELS = {
   free: "Gratuit",
@@ -19,6 +20,20 @@ const SITE_FEEDBACK_STATUS_LABELS = {
   open: "Deschis",
   closed: "Închis"
 };
+const ADMIN_NAV_GROUPS = [
+  {
+    label: "Platformă",
+    items: ["overview", "access", "users", "content", "submissions", "email"]
+  },
+  {
+    label: "Moderare",
+    items: ["pending", "flagged", "reports", "journal"]
+  },
+  {
+    label: "Operațiuni",
+    items: ["economy", "premium", "jobs", "audit"]
+  }
+];
 
 function premiumTierLabel(tier) {
   return PREMIUM_TIER_LABELS[tier] || tier || PREMIUM_TIER_LABELS.free;
@@ -48,14 +63,30 @@ function cleanFilters(filters) {
   );
 }
 
+function countActiveUserFilters(search, filters) {
+  let count = search.trim() ? 1 : 0;
+  if (filters.role !== DEFAULT_USER_FILTERS.role) count += 1;
+  if (filters.status !== DEFAULT_USER_FILTERS.status) count += 1;
+  if (filters.premium !== DEFAULT_USER_FILTERS.premium) count += 1;
+  if (filters.joined_from || filters.joined_to) count += 1;
+  if (filters.last_login_from || filters.last_login_to) count += 1;
+  if (filters.min_posts || filters.max_posts) count += 1;
+  return count;
+}
+
 function AdminStat({ label, value, sub }) {
   return (
     <div className="admin-stat">
-      <span className="rail-label">{label}</span>
-      <span className="rail-count">{Number(value ?? 0).toLocaleString("ro-RO")}</span>
-      {sub ? <span className="rail-sub">{sub}</span> : null}
+      <span className="admin-stat-line">
+        <span className="admin-stat-label">{label}:</span>{" "}
+        <strong className="admin-stat-value">{formatNumber(value ?? 0)}</strong>
+        {sub ? <span className="admin-stat-sub"> ({sub})</span> : null}
+      </span>
     </div>
   );
+}
+function AdminStatGrid({ children, compact = false }) {
+  return <div className={compact ? "admin-mini-grid" : "admin-stat-grid"}>{children}</div>;
 }
 function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
   const [rejectReason, setRejectReason] = useState("");
@@ -95,8 +126,12 @@ function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
           {createdAt ? <span>{formatDateTime(createdAt)}</span> : null}
         </div>
       </div>
-      {preview ? <p className="admin-preview">{htmlToText(preview)}</p> : null}
-      {reason ? <p className="admin-reason">{reason}</p> : null}
+      {preview || reason ? (
+        <div className="admin-row-body">
+          {preview ? <p className="admin-preview">{htmlToText(preview)}</p> : null}
+          {reason ? <p className="admin-reason">{reason}</p> : null}
+        </div>
+      ) : null}
       <div className="admin-actions">
         <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => onApprove(item)}>
           {approveBusy ? "Se aprobă..." : "Aprobă"}
@@ -135,14 +170,16 @@ function AdminJournalRow({ log }) {
           {log.created_at ? <span>{formatDateTime(log.created_at)}</span> : null}
         </div>
       </div>
-      {log.content_preview ? <p className="admin-preview">{htmlToText(log.content_preview)}</p> : null}
-      <div className="admin-journal-grid">
-        <span>toxicitate {formatScore(log.toxicity_score)}</span>
-        {log.moderator ? <span>moderator {log.moderator}</span> : null}
-        {log.moderated_at ? <span>moderat {formatDateTime(log.moderated_at)}</span> : null}
+      <div className="admin-row-body">
+        {log.content_preview ? <p className="admin-preview">{htmlToText(log.content_preview)}</p> : null}
+        <div className="admin-journal-grid">
+          <span>toxicitate {formatScore(log.toxicity_score)}</span>
+          {log.moderator ? <span>moderator {log.moderator}</span> : null}
+          {log.moderated_at ? <span>moderat {formatDateTime(log.moderated_at)}</span> : null}
+        </div>
+        {log.ai_reason ? <p className="admin-reason">{log.ai_reason}</p> : null}
+        {log.human_reason ? <p className="admin-reason">{log.human_reason}</p> : null}
       </div>
-      {log.ai_reason ? <p className="admin-reason">{log.ai_reason}</p> : null}
-      {log.human_reason ? <p className="admin-reason">{log.human_reason}</p> : null}
     </article>
   );
 }
@@ -171,14 +208,16 @@ function AdminReportRow({ report, busy, onDismiss, onRejectPost, onDeletePost })
           {report.created_at ? <span>{formatDateTime(report.created_at)}</span> : null}
         </div>
       </div>
-      {details ? <p className="admin-preview">{details}</p> : null}
-      {evidence ? <p className="admin-reason">{evidence}</p> : null}
-      <div className="admin-journal-grid">
-        {report.reporter_username ? <span>raportat de {report.reporter_username}</span> : null}
-        {report.reviewer_username ? <span>revizuit de {report.reviewer_username}</span> : null}
-        {report.reviewed_at ? <span>{formatDateTime(report.reviewed_at)}</span> : null}
+      <div className="admin-row-body">
+        {details ? <p className="admin-preview">{details}</p> : null}
+        {evidence ? <p className="admin-reason">{evidence}</p> : null}
+        <div className="admin-journal-grid">
+          {report.reporter_username ? <span>raportat de {report.reporter_username}</span> : null}
+          {report.reviewer_username ? <span>revizuit de {report.reviewer_username}</span> : null}
+          {report.reviewed_at ? <span>{formatDateTime(report.reviewed_at)}</span> : null}
+        </div>
+        {report.review_note ? <p className="admin-reason">{report.review_note}</p> : null}
       </div>
-      {report.review_note ? <p className="admin-reason">{report.review_note}</p> : null}
       {report.status === "open" ? (
         <div className="admin-actions">
           <button className="cal-btn" type="button" disabled={Boolean(reportBusy)} onClick={() => onDismiss(report)}>Închide raportarea</button>
@@ -189,11 +228,14 @@ function AdminReportRow({ report, busy, onDismiss, onRejectPost, onDeletePost })
     </article>
   );
 }
-function AdminPanel({ title, children, actions }) {
+function AdminPanel({ title, description, children, actions }) {
   return (
     <section className="admin-panel">
       <div className="admin-panel-head">
-        <h2>{title}</h2>
+        <div className="admin-panel-title-group">
+          <h2>{title}</h2>
+          {description ? <p>{description}</p> : null}
+        </div>
         {actions ? <div className="admin-panel-actions">{actions}</div> : null}
       </div>
       {children}
@@ -209,9 +251,9 @@ function adminPrompt(label, fallback = "") {
 function adminReason(label = "Motiv administrativ") {
   return adminPrompt(label);
 }
-function AdminDataRow({ kicker, title, meta, preview, children }) {
+function AdminDataRow({ kicker, title, meta, preview, children, compact = false }) {
   return (
-    <article className="admin-row">
+    <article className={`admin-row${compact ? " compact" : ""}`}>
       <div className="admin-row-head">
         <div>
           <div className="admin-badges">
@@ -221,7 +263,7 @@ function AdminDataRow({ kicker, title, meta, preview, children }) {
         </div>
         {meta ? <div className="admin-row-meta">{meta}</div> : null}
       </div>
-      {preview ? <p className="admin-preview">{preview}</p> : null}
+      {preview ? <div className="admin-row-body"><p className="admin-preview">{preview}</p></div> : null}
       {children ? <div className="admin-actions">{children}</div> : null}
     </article>
   );
@@ -232,6 +274,9 @@ function AdminDashboardView({ user }) {
   const [activeTab, setActiveTab] = useState(canAdmin ? "overview" : "pending");
   const [userSearch, setUserSearch] = useState("");
   const [userFilters, setUserFilters] = useState(DEFAULT_USER_FILTERS);
+  const [userFiltersOpen, setUserFiltersOpen] = useState(false);
+  const [accessEmail, setAccessEmail] = useState("");
+  const [accessNote, setAccessNote] = useState("");
   const [contentSearch, setContentSearch] = useState("");
   const [contentType, setContentType] = useState("all");
   const [feedbackKind, setFeedbackKind] = useState("all");
@@ -252,6 +297,7 @@ function AdminDashboardView({ user }) {
     logs: [],
     users: [],
     content: [],
+    platformAccess: null,
     jobs: [],
     audit: [],
     shop: [],
@@ -283,6 +329,7 @@ function AdminDashboardView({ user }) {
         overview: null,
         users: [],
         content: [],
+        platformAccess: null,
         jobs: [],
         audit: [],
         shop: [],
@@ -290,10 +337,11 @@ function AdminDashboardView({ user }) {
         submissionsTotal: 0
       };
       if (canAdmin) {
-        const [overview, users, content, jobs, audit, shop, submissions, emailCampaigns] = await Promise.all([
+        const [overview, users, content, platformAccess, jobs, audit, shop, submissions, emailCampaigns] = await Promise.all([
           fetchAdminOverview(),
           fetchAdminUsers({ q: userSearch, ...cleanFilters(userFilters), limit: 50 }),
           fetchAdminContent({ q: contentSearch, content_type: contentType, limit: 50 }),
+          fetchAdminPlatformAccess(),
           fetchAdminJobs({ limit: 50 }),
           fetchAdminAuditLog({ limit: 100 }),
           fetchAdminShopItems(),
@@ -304,6 +352,7 @@ function AdminDashboardView({ user }) {
           overview,
           users: users.users || [],
           content: content.content || [],
+          platformAccess,
           jobs: jobs.jobs || [],
           audit: audit.logs || [],
           shop: Array.isArray(shop) ? shop : [],
@@ -485,6 +534,44 @@ function AdminDashboardView({ user }) {
       setBusy("");
     }
   };
+  const processEmailOutbox = async () => {
+    setBusy("email:process");
+    setStatus("");
+    try {
+      const response = await processAdminEmailOutbox({ limit: 50 });
+      setStatus(`Coada email a procesat ${formatNumber(response.processed)} intrări. Rămase: ${formatNumber(response.pending_count)}.`);
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut procesa coada email.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const setPlatformOpen = (nextOpen) => {
+    runAction(`platform-access:${nextOpen ? "open" : "closed"}`, () => updateAdminPlatformAccess({ open: nextOpen }));
+  };
+  const addPlatformEmail = async (event) => {
+    event.preventDefault();
+    const email = accessEmail.trim();
+    if (!email) return;
+    setBusy("platform-access:add");
+    setStatus("");
+    try {
+      await addAdminPlatformAllowedEmail({ email, note: accessNote.trim() || null });
+      setAccessEmail("");
+      setAccessNote("");
+      setStatus("Emailul a fost adăugat în lista de acces.");
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut adăuga emailul.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const removePlatformEmail = (item) => {
+    if (!window.confirm(`Ștergi ${item.email} din lista de acces?`)) return;
+    runAction(`platform-access:${item.id}:delete`, () => deleteAdminPlatformAllowedEmail(item.id));
+  };
 
   const moderateListedContent = (item, action) => {
     const reason = action === "approve" ? "Aprobat din panoul de administrare" : adminReason("Motiv acțiune conținut");
@@ -537,7 +624,7 @@ function AdminDashboardView({ user }) {
   };
 
   const runRollup = () => {
-    const date = adminPrompt("Dată rollup YYYY-MM-DD, gol pentru ieri", "");
+    const date = adminPrompt("Dată pentru metricile zilnice YYYY-MM-DD, gol pentru ieri", "");
     runAction("metrics:rollup", () => rollupAdminMetrics(date || undefined));
   };
 
@@ -553,6 +640,7 @@ function AdminDashboardView({ user }) {
   const tabs = canAdmin
     ? [
         ["overview", "Ansamblu", state.overview?.cards?.pending_moderation],
+        ["access", "Acces", state.platformAccess?.allowed_count],
         ["users", "Utilizatori", state.users.length],
         ["content", "Conținut", state.content.length],
         ["submissions", "Sesizări", state.submissionsTotal],
@@ -571,50 +659,118 @@ function AdminDashboardView({ user }) {
         ["reports", "Raportări", state.postReports.length],
         ["journal", "Jurnal", state.logs.length]
       ];
+  const tabsByKey = Object.fromEntries(tabs.map((tab) => [tab[0], tab]));
+  const navGroups = ADMIN_NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      tabs: group.items.map((key) => tabsByKey[key]).filter(Boolean)
+    }))
+    .filter((group) => group.tabs.length);
 
   const cards = state.overview?.cards || {};
   const premiumByTier = state.overview?.premium?.by_tier || {};
   const jobsByStatus = state.overview?.jobs?.by_status || {};
   const traffic = state.overview?.traffic || {};
+  const activeUserFilterCount = countActiveUserFilters(userSearch, userFilters);
+  const platformAccess = state.platformAccess || { open: true, allowed_count: 0, emails: [] };
 
   return (
     <PageShell kicker="admin" title={canAdmin ? "Admin" : "Moderare"} sub={`Conectat ca ${user.username}.`}>
-      <div className="admin-stat-grid">
-        <AdminStat label="Utilizatori" value={canAdmin ? cards.total_users : state.stats?.pending_count} sub={canAdmin ? `${formatNumber(cards.new_users)} noi` : "în coadă"} />
-        <AdminStat label="Conținut" value={canAdmin ? cards.total_posts : state.stats?.flagged_count} sub={canAdmin ? `${formatNumber(cards.pending_moderation)} pending` : "marcate"} />
-        <AdminStat label="Vizualizări" value={canAdmin ? traffic.unique_views : state.stats?.today_actions} sub={canAdmin ? "reale" : "decizii azi"} />
-        <AdminStat label="Premium" value={canAdmin ? cards.active_premium_users : state.extendedStats?.total_logs} sub={canAdmin ? "active" : "jurnal"} />
-        <AdminStat label="Joburi" value={canAdmin ? cards.failed_jobs : state.extendedStats?.pending_review_count} sub={canAdmin ? "eșuate" : "revizie"} />
-      </div>
+      <div className="admin-workspace">
+        <section className="admin-summary" aria-label="Rezumat admin">
+          <AdminStatGrid>
+            <AdminStat label="Utilizatori" value={canAdmin ? cards.total_users : state.stats?.pending_count} sub={canAdmin ? `${formatNumber(cards.new_users)} noi` : "în coadă"} />
+            <AdminStat label="Conținut" value={canAdmin ? cards.total_posts : state.stats?.flagged_count} sub={canAdmin ? `${formatNumber(cards.pending_moderation)} pending` : "marcate"} />
+            <AdminStat label="Vizualizări" value={canAdmin ? traffic.unique_views : state.stats?.today_actions} sub={canAdmin ? "reale" : "decizii azi"} />
+            <AdminStat label="Premium" value={canAdmin ? cards.active_premium_users : state.extendedStats?.total_logs} sub={canAdmin ? "active" : "jurnal"} />
+            <AdminStat label="Joburi" value={canAdmin ? cards.failed_jobs : state.extendedStats?.pending_review_count} sub={canAdmin ? "eșuate" : "revizie"} />
+          </AdminStatGrid>
+        </section>
 
-      <div className="admin-tabs" role="tablist" aria-label="Admin">
-        {tabs.map(([key, label, count]) => (
-          <button key={key} className={`admin-tab ${activeTab === key ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
-            <span>{label}</span>
-            <strong>{formatNumber(count || 0)}</strong>
-          </button>
-        ))}
-      </div>
+        <nav className="admin-nav" aria-label="Admin">
+          {navGroups.map((group) => (
+            <section className="admin-nav-group" key={group.label}>
+              <h2>{group.label}</h2>
+              <div className="admin-tabs" role="tablist" aria-label={group.label}>
+                {group.tabs.map(([key, label, count]) => (
+                  <button key={key} className={`admin-tab ${activeTab === key ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
+                    <span>{label}</span>
+                    <strong>{formatNumber(count || 0)}</strong>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </nav>
 
-      {state.loading ? <StatusPanel title="Se încarcă" /> : null}
-      {state.error ? <StatusPanel title="Nu am putut încărca adminul">{state.error}</StatusPanel> : null}
-      {status ? <div className="inline-error">{status}</div> : null}
+        <div className="admin-status-stack">
+          {state.loading ? <StatusPanel title="Se încarcă" /> : null}
+          {state.error ? <StatusPanel title="Nu am putut încărca adminul">{state.error}</StatusPanel> : null}
+          {status ? <div className="inline-error">{status}</div> : null}
+        </div>
 
       {!state.loading && !state.error && canAdmin && activeTab === "overview" ? (
         <div className="admin-grid">
-          <AdminPanel title="Operațiuni" actions={<button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={runRollup}>Rulează rollup</button>}>
-            <div className="admin-mini-grid">
+          <AdminPanel
+            title="Operațiuni"
+            description="Indicatori operaționali și mentenanță."
+            actions={(
+              <div className="admin-rollup-action">
+                <span>Recalculează metricile zilnice.</span>
+                <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={runRollup}>Actualizează metrici</button>
+              </div>
+            )}
+          >
+            <AdminStatGrid compact>
               <AdminStat label="Comentarii" value={cards.total_comments} sub={`${formatNumber(cards.new_comments)} noi`} />
               <AdminStat label="Suspendați" value={cards.suspended_users} sub="conturi" />
               <AdminStat label="Marcate" value={cards.flagged_moderation} sub="moderare" />
               <AdminStat label="Magazin" value={cards.shop_items} sub="obiecte" />
-            </div>
+            </AdminStatGrid>
           </AdminPanel>
-          <AdminPanel title="Trafic">
-            <div className="admin-mini-grid">
+          <AdminPanel title="Trafic" description="Vizualizări totale, reale și automate.">
+            <AdminStatGrid compact>
               <AdminStat label="Total" value={traffic.total_views} sub="views" />
               <AdminStat label="Reale" value={traffic.unique_views} sub="dedup" />
               <AdminStat label="Boți" value={traffic.bot_views} sub={`${traffic.bot_percentage || 0}%`} />
+            </AdminStatGrid>
+          </AdminPanel>
+        </div>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "access" ? (
+        <div className="admin-grid">
+          <AdminPanel title="Acces platformă" description="Controlează dacă platforma este publică sau doar pe bază de listă.">
+            <div className="admin-access-status">
+              <div>
+                <span className="rail-label">Stare</span>
+                <strong>OPEN={platformAccess.open ? "true" : "false"}</strong>
+                <p>{platformAccess.open ? "Orice email poate folosi autentificarea și înregistrarea." : "Doar emailurile din lista de acces pot folosi autentificarea și înregistrarea."}</p>
+              </div>
+              <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => setPlatformOpen(!platformAccess.open)}>
+                {platformAccess.open ? "Închide accesul" : "Deschide platforma"}
+              </button>
+            </div>
+          </AdminPanel>
+          <AdminPanel title="Emailuri permise" description={`${formatNumber(platformAccess.allowed_count)} adrese în lista de acces.`}>
+            <form className="admin-access-form" onSubmit={addPlatformEmail}>
+              <input className="cal-input" type="email" value={accessEmail} onChange={(event) => setAccessEmail(event.target.value)} placeholder="email@example.com" required />
+              <input className="cal-input" value={accessNote} onChange={(event) => setAccessNote(event.target.value)} placeholder="Notă opțională" maxLength="500" />
+              <button className="cal-btn primary" type="submit" disabled={Boolean(busy) || !accessEmail.trim()}>{busy === "platform-access:add" ? "Se adaugă..." : "Adaugă"}</button>
+            </form>
+            <div className="admin-feed compact">
+              {platformAccess.emails?.length ? platformAccess.emails.map((item) => (
+                <AdminDataRow
+                  key={item.id}
+                  compact
+                  kicker="email permis"
+                  title={item.email}
+                  meta={<span>{formatDateTime(item.created_at)}</span>}
+                  preview={item.note || ""}
+                >
+                  <button className="cal-btn danger" type="button" disabled={Boolean(busy)} onClick={() => removePlatformEmail(item)}>Șterge</button>
+                </AdminDataRow>
+              )) : <StatusPanel title="Lista de acces este goală" />}
             </div>
           </AdminPanel>
         </div>
@@ -623,41 +779,79 @@ function AdminDashboardView({ user }) {
       {!state.loading && !state.error && canAdmin && activeTab === "users" ? (
         <AdminPanel
           title="Utilizatori"
+          description="Conturi, roluri, premium și suspendări."
           actions={(
-            <div className="admin-controls admin-filter-controls">
-              <input className="cal-input admin-search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="Caută username sau email" />
-              <select className="cal-input" value={userFilters.role} onChange={(event) => setUserFilter("role", event.target.value)}>
-                <option value="all">Rol: toate</option>
-                <option value="admin">Admin</option>
-                <option value="moderator">Moderator</option>
-                <option value="member">Utilizator</option>
-              </select>
-              <select className="cal-input" value={userFilters.status} onChange={(event) => setUserFilter("status", event.target.value)}>
-                <option value="all">Status: toate</option>
-                <option value="active">Activ</option>
-                <option value="suspended">Suspendat</option>
-              </select>
-              <select className="cal-input" value={userFilters.premium} onChange={(event) => setUserFilter("premium", event.target.value)}>
-                <option value="all">Premium: toate</option>
-                <option value="free">Gratuit</option>
-                <option value="trubadur">Trubadur</option>
-                <option value="cronicar">Cronicar</option>
-                <option value="rapsod">Rapsod</option>
-              </select>
-              <input className="cal-input compact-date" type="date" value={userFilters.joined_from} onChange={(event) => setUserFilter("joined_from", event.target.value)} aria-label="Înscris de la" />
-              <input className="cal-input compact-date" type="date" value={userFilters.joined_to} onChange={(event) => setUserFilter("joined_to", event.target.value)} aria-label="Înscris până la" />
-              <input className="cal-input compact-date" type="date" value={userFilters.last_login_from} onChange={(event) => setUserFilter("last_login_from", event.target.value)} aria-label="Ultima autentificare de la" />
-              <input className="cal-input compact-date" type="date" value={userFilters.last_login_to} onChange={(event) => setUserFilter("last_login_to", event.target.value)} aria-label="Ultima autentificare până la" />
-              <input className="cal-input compact-number" type="number" min="0" value={userFilters.min_posts} onChange={(event) => setUserFilter("min_posts", event.target.value)} placeholder="Min texte" />
-              <input className="cal-input compact-number" type="number" min="0" value={userFilters.max_posts} onChange={(event) => setUserFilter("max_posts", event.target.value)} placeholder="Max texte" />
+            <div className="admin-controls">
+              <button className="cal-btn" type="button" aria-expanded={userFiltersOpen} onClick={() => setUserFiltersOpen((open) => !open)}>
+                {userFiltersOpen ? "Ascunde filtre" : `Filtre${activeUserFilterCount ? ` (${formatNumber(activeUserFilterCount)})` : ""}`}
+              </button>
               <button className="cal-btn" type="button" disabled={!selectedUserIds.size} onClick={emailSelectedUsers}>Email selectați</button>
             </div>
           )}
         >
-          <div className="admin-feed">
+          {userFiltersOpen ? (
+            <div className="admin-filter-panel">
+              <label className="admin-filter-field wide">
+                <span>Caută</span>
+                <input className="cal-input admin-search" value={userSearch} onChange={(event) => setUserSearch(event.target.value)} placeholder="username sau email" />
+              </label>
+              <label className="admin-filter-field">
+                <span>Rol</span>
+                <select className="cal-input" value={userFilters.role} onChange={(event) => setUserFilter("role", event.target.value)}>
+                  <option value="all">Toate</option>
+                  <option value="admin">Admin</option>
+                  <option value="moderator">Moderator</option>
+                  <option value="member">Utilizator</option>
+                </select>
+              </label>
+              <label className="admin-filter-field">
+                <span>Status</span>
+                <select className="cal-input" value={userFilters.status} onChange={(event) => setUserFilter("status", event.target.value)}>
+                  <option value="all">Toate</option>
+                  <option value="active">Activ</option>
+                  <option value="suspended">Suspendat</option>
+                </select>
+              </label>
+              <label className="admin-filter-field">
+                <span>Premium</span>
+                <select className="cal-input" value={userFilters.premium} onChange={(event) => setUserFilter("premium", event.target.value)}>
+                  <option value="all">Toate</option>
+                  <option value="free">Gratuit</option>
+                  <option value="trubadur">Trubadur</option>
+                  <option value="cronicar">Cronicar</option>
+                  <option value="rapsod">Rapsod</option>
+                </select>
+              </label>
+              <fieldset className="admin-filter-group date-range">
+                <legend>Data înscrierii</legend>
+                <p>Arată conturile create între aceste două date, inclusiv ziua finală.</p>
+                <div className="admin-filter-pair">
+                  <label><span>De la</span><input className="cal-input compact-date" type="date" value={userFilters.joined_from} onChange={(event) => setUserFilter("joined_from", event.target.value)} /></label>
+                  <label><span>Până la</span><input className="cal-input compact-date" type="date" value={userFilters.joined_to} onChange={(event) => setUserFilter("joined_to", event.target.value)} /></label>
+                </div>
+              </fieldset>
+              <fieldset className="admin-filter-group date-range">
+                <legend>Ultima autentificare</legend>
+                <p>Arată conturile care au intrat în platformă între aceste două date.</p>
+                <div className="admin-filter-pair">
+                  <label><span>De la</span><input className="cal-input compact-date" type="date" value={userFilters.last_login_from} onChange={(event) => setUserFilter("last_login_from", event.target.value)} /></label>
+                  <label><span>Până la</span><input className="cal-input compact-date" type="date" value={userFilters.last_login_to} onChange={(event) => setUserFilter("last_login_to", event.target.value)} /></label>
+                </div>
+              </fieldset>
+              <fieldset className="admin-filter-group post-range">
+                <legend>Texte publicate</legend>
+                <div className="admin-filter-pair">
+                  <label><span>Minim</span><input className="cal-input compact-number" type="number" min="0" value={userFilters.min_posts} onChange={(event) => setUserFilter("min_posts", event.target.value)} /></label>
+                  <label><span>Maxim</span><input className="cal-input compact-number" type="number" min="0" value={userFilters.max_posts} onChange={(event) => setUserFilter("max_posts", event.target.value)} /></label>
+                </div>
+              </fieldset>
+            </div>
+          ) : null}
+          <div className="admin-feed compact">
             {state.users.map((target) => (
               <AdminDataRow
                 key={target.id}
+                compact
                 kicker={`${target.is_admin ? "admin" : target.is_moderator ? "moderator" : "utilizator"} · ${target.is_suspended ? "suspendat" : "activ"}`}
                 title={target.username}
                 meta={<><span>{target.email}</span><span>{formatDateTime(target.created_at)}</span></>}
@@ -681,7 +875,7 @@ function AdminDashboardView({ user }) {
 
       {!state.loading && !state.error && canAdmin && activeTab === "email" ? (
         <div className="admin-grid">
-          <AdminPanel title="Campanie email">
+          <AdminPanel title="Campanie email" description="Audiență, conținut și coadă de trimitere.">
             <div className="admin-email-compose">
               <div className="admin-controls">
                 <label className="admin-mode-option">
@@ -743,12 +937,16 @@ function AdminDashboardView({ user }) {
               ) : null}
             </div>
           </AdminPanel>
-          <AdminPanel title="Campanii recente">
+          <AdminPanel
+            title="Campanii recente"
+            description="Trimiteri, coadă și eșecuri."
+            actions={<button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={processEmailOutbox} title="Trimite acum până la 50 de emailuri din coadă.">{busy === "email:process" ? "Se procesează..." : "Trimite coada acum"}</button>}
+          >
             <div className="admin-feed">
               {state.emailCampaigns.length ? state.emailCampaigns.map((campaign) => (
                 <AdminDataRow
                   key={campaign.id}
-                  kicker={`email #${campaign.id}`}
+                  kicker={`email #${campaign.id} · ${campaign.pending_count ? "în coadă" : campaign.failed_count ? "cu erori" : "trimisă"}`}
                   title={campaign.subject}
                   meta={<><span>{formatNumber(campaign.sent_count)} trimise</span><span>{formatDateTime(campaign.created_at)}</span></>}
                   preview={`${formatNumber(campaign.pending_count)} în coadă · ${formatNumber(campaign.failed_count)} eșuate · ${formatNumber(campaign.recipient_count)} destinatari`}
@@ -762,6 +960,7 @@ function AdminDashboardView({ user }) {
       {!state.loading && !state.error && canAdmin && activeTab === "content" ? (
         <AdminPanel
           title="Conținut"
+          description="Texte, comentarii, audio și forum."
           actions={(
             <div className="admin-controls">
               <select className="cal-input" value={contentType} onChange={(event) => setContentType(event.target.value)}>
@@ -776,10 +975,11 @@ function AdminDashboardView({ user }) {
             </div>
           )}
         >
-          <div className="admin-feed">
+          <div className="admin-feed compact">
             {state.content.map((item) => (
               <AdminDataRow
                 key={`${item.type}-${item.id}`}
+                compact
                 kicker={`${contentTypeLabel(item.type)} · ${decisionLabel(item.status)}`}
                 title={item.title || contentTypeLabel(item.type)}
                 meta={<><span>{item.author || "Necunoscut"}</span><span>{formatDateTime(item.created_at)}</span></>}
@@ -799,6 +999,7 @@ function AdminDashboardView({ user }) {
       {!state.loading && !state.error && canAdmin && activeTab === "submissions" ? (
         <AdminPanel
           title="Sesizări"
+          description="Feedback, buguri și statusuri."
           actions={(
             <div className="admin-controls">
               <select className="cal-input" value={feedbackKind} onChange={(event) => setFeedbackKind(event.target.value)}>
@@ -816,23 +1017,26 @@ function AdminDashboardView({ user }) {
         >
           {state.submissions.length ? (
             <div className="admin-feed">
-              {state.submissions.map((item) => (
-                <AdminDataRow
-                  key={item.id}
-                  kicker={`${SITE_FEEDBACK_KIND_LABELS[item.kind] || item.kind} · ${SITE_FEEDBACK_STATUS_LABELS[item.status] || item.status}`}
-                  title={item.username_snapshot || item.email_snapshot || `Utilizator #${item.user_id || "n/a"}`}
-                  meta={<><span>{item.email_snapshot || "fără email"}</span><span>{formatDateTime(item.created_at)}</span></>}
-                  preview={item.message}
-                >
-                  {item.page_url ? <a className="cal-btn" href={item.page_url} target="_blank" rel="noreferrer">Pagina</a> : null}
-                  {item.status === "open" ? (
-                    <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "closed")}>Închide</button>
-                  ) : (
-                    <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "open")}>Redeschide</button>
-                  )}
-                  <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, item.status)}>Notă</button>
-                </AdminDataRow>
-              ))}
+              {state.submissions.map((item) => {
+                const pageUrl = safeExternalUrl(item.page_url);
+                return (
+                  <AdminDataRow
+                    key={item.id}
+                    kicker={`${SITE_FEEDBACK_KIND_LABELS[item.kind] || item.kind} · ${SITE_FEEDBACK_STATUS_LABELS[item.status] || item.status}`}
+                    title={item.username_snapshot || item.email_snapshot || `Utilizator #${item.user_id || "n/a"}`}
+                    meta={<><span>{item.email_snapshot || "fără email"}</span><span>{formatDateTime(item.created_at)}</span></>}
+                    preview={item.message}
+                  >
+                    {pageUrl ? <a className="cal-btn" href={pageUrl} target="_blank" rel="noreferrer">Pagina</a> : null}
+                    {item.status === "open" ? (
+                      <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "closed")}>Închide</button>
+                    ) : (
+                      <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "open")}>Redeschide</button>
+                    )}
+                    <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, item.status)}>Notă</button>
+                  </AdminDataRow>
+                );
+              })}
             </div>
           ) : <StatusPanel title="Nu există sesizări" />}
         </AdminPanel>
@@ -840,14 +1044,14 @@ function AdminDashboardView({ user }) {
 
       {!state.loading && !state.error && activeTab === "pending" ? (
         <div className="admin-grid">
-          <AdminPanel title="În așteptare AI">
+          <AdminPanel title="În așteptare AI" description="Coada de moderare.">
             {state.pending.length ? (
               <div className="admin-feed">
                 {state.pending.map((item) => <AdminWorkRow key={`${item.type}-${item.id}`} item={item} mode="pending" busy={busy} onApprove={approvePending} onReject={rejectPending} />)}
               </div>
             ) : <StatusPanel title="Nu există conținut în așteptare AI" />}
           </AdminPanel>
-          <AdminPanel title="Marcate">
+          <AdminPanel title="Marcate" description="Semnalări automate pentru revizie.">
             {state.flagged.length ? (
               <div className="admin-feed">
                 {state.flagged.map((item) => <AdminWorkRow key={item.log_id} item={item} mode="flagged" busy={busy} onApprove={approveFlagged} onReject={rejectFlagged} />)}
@@ -886,7 +1090,7 @@ function AdminDashboardView({ user }) {
         activeTab === "journal" ? (
           state.logs.length ? <div className="admin-feed">{state.logs.map((log) => <AdminJournalRow key={log.id} log={log} />)}</div> : <StatusPanel title="Jurnalul este gol" />
         ) : (
-          <AdminPanel title="Audit administrativ">
+          <AdminPanel title="Audit administrativ" description="Istoric de acțiuni.">
             <div className="admin-feed">
               {state.audit.map((log) => (
                 <AdminDataRow key={log.id} kicker={log.action} title={`${log.target_type} #${log.target_id || "n/a"}`} meta={<><span>{log.actor_username}</span><span>{formatDateTime(log.created_at)}</span></>} preview={log.reason || ""} />
@@ -897,12 +1101,12 @@ function AdminDashboardView({ user }) {
       ) : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "economy" ? (
-        <AdminPanel title="Magazin și Gologani" actions={<button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={createShopItem}>Obiect nou</button>}>
-          <div className="admin-mini-grid">
+        <AdminPanel title="Magazin și Gologani" description="Obiecte, inventare și balanțe." actions={<button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={createShopItem}>Obiect nou</button>}>
+          <AdminStatGrid compact>
             <AdminStat label="Obiecte active" value={state.overview?.economy?.shop_items_active} sub="magazin" />
             <AdminStat label="Inventar" value={state.overview?.economy?.inventory_items} sub="cumpărări" />
             <AdminStat label="Gologani" value={state.overview?.economy?.gologani_balance_total} sub="în conturi" />
-          </div>
+          </AdminStatGrid>
           <div className="admin-feed">
             {state.shop.map((item) => (
               <AdminDataRow key={item.id} kicker={`${slotLabel(item.slot)} · ${item.is_active ? "activ" : "inactiv"}`} title={item.name} meta={<><span>{item.slug}</span><span>{formatGologani(item.price)}</span></>}>
@@ -915,21 +1119,21 @@ function AdminDashboardView({ user }) {
       ) : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "premium" ? (
-        <AdminPanel title="Premium">
-          <div className="admin-mini-grid">
+        <AdminPanel title="Premium" description="Abonamente active pe tier.">
+          <AdminStatGrid compact>
             <AdminStat label="Active" value={cards.active_premium_users} sub="abonamente" />
             <AdminStat label="Trubadur" value={premiumByTier.trubadur} sub="tier" />
             <AdminStat label="Cronicar" value={premiumByTier.cronicar} sub="tier" />
             <AdminStat label="Rapsod" value={premiumByTier.rapsod} sub="tier" />
-          </div>
+          </AdminStatGrid>
         </AdminPanel>
       ) : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "jobs" ? (
-        <AdminPanel title="Joburi AI">
-          <div className="admin-mini-grid">
+        <AdminPanel title="Joburi AI" description="Procese asincrone și joburi blocate.">
+          <AdminStatGrid compact>
             {Object.entries(jobsByStatus).map(([key, value]) => <AdminStat key={key} label={key} value={value} sub="joburi" />)}
-          </div>
+          </AdminStatGrid>
           <div className="admin-feed">
             {state.jobs.map((job) => (
               <AdminDataRow key={job.id} kicker={`${job.job_type} · ${job.status}`} title={`${job.target_type} #${job.target_id}`} meta={<><span>{job.attempts}/{job.max_attempts}</span><span>{formatDateTime(job.created_at)}</span></>} preview={job.error_message || ""}>
@@ -940,6 +1144,7 @@ function AdminDashboardView({ user }) {
           </div>
         </AdminPanel>
       ) : null}
+      </div>
     </PageShell>
   );
 }

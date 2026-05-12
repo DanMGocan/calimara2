@@ -1,7 +1,7 @@
-import { api } from "./client.js";
+import { api, buildQuery } from "./client.js";
 
-export function fetchArchive() {
-  return api.get("/api/postari/arhiva");
+export function fetchArchive(params = {}) {
+  return api.get(`/api/postari/arhiva${buildQuery(params)}`);
 }
 
 export function fetchPostMonths() {
@@ -17,8 +17,8 @@ export function createPost(data) {
   return api.post("/api/postari/", data);
 }
 
-export function fetchPostDrafts() {
-  return api.get("/api/postari/ciorne");
+export function fetchPostDrafts(params = {}) {
+  return api.get(`/api/postari/ciorne${buildQuery(params)}`);
 }
 
 export function fetchPostDraft(draftId) {
@@ -43,6 +43,10 @@ export function updatePost(postId, data) {
 
 export function deletePost(postId) {
   return api.delete(`/api/postari/${encodeURIComponent(postId)}`);
+}
+
+export function fetchOwnedPostForEdit(postId) {
+  return api.get(`/api/postari/${encodeURIComponent(postId)}/editare`);
 }
 
 export function createComment(postId, data) {

@@ -80,12 +80,32 @@ export function updateAdminSiteFeedback(feedbackId, data) {
   return api.put(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}`, data);
 }
 
+export function fetchAdminPlatformAccess() {
+  return api.get("/api/admin/platform-access");
+}
+
+export function updateAdminPlatformAccess(data) {
+  return api.put("/api/admin/platform-access", data);
+}
+
+export function addAdminPlatformAllowedEmail(data) {
+  return api.post("/api/admin/platform-access/emails", data);
+}
+
+export function deleteAdminPlatformAllowedEmail(emailId) {
+  return api.delete(`/api/admin/platform-access/emails/${encodeURIComponent(emailId)}`);
+}
+
 export function previewAdminEmail(data) {
   return api.post("/api/admin/email/preview", data);
 }
 
 export function createAdminEmailCampaign(data) {
   return api.post("/api/admin/email/campaigns", data);
+}
+
+export function processAdminEmailOutbox(params = {}) {
+  return api.post(`/api/admin/email/outbox/process${buildQuery(params)}`, {});
 }
 
 export function fetchAdminEmailCampaigns(params = {}) {

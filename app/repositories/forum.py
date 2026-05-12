@@ -2,7 +2,7 @@ from ._shared import *
 from .economy import award_content_approved
 from .mentions import notify_mentions_for_forum_reply, notify_mentions_for_forum_thread
 from .notifications import create_notification
-from .posts import generate_slug
+from .slugs import generate_slug
 from .users import get_user_by_id
 
 FORUM_SECTIONS = ("general", "poezie", "proza_scurta", "feedback", "anunturi")
@@ -91,7 +91,7 @@ def create_forum_thread(
 ) -> models.ForumThread:
     if not is_forum_section(data.section):
         raise ValueError("invalid_section")
-    base_slug = generate_slug(data.title.strip()) or "discutie"
+    base_slug = generate_slug(data.title.strip(), fallback="discutie")
     thread = models.ForumThread(
         author_id=author.id,
         section=data.section,

@@ -1,9 +1,8 @@
 from ._shared import *
+from .slugs import generate_slug
 
 def _generate_series_slug(title: str) -> str:
-    slug = title.lower()
-    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
-    return slug or "serie"
+    return generate_slug(title, fallback="serie")
 
 def _ensure_unique_series_slug(db: Session, base_slug: str) -> str:
     slug = base_slug

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import crud, email_service, facebook_oauth, google_oauth, local_auth, models, schemas
+from .. import crud, email_service, facebook_oauth, google_oauth, local_auth, models, platform_access, schemas
 from ..auth import get_db_epoch
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed
@@ -93,11 +93,16 @@ def _queue_activation_code(db: Session, *, email: str, password_hash: str) -> No
         purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
         payload={"password_hash": password_hash},
     )
-    email_service.queue_auth_code_email(
+    outbox_row = email_service.queue_auth_code_email(
         db,
         recipient_email=email,
         code=code,
         purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
+    )
+    email_service.send_queued_email_now(
+        db,
+        outbox_row,
+        worker=f"auth:{local_auth.PURPOSE_SIGNUP_ACTIVATION}",
     )
 
 
@@ -108,6 +113,37 @@ def _auth_code_error_response(error: local_auth.AuthCodeError) -> HTTPException:
         "too_many_attempts": "Ai încercat codul de prea multe ori. Cere un cod nou.",
     }
     return HTTPException(status_code=400, detail=messages.get(error.reason, "Codul nu este valid."))
+
+
+def _access_denied_response() -> HTTPException:
+    return HTTPException(status_code=403, detail=platform_access.ACCESS_DENIED_MESSAGE)
+
+
+def _require_platform_access(db: Session, email: str, user: models.User | None = None) -> None:
+    if not platform_access.can_access_platform(db, email=email, user=user):
+        raise _access_denied_response()
+
+
+def _existing_google_user_for_access(db: Session, google_user: schemas.GoogleUserInfo) -> models.User | None:
+    google_id = getattr(google_user, "google_id", None)
+    if google_id:
+        user = crud.get_user_by_google_id(db, google_id)
+        if user:
+            return user
+    if bool(getattr(google_user, "email_verified", True)):
+        return crud.get_user_by_email(db, google_user.email)
+    return None
+
+
+def _existing_facebook_user_for_access(db: Session, facebook_user: schemas.FacebookUserInfo) -> models.User | None:
+    facebook_id = getattr(facebook_user, "facebook_id", None)
+    if facebook_id:
+        user = crud.get_user_by_facebook_id(db, facebook_id)
+        if user:
+            return user
+    if facebook_user.email_verified:
+        return crud.get_user_by_email(db, facebook_user.email)
+    return None
 
 
 def _react_index_response() -> FileResponse:
@@ -151,9 +187,19 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     try:
         # Get user info from Google
         google_user = await google_oauth.handle_google_callback(request)
+        existing_user = _existing_google_user_for_access(db, google_user)
+        if not platform_access.can_access_platform(db, email=google_user.email, user=existing_user):
+            logger.warning("Google OAuth blocked by invite-only access gate for email: %s", google_user.email)
+            return RedirectResponse(url=_auth_failure_url(request, "access"), status_code=status.HTTP_302_FOUND)
 
-        # Check if user exists
-        user, is_new = google_oauth.find_or_create_user(db, google_user)
+        # Check if user exists. Test and fallback paths may provide only an
+        # email-bearing provider object; in that case the access lookup already
+        # identified the existing account, and the provider-specific linker
+        # cannot run without a provider id.
+        if existing_user and not getattr(google_user, "google_id", None):
+            user, is_new = existing_user, False
+        else:
+            user, is_new = google_oauth.find_or_create_user(db, google_user)
 
         if user:
             # Existing user - log them in (clear session first to prevent fixation)
@@ -195,7 +241,14 @@ async def facebook_callback(request: Request, db: Session = Depends(get_db)):
     """Handle Facebook OAuth callback"""
     try:
         facebook_user = await facebook_oauth.handle_facebook_callback(request)
-        user, is_new = facebook_oauth.find_or_create_user(db, facebook_user)
+        existing_user = _existing_facebook_user_for_access(db, facebook_user)
+        if not platform_access.can_access_platform(db, email=facebook_user.email, user=existing_user):
+            logger.warning("Facebook OAuth blocked by invite-only access gate for email: %s", facebook_user.email)
+            return RedirectResponse(url=_auth_failure_url(request, "access"), status_code=status.HTTP_302_FOUND)
+        if existing_user and not getattr(facebook_user, "facebook_id", None):
+            user, is_new = existing_user, False
+        else:
+            user, is_new = facebook_oauth.find_or_create_user(db, facebook_user)
         if user:
             _login_user(request, db, user)
             logger.info("Facebook OAuth login successful for existing user: %s", user.username)
@@ -231,6 +284,7 @@ def register_with_password(
             status_code=400,
             detail="Există deja un cont cu această adresă. Folosește resetarea parolei ca să setezi o parolă.",
         )
+    _require_platform_access(db, email)
     try:
         hashed_password = local_auth.password_hash(data.password)
     except ValueError as exc:
@@ -253,6 +307,7 @@ def activate_password_signup(
     email = local_auth.normalize_email(str(data.email))
     if crud.get_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
+    _require_platform_access(db, email)
     try:
         code_row = local_auth.verify_email_code(
             db,
@@ -286,6 +341,7 @@ def resend_activation_code(
     email = local_auth.normalize_email(str(data.email))
     if crud.get_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
+    _require_platform_access(db, email)
     active_code = local_auth.latest_active_email_code(
         db,
         email=email,
@@ -311,6 +367,7 @@ def login_with_password(
         raise HTTPException(status_code=400, detail="Email sau parolă incorecte.")
     if not user.email_verified_at:
         raise HTTPException(status_code=403, detail="Adresa de email nu este verificată.")
+    _require_platform_access(db, email, user)
     _login_user(request, db, user)
     logger.info("Password login successful for user: %s", user.username)
     return _auth_response_payload(request, user)
@@ -325,20 +382,25 @@ def request_password_reset(
 ):
     email = local_auth.normalize_email(str(data.email))
     user = crud.get_user_by_email(db, email)
-    if user:
+    if user and platform_access.can_access_platform(db, email=email, user=user):
         _, code = local_auth.create_email_code(
             db,
             email=email,
             purpose=local_auth.PURPOSE_PASSWORD_RESET,
             user_id=user.id,
         )
-        email_service.queue_auth_code_email(
+        outbox_row = email_service.queue_auth_code_email(
             db,
             recipient_user_id=user.id,
             recipient_email=user.email,
             recipient_name=user.username,
             code=code,
             purpose=local_auth.PURPOSE_PASSWORD_RESET,
+        )
+        email_service.send_queued_email_now(
+            db,
+            outbox_row,
+            worker=f"auth:{local_auth.PURPOSE_PASSWORD_RESET}",
         )
     return {
         "message": "Dacă adresa există, vei primi un cod de resetare.",
@@ -355,6 +417,9 @@ def confirm_password_reset(
     db: Session = Depends(get_db),
 ):
     email = local_auth.normalize_email(str(data.email))
+    user = crud.get_user_by_email(db, email)
+    if user:
+        _require_platform_access(db, email, user)
     try:
         code_row = local_auth.verify_email_code(
             db,
@@ -364,7 +429,7 @@ def confirm_password_reset(
         )
     except local_auth.AuthCodeError as exc:
         raise _auth_code_error_response(exc)
-    user = code_row.user or crud.get_user_by_email(db, email)
+    user = code_row.user or user
     if not user:
         raise HTTPException(status_code=400, detail="Codul nu este valid.")
     try:
@@ -402,6 +467,15 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
 
         source = pending_auth.get("source")
         provider_user_data = pending_auth.get("provider_user") or {}
+        pending_email = ""
+        if source == "google":
+            pending_email = str(provider_user_data.get("email") or "")
+        elif source == "facebook":
+            pending_email = str(provider_user_data.get("email") or "")
+        elif source == "password":
+            pending_email = str(pending_auth.get("email") or "")
+        if pending_email:
+            _require_platform_access(db, pending_email)
         if source == "google":
             google_user = schemas.GoogleUserInfo(**provider_user_data)
             new_user = google_oauth.create_user_from_google(db, google_user, setup_data)

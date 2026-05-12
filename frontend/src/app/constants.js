@@ -70,7 +70,7 @@ export const CONTENT_TYPE_LABELS = {
   forum_reply: "Răspuns"
 };
 
-export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
+export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
 export const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
 export const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "blog", "post", "series"]);
 export const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";
@@ -90,7 +90,7 @@ export const MODERATION_LABELS = {
   rejected: "respins"
 };
 
-export const PROFILE_LINK_MISSING_MESSAGE = "Acest utilizator nu a setat inca un link pentru aceasta platforma";
+export const PROFILE_LINK_MISSING_MESSAGE = "Acest utilizator nu a setat încă un link pentru această platformă";
 
 export const ALL_WORKS_SORT_OPTIONS = [
   { key: "newest", label: "Cele mai noi" },

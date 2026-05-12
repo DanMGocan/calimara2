@@ -20,7 +20,15 @@ def get_avatar_url(user_or_seed, size=80):
     else:
         seed = str(user_or_seed)
 
-    return f"https://api.dicebear.com/7.x/shapes/svg?seed={seed}&backgroundColor={AVATAR_BACKGROUND_COLORS}&size={size}"
+    query = urllib.parse.urlencode(
+        {
+            "seed": seed,
+            "backgroundColor": AVATAR_BACKGROUND_COLORS,
+            "size": str(size),
+        },
+        safe=",",
+    )
+    return f"https://api.dicebear.com/7.x/shapes/svg?{query}"
 
 
 def default_cover_seed(user_or_username) -> str:
@@ -60,7 +68,10 @@ def validate_social_url(url: str, platform: str) -> bool:
         return True  # Empty URLs are valid (will be stored as None)
 
     try:
-        parsed = urllib.parse.urlparse(url.lower())
+        parsed = urllib.parse.urlparse(url.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return False
+
         domain = parsed.netloc.lower()
 
         # Remove www. prefix for comparison

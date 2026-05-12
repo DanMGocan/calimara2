@@ -108,6 +108,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "email_admin_announcements": user.email_admin_announcements,
         "gologani_balance": user.gologani_balance or 0,
         "seconds_listened": user.seconds_listened or 0,
+        "incoming_friend_request_count": crud.get_incoming_friend_request_count(db, user.id),
         "equipped_items": _serialize_equipped_items(db, user),
     }
 
@@ -498,12 +499,12 @@ def update_best_friends(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
-    """Update user's promoted author list (max 2 authors)."""
+    """Update user's promoted author list."""
     try:
         friend_usernames = best_friends_data.friends
 
         if len(friend_usernames) > crud.PROMOTED_AUTHOR_LIMIT:
-            raise HTTPException(status_code=400, detail="Sunt permiși maximum 2 autori promovați")
+            raise HTTPException(status_code=400, detail="Sunt permiși maximum 3 autori promovați")
 
         author_ids = []
         seen = set()
@@ -552,15 +553,18 @@ def search_users(
         models.User.is_suspended == False,
     ).order_by(models.User.username.asc()).limit(10).all()
 
-    return [
-        {
+    results = []
+    for user in users:
+        friendship = crud.get_friendship_between(db, current_user.id, user.id)
+        results.append({
             "id": user.id,
             "username": user.username,
             "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
             "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
-        }
-        for user in users
-    ]
+            "friendship_status": crud.get_friendship_status_for_viewer(db, current_user.id, user.id),
+            "friendship_id": friendship.id if friendship else None,
+        })
+    return results
 
 
 @router.get("/api/utilizator/promovari")
@@ -583,11 +587,11 @@ def update_my_promotions(
         other_post_ids = _unique_ids(promotions.other_post_ids, "textele altor autori")
 
         if len(own_post_ids) > crud.PROMOTED_OWN_POST_LIMIT:
-            raise HTTPException(status_code=400, detail="Poți promova cel mult 4 texte proprii")
+            raise HTTPException(status_code=400, detail="Poți promova cel mult 2 texte proprii")
         if len(author_ids) > crud.PROMOTED_AUTHOR_LIMIT:
-            raise HTTPException(status_code=400, detail="Poți promova cel mult 2 autori")
+            raise HTTPException(status_code=400, detail="Poți promova cel mult 3 autori")
         if len(other_post_ids) > crud.PROMOTED_OTHER_POST_LIMIT:
-            raise HTTPException(status_code=400, detail="Poți promova cel mult 2 texte ale altor autori")
+            raise HTTPException(status_code=400, detail="Poți promova cel mult 3 texte ale altor autori")
 
         for post_id in own_post_ids:
             _get_promotable_post(db, current_user, post_id, require_own=True)
@@ -646,9 +650,9 @@ def add_promoted_post(
         ok, error = crud.add_promoted_post(db, current_user.id, post)
         if not ok:
             if error == "own_post_limit":
-                detail = "Poți promova cel mult 4 texte proprii"
+                detail = "Poți promova cel mult 2 texte proprii"
             else:
-                detail = "Poți promova cel mult 2 texte ale altor autori"
+                detail = "Poți promova cel mult 3 texte ale altor autori"
             raise HTTPException(status_code=400, detail=detail)
         db.commit()
         return {"success": True, "promoted": True, "promotions": _promotions_payload(db, current_user)}
@@ -687,7 +691,7 @@ def add_promoted_author(
         author = _get_promotable_author(db, current_user, author_id)
         ok, error = crud.add_promoted_author(db, current_user.id, author.id)
         if not ok and error == "author_limit":
-            raise HTTPException(status_code=400, detail="Poți promova cel mult 2 autori")
+            raise HTTPException(status_code=400, detail="Poți promova cel mult 3 autori")
         db.commit()
         return {"success": True, "promoted": True, "promotions": _promotions_payload(db, current_user)}
     except HTTPException:
@@ -735,12 +739,12 @@ def update_featured_posts(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
-    """Update user's promoted own posts list (max 4 posts)."""
+    """Update user's promoted own posts list."""
     try:
         post_ids = _unique_ids(featured_posts_data.post_ids, "textele proprii")
 
         if len(post_ids) > crud.PROMOTED_OWN_POST_LIMIT:
-            raise HTTPException(status_code=400, detail="Sunt permise maximum 4 postări promovate")
+            raise HTTPException(status_code=400, detail="Sunt permise maximum 2 postări promovate")
 
         for post_id in post_ids:
             try:

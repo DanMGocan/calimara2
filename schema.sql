@@ -8,6 +8,8 @@ DROP TABLE IF EXISTS stripe_events CASCADE;
 DROP TABLE IF EXISTS email_outbox CASCADE;
 DROP TABLE IF EXISTS email_campaigns CASCADE;
 DROP TABLE IF EXISTS auth_email_codes CASCADE;
+DROP TABLE IF EXISTS platform_allowed_emails CASCADE;
+DROP TABLE IF EXISTS platform_access_settings CASCADE;
 DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS site_feedback CASCADE;
@@ -19,6 +21,7 @@ DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS conversations CASCADE;
 DROP TABLE IF EXISTS likes CASCADE;
 DROP TABLE IF EXISTS comments CASCADE;
+DROP TABLE IF EXISTS friendships CASCADE;
 DROP TABLE IF EXISTS best_friends CASCADE;
 DROP TABLE IF EXISTS featured_posts CASCADE;
 DROP TABLE IF EXISTS user_equipped_items CASCADE;
@@ -113,6 +116,64 @@ CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
 CREATE INDEX idx_users_last_login_at ON users(last_login_at);
+
+-- ===================================
+-- PLATFORM ACCESS SETTINGS
+-- ===================================
+CREATE TABLE platform_access_settings (
+    id INTEGER PRIMARY KEY,
+    is_open BOOLEAN DEFAULT TRUE NOT NULL,
+    updated_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT ck_platform_access_settings_singleton CHECK (id = 1),
+    CONSTRAINT fk_platform_access_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+INSERT INTO platform_access_settings (id, is_open) VALUES (1, TRUE);
+
+CREATE TABLE platform_allowed_emails (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    note TEXT,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_platform_allowed_emails_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX idx_platform_allowed_emails_email ON platform_allowed_emails(email);
+CREATE INDEX idx_platform_allowed_emails_created_by ON platform_allowed_emails(created_by);
+
+-- ===================================
+-- FRIENDSHIPS TABLE
+-- ===================================
+CREATE TABLE friendships (
+    id SERIAL PRIMARY KEY,
+    user1_id INT NOT NULL,
+    user2_id INT NOT NULL,
+    requested_by_id INT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+    responded_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_friendships_pair UNIQUE (user1_id, user2_id),
+    CONSTRAINT fk_friendships_user1 FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_friendships_user2 FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_friendships_requester FOREIGN KEY (requested_by_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_friendships_ordered_pair CHECK (user1_id < user2_id),
+    CONSTRAINT chk_friendships_no_self CHECK (user1_id != user2_id),
+    CONSTRAINT chk_friendships_requester_participant CHECK (requested_by_id IN (user1_id, user2_id)),
+    CONSTRAINT chk_friendships_status CHECK (status IN ('pending', 'accepted'))
+);
+
+CREATE INDEX idx_friendships_user1_id ON friendships(user1_id);
+CREATE INDEX idx_friendships_user2_id ON friendships(user2_id);
+CREATE INDEX idx_friendships_requested_by_id ON friendships(requested_by_id);
+CREATE INDEX idx_friendships_status_updated ON friendships(status, updated_at);
 
 -- ===================================
 -- AUTH EMAIL CODES TABLE
@@ -435,7 +496,7 @@ CREATE TABLE best_friends (
     CONSTRAINT unique_bf_user_friend UNIQUE (user_id, friend_user_id),
     CONSTRAINT fk_bf_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_bf_friend FOREIGN KEY (friend_user_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT chk_bf_position CHECK (position BETWEEN 1 AND 2),
+    CONSTRAINT chk_bf_position CHECK (position BETWEEN 1 AND 3),
     CONSTRAINT chk_bf_no_self_friend CHECK (user_id != friend_user_id)
 );
 
@@ -458,7 +519,7 @@ CREATE TABLE featured_posts (
     CONSTRAINT unique_fp_user_post UNIQUE (user_id, post_id),
     CONSTRAINT fk_fp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_fp_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    CONSTRAINT chk_fp_position CHECK (position BETWEEN 1 AND 6)
+    CONSTRAINT chk_fp_position CHECK (position BETWEEN 1 AND 5)
 );
 
 CREATE INDEX idx_fp_user_id ON featured_posts(user_id);
@@ -1072,6 +1133,12 @@ CREATE TRIGGER trg_post_audio_updated_at BEFORE UPDATE ON post_audio
 CREATE TRIGGER trg_ai_jobs_updated_at BEFORE UPDATE ON ai_jobs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_friendships_updated_at BEFORE UPDATE ON friendships
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_platform_access_settings_updated_at BEFORE UPDATE ON platform_access_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_platform_allowed_emails_updated_at BEFORE UPDATE ON platform_allowed_emails
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

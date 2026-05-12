@@ -16,7 +16,7 @@ class BestFriend(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "position", name="unique_bf_user_position"),
         UniqueConstraint("user_id", "friend_user_id", name="unique_bf_user_friend"),
-        CheckConstraint("position BETWEEN 1 AND 2", name="chk_bf_position"),
+        CheckConstraint("position BETWEEN 1 AND 3", name="chk_bf_position"),
         CheckConstraint("user_id != friend_user_id", name="chk_bf_no_self_friend"),
     )
 
@@ -37,7 +37,7 @@ class FeaturedPost(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "position", name="unique_fp_user_position"),
         UniqueConstraint("user_id", "post_id", name="unique_fp_user_post"),
-        CheckConstraint("position BETWEEN 1 AND 6", name="chk_fp_position"),
+        CheckConstraint("position BETWEEN 1 AND 5", name="chk_fp_position"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -65,4 +65,3 @@ class UserAward(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="awards")
-

@@ -380,6 +380,7 @@ def blog_data(
         for series in crud.get_series_by_owner(db, user.id)
     ]
     user_series = [series for series in user_series if series["post_count"] > 0]
+    viewer_friendship = crud.get_friendship_between(db, current_user.id, user.id) if current_user and current_user.id != user.id else None
 
     return {
         "blog_owner": serialize_user(user),
@@ -395,6 +396,13 @@ def blog_data(
         ] if available_months else [],
         "blog_categories": blog_categories or [],
         "best_friends": promoted_authors,
+        "friend_count": crud.get_friend_count_for_user(db, user.id),
+        "viewer_friendship_status": crud.get_friendship_status_for_viewer(
+            db,
+            current_user.id if current_user else None,
+            user.id,
+        ),
+        "viewer_friendship_id": viewer_friendship.id if viewer_friendship else None,
         "viewer_promoted_author": (
             bool(current_user)
             and current_user.id != user.id
@@ -579,13 +587,23 @@ def category_page_data(
 def user_public_profile(
     username: str,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     """Public user profile data"""
     user = crud.get_user_by_username(db, username=username)
     if not user:
         raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
 
-    return serialize_user(user)
+    payload = serialize_user(user)
+    payload["friend_count"] = crud.get_friend_count_for_user(db, user.id)
+    viewer_friendship = crud.get_friendship_between(db, current_user.id, user.id) if current_user and current_user.id != user.id else None
+    payload["viewer_friendship_status"] = crud.get_friendship_status_for_viewer(
+        db,
+        current_user.id if current_user else None,
+        user.id,
+    )
+    payload["viewer_friendship_id"] = viewer_friendship.id if viewer_friendship else None
+    return payload
 
 
 @router.get("/api/utilizator/{username}/inventar")

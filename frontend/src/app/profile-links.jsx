@@ -1,6 +1,9 @@
 import { FaFacebookF, FaInstagram, FaPatreon, FaPaypal, FaTiktok, FaXTwitter } from "react-icons/fa6";
 import { SiBluesky, SiBuymeacoffee } from "react-icons/si";
 import { PROFILE_TIER_BADGES } from "./constants.js";
+import { safeExternalUrl } from "./urls.js";
+
+export { safeExternalUrl } from "./urls.js";
 
 export const SOCIAL_PROFILE_LINKS = [
   { field: "facebook_url", label: "Facebook", Icon: FaFacebookF, className: "facebook" },
@@ -17,7 +20,7 @@ export const SUPPORT_PROFILE_LINKS = [
 ];
 
 export function profileLinks(user, definitions) {
-  return definitions.map((definition) => ({ ...definition, url: user?.[definition.field] || "" }));
+  return definitions.map((definition) => ({ ...definition, url: safeExternalUrl(user?.[definition.field]) }));
 }
 
 export function profileTierBadge(user) {

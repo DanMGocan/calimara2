@@ -3,8 +3,9 @@ from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, Faceb
 from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentBase, CommentCreate, Comment, Like
 from .writing import DiacriticsKind, DiacriticsRequest, DiacriticsResponse
 from .messages import MessageCreate, MessageToUser, MessageBase, Message, ConversationBase, Conversation, ConversationSummary
-from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
+from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminPlatformAccessUpdate, AdminPlatformAllowedEmailCreate, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
 from .notifications import NotificationResponse
+from .friends import FriendshipStatus, FriendUserRef, FriendshipOut
 from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut
 from .forum import ForumSection, ForumModerationStatus, ForumAuthorRef, ForumThreadCreate, ForumReplyCreate, ForumThreadModerationAction, ForumThreadSummary, ForumReplyOut, ForumThreadDetail
 from .series import SeriesAuthor, SeriesCreate, SeriesUpdate, SeriesSummary, SeriesPostPostRef, SeriesPostEntry, SeriesDetail, SeriesAddPostRequest, SeriesReorderRequest, SeriesMembershipRef
@@ -69,11 +70,16 @@ __all__ = [
     "AdminRoleUpdate",
     "AdminPremiumUpdate",
     "AdminGologaniAdjustment",
+    "AdminPlatformAccessUpdate",
+    "AdminPlatformAllowedEmailCreate",
     "AdminEmailAudience",
     "AdminEmailPreviewRequest",
     "AdminEmailCampaignCreate",
     "AdminContentUpdate",
     "NotificationResponse",
+    "FriendshipStatus",
+    "FriendUserRef",
+    "FriendshipOut",
     "ShopItemSlot",
     "ShopItemBase",
     "ShopItemCreate",

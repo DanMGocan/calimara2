@@ -1,14 +1,13 @@
 from ._shared import *
 from .notifications import create_notification
+from .slugs import generate_slug
 
 CLUB_FEATURED_DURATION = timedelta(days=7)
 
 CLUB_VALID_SPECIALITIES = ("poezie", "proza_scurta")
 
 def _generate_club_slug(title: str) -> str:
-    slug = title.lower()
-    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
-    return slug or "club"
+    return generate_slug(title, fallback="club")
 
 def _ensure_unique_club_slug(db: Session, base_slug: str) -> str:
     slug = base_slug

@@ -218,14 +218,14 @@ class UserProfileSettingsUpdate(BaseModel):
 
 
 class BestFriendsUpdate(BaseModel):
-    friends: List[str] = Field(default_factory=list, max_length=2, description="List of promoted author usernames (max 2)")
+    friends: List[str] = Field(default_factory=list, max_length=3, description="List of promoted author usernames (max 3)")
 
 
 class FeaturedPostsUpdate(BaseModel):
-    post_ids: List[Optional[int]] = Field(default_factory=list, max_length=4, description="List of own post IDs (max 4)")
+    post_ids: List[Optional[int]] = Field(default_factory=list, max_length=2, description="List of own post IDs (max 2)")
 
 
 class UserPromotionsUpdate(BaseModel):
-    own_post_ids: List[int] = Field(default_factory=list, max_length=4)
-    author_ids: List[int] = Field(default_factory=list, max_length=2)
-    other_post_ids: List[int] = Field(default_factory=list, max_length=2)
+    own_post_ids: List[int] = Field(default_factory=list, max_length=2)
+    author_ids: List[int] = Field(default_factory=list, max_length=3)
+    other_post_ids: List[int] = Field(default_factory=list, max_length=3)

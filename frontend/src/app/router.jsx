@@ -18,6 +18,7 @@ const ROUTE_COMPONENTS = {
   admin: lazy(() => import("../routes/admin.jsx")),
   create: lazy(() => import("../routes/create.jsx")),
   messages: lazy(() => import("../routes/messages.jsx")),
+  friends: lazy(() => import("../routes/friends.jsx")),
   forum: lazy(() => import("../routes/forum.jsx")),
   forumCreate: lazy(() => import("../routes/forum.jsx")),
   forumThread: lazy(() => import("../routes/forum.jsx")),
@@ -44,6 +45,7 @@ export function routeForLocation() {
     if (path === "/profil") return { name: "profileSettings" };
     if (path === "/scrie") return { name: "create" };
     if (path === "/mesaje") return { name: "messages" };
+    if (path === "/prieteni") return { name: "friends" };
     return { name: "post", username: userFromHost, slug: decodeURIComponent(path.slice(1)) };
   }
 
@@ -52,6 +54,7 @@ export function routeForLocation() {
   if (path === "/profil") return { name: "profileSettings" };
   if (path === "/scrie") return { name: "create" };
   if (path === "/mesaje") return { name: "messages" };
+  if (path === "/prieteni") return { name: "friends" };
   if (path === "/moderare") return { name: "admin" };
   if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
@@ -71,7 +74,7 @@ export function routeForLocation() {
   return { name: "notFound" };
 }
 
-export function RouteView({ route, user, authLoaded, onUserUpdate }) {
+export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh }) {
   if (PROTECTED_ROUTES.has(route.name) && !authLoaded) {
     return <PageShell kicker="cont" title="Se verifică sesiunea" sub="Încărcăm starea contului tău." />;
   }
@@ -79,5 +82,5 @@ export function RouteView({ route, user, authLoaded, onUserUpdate }) {
   if (PROTECTED_ROUTES.has(route.name) && authLoaded && !user) return <AuthRequired />;
 
   const Component = ROUTE_COMPONENTS[route.name] || ROUTE_COMPONENTS.notFound;
-  return <Component route={route} user={user} onUserUpdate={onUserUpdate} />;
+  return <Component route={route} user={user} onUserUpdate={onUserUpdate} onUserRefresh={onUserRefresh} />;
 }

@@ -41,6 +41,34 @@ class AdminDailyMetric(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class PlatformAccessSetting(Base):
+    __tablename__ = "platform_access_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_platform_access_settings_singleton"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    is_open: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    updater: Mapped[Optional["User"]] = relationship("User", foreign_keys=[updated_by])
+
+
+class PlatformAllowedEmail(Base):
+    __tablename__ = "platform_allowed_emails"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+
+
 class SiteFeedback(Base):
     __tablename__ = "site_feedback"
     __table_args__ = (

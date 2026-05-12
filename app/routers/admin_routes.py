@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, models, schemas, statistics
+from .. import admin, crud, email_service, models, platform_access, schemas, statistics
 from ..database import get_db
 from ..week_util import utcnow_naive
 
@@ -151,6 +151,26 @@ def _site_feedback_payload(item: models.SiteFeedback) -> dict:
         "resolved_at": _as_iso(item.resolved_at),
         "created_at": _as_iso(item.created_at),
         "updated_at": _as_iso(item.updated_at),
+    }
+
+
+def _platform_allowed_email_payload(item: models.PlatformAllowedEmail) -> dict:
+    return {
+        "id": item.id,
+        "email": item.email,
+        "note": item.note,
+        "created_by": item.created_by,
+        "created_at": _as_iso(item.created_at),
+        "updated_at": _as_iso(item.updated_at),
+    }
+
+
+def _platform_access_payload(db: Session) -> dict:
+    emails = platform_access.list_allowed_emails(db)
+    return {
+        "open": platform_access.is_platform_open(db),
+        "allowed_count": len(emails),
+        "emails": [_platform_allowed_email_payload(item) for item in emails],
     }
 
 
@@ -704,6 +724,42 @@ def list_admin_email_campaigns(
     return {"campaigns": payload}
 
 
+@router.post("/email/outbox/process")
+def process_admin_email_outbox(
+    request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    processed = email_service.process_email_outbox(db, limit=limit, worker=f"admin:{current_user.id}")
+    pending_count = db.query(models.EmailOutbox).filter(models.EmailOutbox.status.in_(("queued", "sending"))).count()
+    sent_count = db.query(models.EmailOutbox).filter(models.EmailOutbox.status == "sent").count()
+    failed_count = db.query(models.EmailOutbox).filter(models.EmailOutbox.status == "failed").count()
+    skipped_count = db.query(models.EmailOutbox).filter(models.EmailOutbox.status == "skipped").count()
+    _audit(
+        db,
+        request,
+        current_user,
+        action="admin_email_outbox_process",
+        target_type="email_outbox",
+        metadata={
+            "limit": limit,
+            "processed": processed,
+            "pending_count": pending_count,
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "skipped_count": skipped_count,
+        },
+    )
+    return {
+        "processed": processed,
+        "pending_count": pending_count,
+        "sent_count": sent_count,
+        "failed_count": failed_count,
+        "skipped_count": skipped_count,
+    }
+
+
 @router.get("/users/{user_id}")
 def get_admin_user_detail(
     user_id: int,
@@ -1095,6 +1151,83 @@ def cancel_admin_job(
     db.refresh(job)
     _audit(db, request, current_user, action="ai_job_cancel", target_type="ai_job", target_id=job.id, reason=data.reason)
     return _job_payload(job)
+
+
+@router.get("/platform-access")
+def get_platform_access(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    return _platform_access_payload(db)
+
+
+@router.put("/platform-access")
+def update_platform_access(
+    data: schemas.AdminPlatformAccessUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    before = platform_access.is_platform_open(db)
+    setting = platform_access.set_platform_open(db, is_open=data.open, actor=current_user)
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_access_update",
+        target_type="platform_access_settings",
+        target_id=setting.id,
+        metadata={"before": {"open": before}, "after": {"open": setting.is_open}},
+    )
+    return _platform_access_payload(db)
+
+
+@router.post("/platform-access/emails")
+def add_platform_allowed_email(
+    data: schemas.AdminPlatformAllowedEmailCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    try:
+        item = platform_access.add_allowed_email(db, email=str(data.email), note=data.note, actor=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_allowed_email_create",
+        target_type="platform_allowed_email",
+        target_id=item.id,
+        metadata={"email": item.email, "note": item.note},
+    )
+    return _platform_access_payload(db)
+
+
+@router.delete("/platform-access/emails/{email_id}")
+def delete_platform_allowed_email(
+    email_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    item = db.query(models.PlatformAllowedEmail).filter(models.PlatformAllowedEmail.id == email_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Emailul nu este în lista de acces.")
+    snapshot = {"email": item.email, "note": item.note}
+    db.delete(item)
+    db.commit()
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_allowed_email_delete",
+        target_type="platform_allowed_email",
+        target_id=email_id,
+        metadata=snapshot,
+    )
+    return _platform_access_payload(db)
 
 
 @router.get("/site-feedback")

@@ -120,21 +120,34 @@ export function CompactAudioPlayer({
   );
 }
 export function postToPiece(post) {
-  const sourceUrl = post.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : "#";
+  const authorUrl = post.owner ? blogUrl(post.owner.username) : "";
+  const postUrl = authorUrl && post.slug ? `${authorUrl}/${post.slug}` : "#";
   return {
     title: post.title,
     author: post.owner?.username ?? "anonim",
     authorUser: post.owner ?? null,
-    authorUrl: post.owner ? blogUrl(post.owner.username) : "",
+    authorUrl,
     year: formatDateTime(post.created_at),
     categoryLabel: post.category_name ?? categoryLabel(post.category),
     body: htmlToText(post.content),
     contentHtml: post.content,
-    sourceUrl
+    postUrl,
+    sourceUrl: authorUrl
   };
 }
 export function postHref(post) {
   return post?.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : post?.url || "#";
+}
+function sourceUrlLabel(sourceUrl) {
+  const rawUrl = String(sourceUrl || "").trim();
+  if (!rawUrl || rawUrl === "#") return "";
+
+  try {
+    const baseUrl = typeof window !== "undefined" ? window.location.href : undefined;
+    return new URL(rawUrl, baseUrl).host || rawUrl;
+  } catch {
+    return rawUrl.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  }
 }
 export function AuthorLink({ user, username, children, className = "author-link" }) {
   const name = user?.username || username;
@@ -193,6 +206,7 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
   const scrollRef = useRef(null);
   const [atTop, setAtTop] = useState(true);
   const [atBottom, setAtBottom] = useState(false);
+  const sourceLabel = sourceUrlLabel(piece.sourceUrl);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -208,8 +222,8 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
     setAtBottom(el.scrollTop + el.clientHeight >= el.scrollHeight - 4);
   };
 
-  const titleContent = piece.sourceUrl && piece.sourceUrl !== "#" ? (
-    <a href={piece.sourceUrl}>{piece.title}</a>
+  const titleContent = piece.postUrl && piece.postUrl !== "#" ? (
+    <a href={piece.postUrl}>{piece.title}</a>
   ) : piece.title;
   const titleNode = (
     <h1 className="piece-title">
@@ -226,15 +240,13 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
 
   return (
     <div className="piece-col">
-      <div className="piece-kind-row">
-        <span className="piece-kind-badge">{piece.categoryLabel}</span>
-        <span className="piece-kind-sep" />
-        {piece.sourceUrl && piece.sourceUrl !== "#" ? (
+      {sourceLabel ? (
+        <div className="piece-kind-row">
           <a className="piece-kind-meta" href={piece.sourceUrl}>
-            calimara.ro
+            {sourceLabel}
           </a>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
       {titleHeading}
       <div className="piece-meta">
         {piece.authorUrl ? (

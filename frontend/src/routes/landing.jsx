@@ -41,7 +41,7 @@ function TitleShuffleButton({ onShuffle, disabled, spinning }) {
       onClick={onShuffle}
     >
       <GiRollingDices aria-hidden="true" focusable="false" />
-      <span className="landing-title-dice-label" aria-hidden="true">Schimba</span>
+      <span className="landing-title-dice-label" aria-hidden="true">Schimbă</span>
       <span className="visually-hidden">Alege un text aleatoriu</span>
     </button>
   );
@@ -63,9 +63,9 @@ function Rail({ stats }) {
 }
 function LandingLinks() {
   const links = [
-    { label: "Ce este calimara.ro?", href: mainPath("/ce-este-calimara") },
-    { label: "De ce sa ni te alaturi?", href: mainPath("/de-ce-sa-ni-te-alaturi") },
-    { label: "Functii si Caracterisitci", href: mainPath("/functii-si-caracteristici") }
+    { label: "Ce este călimara.ro?", href: mainPath("/ce-este-calimara") },
+    { label: "De ce să ni te alături?", href: mainPath("/de-ce-sa-ni-te-alaturi") },
+    { label: "Funcții și caracteristici", href: mainPath("/functii-si-caracteristici") }
   ];
 
   return (
@@ -87,15 +87,16 @@ function LandingLinks() {
   );
 }
 
-function AuthErrorModal({ open, onClose }) {
+function AuthErrorModal({ open, errorKind, onClose }) {
   if (!open) return null;
+  const inviteOnly = errorKind === "access";
   return (
     <div className="access-modal-scrim" role="presentation" onClick={onClose}>
       <section className="access-modal" role="dialog" aria-modal="true" aria-labelledby="auth-error-title" onClick={(event) => event.stopPropagation()}>
         <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
         <div className="piece-card-kicker">autentificare</div>
-        <h2 id="auth-error-title" className="access-modal-title">Autentificarea a eșuat</h2>
-        <p className="access-modal-body">Nu am putut finaliza autentificarea. Încearcă din nou.</p>
+        <h2 id="auth-error-title" className="access-modal-title">{inviteOnly ? "Acces pe bază de invitație" : "Autentificarea a eșuat"}</h2>
+        <p className="access-modal-body">{inviteOnly ? "Platforma este momentan deschisă doar pentru emailurile adăugate în lista de acces." : "Nu am putut finaliza autentificarea. Încearcă din nou."}</p>
         <button className="cal-btn primary" type="button" onClick={onClose}>Închide</button>
       </section>
     </div>
@@ -112,6 +113,7 @@ function LandingView({ user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [authErrorOpen, setAuthErrorOpen] = useState(false);
+  const [authErrorKind, setAuthErrorKind] = useState("");
 
   const loadLanding = useCallback(async (initial = false) => {
     const startedAt = Date.now();
@@ -150,7 +152,9 @@ function LandingView({ user }) {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get("auth_error") !== "google") return;
+    const authError = url.searchParams.get("auth_error");
+    if (!authError) return;
+    setAuthErrorKind(authError);
     setAuthErrorOpen(true);
     url.searchParams.delete("auth_error");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
@@ -186,7 +190,7 @@ function LandingView({ user }) {
         <AdSlot placement="rail" />
         {error ? <div className="inline-error">{error}</div> : null}
       </div>
-      <AuthErrorModal open={authErrorOpen} onClose={() => setAuthErrorOpen(false)} />
+      <AuthErrorModal open={authErrorOpen} errorKind={authErrorKind} onClose={() => setAuthErrorOpen(false)} />
     </main>
   );
 }

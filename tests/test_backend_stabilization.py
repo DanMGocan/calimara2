@@ -16,7 +16,7 @@ os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-secret")
 
 from app import auth, crud, local_auth, models, moderation, schemas, statistics
-from app.routers import admin_routes, api_pages, auth_routes, forum_routes, moderation_routes, post_routes, series_routes, user_routes
+from app.routers import admin_routes, api_pages, auth_routes, forum_routes, friend_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
 class DummyRequest:
@@ -206,24 +206,26 @@ class BackendStabilizationTests(unittest.TestCase):
         owner = self.make_user("promoter")
         peer = self.make_user("peerwriter")
         target = self.make_user("targetwriter")
-        own_posts = [self.make_post(owner, f"Own Text {index}") for index in range(1, 5)]
-        extra_own_post = self.make_post(owner, "Own Text Five")
+        third = self.make_user("thirdwriter")
+        own_posts = [self.make_post(owner, f"Own Text {index}") for index in range(1, 3)]
+        extra_own_post = self.make_post(owner, "Own Text Three")
         peer_post = self.make_post(peer, "Peer Text")
         target_post = self.make_post(target, "Target Text")
+        third_post = self.make_post(third, "Third Text")
 
         payload = user_routes.update_my_promotions(
             schemas.UserPromotionsUpdate(
                 own_post_ids=[post.id for post in own_posts],
-                author_ids=[peer.id, target.id],
-                other_post_ids=[peer_post.id, target_post.id],
+                author_ids=[peer.id, target.id, third.id],
+                other_post_ids=[peer_post.id, target_post.id, third_post.id],
             ),
             db=self.db,
             current_user=owner,
         )
 
-        self.assertEqual(len(payload["own_posts"]), 4)
-        self.assertEqual(len(payload["authors"]), 2)
-        self.assertEqual(len(payload["other_posts"]), 2)
+        self.assertEqual(len(payload["own_posts"]), 2)
+        self.assertEqual(len(payload["authors"]), 3)
+        self.assertEqual(len(payload["other_posts"]), 3)
 
         blog_payload = api_pages.blog_data(
             DummyRequest(session={}),
@@ -231,9 +233,9 @@ class BackendStabilizationTests(unittest.TestCase):
             db=self.db,
             current_user=owner,
         )
-        self.assertEqual(len(blog_payload["promoted_own_posts"]), 4)
-        self.assertEqual(len(blog_payload["promoted_authors"]), 2)
-        self.assertEqual(len(blog_payload["promoted_external_posts"]), 2)
+        self.assertEqual(len(blog_payload["promoted_own_posts"]), 2)
+        self.assertEqual(len(blog_payload["promoted_authors"]), 3)
+        self.assertEqual(len(blog_payload["promoted_external_posts"]), 3)
 
         with self.assertRaises(HTTPException) as own_limit:
             user_routes.add_promoted_post(
@@ -242,6 +244,65 @@ class BackendStabilizationTests(unittest.TestCase):
                 current_user=owner,
             )
         self.assertEqual(own_limit.exception.status_code, 400)
+
+    def test_friend_request_lifecycle_and_profile_context(self):
+        alice = self.make_user("alicefriend")
+        bob = self.make_user("bobfriend")
+
+        sent = friend_routes.send_friend_request(bob.id, db=self.db, current_user=alice)
+        self.assertEqual(sent["status"], "outgoing_pending")
+        self.assertEqual(crud.get_friendship_status_for_viewer(self.db, alice.id, bob.id), "outgoing_pending")
+        self.assertEqual(crud.get_friendship_status_for_viewer(self.db, bob.id, alice.id), "incoming_pending")
+        self.assertEqual(crud.get_incoming_friend_request_count(self.db, bob.id), 1)
+        self.assertEqual(self.db.query(models.Notification).filter_by(user_id=bob.id, type="friend_request").count(), 1)
+
+        friendship_id = sent["friendship"]["id"]
+        accepted = friend_routes.accept_friend_request(friendship_id, db=self.db, current_user=bob)
+        self.assertEqual(accepted["status"], "friends")
+        self.assertEqual(crud.get_friendship_status_for_viewer(self.db, alice.id, bob.id), "friends")
+        self.assertEqual(crud.get_friend_count_for_user(self.db, alice.id), 1)
+        self.assertEqual(crud.get_friend_count_for_user(self.db, bob.id), 1)
+        self.assertEqual(crud.get_incoming_friend_request_count(self.db, bob.id), 0)
+        self.assertEqual(self.db.query(models.Notification).filter_by(user_id=alice.id, type="friend_request_accepted").count(), 1)
+
+        blog_payload = api_pages.blog_data(
+            DummyRequest(session={}),
+            bob.username,
+            db=self.db,
+            current_user=alice,
+        )
+        self.assertEqual(blog_payload["friend_count"], 1)
+        self.assertEqual(blog_payload["viewer_friendship_status"], "friends")
+        self.assertEqual(blog_payload["viewer_friendship_id"], friendship_id)
+
+        removed = friend_routes.remove_friend(bob.id, db=self.db, current_user=alice)
+        self.assertEqual(removed["status"], "none")
+        self.assertEqual(crud.get_friendship_status_for_viewer(self.db, alice.id, bob.id), "none")
+
+    def test_friend_request_reverse_send_accepts_existing_request(self):
+        alice = self.make_user("reversealice")
+        bob = self.make_user("reversebob")
+
+        sent = friend_routes.send_friend_request(bob.id, db=self.db, current_user=alice)
+        accepted = friend_routes.send_friend_request(alice.id, db=self.db, current_user=bob)
+
+        self.assertEqual(accepted["status"], "friends")
+        self.assertEqual(accepted["friendship"]["id"], sent["friendship"]["id"])
+        self.assertEqual(self.db.query(models.Friendship).count(), 1)
+
+    def test_friend_request_blocks_self_and_suspended_targets(self):
+        alice = self.make_user("blockalice")
+        suspended = self.make_user("suspendedfriend")
+        suspended.is_suspended = True
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as self_error:
+            friend_routes.send_friend_request(alice.id, db=self.db, current_user=alice)
+        self.assertEqual(self_error.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as suspended_error:
+            friend_routes.send_friend_request(suspended.id, db=self.db, current_user=alice)
+        self.assertEqual(suspended_error.exception.status_code, 404)
 
     def test_statistics_uses_configured_session_cookie(self):
         current_cookie = SimpleNamespace(cookies={"calimara_sess": "session-token"})
@@ -669,7 +730,11 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_password_signup_requires_activation_code_before_setup(self):
         request = DummyRequest({})
-        with patch.object(auth_routes.local_auth, "generate_email_code", return_value="12345678"):
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
+            auth_routes.email_service,
+            "_send_with_brevo",
+            return_value="message-id-activation",
+        ) as send_mock, patch.object(auth_routes.local_auth, "generate_email_code", return_value="12345678"):
             response = auth_routes.register_with_password.__wrapped__(
                 request,
                 schemas.PasswordRegisterRequest(email="NewAuthor@Example.com", password="long-enough-password"),
@@ -679,7 +744,10 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response["email"], "newauthor@example.com")
         email_row = self.db.query(models.EmailOutbox).one()
         self.assertEqual(email_row.email_type, "auth")
+        self.assertEqual(email_row.status, "sent")
+        self.assertEqual(email_row.provider_message_id, "message-id-activation")
         self.assertIn("12345678", email_row.text_content)
+        send_mock.assert_called_once()
 
         activation = auth_routes.activate_password_signup.__wrapped__(
             request,
@@ -716,7 +784,11 @@ class BackendStabilizationTests(unittest.TestCase):
         self.db.commit()
         request = DummyRequest({})
 
-        with patch.object(auth_routes.local_auth, "generate_email_code", return_value="87654321"):
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
+            auth_routes.email_service,
+            "_send_with_brevo",
+            return_value="message-id-reset",
+        ) as send_mock, patch.object(auth_routes.local_auth, "generate_email_code", return_value="87654321"):
             response = auth_routes.request_password_reset.__wrapped__(
                 request,
                 schemas.PasswordResetRequest(email=user.email),
@@ -725,7 +797,10 @@ class BackendStabilizationTests(unittest.TestCase):
 
         self.assertEqual(response["next"], "reset_code")
         email_row = self.db.query(models.EmailOutbox).one()
+        self.assertEqual(email_row.status, "sent")
+        self.assertEqual(email_row.provider_message_id, "message-id-reset")
         self.assertIn("87654321", email_row.text_content)
+        send_mock.assert_called_once()
 
         reset = auth_routes.confirm_password_reset.__wrapped__(
             request,
@@ -936,6 +1011,7 @@ class BackendStabilizationTests(unittest.TestCase):
         archive = post_routes.get_posts_archive(db=self.db, current_user=user)
         archived_by_id = {post["id"]: post for post in archive["posts"]}
 
+        self.assertEqual(archive["total"], 3)
         self.assertIn(approved.id, archived_by_id)
         self.assertIn(pending.id, archived_by_id)
         self.assertIn(flagged.id, archived_by_id)
@@ -943,6 +1019,18 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(archived_by_id[pending.id]["moderation_status"], "pending")
         self.assertEqual(archived_by_id[flagged.id]["moderation_status"], "flagged")
         self.assertEqual(archived_by_id[flagged.id]["moderation_reason"], "Needs moderator review")
+
+        first_page = post_routes.get_posts_archive(limit=2, offset=0, db=self.db, current_user=user)
+        second_page = post_routes.get_posts_archive(limit=2, offset=2, db=self.db, current_user=user)
+        self.assertEqual(first_page["total"], 3)
+        self.assertEqual(len(first_page["posts"]), 2)
+        self.assertEqual(len(second_page["posts"]), 1)
+
+        editable = post_routes.get_owned_post_for_edit(approved.id, db=self.db, current_user=user)
+        self.assertEqual(editable.id, approved.id)
+        with self.assertRaises(HTTPException) as other_edit:
+            post_routes.get_owned_post_for_edit(approved.id, db=self.db, current_user=other_user)
+        self.assertEqual(other_edit.exception.status_code, 404)
 
         months = post_routes.get_available_months(db=self.db, current_user=user)["months"]
         self.assertEqual(sum(month["post_count"] for month in months), 3)
@@ -964,6 +1052,18 @@ class BackendStabilizationTests(unittest.TestCase):
         drafts = post_routes.list_post_drafts(db=self.db, current_user=user)["drafts"]
         self.assertEqual([item.id for item in drafts], [draft.id])
         self.assertEqual(draft.category, "proza_scurta")
+
+        second_draft = crud.create_post_draft(
+            self.db,
+            schemas.PostDraftSave(title="Ciornă secundară", content="<p>Altă ciornă</p>", category="poezie"),
+            user.id,
+        )
+        first_page = post_routes.list_post_drafts(limit=1, offset=0, db=self.db, current_user=user)
+        second_page = post_routes.list_post_drafts(limit=1, offset=1, db=self.db, current_user=user)
+        self.assertEqual(first_page["total"], 2)
+        self.assertEqual(first_page["limit"], 1)
+        self.assertEqual(second_page["offset"], 1)
+        self.assertEqual({first_page["drafts"][0].id, second_page["drafts"][0].id}, {draft.id, second_draft.id})
 
         updated = post_routes.update_post_draft_api(
             draft.id,

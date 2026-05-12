@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { FaFlag } from "react-icons/fa";
-import { FiChevronDown, FiDownload } from "react-icons/fi";
+import { FaFlag, FaHeart } from "react-icons/fa";
+import { FiChevronDown, FiDownload, FiEye, FiMessageCircle } from "react-icons/fi";
 import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { fetchPostAudioStatus } from "../api/audio.js";
 import { createComment, likePost, reportPost } from "../api/posts.js";
@@ -14,7 +14,7 @@ import { RichTextEditor } from "./editor.jsx";
 import { formatDateTime, formatNumber, htmlToText, usernameHandle } from "./format.js";
 import { mainPath } from "./paths.js";
 
-const NO_AUDIO_TITLE = "Utilizatorul nu a convertit inca textul in fisier audio";
+const NO_AUDIO_TITLE = "Utilizatorul nu a convertit încă textul în fișier audio";
 const REPORT_TITLES = {
   offensive: "Raportează conținut ofensiv",
   plagiarism: "Raportează plagiat"
@@ -170,10 +170,10 @@ export function PostPromotionMenu({ post, author, user }) {
       {open ? (
         <span className="title-promotion-panel" role="menu" aria-label="Opțiuni de promovare">
           <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentPost} disabled={!user || Boolean(busy)}>
-            {busy === "post" ? "Se promovează..." : "Promoveaza postarea pe profilul tau"}
+            {busy === "post" ? "Se promovează..." : "Promovează postarea pe profilul tău"}
           </button>
           <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentAuthor} disabled={!user || Boolean(busy)}>
-            {busy === "author" ? "Se promovează..." : "Promoveaza autorul pe profilul tau"}
+            {busy === "author" ? "Se promovează..." : "Promovează autorul pe profilul tău"}
           </button>
           {status ? <span className="title-promotion-status">{status}</span> : null}
         </span>
@@ -323,6 +323,15 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   const comments = Array.isArray(postState.approved_comments) ? postState.approved_comments : [];
   const commentsCount = Number(postState.comments_count ?? comments.length ?? 0);
   const filename = pdfFilename(postState);
+  const superLikesLabel = "Superaprecieri";
+  const likesLabel = "Aprecieri";
+  const viewsLabel = "Vizualizări";
+  const commentsLabel = "Comentarii";
+  const downloadLabel = "Descarcă PDF";
+  const superLikesCount = formatNumber(postState.super_likes_count);
+  const likesCount = formatNumber(postState.likes_count);
+  const viewsCount = formatNumber(postState.view_count ?? postState.vizualizari);
+  const commentsCountLabel = formatNumber(commentsCount);
 
   const updatePost = (updater) => {
     setPostState((current) => {
@@ -483,44 +492,43 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   return (
     <div className={`post-action-tools landing-post-tools ${className}`.trim()}>
       <div className="piece-actions post-engagement-row" aria-label="Acțiuni text">
-        <button className={`react-btn react-super ${postState.viewer_super_liked ? "on" : ""}`} type="button" onClick={handleSuperLike} disabled={busy === "super"} aria-pressed={Boolean(postState.viewer_super_liked)}>
-          Super-aprecieri
-          <span className="react-count">{formatNumber(postState.super_likes_count)}</span>
+        <button className={`react-btn react-super ${postState.viewer_super_liked ? "on" : ""}`} type="button" onClick={handleSuperLike} disabled={busy === "super"} aria-pressed={Boolean(postState.viewer_super_liked)} aria-label={`${superLikesLabel}: ${superLikesCount}`} title={superLikesLabel}>
+          <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
+          <span className="react-count">{superLikesCount}</span>
         </button>
-        <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={busy === "like"} aria-pressed={liked}>
-          Aprecieri
-          <span className="react-count">{formatNumber(postState.likes_count)}</span>
+        <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={busy === "like"} aria-pressed={liked} aria-label={`${likesLabel}: ${likesCount}`} title={likesLabel}>
+          <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
+          <span className="react-count">{likesCount}</span>
         </button>
-        <span className="react-btn react-stat" title="Vizualizari unice">
-          Vizualizari unice
-          <span className="react-count">{formatNumber(postState.view_count ?? postState.vizualizari)}</span>
+        <span className="react-btn react-stat" title={viewsLabel} aria-label={`${viewsLabel}: ${viewsCount}`}>
+          <FiEye className="react-symbol" aria-hidden="true" focusable="false" />
+          <span className="react-count">{viewsCount}</span>
         </span>
-        <button className="react-btn" type="button" onClick={() => setCommentOpen((open) => !open)} aria-expanded={commentOpen} aria-controls={`comments-${postState.id}`}>
-          Comentarii
-          <span className="react-count">{formatNumber(commentsCount)}</span>
+        <button className="react-btn react-comments" type="button" onClick={() => setCommentOpen((open) => !open)} aria-expanded={commentOpen} aria-controls={`comments-${postState.id}`} aria-label={`${commentsLabel}: ${commentsCountLabel}`} title={commentsLabel}>
+          <FiMessageCircle className="react-symbol" aria-hidden="true" focusable="false" />
+          <span className="react-count">{commentsCountLabel}</span>
         </button>
-        <a className="react-btn react-link post-pdf-download" href={pdfHref} download={filename}>
-          <FiDownload aria-hidden="true" />
-          <span>{filename}</span>
+        <a className="react-btn react-link post-pdf-download" href={pdfHref} download={filename} aria-label={downloadLabel} title={downloadLabel}>
+          <FiDownload aria-hidden="true" focusable="false" />
         </a>
         <button className="react-btn react-report-trigger" type="button" onClick={openReportModal} disabled={busy === "report"} aria-label="Raportează" title="Raportează">
           <FaFlag aria-hidden="true" />
         </button>
+        <div className="post-audio-inline">
+          {audioAvailable ? (
+            <CompactAudioPlayer src={audioState.data.playback_url} showDownload={false} />
+          ) : (
+            <CompactAudioPlayer
+              src=""
+              showDownload={false}
+              className="post-audio-placeholder"
+              disabledTitle={audioState.loading ? "Se verifică fișierul audio..." : NO_AUDIO_TITLE}
+            />
+          )}
+        </div>
       </div>
 
-      <div className="post-audio-row">
-        {audioAvailable ? (
-          <CompactAudioPlayer src={audioState.data.playback_url} showDownload={false} />
-        ) : (
-          <CompactAudioPlayer
-            src=""
-            showDownload={false}
-            className="post-audio-placeholder"
-            disabledTitle={audioState.loading ? "Se verifică fișierul audio..." : NO_AUDIO_TITLE}
-          />
-        )}
-        {audioState.error ? <div className="inline-error">{audioState.error}</div> : null}
-      </div>
+      {audioState.error ? <div className="inline-error post-audio-error-row">{audioState.error}</div> : null}
 
       {commentOpen ? (
         <CommentPanel

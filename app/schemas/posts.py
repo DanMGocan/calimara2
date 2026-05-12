@@ -143,6 +143,9 @@ class PostDraft(PostDraftSave):
 
 class PostDraftList(BaseModel):
     drafts: List[PostDraft] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
 
 
 

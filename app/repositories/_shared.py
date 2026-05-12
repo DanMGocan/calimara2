@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 
 from sqlalchemy import and_, case, desc, extract, func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, aliased, joinedload
 
 from .. import models, rich_text, schemas
 from ..week_util import start_of_iso_week_utc, utcnow_naive

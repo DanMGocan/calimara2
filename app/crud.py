@@ -15,6 +15,7 @@ from .repositories.economy import *
 from .repositories.forum import *
 from .repositories.messages import *
 from .repositories.notifications import *
+from .repositories.friends import *
 from .repositories.moderation import *
 from .repositories.reports import *
 from .repositories.series import *

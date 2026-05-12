@@ -56,6 +56,15 @@ class AdminGologaniAdjustment(BaseModel):
         return value
 
 
+class AdminPlatformAccessUpdate(BaseModel):
+    open: bool
+
+
+class AdminPlatformAllowedEmailCreate(BaseModel):
+    email: EmailStr
+    note: Optional[str] = Field(None, max_length=500)
+
+
 class AdminEmailAudience(BaseModel):
     q: str = Field("", max_length=255)
     role: Literal["all", "admin", "moderator", "member"] = "all"

@@ -3,7 +3,7 @@ import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { createSiteFeedback } from "../api/feedback.js";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../api/notifications.js";
 import { FaCoins } from "react-icons/fa6";
-import { FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiMessageSquare, FiPlay, FiUsers } from "react-icons/fi";
+import { FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiMessageSquare, FiPlay, FiUserPlus, FiUsers } from "react-icons/fi";
 import { GiQuillInk } from "react-icons/gi";
 import { IoShirtOutline } from "react-icons/io5";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
@@ -135,32 +135,42 @@ export function NavBar({
           </NavIconLink>
         ) : null}
         {loggedIn ? (
-          <NavIconLink href={mainPath("/discutii")} label="Discuții">
+          <NavIconLink href={mainPath("/discutii")} label="Discuții" className="mobile-menu-only">
             <FiMessageCircle aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn && user ? (
-          <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje">
+          <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje" className="mobile-menu-only">
             <FiMail aria-hidden="true" />
           </NavIconLink>
         ) : null}
+        {loggedIn && user ? (
+          <NavIconLink href={mainPath("/prieteni")} label="Prieteni">
+            <FiUserPlus aria-hidden="true" />
+            {user.incoming_friend_request_count > 0 ? (
+              <span className="profile-notification-badge" aria-label={`${user.incoming_friend_request_count} cereri de prietenie`}>
+                {user.incoming_friend_request_count > 9 ? "9+" : user.incoming_friend_request_count}
+              </span>
+            ) : null}
+          </NavIconLink>
+        ) : null}
         {loggedIn ? (
-          <NavIconLink href={mainPath("/cluburi")} label="Cluburi">
+          <NavIconLink href={mainPath("/cluburi")} label="Cluburi" className="mobile-menu-only">
             <FiUsers aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn && user ? (
-          <NavIconLink href={mainPath("/inventar")} label="Inventar">
+          <NavIconLink href={mainPath("/inventar")} label="Inventar" className="mobile-menu-only">
             <IoShirtOutline aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn ? (
-          <NavIconLink href={mainPath("/premium")} label="Premium" className="premium">
+          <NavIconLink href={mainPath("/premium")} label="Premium" className="premium mobile-menu-only">
             <FaCoins aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn ? (
-          <NavIconLink href="/api/deconectare" label="Deconectare" className="danger logout">
+          <NavIconLink href="/api/deconectare" label="Deconectare" className="danger logout mobile-menu-only">
             <FiLogOut aria-hidden="true" />
           </NavIconLink>
         ) : null}
@@ -353,10 +363,11 @@ export function SideMenu({ open, onClose, user }) {
   const menuItems = user
     ? [
         ["Acasă", "pagina principală", mainPath("/")],
-        ["Calimara mea", "profilul tău public", blogUrl(user.username)],
+        ["Călimara mea", "profilul tău public", blogUrl(user.username)],
         ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
         ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
         ["Panou", "textele tale", authorPath(user, "/panou")],
+        ["Prieteni", "cereri și listă", mainPath("/prieteni")],
         ...adminItems,
         ["Mesaje", "conversații", authorPath(user, "/mesaje")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
@@ -797,66 +808,6 @@ export function FloatingBackgroundShapes() {
           </svg>
         </span>
       ))}
-    </div>
-  );
-}
-
-export function App() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [routeVersion, setRouteVersion] = useState(0);
-  const [auth, setAuth] = useState({ loaded: false, user: null });
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchMe()
-      .then((data) => {
-        if (!cancelled) setAuth({ loaded: true, user: data.authenticated ? data.user : null });
-      })
-      .catch(() => {
-        if (!cancelled) setAuth({ loaded: true, user: null });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    const onPopState = () => setRouteVersion((version) => version + 1);
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  const route = useMemo(routeForLocation, [routeVersion]);
-  const loggedIn = Boolean(auth.user);
-  const updateAuthUser = useCallback((nextUser) => {
-    setAuth((current) => ({ ...current, user: nextUser }));
-  }, []);
-
-  useEffect(() => {
-    if (!auth.loaded || !auth.user) return;
-    if (subdomainUsername()) return;
-    if (!canUseAuthorSubdomains()) return;
-    if (!AUTHOR_SUBDOMAIN_ROUTES.has(route.name)) return;
-
-    const destination = `${blogUrl(auth.user.username)}${window.location.pathname}${window.location.search}${window.location.hash}`;
-    window.location.replace(destination);
-  }, [auth.loaded, auth.user?.username, route.name]);
-
-  return (
-    <div className="site" data-logged={loggedIn ? "in" : "out"} data-bg="on">
-      <div className="bg-atmos" aria-hidden="true">
-        <FloatingBackgroundShapes />
-      </div>
-      <NavBar loggedIn={loggedIn} user={auth.user} onMenu={() => setMenuOpen((open) => !open)} menuOpen={menuOpen} />
-      <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
-        <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
-          <Suspense fallback={<PageShell kicker="călimara.ro" title="Se încarcă" sub="Pregătim pagina." />}>
-            <RouteView route={route} user={auth.user} authLoaded={auth.loaded} onUserUpdate={updateAuthUser} />
-          </Suspense>
-        </ErrorBoundary>
-      </AdSenseProvider>
-      <Footer />
-      <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
     </div>
   );
 }

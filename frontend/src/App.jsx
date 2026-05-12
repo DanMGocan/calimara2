@@ -36,6 +36,12 @@ export function App() {
   const updateAuthUser = useCallback((nextUser) => {
     setAuth((current) => ({ ...current, user: nextUser }));
   }, []);
+  const refreshAuthUser = useCallback(async () => {
+    const data = await fetchMe();
+    const nextUser = data.authenticated ? data.user : null;
+    setAuth({ loaded: true, user: nextUser });
+    return nextUser;
+  }, []);
   const toggleMenu = useCallback(() => {
     setMenuOpen((open) => !open);
   }, []);
@@ -70,7 +76,7 @@ export function App() {
       <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
         <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
           <Suspense fallback={<PageShell kicker="călimara.ro" title="Se încarcă" sub="Pregătim pagina." />}>
-            <RouteView route={route} user={auth.user} authLoaded={auth.loaded} onUserUpdate={updateAuthUser} />
+            <RouteView route={route} user={auth.user} authLoaded={auth.loaded} onUserUpdate={updateAuthUser} onUserRefresh={refreshAuthUser} />
           </Suspense>
         </ErrorBoundary>
       </AdSenseProvider>

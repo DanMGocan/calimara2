@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -121,6 +122,93 @@ class EmailSystemTests(unittest.TestCase):
         self.assertEqual(processed, 1)
         self.assertEqual(row.status, "sent")
         self.assertEqual(row.provider_message_id, "message-id-1")
+
+    def test_immediate_send_leaves_email_queued_when_disabled(self):
+        user = self.make_user("disabledmail")
+        row = email_service.queue_email(
+            self.db,
+            recipient_user_id=user.id,
+            recipient_email=user.email,
+            recipient_name=user.username,
+            subject="Test",
+            html_content="<p>Hello</p>",
+            email_type="auth",
+        )
+
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "False"}), patch.object(
+            email_service,
+            "_send_with_brevo",
+            return_value="message-id-disabled",
+        ) as send_mock:
+            sent = email_service.send_queued_email_now(self.db, row, worker="test-worker")
+
+        self.db.refresh(row)
+        self.assertFalse(sent)
+        self.assertEqual(row.status, "queued")
+        self.assertEqual(row.attempts, 0)
+        send_mock.assert_not_called()
+
+    def test_worker_reclaims_stale_sending_email(self):
+        user = self.make_user("stalemail")
+        row = email_service.queue_email(
+            self.db,
+            recipient_user_id=user.id,
+            recipient_email=user.email,
+            recipient_name=user.username,
+            subject="Test",
+            html_content="<p>Hello</p>",
+            email_type="admin",
+        )
+        row.status = "sending"
+        row.locked_at = email_service.utcnow_naive() - timedelta(minutes=email_service.EMAIL_STALE_LOCK_MINUTES + 1)
+        row.locked_by = "dead-worker"
+        row.attempts = 1
+        self.db.commit()
+
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
+            email_service,
+            "_send_with_brevo",
+            return_value="message-id-stale",
+        ):
+            processed = email_service.process_email_outbox(self.db, limit=5, worker="test-worker")
+
+        self.db.refresh(row)
+        self.assertEqual(processed, 1)
+        self.assertEqual(row.status, "sent")
+        self.assertEqual(row.provider_message_id, "message-id-stale")
+        self.assertEqual(row.attempts, 2)
+
+    def test_admin_outbox_process_endpoint_sends_batch(self):
+        admin = self.make_user("adminsender", is_admin=True)
+        target = self.make_user("admintarget")
+        email_service.queue_email(
+            self.db,
+            recipient_user_id=target.id,
+            recipient_email=target.email,
+            recipient_name=target.username,
+            subject="Test",
+            html_content="<p>Hello</p>",
+            email_type="admin",
+        )
+
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
+            email_service,
+            "_send_with_brevo",
+            return_value="message-id-admin",
+        ):
+            result = admin_routes.process_admin_email_outbox(
+                request=None,
+                limit=5,
+                db=self.db,
+                current_user=admin,
+            )
+
+        row = self.db.query(models.EmailOutbox).one()
+        self.assertEqual(result["processed"], 1)
+        self.assertEqual(result["pending_count"], 0)
+        self.assertEqual(result["sent_count"], 1)
+        self.assertEqual(row.status, "sent")
+        self.assertEqual(row.provider_message_id, "message-id-admin")
 
     def test_admin_campaign_filters_by_posts_and_opt_outs(self):
         admin = self.make_user("admin", is_admin=True, is_moderator=True)

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -20,6 +21,19 @@ class SiteFeedbackCreate(BaseModel):
         trimmed = value.strip()
         if not trimmed:
             raise ValueError("Mesajul este obligatoriu.")
+        return trimmed
+
+    @field_validator("page_url")
+    @classmethod
+    def validate_page_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        parsed = urlparse(trimmed)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("URL-ul paginii trebuie să fie HTTP sau HTTPS.")
         return trimmed
 
 

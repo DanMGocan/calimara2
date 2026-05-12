@@ -23,18 +23,36 @@ router = APIRouter(tags=["posts"])
 def get_posts_archive(
     month: int = None,
     year: int = None,
+    limit: int = 25,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
     """Get posts archive for current user, optionally filtered by month/year"""
     try:
+        limit = max(1, min(int(limit or 25), 100))
+        offset = max(0, int(offset or 0))
         if month and year:
-            posts = crud.get_posts_by_month_year(
+            total = crud.count_posts_by_month_year(
                 db, current_user.id, month, year, include_unapproved=True
             )
+            posts = crud.get_posts_by_month_year(
+                db,
+                current_user.id,
+                month,
+                year,
+                limit=limit,
+                offset=offset,
+                include_unapproved=True
+            )
         else:
+            total = crud.count_posts_for_user(db, current_user.id, include_unapproved=True)
             posts = crud.get_latest_posts_for_user(
-                db, current_user.id, limit=50, include_unapproved=True
+                db,
+                current_user.id,
+                limit=limit,
+                offset=offset,
+                include_unapproved=True
             )
 
         # Format posts for frontend
@@ -70,7 +88,12 @@ def get_posts_archive(
                 **audio_summary,
             })
 
-        return {"posts": formatted_posts}
+        return {
+            "posts": formatted_posts,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
     except Exception as e:
         logger.error(f"Eroare la obținerea arhivei pentru {current_user.username}: {e}")
@@ -95,11 +118,20 @@ def get_available_months(
 
 @router.get("/api/postari/ciorne", response_model=schemas.PostDraftList)
 def list_post_drafts(
+    limit: int = 25,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user)
 ):
-    drafts = crud.get_post_drafts_by_user(db, current_user.id)
-    return {"drafts": drafts}
+    limit = max(1, min(int(limit or 25), 100))
+    offset = max(0, int(offset or 0))
+    drafts = crud.get_post_drafts_by_user(db, current_user.id, limit=limit, offset=offset)
+    return {
+        "drafts": drafts,
+        "total": crud.count_post_drafts_by_user(db, current_user.id),
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/api/postari/ciorne/{draft_id}", response_model=schemas.PostDraft)
@@ -181,6 +213,18 @@ def update_post_api(
     if updated:
         ai_queue.enqueue_post_publish_job(db, updated, ai_critic_requested=False)
     return updated
+
+
+@router.get("/api/postari/{post_id}/editare", response_model=schemas.Post)
+def get_owned_post_for_edit(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    db_post = crud.get_post(db, post_id=post_id)
+    if not db_post or db_post.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită sau nu aparține utilizatorului")
+    return db_post
 
 
 @router.delete("/api/postari/{post_id}", status_code=status.HTTP_204_NO_CONTENT)

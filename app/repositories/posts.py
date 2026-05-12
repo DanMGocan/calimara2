@@ -1,9 +1,5 @@
 from ._shared import *
-
-def generate_slug(title: str) -> str:
-    slug = title.lower()
-    slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
-    return slug
+from .slugs import generate_slug
 
 def ensure_unique_slug(db: Session, base_slug: str) -> str:
     slug = base_slug
@@ -31,11 +27,15 @@ def get_post_draft(db: Session, draft_id: int, user_id: Optional[int] = None):
         query = query.filter(models.PostDraft.user_id == user_id)
     return query.first()
 
-def get_post_drafts_by_user(db: Session, user_id: int, limit: int = 50):
+def count_post_drafts_by_user(db: Session, user_id: int):
+    return db.query(func.count(models.PostDraft.id)).filter(models.PostDraft.user_id == user_id).scalar() or 0
+
+def get_post_drafts_by_user(db: Session, user_id: int, limit: int = 50, offset: int = 0):
     return (
         db.query(models.PostDraft)
         .filter(models.PostDraft.user_id == user_id)
         .order_by(models.PostDraft.updated_at.desc(), models.PostDraft.id.desc())
+        .offset(max(0, offset))
         .limit(limit)
         .all()
     )
@@ -188,11 +188,33 @@ def get_weighted_random_posts_by_category(db: Session, category: str, limit: int
         models.Post.moderation_status == "approved"
     ).order_by(desc(order_key)).limit(limit).all()
 
-def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5, include_unapproved: bool = False):
+def count_posts_for_user(db: Session, user_id: int, include_unapproved: bool = False):
+    query = db.query(func.count(models.Post.id)).filter(models.Post.user_id == user_id)
+    if not include_unapproved:
+        query = query.filter(models.Post.moderation_status == "approved")
+    return query.scalar() or 0
+
+def count_posts_by_month_year(
+    db: Session,
+    user_id: int,
+    month: int,
+    year: int,
+    include_unapproved: bool = False,
+):
+    query = db.query(func.count(models.Post.id)).filter(
+        models.Post.user_id == user_id,
+        extract('month', models.Post.created_at) == month,
+        extract('year', models.Post.created_at) == year
+    )
+    if not include_unapproved:
+        query = query.filter(models.Post.moderation_status == "approved")
+    return query.scalar() or 0
+
+def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5, include_unapproved: bool = False, offset: int = 0):
     query = db.query(models.Post).filter(models.Post.user_id == user_id)
     if not include_unapproved:
         query = query.filter(models.Post.moderation_status == "approved")
-    return query.order_by(models.Post.created_at.desc()).limit(limit).all()
+    return query.order_by(models.Post.created_at.desc()).offset(max(0, offset)).limit(limit).all()
 
 def get_posts_by_month_year(
     db: Session,
@@ -201,6 +223,7 @@ def get_posts_by_month_year(
     year: int,
     limit: int = 50,
     include_unapproved: bool = False,
+    offset: int = 0,
 ):
     query = db.query(models.Post).filter(
         models.Post.user_id == user_id,
@@ -209,7 +232,7 @@ def get_posts_by_month_year(
     )
     if not include_unapproved:
         query = query.filter(models.Post.moderation_status == "approved")
-    return query.order_by(models.Post.created_at.desc()).limit(limit).all()
+    return query.order_by(models.Post.created_at.desc()).offset(max(0, offset)).limit(limit).all()
 
 def get_available_months_for_user(db: Session, user_id: int, include_unapproved: bool = False):
     query = db.query(

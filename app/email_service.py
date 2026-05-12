@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import httpx
 from itsdangerous import BadSignature, URLSafeSerializer
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from . import models, rich_text
@@ -24,6 +24,7 @@ EMAIL_TYPE_ANALYTICS = "analytics"
 EMAIL_TYPE_ADMIN = "admin"
 EMAIL_TYPE_AUTH = "auth"
 EMAIL_STATUSES_TO_CLAIM = ("queued",)
+EMAIL_STALE_LOCK_MINUTES = 15
 UNSUBSCRIBE_PREFS = {
     EMAIL_TYPE_COMMENT: "email_comment_notifications",
     EMAIL_TYPE_MENTION: "email_mention_notifications",
@@ -277,10 +278,18 @@ def _send_with_brevo(email: models.EmailOutbox) -> str:
 
 def claim_due_emails(db: Session, *, limit: int = 20, worker: Optional[str] = None) -> list[models.EmailOutbox]:
     now = utcnow_naive()
+    stale_lock_cutoff = now - timedelta(minutes=EMAIL_STALE_LOCK_MINUTES)
     query = (
         db.query(models.EmailOutbox)
         .filter(
-            models.EmailOutbox.status.in_(EMAIL_STATUSES_TO_CLAIM),
+            or_(
+                models.EmailOutbox.status.in_(EMAIL_STATUSES_TO_CLAIM),
+                and_(
+                    models.EmailOutbox.status == "sending",
+                    models.EmailOutbox.locked_at.is_not(None),
+                    models.EmailOutbox.locked_at <= stale_lock_cutoff,
+                ),
+            ),
             models.EmailOutbox.run_after <= now,
             models.EmailOutbox.attempts < models.EmailOutbox.max_attempts,
         )
@@ -319,6 +328,24 @@ def complete_email(db: Session, email: models.EmailOutbox, message_id: str) -> m
     return email
 
 
+def _send_claimed_email(db: Session, email: models.EmailOutbox) -> bool:
+    try:
+        message_id = _send_with_brevo(email)
+        complete_email(db, email, message_id)
+        return True
+    except Exception as exc:
+        logger.exception("Email outbox row %s failed", email.id)
+        row_id = email.id
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Rollback failed after email send error")
+        row = db.query(models.EmailOutbox).filter(models.EmailOutbox.id == row_id).first()
+        if row:
+            fail_email(db, row, str(exc), retry=True)
+        return False
+
+
 def fail_email(db: Session, email: models.EmailOutbox, error_message: str, *, retry: bool = True) -> models.EmailOutbox:
     message = (error_message or "Email send failed")[:2000]
     if retry and int(email.attempts or 0) < int(email.max_attempts or 1):
@@ -334,6 +361,29 @@ def fail_email(db: Session, email: models.EmailOutbox, error_message: str, *, re
     return email
 
 
+def send_queued_email_now(db: Session, email: Optional[models.EmailOutbox], *, worker: Optional[str] = None) -> bool:
+    if email is None or not emails_enabled():
+        return False
+    now = utcnow_naive()
+    row = db.query(models.EmailOutbox).filter(models.EmailOutbox.id == email.id).first()
+    if not row:
+        return False
+    if row.status not in EMAIL_STATUSES_TO_CLAIM:
+        return False
+    if row.run_after and row.run_after > now:
+        return False
+    if int(row.attempts or 0) >= int(row.max_attempts or 1):
+        return False
+    row.status = "sending"
+    row.locked_at = now
+    row.locked_by = worker or worker_id()
+    row.attempts = int(row.attempts or 0) + 1
+    row.error_message = None
+    db.commit()
+    db.refresh(row)
+    return _send_claimed_email(db, row)
+
+
 def process_email_outbox(db: Session, *, limit: int = 20, worker: Optional[str] = None) -> int:
     rows = claim_due_emails(db, limit=limit, worker=worker)
     for row in rows:
@@ -344,19 +394,7 @@ def process_email_outbox(db: Session, *, limit: int = 20, worker: Optional[str] 
             row.error_message = "EMAILS_ENABLED is false"
             db.commit()
             continue
-        try:
-            message_id = _send_with_brevo(row)
-            complete_email(db, row, message_id)
-        except Exception as exc:
-            logger.exception("Email outbox row %s failed", row.id)
-            row_id = row.id
-            try:
-                db.rollback()
-            except Exception:
-                logger.exception("Rollback failed after email send error")
-            row = db.query(models.EmailOutbox).filter(models.EmailOutbox.id == row_id).first()
-            if row:
-                fail_email(db, row, str(exc), retry=True)
+        _send_claimed_email(db, row)
     return len(rows)
 
 

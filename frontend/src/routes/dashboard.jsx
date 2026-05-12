@@ -1,104 +1,141 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { FiArrowDown, FiArrowUp, FiPlus, FiTrash2 } from "react-icons/fi";
+import { useEffect, useState } from "react";
+import { FiArrowDown, FiArrowUp, FiChevronLeft, FiChevronRight, FiEdit3, FiEye, FiHeadphones, FiPlus, FiTrash2, FiX } from "react-icons/fi";
 import { audioDownloadUrl, fetchAudioConversionQuota, requestTtsConversions } from "../api/audio.js";
 import { createSeries, deleteSeries, fetchManagedSeries, fetchMySeries, addPostToSeries, removePostFromSeries, reorderSeriesPosts, updateSeries } from "../api/series.js";
-import { deletePostDraft, fetchArchive, fetchPostDrafts } from "../api/posts.js";
+import { deletePost, deletePostDraft, fetchArchive, fetchPostDrafts } from "../api/posts.js";
 import { TITLE_CHARACTER_LIMIT } from "../app/constants.js";
 import { CompactAudioPlayer, postHref } from "../app/content.jsx";
 import { audioStatusLabel, categoryLabel, formatDateTime, formatNumber, htmlToText, usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
-import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
+import { AuthRequired, PageShell } from "../app/layout.jsx";
 import { authorPath, mainPath } from "../app/paths.js";
 
+const DASHBOARD_PAGE_SIZE = 25;
+
+function dashboardOffset(page) {
+  return (Math.max(1, page) - 1) * DASHBOARD_PAGE_SIZE;
+}
+
+function pageCountFor(total) {
+  return Math.max(1, Math.ceil(Number(total || 0) / DASHBOARD_PAGE_SIZE));
+}
+
+function DashboardPager({ page, total, onPageChange }) {
+  const pageCount = pageCountFor(total);
+  if (pageCount <= 1) return null;
+
+  return (
+    <nav className="dashboard-pager" aria-label="Paginare">
+      <button className="icon-btn" type="button" aria-label="Pagina anterioară" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+        <FiChevronLeft aria-hidden="true" />
+      </button>
+      <span>Pagina {formatNumber(page)} din {formatNumber(pageCount)}</span>
+      <button className="icon-btn" type="button" aria-label="Pagina următoare" onClick={() => onPageChange(page + 1)} disabled={page >= pageCount}>
+        <FiChevronRight aria-hidden="true" />
+      </button>
+    </nav>
+  );
+}
+
 function DashboardView({ user }) {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [activeTab, setActiveTab] = useState("posts");
+  const [postPage, setPostPage] = useState(1);
+  const [draftPage, setDraftPage] = useState(1);
+  const [postRefreshKey, setPostRefreshKey] = useState(0);
   const [draftRefreshKey, setDraftRefreshKey] = useState(0);
-  const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [status, setStatus] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [audioBusyId, setAudioBusyId] = useState(null);
+  const [deletingPostId, setDeletingPostId] = useState(null);
   const [draftBusyId, setDraftBusyId] = useState(null);
-  const [retryingPostId, setRetryingPostId] = useState(null);
+
   const { data, error, loading } = useAsync(
-    () => (user ? fetchArchive() : Promise.resolve({ posts: [] })),
-    [user?.id, refreshKey]
+    () => (user ? fetchArchive({ limit: DASHBOARD_PAGE_SIZE, offset: dashboardOffset(postPage) }) : Promise.resolve({ posts: [], total: 0 })),
+    [user?.id, postPage, postRefreshKey]
   );
   const draftState = useAsync(
-    () => (user ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
-    [user?.id, draftRefreshKey]
+    () => (user ? fetchPostDrafts({ limit: DASHBOARD_PAGE_SIZE, offset: dashboardOffset(draftPage) }) : Promise.resolve({ drafts: [], total: 0 })),
+    [user?.id, draftPage, draftRefreshKey]
   );
   const quotaState = useAsync(
     () => (user ? fetchAudioConversionQuota() : Promise.resolve(null)),
-    [user?.id, refreshKey]
+    [user?.id, postRefreshKey]
   );
-
-  if (!user) return <AuthRequired />;
 
   const posts = data?.posts ?? [];
   const drafts = draftState.data?.drafts ?? [];
+  const postTotal = data?.total ?? posts.length;
+  const draftTotal = draftState.data?.total ?? drafts.length;
   const quota = quotaState.data;
   const canRequestAudio = Boolean(quota?.can_request);
-  const selectedPosts = posts.filter((post) => selectedIds.has(post.id));
-  const selectedCharacters = selectedPosts.reduce((sum, post) => sum + Number(post.audio_tts_character_count ?? 0), 0);
   const remaining = Number(quota?.remaining ?? 0);
-  const overQuota = selectedCharacters > remaining;
 
-  const togglePost = (post, checked) => {
-    setStatus("");
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (checked) next.add(post.id);
-      else next.delete(post.id);
-      return next;
-    });
-  };
+  useEffect(() => {
+    const maxPage = pageCountFor(postTotal);
+    if (postPage > maxPage) setPostPage(maxPage);
+  }, [postPage, postTotal]);
 
-  const submitAudioRequestIds = async (postIds, successMessage) => {
-    if (!postIds.length || submitting) return;
-    setSubmitting(true);
-    setStatus("");
+  useEffect(() => {
+    const maxPage = pageCountFor(draftTotal);
+    if (draftPage > maxPage) setDraftPage(maxPage);
+  }, [draftPage, draftTotal]);
+
+  if (!user) return <AuthRequired />;
+
+  const convertPostToAudio = async (post) => {
+    const characterCount = Number(post.audio_tts_character_count ?? 0);
+    if (audioBusyId || !canRequestAudio || !post.audio_can_request || characterCount > remaining) return;
+    setAudioBusyId(post.id);
+    setStatus(null);
     try {
-      const response = await requestTtsConversions(postIds);
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        postIds.forEach((postId) => next.delete(postId));
-        return next;
+      const response = await requestTtsConversions([post.id]);
+      setStatus({
+        kind: "info",
+        text: response.queued?.length
+          ? `„${post.title}” a fost trimisă la generare audio.`
+          : "Postarea avea deja audio sau era deja în coadă."
       });
-      setStatus(
-        response.queued.length
-          ? successMessage || `${response.queued.length} texte au fost trimise la generare audio.`
-          : "Textele selectate aveau deja audio sau erau deja în coadă."
-      );
-      setRefreshKey((key) => key + 1);
+      setPostRefreshKey((key) => key + 1);
     } catch (requestError) {
-      setStatus(requestError.message || "Nu am putut porni generarea audio.");
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut porni generarea audio." });
     } finally {
-      setSubmitting(false);
-      setRetryingPostId(null);
+      setAudioBusyId(null);
     }
   };
 
-  const submitAudioRequests = async () => {
-    if (!selectedIds.size || overQuota || submitting) return;
-    await submitAudioRequestIds([...selectedIds]);
-  };
-
-  const retryAudioRequest = async (post) => {
-    const characterCount = Number(post.audio_tts_character_count ?? 0);
-    if (submitting || !canRequestAudio || !post.audio_can_request || characterCount > remaining) return;
-    setRetryingPostId(post.id);
-    await submitAudioRequestIds([post.id], `„${post.title}” a fost retrimis la generare audio.`);
+  const removePost = async (post) => {
+    if (deletingPostId) return;
+    if (!window.confirm(`Stergi definitiv "${post.title}"?`)) return;
+    setDeletingPostId(post.id);
+    setStatus(null);
+    try {
+      await deletePost(post.id);
+      setStatus({ kind: "info", text: "Postarea a fost ștearsă." });
+      if (posts.length === 1 && postPage > 1) {
+        setPostPage((page) => page - 1);
+      } else {
+        setPostRefreshKey((key) => key + 1);
+      }
+    } catch (requestError) {
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut șterge postarea." });
+    } finally {
+      setDeletingPostId(null);
+    }
   };
 
   const discardDraft = async (draft) => {
     if (draftBusyId) return;
     setDraftBusyId(draft.id);
-    setStatus("");
+    setStatus(null);
     try {
       await deletePostDraft(draft.id);
-      setStatus("Ciorna a fost ștearsă.");
-      setDraftRefreshKey((key) => key + 1);
+      setStatus({ kind: "info", text: "Ciorna a fost ștearsă." });
+      if (drafts.length === 1 && draftPage > 1) {
+        setDraftPage((page) => page - 1);
+      } else {
+        setDraftRefreshKey((key) => key + 1);
+      }
     } catch (requestError) {
-      setStatus(requestError.message || "Nu am putut șterge ciorna.");
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut șterge ciorna." });
     } finally {
       setDraftBusyId(null);
     }
@@ -109,90 +146,151 @@ function DashboardView({ user }) {
       <div className="dashboard-action-row">
         <a className="dashboard-write-btn" href={authorPath(user, "/scrie")}>
           <FiPlus aria-hidden="true" />
-          <span>Scrie</span>
+          <span>Postare noua</span>
         </a>
       </div>
-      <section className="audio-quota-panel" aria-label="Cotă generare audio">
+
+      <section className="dashboard-audio-summary" aria-label="Generare audio">
         <div>
-          <div className="piece-card-kicker">generare audio</div>
+          <div className="piece-card-kicker">Generare audio</div>
           {quotaState.loading ? (
-            <p className="auth-sub">Se încarcă limita de generare audio...</p>
+            <p>Se încarcă limita de generare audio...</p>
           ) : canRequestAudio ? (
-            <p className="quota-line">
+            <p>
               {formatNumber(quota.used)} / {formatNumber(quota.limit)} caractere folosite
               {quota.period_end ? ` până la ${formatDateTime(quota.period_end)}` : ""}.
+              {" "}Disponibil: {formatNumber(remaining)} caractere.
             </p>
           ) : (
-            <p className="auth-sub">Generarea audio manuală este disponibilă pentru Cronicar și Rapsod.</p>
+            <p>Generarea audio manuală este disponibilă pentru Cronicar și Rapsod.</p>
           )}
         </div>
-        {quotaState.loading ? null : canRequestAudio ? (
-          <div className="quota-actions">
-            <span className={`quota-pill ${overQuota ? "danger" : ""}`}>
-              Selectat: {formatNumber(selectedCharacters)} / {formatNumber(remaining)}
-            </span>
-            <button className="cal-btn primary" type="button" onClick={submitAudioRequests} disabled={!selectedIds.size || overQuota || submitting}>
-              {submitting ? "Se trimite..." : "Generează audio"}
-            </button>
-          </div>
-        ) : <a className="cal-btn" href={mainPath("/premium")}>Vezi Premium</a>}
       </section>
       {quotaState.error ? <div className="inline-error">{quotaState.error}</div> : null}
-      {status ? <div className={status.includes("Nu am putut") || status.includes("depășită") ? "inline-error" : "inline-status"}>{status}</div> : null}
-      {draftState.error ? <div className="inline-error">{draftState.error}</div> : null}
-      {drafts.length ? (
-        <section className="draft-panel" aria-label="Ciorne salvate">
-          <div className="draft-panel-head">
-            <div>
-              <div className="piece-card-kicker">ciorne</div>
-              <h2>Ciorne salvate</h2>
-            </div>
-          </div>
-          <div className="dashboard-list">
-            {drafts.map((draft) => (
-              <DashboardDraftCard
-                key={draft.id}
-                draft={draft}
-                user={user}
-                busy={draftBusyId === draft.id}
-                onDiscard={() => discardDraft(draft)}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {status?.text ? <div className={status.kind === "error" ? "inline-error" : "inline-status"}>{status.text}</div> : null}
+
       <SeriesManagerPanel posts={posts} user={user} />
-      {loading ? <StatusPanel title="Se încarcă" /> : null}
-      {error ? <StatusPanel title="Nu am putut încărca panoul">{error}</StatusPanel> : null}
-      {data?.posts?.length ? (
-        <div className="dashboard-list">
-          {posts.map((post) => {
-            const selected = selectedIds.has(post.id);
-            const wouldExceed = !selected && selectedCharacters + Number(post.audio_tts_character_count ?? 0) > remaining;
-            const retryWouldExceed = Number(post.audio_tts_character_count ?? 0) > remaining;
-            const disabled = !canRequestAudio || !post.audio_can_request || wouldExceed || submitting;
-            const retryDisabled = !canRequestAudio || !post.audio_can_request || retryWouldExceed || submitting;
-            return (
-              <DashboardPostCard
-                key={post.id}
-                post={post}
-                selected={selected}
-                disabled={disabled}
-                onToggle={(checked) => togglePost(post, checked)}
-                onRetry={() => retryAudioRequest(post)}
-                retryDisabled={retryDisabled}
-                retrying={retryingPostId === post.id}
-              />
-            );
-          })}
+
+      <section className="dashboard-posts-panel" aria-label="Postări și ciorne">
+        <div className="dashboard-posts-head">
+          <div className="dashboard-tabs" role="tablist" aria-label="Tip texte">
+            <button className={activeTab === "posts" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "posts"} onClick={() => setActiveTab("posts")}>
+              Postari
+            </button>
+            <button className={activeTab === "drafts" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "drafts"} onClick={() => setActiveTab("drafts")}>
+              Ciorne
+            </button>
+          </div>
+          <span className="dashboard-count">
+            {activeTab === "posts" ? `${formatNumber(postTotal)} postări` : `${formatNumber(draftTotal)} ciorne`}
+          </span>
         </div>
-      ) : !loading && !error ? <StatusPanel title="Nu ai texte încă" /> : null}
+
+        {activeTab === "posts" ? (
+          <>
+            {loading ? <p className="auth-sub">Se încarcă postările...</p> : null}
+            {error ? <div className="inline-error">{error}</div> : null}
+            {posts.length ? (
+              <div className="dashboard-list">
+                {posts.map((post) => (
+                  <DashboardPostCard
+                    key={post.id}
+                    post={post}
+                    user={user}
+                    canRequestAudio={canRequestAudio}
+                    remaining={remaining}
+                    busy={audioBusyId === post.id}
+                    deleting={deletingPostId === post.id}
+                    onConvert={() => convertPostToAudio(post)}
+                    onDelete={() => removePost(post)}
+                  />
+                ))}
+              </div>
+            ) : !loading && !error ? <p className="auth-sub">Nu ai postări încă.</p> : null}
+            <DashboardPager page={postPage} total={postTotal} onPageChange={setPostPage} />
+          </>
+        ) : (
+          <>
+            {draftState.loading ? <p className="auth-sub">Se încarcă ciornele...</p> : null}
+            {draftState.error ? <div className="inline-error">{draftState.error}</div> : null}
+            {drafts.length ? (
+              <div className="dashboard-list">
+                {drafts.map((draft) => (
+                  <DashboardDraftCard
+                    key={draft.id}
+                    draft={draft}
+                    user={user}
+                    busy={draftBusyId === draft.id}
+                    onDiscard={() => discardDraft(draft)}
+                  />
+                ))}
+              </div>
+            ) : !draftState.loading && !draftState.error ? <p className="auth-sub">Nu ai ciorne salvate.</p> : null}
+            <DashboardPager page={draftPage} total={draftTotal} onPageChange={setDraftPage} />
+          </>
+        )}
+      </section>
     </PageShell>
   );
 }
+
+function SeriesCreateModal({ open, busy, form, onChange, onClose, onSubmit }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="access-modal-scrim" role="presentation" onClick={onClose}>
+      <section className="access-modal" role="dialog" aria-modal="true" aria-labelledby="series-create-title" onClick={(event) => event.stopPropagation()}>
+        <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>
+          <FiX aria-hidden="true" />
+        </button>
+        <div className="piece-card-kicker">serii</div>
+        <h2 id="series-create-title" className="access-modal-title">Creeaza serie</h2>
+        <form className="series-create-modal-form" onSubmit={onSubmit}>
+          <label className="auth-field">
+            Titlu serie
+            <input
+              className="cal-input"
+              value={form.title}
+              maxLength={TITLE_CHARACTER_LIMIT}
+              onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
+            />
+          </label>
+          <label className="auth-field">
+            Descriere optionala
+            <textarea
+              className="cal-input"
+              value={form.description}
+              maxLength={2000}
+              rows={4}
+              onChange={(event) => onChange((current) => ({ ...current, description: event.target.value }))}
+            />
+          </label>
+          <div className="button-row">
+            <button className="cal-btn primary" type="submit" disabled={busy === "create" || !form.title.trim()}>
+              <FiPlus aria-hidden="true" />
+              {busy === "create" ? "Se creează..." : "Creeaza"}
+            </button>
+            <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function SeriesManagerPanel({ posts, user }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ title: "", description: "" });
   const [editForm, setEditForm] = useState({ title: "", description: "" });
   const [postToAdd, setPostToAdd] = useState("");
@@ -244,6 +342,7 @@ function SeriesManagerPanel({ posts, user }) {
         description: createForm.description.trim() || null
       });
       setCreateForm({ title: "", description: "" });
+      setCreateOpen(false);
       setSelectedSeriesId(String(created.id));
       setStatus("Seria a fost creată.");
       refreshSeries();
@@ -275,6 +374,7 @@ function SeriesManagerPanel({ posts, user }) {
 
   const deleteSelectedSeries = async () => {
     if (!activeSeriesId || busy) return;
+    if (!window.confirm(`Stergi definitiv seria "${selectedSeries?.title || activeSeriesId}"?`)) return;
     setBusy("delete");
     setStatus("");
     try {
@@ -343,30 +443,24 @@ function SeriesManagerPanel({ posts, user }) {
       <div className="draft-panel-head">
         <div>
           <div className="piece-card-kicker">serii</div>
-          <h2>Serii și volume</h2>
+          <h2>Serii si volume</h2>
         </div>
-        {selectedSeries?.slug ? <a className="cal-btn" href={mainPath(`/serii/${selectedSeries.slug}`)}>Vezi seria</a> : null}
+        <div className="series-head-actions">
+          {selectedSeries?.slug ? <a className="cal-btn" href={mainPath(`/serii/${selectedSeries.slug}`)}>Vezi seria</a> : null}
+          <button className="cal-btn primary" type="button" onClick={() => setCreateOpen(true)}>
+            <FiPlus aria-hidden="true" />
+            Creeaza
+          </button>
+        </div>
       </div>
-      <form className="series-form" onSubmit={createNewSeries}>
-        <input
-          className="cal-input"
-          value={createForm.title}
-          maxLength={TITLE_CHARACTER_LIMIT}
-          onChange={(event) => setCreateForm((current) => ({ ...current, title: event.target.value }))}
-          placeholder="Titlu serie"
-        />
-        <input
-          className="cal-input"
-          value={createForm.description}
-          maxLength={2000}
-          onChange={(event) => setCreateForm((current) => ({ ...current, description: event.target.value }))}
-          placeholder="Descriere opțională"
-        />
-        <button className="cal-btn primary" type="submit" disabled={busy === "create" || !createForm.title.trim()}>
-          <FiPlus aria-hidden="true" />
-          {busy === "create" ? "Se creează..." : "Creează"}
-        </button>
-      </form>
+      <SeriesCreateModal
+        open={createOpen}
+        busy={busy}
+        form={createForm}
+        onChange={setCreateForm}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={createNewSeries}
+      />
       {seriesState.loading ? <p className="auth-sub">Se încarcă seriile...</p> : null}
       {seriesState.error ? <div className="inline-error">{seriesState.error}</div> : null}
       {status ? <div className={status.includes("Nu am putut") ? "inline-error" : "inline-status"}>{status}</div> : null}
@@ -454,22 +548,16 @@ function SeriesManagerPanel({ posts, user }) {
     </section>
   );
 }
-function DashboardPostCard({ post, selected, disabled, onToggle, onRetry, retryDisabled, retrying }) {
+
+function DashboardPostCard({ post, user, canRequestAudio, remaining, busy, deleting, onConvert, onDelete }) {
   const href = postHref(post);
+  const editHref = `${authorPath(user, "/scrie")}?post=${encodeURIComponent(post.id)}`;
   const characterCount = Number(post.audio_tts_character_count ?? 0);
   const audioReady = Boolean(post.audio_available && post.audio_playback_url);
-  const canRetry = post.audio_status === "failed" && post.audio_can_request;
+  const convertDisabled = busy || deleting || !canRequestAudio || !post.audio_can_request || characterCount > remaining;
+
   return (
-    <article className={`dashboard-post-card ${selected ? "selected" : ""}`}>
-      <label className="dashboard-select">
-        <input
-          type="checkbox"
-          checked={selected}
-          disabled={disabled}
-          onChange={(event) => onToggle(event.target.checked)}
-        />
-        <span>Selectează pentru audio</span>
-      </label>
+    <article className="dashboard-post-card dashboard-owned-post-card">
       <div className="dashboard-post-main">
         <div className="piece-card-kicker-row">
           <span className="piece-card-kicker">{categoryLabel(post.category)}</span>
@@ -485,17 +573,29 @@ function DashboardPostCard({ post, selected, disabled, onToggle, onRetry, retryD
         {audioReady ? (
           <CompactAudioPlayer className="compact" src={post.audio_playback_url} downloadUrl={post.audio_id ? audioDownloadUrl(post.audio_id) : post.audio_playback_url} />
         ) : null}
-        {canRetry ? (
-          <div className="dashboard-audio-actions">
-            <button className="cal-btn" type="button" onClick={onRetry} disabled={retryDisabled}>
-              {retrying ? "Se retrimite..." : "Reîncearcă audio"}
-            </button>
-          </div>
-        ) : null}
+      </div>
+      <div className="dashboard-card-actions">
+        <a className="cal-btn" href={href}>
+          <FiEye aria-hidden="true" />
+          Vezi pe blog
+        </a>
+        <a className="cal-btn" href={editHref}>
+          <FiEdit3 aria-hidden="true" />
+          Editeaza
+        </a>
+        <button className="cal-btn danger" type="button" onClick={onDelete} disabled={deleting}>
+          <FiTrash2 aria-hidden="true" />
+          {deleting ? "Se șterge..." : "Sterge"}
+        </button>
+        <button className="cal-btn" type="button" onClick={onConvert} disabled={convertDisabled}>
+          <FiHeadphones aria-hidden="true" />
+          {busy ? "Se trimite..." : "Converteste in Audio"}
+        </button>
       </div>
     </article>
   );
 }
+
 function DashboardDraftCard({ draft, user, busy, onDiscard }) {
   const title = draft.title?.trim() || "Ciornă fără titlu";
   const excerpt = htmlToText(draft.content) || "Fără text încă.";
@@ -511,10 +611,14 @@ function DashboardDraftCard({ draft, user, busy, onDiscard }) {
         <h2 className="piece-card-title"><a href={href}>{title}</a></h2>
         <p className="piece-card-excerpt">{excerpt}</p>
       </div>
-      <div className="dashboard-draft-actions">
-        <a className="cal-btn primary" href={href}>Continuă</a>
-        <button className="cal-btn" type="button" onClick={onDiscard} disabled={busy}>
-          {busy ? "Se șterge..." : "Șterge"}
+      <div className="dashboard-card-actions">
+        <a className="cal-btn primary" href={href}>
+          <FiEdit3 aria-hidden="true" />
+          Editeaza
+        </a>
+        <button className="cal-btn danger" type="button" onClick={onDiscard} disabled={busy}>
+          <FiTrash2 aria-hidden="true" />
+          {busy ? "Se șterge..." : "Sterge"}
         </button>
       </div>
     </article>

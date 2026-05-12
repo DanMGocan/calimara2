@@ -38,6 +38,7 @@ class SmokeData:
     comment_id: int
     conversation_id: int
     notification_id: int
+    pending_friendship_id: int
     series_id: int
     series_slug: str
     club_id: int
@@ -176,6 +177,25 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         link="/panou",
     )
     db.add(notification)
+
+    friendship_user1_id, friendship_user2_id = sorted([user.id, peer.id])
+    pending_friendship = models.Friendship(
+        user1_id=friendship_user1_id,
+        user2_id=friendship_user2_id,
+        requested_by_id=peer.id,
+        status="pending",
+    )
+    db.add(pending_friendship)
+    accepted_user1_id, accepted_user2_id = sorted([user.id, target.id])
+    db.add(
+        models.Friendship(
+            user1_id=accepted_user1_id,
+            user2_id=accepted_user2_id,
+            requested_by_id=user.id,
+            status="accepted",
+            responded_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    )
 
     series = models.Series(
         owner_id=user.id,
@@ -353,6 +373,7 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         comment_id=comment.id,
         conversation_id=conversation.id,
         notification_id=notification.id,
+        pending_friendship_id=pending_friendship.id,
         series_id=series.id,
         series_slug=series.slug,
         club_id=club.id,
@@ -484,6 +505,12 @@ SMOKE_CASES = [
     SmokeCase("deleteProfileMedia", "DELETE", _path("/api/utilizator/media/profil"), {200}),
     SmokeCase("updateBestFriends", "PUT", _path("/api/utilizator/prieteni-apropiati"), {200}, _json({"friends": ["smokereader"]})),
     SmokeCase("searchUsers", "GET", _path("/api/utilizatori/cauta?q=smoke"), {200}),
+    SmokeCase("fetchFriendsState", "GET", _path("/api/prieteni"), {200}),
+    SmokeCase("fetchFriendshipStatus", "GET", lambda data: f"/api/prieteni/status/{data.peer_id}", {200}),
+    SmokeCase("sendFriendRequest", "POST", lambda data: f"/api/prieteni/cereri/{data.peer_id}", {200}, _json({})),
+    SmokeCase("acceptFriendRequest", "POST", lambda data: f"/api/prieteni/cereri/{data.pending_friendship_id}/accepta", {200}, _json({})),
+    SmokeCase("deleteFriendRequest", "DELETE", lambda data: f"/api/prieteni/cereri/{data.pending_friendship_id}", {200}),
+    SmokeCase("removeFriend", "DELETE", lambda data: f"/api/prieteni/{data.target_id}", {200}),
     SmokeCase("fetchPromotions", "GET", _path("/api/utilizator/promovari"), {200}),
     SmokeCase("searchPromotions", "GET", _path("/api/utilizator/promovari/cauta?q=smoke"), {200}),
     SmokeCase("updatePromotions", "PUT", _path("/api/utilizator/promovari"), {200}, lambda data: {
@@ -507,6 +534,7 @@ SMOKE_CASES = [
     SmokeCase("fetchRandomClub", "GET", _path("/api/cluburi/aleatoriu"), {200}),
     SmokeCase("fetchClub", "GET", _path("/api/cluburi/smoke-club"), {200}),
     SmokeCase("fetchArchive", "GET", _path("/api/postari/arhiva"), {200}),
+    SmokeCase("fetchOwnedPostForEdit", "GET", lambda data: f"/api/postari/{data.post_id}/editare", {200}),
     SmokeCase("fetchPostDrafts", "GET", _path("/api/postari/ciorne"), {200}),
     SmokeCase("fetchPostDraft", "GET", lambda data: f"/api/postari/ciorne/{data.draft_id}", {200}),
     SmokeCase("createPostDraft", "POST", _path("/api/postari/ciorne"), {201}, _json({"title": "Smoke Draft New", "content": "<p>Draft body</p>", "category": "poezie"})),
