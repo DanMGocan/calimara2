@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { FiCheck, FiSearch, FiUserMinus, FiUserPlus, FiX } from "react-icons/fi";
+import { FiCheck, FiSearch, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
 import { acceptFriendRequest, deleteFriendRequest, fetchFriendsState, removeFriend, sendFriendRequest } from "../api/friends.js";
 import { searchUsers } from "../api/users.js";
 import { usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
-import { blogUrl, profileAvatarUrl } from "../app/paths.js";
+import { blogUrl, mainPath, profileAvatarUrl } from "../app/paths.js";
 
-function FriendIdentity({ user }) {
+export function FriendIdentity({ user }) {
   return (
     <a className="friend-identity" href={blogUrl(user.username)}>
       <img className="friend-avatar profile-picture" src={profileAvatarUrl(user, 64)} alt="" aria-hidden="true" />
@@ -19,7 +19,7 @@ function FriendIdentity({ user }) {
   );
 }
 
-function FriendActions({ user, status, friendshipId, busy, onAction }) {
+export function FriendActions({ user, status, friendshipId, busy, onAction }) {
   if (status === "self") return null;
   if (status === "friends") {
     return (
@@ -179,6 +179,12 @@ export default function FriendsRoute({ user, onUserRefresh }) {
       {actionError ? <div className="inline-error">{actionError}</div> : null}
       {data ? (
         <div className="friends-page">
+          <div className="friends-toolbar">
+            <a className="cal-btn compact" href={mainPath("/utilizatori")}>
+              <FiUsers aria-hidden="true" />
+              <span>Toți utilizatorii</span>
+            </a>
+          </div>
           <FriendSection title="cereri primite" items={data.incoming_requests || []} empty="Nu ai cereri primite" busyKey={busyKey} onAction={runAction} />
           <FriendSection title="prieteni" items={data.friends || []} empty="Nu ai prieteni adăugați" busyKey={busyKey} onAction={runAction} />
           <FriendSection title="cereri trimise" items={data.outgoing_requests || []} empty="Nu ai cereri trimise" busyKey={busyKey} onAction={runAction} />

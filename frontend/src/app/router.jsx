@@ -10,6 +10,8 @@ const ROUTE_COMPONENTS = {
   club: lazy(() => import("../routes/clubs.jsx")),
   blog: lazy(() => import("../routes/profile.jsx")),
   allWorks: lazy(() => import("../routes/profile.jsx")),
+  followers: lazy(() => import("../routes/profile.jsx")),
+  following: lazy(() => import("../routes/profile.jsx")),
   publicInventory: lazy(() => import("../routes/economy.jsx")),
   post: lazy(() => import("../routes/post.jsx")),
   series: lazy(() => import("../routes/series.jsx")),
@@ -19,6 +21,7 @@ const ROUTE_COMPONENTS = {
   create: lazy(() => import("../routes/create.jsx")),
   messages: lazy(() => import("../routes/messages.jsx")),
   friends: lazy(() => import("../routes/friends.jsx")),
+  usersDirectory: lazy(() => import("../routes/users-directory.jsx")),
   forum: lazy(() => import("../routes/forum.jsx")),
   forumCreate: lazy(() => import("../routes/forum.jsx")),
   forumThread: lazy(() => import("../routes/forum.jsx")),
@@ -40,12 +43,15 @@ export function routeForLocation() {
   if (userFromHost) {
     if (path === "/") return { name: "blog", username: userFromHost };
     if (path === "/toate-operele") return { name: "allWorks", username: userFromHost };
+    if (path === "/urmaritori") return { name: "followers", username: userFromHost };
+    if (path === "/urmariti") return { name: "following", username: userFromHost };
     if (path === "/inventar") return { name: "publicInventory", username: userFromHost };
     if (path === "/panou") return { name: "dashboard" };
     if (path === "/profil") return { name: "profileSettings" };
     if (path === "/scrie") return { name: "create" };
     if (path === "/mesaje") return { name: "messages" };
     if (path === "/prieteni") return { name: "friends" };
+    if (path === "/utilizatori") return { name: "usersDirectory" };
     return { name: "post", username: userFromHost, slug: decodeURIComponent(path.slice(1)) };
   }
 
@@ -55,6 +61,7 @@ export function routeForLocation() {
   if (path === "/scrie") return { name: "create" };
   if (path === "/mesaje") return { name: "messages" };
   if (path === "/prieteni") return { name: "friends" };
+  if (path === "/utilizatori") return { name: "usersDirectory" };
   if (path === "/moderare") return { name: "admin" };
   if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
@@ -74,7 +81,7 @@ export function routeForLocation() {
   return { name: "notFound" };
 }
 
-export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh }) {
+export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange }) {
   if (PROTECTED_ROUTES.has(route.name) && !authLoaded) {
     return <PageShell kicker="cont" title="Se verifică sesiunea" sub="Încărcăm starea contului tău." />;
   }
@@ -82,5 +89,15 @@ export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh
   if (PROTECTED_ROUTES.has(route.name) && authLoaded && !user) return <AuthRequired />;
 
   const Component = ROUTE_COMPONENTS[route.name] || ROUTE_COMPONENTS.notFound;
-  return <Component route={route} user={user} onUserUpdate={onUserUpdate} onUserRefresh={onUserRefresh} />;
+  return (
+    <Component
+      route={route}
+      user={user}
+      onUserUpdate={onUserUpdate}
+      onUserRefresh={onUserRefresh}
+      onAuthPostIdChange={onAuthPostIdChange}
+      onLandingStatsChange={onLandingStatsChange}
+      onFooterPostActionsChange={onFooterPostActionsChange}
+    />
+  );
 }

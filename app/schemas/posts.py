@@ -8,11 +8,17 @@ from .common import *
 class PostBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=TITLE_CHARACTER_LIMIT)
     content: str
+    explanatory_note: Optional[str] = None
 
     @field_validator("content")
     @classmethod
     def sanitize_content(cls, value: str) -> str:
         return _sanitize_required_rich_text(value)
+
+    @field_validator("explanatory_note")
+    @classmethod
+    def normalize_explanatory_note(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, EXPLANATORY_NOTE_CHARACTER_LIMIT, "Nota explicativă")
 
 
 class PostCreate(PostBase):
@@ -112,6 +118,7 @@ class PostReport(BaseModel):
 class PostDraftSave(BaseModel):
     title: str = Field(default="", max_length=TITLE_CHARACTER_LIMIT)
     content: str = ""
+    explanatory_note: Optional[str] = None
     category: PostCategory = "poezie"
 
     @field_validator("title")
@@ -123,6 +130,11 @@ class PostDraftSave(BaseModel):
     @classmethod
     def sanitize_content(cls, value: str) -> str:
         return _sanitize_draft_rich_text(value or "")
+
+    @field_validator("explanatory_note")
+    @classmethod
+    def normalize_explanatory_note(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, EXPLANATORY_NOTE_CHARACTER_LIMIT, "Nota explicativă")
 
     @model_validator(mode="after")
     def validate_draft_content_length(self):

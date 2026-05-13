@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { FaCoins, FaShirt } from "react-icons/fa6";
-import { FiAward, FiBookOpen, FiCheck, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
+import { FiAward, FiBookOpen, FiCheck, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUserCheck, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
 import { acceptFriendRequest, deleteFriendRequest, removeFriend, sendFriendRequest } from "../api/friends.js";
+import { fetchFollowers, fetchFollowing, followUser, unfollowUser } from "../api/follows.js";
 import { fetchAllWorks, fetchBlog } from "../api/public.js";
 import { promoteAuthor, unpromoteAuthor } from "../api/users.js";
+import { useAuthModal } from "../app/auth-modal.jsx";
 import { ALL_WORKS_SORT_OPTIONS, PROFILE_LINK_MISSING_MESSAGE } from "../app/constants.js";
 import { AuthorLink, EquippedStrip, PostCard, RichTextContent } from "../app/content.jsx";
 import { categoryLabel, formatNumber, usernameHandle } from "../app/format.js";
@@ -67,6 +69,17 @@ function ProfileStatLink({ Icon, href, label }) {
     </a>
   );
 }
+function ProfileCountLink({ Icon, href, value, label }) {
+  return (
+    <a className="profile-stat" href={href}>
+      <Icon aria-hidden="true" />
+      <span>
+        <strong>{formatNumber(value)}</strong>
+        {label}
+      </span>
+    </a>
+  );
+}
 function PromoteAuthorButton({ owner, user, initialPromoted }) {
   const [promoted, setPromoted] = useState(Boolean(initialPromoted));
   const [busy, setBusy] = useState(false);
@@ -107,6 +120,59 @@ function PromoteAuthorButton({ owner, user, initialPromoted }) {
       title={promoted ? "Elimină autorul din promovări" : "Promovează autorul pe Călimara mea"}
     >
       <FiStar aria-hidden="true" />
+    </button>
+  );
+}
+function ProfileFollowButton({ owner, user, initialFollowing, onFollowingChange, onUserRefresh }) {
+  const { openAuthModal } = useAuthModal();
+  const [following, setFollowing] = useState(Boolean(initialFollowing));
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setFollowing(Boolean(initialFollowing));
+    setBusy(false);
+  }, [owner?.id, user?.id, initialFollowing]);
+
+  if (!owner || owner.id === user?.id) return null;
+
+  const toggle = async () => {
+    if (busy) return;
+    if (!user) {
+      openAuthModal?.();
+      return;
+    }
+    setBusy(true);
+    try {
+      if (following) {
+        await unfollowUser(owner.id);
+        setFollowing(false);
+        onFollowingChange?.(false);
+      } else {
+        await followUser(owner.id);
+        setFollowing(true);
+        onFollowingChange?.(true);
+      }
+      await onUserRefresh?.();
+    } catch (error) {
+      if (import.meta.env.DEV) console.warn("Follow action failed", error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = following ? "Urmărești" : "Urmărește";
+  return (
+    <button
+      className={`profile-link-btn profile-follow-action ${following ? "is-following" : ""}`.trim()}
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      aria-pressed={Boolean(user && following)}
+      aria-label={user ? label : "Autentifică-te pentru a urmări"}
+      title={user ? label : "Autentifică-te pentru a urmări"}
+    >
+      {following ? <FiUserCheck aria-hidden="true" /> : <FiUserPlus aria-hidden="true" />}
+      <span>{label}</span>
     </button>
   );
 }
@@ -189,6 +255,10 @@ function ProfileFriendActions({ owner, user, initialStatus, initialFriendshipId,
 }
 function ProfileHero({ data, postCount, user, onUserRefresh }) {
   const owner = data?.blog_owner;
+  const [followerCount, setFollowerCount] = useState(data?.follower_count || 0);
+  useEffect(() => {
+    setFollowerCount(data?.follower_count || 0);
+  }, [owner?.id, data?.follower_count]);
   if (!owner) return null;
   const profileIconLinks = profileLinks(owner, [...SOCIAL_PROFILE_LINKS, ...SUPPORT_PROFILE_LINKS]);
   const coverUrl = profileCoverUrl(owner);
@@ -217,6 +287,13 @@ function ProfileHero({ data, postCount, user, onUserRefresh }) {
           </a>
         ) : (
           <>
+            <ProfileFollowButton
+              owner={owner}
+              user={user}
+              initialFollowing={data.viewer_following}
+              onFollowingChange={(nextFollowing) => setFollowerCount((current) => Math.max(0, current + (nextFollowing ? 1 : -1)))}
+              onUserRefresh={onUserRefresh}
+            />
             <ProfileFriendActions owner={owner} user={user} initialStatus={data.viewer_friendship_status} initialFriendshipId={data.viewer_friendship_id} onUserRefresh={onUserRefresh} />
             <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
           </>
@@ -241,6 +318,8 @@ function ProfileHero({ data, postCount, user, onUserRefresh }) {
         <ProfileStat Icon={FiMessageCircle} value={data.total_comments} label="comentarii" />
         <ProfileStat Icon={FiHeadphones} value={owner.seconds_listened} label="secunde ascultate" />
         <ProfileStat Icon={FiUsers} value={data.friend_count} label="prieteni" />
+        <ProfileCountLink Icon={FiUserPlus} href={`${blogUrl(owner.username)}/urmaritori`} value={followerCount} label="urmăritori" />
+        <ProfileCountLink Icon={FiUserCheck} href={`${blogUrl(owner.username)}/urmariti`} value={data.following_count} label="urmăriți" />
         <ProfileStat Icon={FaCoins} value={owner.gologani_balance} label="Gologani" />
         {isOwnProfile ? (
           <a className="profile-write-btn" href={authorPath(user, "/panou")}>
@@ -442,7 +521,52 @@ function AllWorksView({ username }) {
   );
 }
 
+function FollowUserCard({ user }) {
+  return (
+    <a className="friend-card follow-user-card" href={blogUrl(user.username)}>
+      <span className="friend-identity">
+        <img className="friend-avatar profile-picture" src={profileAvatarUrl(user, 64)} alt="" aria-hidden="true" />
+        <span className="friend-copy">
+          <span className="friend-name">{usernameHandle(user.username)}</span>
+          {user.subtitle ? <span className="friend-subtitle">{user.subtitle}</span> : null}
+        </span>
+      </span>
+    </a>
+  );
+}
+
+function FollowListView({ username, kind }) {
+  const isFollowers = kind === "followers";
+  const { data, error, loading } = useAsync(
+    () => (isFollowers ? fetchFollowers(username) : fetchFollowing(username)),
+    [username, isFollowers],
+  );
+  const owner = data?.owner;
+  const users = isFollowers ? data?.followers || [] : data?.following || [];
+  const title = isFollowers ? "Urmăritori" : "Urmăriți";
+  const empty = isFollowers ? "Nu există urmăritori încă" : "Nu urmărește pe nimeni încă";
+  const count = data?.count ?? users.length;
+
+  return (
+    <PageShell
+      kicker="profil"
+      title={owner?.username ? `${title} · ${usernameHandle(owner.username)}` : title}
+      sub={data ? `${formatNumber(count)} ${isFollowers ? "urmăritori" : "urmăriți"}.` : ""}
+    >
+      {loading ? <StatusPanel title="Se încarcă" /> : null}
+      {error ? <StatusPanel title="Nu am putut încărca lista">{error}</StatusPanel> : null}
+      {users.length ? (
+        <div className="friends-list follow-list">
+          {users.map((item) => <FollowUserCard key={item.id} user={item} />)}
+        </div>
+      ) : data && !loading && !error ? <StatusPanel title={empty} /> : null}
+    </PageShell>
+  );
+}
+
 export default function ProfileRoute({ route, user, onUserRefresh }) {
   if (route.name === "allWorks") return <AllWorksView username={route.username} />;
+  if (route.name === "followers") return <FollowListView username={route.username} kind="followers" />;
+  if (route.name === "following") return <FollowListView username={route.username} kind="following" />;
   return <BlogView username={route.username} user={user} onUserRefresh={onUserRefresh} />;
 }

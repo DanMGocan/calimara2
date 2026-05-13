@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(tags=["auth"])
+AUTH_RETURN_TO_SESSION_KEY = "auth_return_to"
 
 
 def _frontend_base_url(request: Request) -> str:
@@ -38,6 +39,42 @@ def _user_blog_url(request: Request, user) -> str:
 
 def _auth_failure_url(request: Request, provider: str = "auth") -> str:
     return f"{_frontend_base_url(request)}/?auth_error={provider}"
+
+
+def _safe_return_url(request: Request, return_to: str | None) -> str | None:
+    if not return_to:
+        return None
+    target = str(return_to).strip()
+    if not target or len(target) > 2048 or any(ord(char) < 32 for char in target):
+        return None
+    if target.startswith("/") and not target.startswith("//"):
+        return f"{_frontend_base_url(request)}{target}"
+
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    netloc = parsed.netloc.lower()
+    main_domain = MAIN_DOMAIN.lower()
+    suffix = SUBDOMAIN_SUFFIX.lower()
+    if suffix and not suffix.startswith("."):
+        suffix = f".{suffix}"
+    frontend_netloc = urlparse(_frontend_base_url(request)).netloc.lower()
+    if netloc == main_domain or netloc == frontend_netloc:
+        return target
+    if suffix and netloc.endswith(suffix):
+        return target
+    return None
+
+
+def _store_auth_return_to(request: Request, return_to: str | None) -> str | None:
+    redirect_url = _safe_return_url(request, return_to)
+    if redirect_url:
+        request.session[AUTH_RETURN_TO_SESSION_KEY] = redirect_url
+    return redirect_url
+
+
+def _session_auth_return_to(request: Request) -> str | None:
+    return _safe_return_url(request, request.session.get(AUTH_RETURN_TO_SESSION_KEY))
 
 
 def _login_user(request: Request, db: Session, user: models.User) -> None:
@@ -64,7 +101,10 @@ def _pending_provider_payload(provider_user) -> dict:
 
 
 def _store_pending_auth(request: Request, source: str, payload: dict) -> None:
+    return_to = request.session.get(AUTH_RETURN_TO_SESSION_KEY)
     request.session.clear()
+    if return_to:
+        request.session[AUTH_RETURN_TO_SESSION_KEY] = return_to
     request.session["pending_auth"] = {"source": source, **payload}
 
 
@@ -78,11 +118,11 @@ def _pending_auth_from_session(request: Request) -> dict:
     return {}
 
 
-def _auth_response_payload(request: Request, user: models.User) -> dict:
+def _auth_response_payload(request: Request, user: models.User, redirect_url: str | None = None) -> dict:
     return {
         "message": "Autentificare reușită",
         "username": user.username,
-        "redirect_url": _user_blog_url(request, user),
+        "redirect_url": redirect_url or _user_blog_url(request, user),
     }
 
 
@@ -157,9 +197,10 @@ def _react_index_response() -> FileResponse:
 
 @router.get("/autentificare/google")
 @limiter.limit("5/minute")
-async def google_login(request: Request):
+async def google_login(request: Request, return_to: str | None = None):
     """Initiate Google OAuth flow"""
     try:
+        _store_auth_return_to(request, return_to)
         auth_url = google_oauth.get_google_auth_url(request)
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
@@ -169,9 +210,10 @@ async def google_login(request: Request):
 
 @router.get("/autentificare/facebook")
 @limiter.limit("5/minute")
-async def facebook_login(request: Request):
+async def facebook_login(request: Request, return_to: str | None = None):
     """Initiate Facebook OAuth flow"""
     try:
+        _store_auth_return_to(request, return_to)
         auth_url = facebook_oauth.get_facebook_auth_url(request)
         return RedirectResponse(url=auth_url, status_code=status.HTTP_302_FOUND)
     except Exception as e:
@@ -203,10 +245,11 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
 
         if user:
             # Existing user - log them in (clear session first to prevent fixation)
+            redirect_url = _session_auth_return_to(request) or _user_blog_url(request, user)
             _login_user(request, db, user)
             logger.info(f"Google OAuth login successful for existing user: {user.username}")
             return RedirectResponse(
-                url=_user_blog_url(request, user),
+                url=redirect_url,
                 status_code=status.HTTP_302_FOUND
             )
         else:
@@ -250,9 +293,10 @@ async def facebook_callback(request: Request, db: Session = Depends(get_db)):
         else:
             user, is_new = facebook_oauth.find_or_create_user(db, facebook_user)
         if user:
+            redirect_url = _session_auth_return_to(request) or _user_blog_url(request, user)
             _login_user(request, db, user)
             logger.info("Facebook OAuth login successful for existing user: %s", user.username)
-            return RedirectResponse(url=_user_blog_url(request, user), status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
         _store_pending_auth(
             request,
             "facebook",
@@ -368,9 +412,10 @@ def login_with_password(
     if not user.email_verified_at:
         raise HTTPException(status_code=403, detail="Adresa de email nu este verificată.")
     _require_platform_access(db, email, user)
+    redirect_url = _safe_return_url(request, data.return_to) or _user_blog_url(request, user)
     _login_user(request, db, user)
     logger.info("Password login successful for user: %s", user.username)
-    return _auth_response_payload(request, user)
+    return _auth_response_payload(request, user, redirect_url=redirect_url)
 
 
 @router.post("/api/autentificare/parola/resetare")
@@ -449,7 +494,7 @@ def auth_setup_page(request: Request):
     """Setup page for new authenticated users — served by React frontend"""
     pending_auth = _pending_auth_from_session(request)
     if not pending_auth:
-        return RedirectResponse(url="/autentificare", status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url=f"{_frontend_base_url(request)}/?auth_modal=1", status_code=status.HTTP_302_FOUND)
     return _react_index_response()
 
 
@@ -514,12 +559,13 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
         db.commit()
         db.refresh(new_user)
 
+        redirect_url = _session_auth_return_to(request) or _user_blog_url(request, new_user)
         request.session.clear()
         request.session["user_id"] = new_user.id
         request.session["db_epoch"] = get_db_epoch()
 
         logger.info(f"User setup completed for: {new_user.username}")
-        return {"message": "Configurarea a fost finalizată", "username": new_user.username}
+        return {"message": "Configurarea a fost finalizată", "username": new_user.username, "redirect_url": redirect_url}
 
     except HTTPException:
         raise

@@ -3,7 +3,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session, aliased
 
 from .. import models, schemas, auth, crud, profile_media, rich_text
 from ..categories import get_category_name
@@ -33,6 +34,17 @@ PROFILE_SETTINGS_FIELDS = (
     "youtube_playlist_url",
     *SOCIAL_LINKS.keys(),
 )
+
+USER_DIRECTORY_RELATIONSHIPS = {
+    "all",
+    "not_friends",
+    "friends",
+    "incoming_pending",
+    "outgoing_pending",
+    "following",
+    "followers",
+}
+USER_DIRECTORY_SORTS = {"newest", "oldest", "username", "posts", "views", "comments", "followers"}
 
 
 def _media_url_if_visible(user: models.User, kind: str) -> Optional[str]:
@@ -534,6 +546,190 @@ def update_best_friends(
         db.rollback()
         logger.error(f"Eroare la actualizarea autorilor promovați pentru {current_user.username}: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut actualiza autorii promovați")
+
+
+def _user_directory_payload(
+    db: Session,
+    user: models.User,
+    current_user: models.User,
+    approved_post_count: int,
+    total_view_count: int,
+    approved_comment_count: int,
+    follower_count: int,
+) -> dict:
+    friendship = crud.get_friendship_between(db, current_user.id, user.id)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
+        "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "avatar_url": get_avatar_url(user, size=96),
+        "is_premium": getattr(user, "is_premium", False),
+        "premium_tier": getattr(user, "premium_tier", "free") or "free",
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "friendship_status": crud.get_friendship_status_for_viewer(db, current_user.id, user.id),
+        "friendship_id": friendship.id if friendship else None,
+        "viewer_following": crud.is_following(db, current_user.id, user.id),
+        "viewer_followed_by": crud.is_following(db, user.id, current_user.id),
+        "friend_count": crud.get_friend_count_for_user(db, user.id),
+        "follower_count": int(follower_count or 0),
+        "approved_post_count": int(approved_post_count or 0),
+        "total_view_count": int(total_view_count or 0),
+        "approved_comment_count": int(approved_comment_count or 0),
+    }
+
+
+@router.get("/api/utilizatori")
+def list_users_directory(
+    q: str = "",
+    relationship: str = "all",
+    sort: str = "newest",
+    offset: int = 0,
+    limit: int = 24,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    term = (q or "").strip()
+    relationship = (relationship or "all").strip()
+    sort = (sort or "newest").strip()
+    if relationship not in USER_DIRECTORY_RELATIONSHIPS:
+        relationship = "all"
+    if sort not in USER_DIRECTORY_SORTS:
+        sort = "newest"
+    offset = max(0, int(offset or 0))
+    limit = max(1, min(int(limit or 24), 60))
+
+    post_stats = (
+        db.query(
+            models.Post.user_id.label("user_id"),
+            func.count(models.Post.id).label("approved_post_count"),
+            func.coalesce(func.sum(models.Post.view_count), 0).label("total_view_count"),
+        )
+        .filter(models.Post.moderation_status == "approved")
+        .group_by(models.Post.user_id)
+        .subquery()
+    )
+    comment_stats = (
+        db.query(
+            models.Post.user_id.label("user_id"),
+            func.count(models.Comment.id).label("approved_comment_count"),
+        )
+        .join(models.Comment, models.Comment.post_id == models.Post.id)
+        .filter(
+            models.Post.moderation_status == "approved",
+            models.Comment.approved == True,
+        )
+        .group_by(models.Post.user_id)
+        .subquery()
+    )
+    follower_user = aliased(models.User)
+    follower_stats = (
+        db.query(
+            models.UserFollow.followed_id.label("user_id"),
+            func.count(models.UserFollow.id).label("follower_count"),
+        )
+        .join(follower_user, models.UserFollow.follower_id == follower_user.id)
+        .filter(follower_user.is_suspended == False)
+        .group_by(models.UserFollow.followed_id)
+        .subquery()
+    )
+
+    approved_post_count = func.coalesce(post_stats.c.approved_post_count, 0).label("approved_post_count")
+    total_view_count = func.coalesce(post_stats.c.total_view_count, 0).label("total_view_count")
+    approved_comment_count = func.coalesce(comment_stats.c.approved_comment_count, 0).label("approved_comment_count")
+    follower_count = func.coalesce(follower_stats.c.follower_count, 0).label("follower_count")
+
+    query = (
+        db.query(models.User, approved_post_count, total_view_count, approved_comment_count, follower_count)
+        .outerjoin(post_stats, post_stats.c.user_id == models.User.id)
+        .outerjoin(comment_stats, comment_stats.c.user_id == models.User.id)
+        .outerjoin(follower_stats, follower_stats.c.user_id == models.User.id)
+        .filter(
+            models.User.id != current_user.id,
+            models.User.is_suspended == False,
+        )
+    )
+
+    if term:
+        like_term = f"%{term}%"
+        query = query.filter(or_(models.User.username.ilike(like_term), models.User.subtitle.ilike(like_term)))
+
+    friendship_exists = (
+        db.query(models.Friendship.id)
+        .filter(
+            or_(
+                and_(models.Friendship.user1_id == current_user.id, models.Friendship.user2_id == models.User.id),
+                and_(models.Friendship.user2_id == current_user.id, models.Friendship.user1_id == models.User.id),
+            )
+        )
+    )
+    if relationship == "not_friends":
+        query = query.filter(~friendship_exists.exists())
+    elif relationship == "friends":
+        query = query.filter(friendship_exists.filter(models.Friendship.status == "accepted").exists())
+    elif relationship == "incoming_pending":
+        query = query.filter(
+            friendship_exists.filter(
+                models.Friendship.status == "pending",
+                models.Friendship.requested_by_id != current_user.id,
+            ).exists()
+        )
+    elif relationship == "outgoing_pending":
+        query = query.filter(
+            friendship_exists.filter(
+                models.Friendship.status == "pending",
+                models.Friendship.requested_by_id == current_user.id,
+            ).exists()
+        )
+    elif relationship == "following":
+        query = query.filter(
+            db.query(models.UserFollow.id)
+            .filter(
+                models.UserFollow.follower_id == current_user.id,
+                models.UserFollow.followed_id == models.User.id,
+            )
+            .exists()
+        )
+    elif relationship == "followers":
+        query = query.filter(
+            db.query(models.UserFollow.id)
+            .filter(
+                models.UserFollow.follower_id == models.User.id,
+                models.UserFollow.followed_id == current_user.id,
+            )
+            .exists()
+        )
+
+    total = query.with_entities(func.count(models.User.id)).order_by(None).scalar() or 0
+
+    if sort == "oldest":
+        query = query.order_by(models.User.created_at.asc(), models.User.id.asc())
+    elif sort == "username":
+        query = query.order_by(func.lower(models.User.username).asc(), models.User.id.asc())
+    elif sort == "posts":
+        query = query.order_by(approved_post_count.desc(), func.lower(models.User.username).asc(), models.User.id.asc())
+    elif sort == "views":
+        query = query.order_by(total_view_count.desc(), func.lower(models.User.username).asc(), models.User.id.asc())
+    elif sort == "comments":
+        query = query.order_by(approved_comment_count.desc(), func.lower(models.User.username).asc(), models.User.id.asc())
+    elif sort == "followers":
+        query = query.order_by(follower_count.desc(), func.lower(models.User.username).asc(), models.User.id.asc())
+    else:
+        query = query.order_by(models.User.created_at.desc(), models.User.id.desc())
+
+    rows = query.offset(offset).limit(limit).all()
+    users = [
+        _user_directory_payload(db, user, current_user, post_count, views, comments, followers)
+        for user, post_count, views, comments, followers in rows
+    ]
+    return {
+        "users": users,
+        "total": int(total),
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + len(users) < total,
+        "filters": {"q": term, "relationship": relationship, "sort": sort},
+    }
 
 
 @router.get("/api/utilizatori/cauta")

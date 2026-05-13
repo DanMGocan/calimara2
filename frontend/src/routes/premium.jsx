@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { FiCheckCircle, FiCreditCard, FiHeadphones, FiStar, FiTrendingUp } from "react-icons/fi";
-import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { fetchAudioConversionQuota } from "../api/audio.js";
 import { fetchPremiumPlans, openPremiumPortal, startPremiumCheckout } from "../api/premium.js";
+import { useAuthModal } from "../app/auth-modal.jsx";
 import { PROFILE_TIER_BADGES } from "../app/constants.js";
 import { formatDateTime, formatNumber } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
@@ -92,6 +92,7 @@ function TierCard({ tier, user, selected, busy, onSelect, onStart }) {
 }
 
 function PremiumView({ user }) {
+  const { openAuthModal } = useAuthModal();
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [selectedTier, setSelectedTier] = useState(user?.premium_tier && user.premium_tier !== "free" ? user.premium_tier : "trubadur");
@@ -120,7 +121,7 @@ function PremiumView({ user }) {
 
   const openStripe = async (tier = selectedTier) => {
     if (!user) {
-      window.location.href = AUTH_LOGIN_PATH;
+      openAuthModal?.();
       return;
     }
     setBusy(true);

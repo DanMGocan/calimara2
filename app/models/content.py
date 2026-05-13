@@ -18,6 +18,7 @@ class PostDraft(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    explanatory_note: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     category: Mapped[str] = mapped_column(String(100), default="poezie", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -35,6 +36,7 @@ class Post(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(300), unique=True, index=True, nullable=False) # SEO-friendly URL slug
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    explanatory_note: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Category key
     genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Genre key
     ai_critic_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

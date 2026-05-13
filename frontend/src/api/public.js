@@ -1,7 +1,9 @@
 import { api } from "./client.js";
 
-export function fetchLanding(category) {
-  return api.get(`/api/prima-pagina?category=${encodeURIComponent(category)}`);
+export function fetchLanding(category, postId = null) {
+  const params = new URLSearchParams({ category });
+  if (postId) params.set("post_id", String(postId));
+  return api.get(`/api/prima-pagina?${params.toString()}`);
 }
 
 export function fetchCategory(categoryKey, sortBy = "newest") {
@@ -23,4 +25,3 @@ export function fetchPostDetail(username, slug) {
 export function postPdfUrl(username, slug) {
   return `/api/bloguri/${encodeURIComponent(username)}/postari/${encodeURIComponent(slug)}/pdf`;
 }
-

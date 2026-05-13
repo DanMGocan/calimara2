@@ -9,7 +9,7 @@ from .clubs import Club, ClubMember, ClubJoinRequest, ClubBoardMessage
 from .economy import GologaniTransaction, ShopItem, UserInventoryItem, UserEquippedItem
 from .forum import ForumThread, ForumReply
 from .messaging import Conversation, Message
-from .social import Friendship
+from .social import Friendship, UserFollow
 from .moderation import ModerationLog
 from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
@@ -47,6 +47,7 @@ __all__ = [
     "Conversation",
     "Message",
     "Friendship",
+    "UserFollow",
     "ModerationLog",
     "Notification",
     "AudioListenEvent",

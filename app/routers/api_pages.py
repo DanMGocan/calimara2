@@ -137,6 +137,7 @@ def serialize_post(
         "title": post.title,
         "slug": post.slug,
         "content": rich_text.sanitize_rich_text(post.content),
+        "explanatory_note": post.explanatory_note,
         "category": post.category,
         "category_name": get_category_name(post.category) if post.category else "",
         "view_count": post.view_count,
@@ -301,12 +302,18 @@ def serialize_comment(comment, db: Optional[Session] = None):
 def landing_data(
     request: Request,
     category: str = "toate",
+    post_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     """Landing page data: one random post for the selected category."""
     statistics.record_view(db, request, "landing", None, "home", None, current_user)
-    if category == "toate":
+    selected_post = crud.get_post(db, post_id) if post_id else None
+    if selected_post and selected_post.moderation_status == "approved" and (
+        category == "toate" or selected_post.category == category
+    ):
+        random_posts = [selected_post]
+    elif category == "toate":
         random_posts = crud.get_weighted_random_posts(db, limit=1)
     elif category in CATEGORIES:
         random_posts = crud.get_weighted_random_posts_by_category(db, category, limit=1)
@@ -397,12 +404,19 @@ def blog_data(
         "blog_categories": blog_categories or [],
         "best_friends": promoted_authors,
         "friend_count": crud.get_friend_count_for_user(db, user.id),
+        "follower_count": crud.get_follower_count_for_user(db, user.id),
+        "following_count": crud.get_following_count_for_user(db, user.id),
         "viewer_friendship_status": crud.get_friendship_status_for_viewer(
             db,
             current_user.id if current_user else None,
             user.id,
         ),
         "viewer_friendship_id": viewer_friendship.id if viewer_friendship else None,
+        "viewer_following": (
+            bool(current_user)
+            and current_user.id != user.id
+            and crud.is_following(db, current_user.id, user.id)
+        ),
         "viewer_promoted_author": (
             bool(current_user)
             and current_user.id != user.id
@@ -596,6 +610,8 @@ def user_public_profile(
 
     payload = serialize_user(user)
     payload["friend_count"] = crud.get_friend_count_for_user(db, user.id)
+    payload["follower_count"] = crud.get_follower_count_for_user(db, user.id)
+    payload["following_count"] = crud.get_following_count_for_user(db, user.id)
     viewer_friendship = crud.get_friendship_between(db, current_user.id, user.id) if current_user and current_user.id != user.id else None
     payload["viewer_friendship_status"] = crud.get_friendship_status_for_viewer(
         db,
@@ -603,6 +619,11 @@ def user_public_profile(
         user.id,
     )
     payload["viewer_friendship_id"] = viewer_friendship.id if viewer_friendship else None
+    payload["viewer_following"] = (
+        bool(current_user)
+        and current_user.id != user.id
+        and crud.is_following(db, current_user.id, user.id)
+    )
     return payload
 
 

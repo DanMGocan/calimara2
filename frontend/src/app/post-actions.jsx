@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { FaFlag, FaHeart } from "react-icons/fa";
 import { FiChevronDown, FiDownload, FiEye, FiMessageCircle } from "react-icons/fi";
-import { AUTH_LOGIN_PATH } from "../api/auth.js";
 import { fetchPostAudioStatus } from "../api/audio.js";
 import { createComment, likePost, reportPost } from "../api/posts.js";
 import { addSuperLike, removeSuperLike } from "../api/super-likes.js";
 import { promoteAuthor, promotePost, searchUsers } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
+import { useAuthModal } from "./auth-modal.jsx";
 import { COMMENT_CHARACTER_LIMIT, COMMENT_MODERATION_MESSAGE } from "./constants.js";
 import { CompactAudioPlayer, RichTextContent } from "./content.jsx";
 import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "./diacritics.jsx";
@@ -192,6 +192,7 @@ function CommentPanel({
   onCommentTextChange,
   onCommentAutoDiacriticsChange,
   onCommentReviewChange,
+  onLoginRequired,
   onSubmit
 }) {
   const comments = Array.isArray(post.approved_comments) ? post.approved_comments : [];
@@ -250,7 +251,7 @@ function CommentPanel({
         </form>
       ) : (
         <div className="post-comment-auth">
-          <a className="cal-btn primary" href={AUTH_LOGIN_PATH}>Autentifică-te ca să comentezi</a>
+          <button className="cal-btn primary" type="button" onClick={onLoginRequired}>Autentifică-te ca să comentezi</button>
         </div>
       )}
     </div>
@@ -258,6 +259,7 @@ function CommentPanel({
 }
 
 export function PostActionTools({ post, user, onPostChange, pdfHref = "#", className = "" }) {
+  const { openAuthModal } = useAuthModal();
   const [postState, setPostState] = useState(post);
   const [liked, setLiked] = useState(false);
   const [busy, setBusy] = useState("");
@@ -342,12 +344,9 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   };
 
   const showLoginModal = (message = "Pentru această acțiune trebuie să intri în cont.") => {
-    setModal({
-      title: "Autentificare necesară",
-      message,
-      actionHref: AUTH_LOGIN_PATH,
-      actionLabel: "Autentifică-te"
-    });
+    setStatus("");
+    setModal(null);
+    openAuthModal?.({ message, postId: postState?.id });
   };
 
   const handleLike = async () => {
@@ -541,6 +540,7 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
           onCommentTextChange={setCommentText}
           onCommentAutoDiacriticsChange={setCommentAutoDiacritics}
           onCommentReviewChange={setCommentReview}
+          onLoginRequired={() => showLoginModal("Pentru comentarii trebuie să intri în cont.")}
           onSubmit={submitComment}
         />
       ) : null}

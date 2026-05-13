@@ -2,10 +2,9 @@
 """
 Populate the database with sample Romanian content for local development.
 
-Runs after `run.py`'s `init_database()` has produced an empty schema. Creates a
-handful of authors with short poetry and prose,
-comments, likes, best-friend links, featured posts, and one award each — just
-enough to make every page of the app feel alive when the user clicks around.
+Runs after `run.py`'s `init_database()` has produced an empty schema. Creates
+two accounts and ten posts: five Ion Creangă prose entries on the tier-3
+premium gocandan account and five Mihai Eminescu poems on the dangocan account.
 
 Invocation:
     python scripts/seed.py
@@ -16,7 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, date, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -37,467 +36,298 @@ from app import models  # noqa: E402
 
 AUTHORS = [
     {
-        "username": "mireasufletului",
-        "email": "mireasufletului@example.com",
-        "google_id": "seed-google-1",
-        "subtitle": "versuri scrise la ceas târziu, când oraşul adoarme",
-        "avatar_seed": "mirea-01",
+        "username": "gocandan",
+        "email": "gocandan@gmail.com",
+        "google_id": "seed-google-gocandan",
+        "subtitle": "Ion Creangă",
+        "avatar_seed": "gocandan-premium",
+        "is_admin": True,
+        "is_moderator": True,
+        "premium_tier": "rapsod",
+        "premium_until_days": 3650,
     },
     {
-        "username": "vanatordecuvinte",
-        "email": "vanatordecuvinte@example.com",
-        "google_id": "seed-google-2",
-        "subtitle": "caut cuvintele care nu s-au rostit încă",
-        "avatar_seed": "vanator-42",
-    },
-    {
-        "username": "filedintramvai",
-        "email": "filedintramvai@example.com",
-        "google_id": "seed-google-3",
-        "subtitle": "proză scurtă, scrisă între staţii",
-        "avatar_seed": "file-07",
-    },
-    {
-        "username": "noaptedetarziu",
-        "email": "noaptedetarziu@example.com",
-        "google_id": "seed-google-4",
-        "subtitle": "melancolii urbane şi alte forme de insomnie",
-        "avatar_seed": "noapte-99",
+        "username": "dangocan",
+        "email": "dangocan@outlook.com",
+        "google_id": "seed-google-dangocan",
+        "subtitle": "Mihai Eminescu",
+        "avatar_seed": "dangocan-eminescu",
     },
 ]
 
 
 POSTS = [
-    # ── mireasufletului — poezie ────────────────────────────
+    # ── gocandan — Ion Creangă ──────────────────────────────
     {
-        "author": "mireasufletului",
-        "title": "Fereastra stinsă",
-        "slug": "fereastra-stinsa",
-        "category": "poezie",
+        "author": "gocandan",
+        "title": "Punguța cu doi bani",
+        "slug": "punguta-cu-doi-bani",
+        "category": "proza_scurta",
         "days_ago": 2,
         "content": (
-            "Lumina stinsă în fereastră\n"
-            "nu ne mai cheamă acasă.\n"
-            "\n"
-            "Rămâne doar conturul\n"
-            "unui gest care n-a fost făcut,\n"
-            "un cuvânt pe care l-am păstrat\n"
-            "pentru altă iarnă.\n"
-            "\n"
-            "Şi totuşi ceva\n"
-            "mai bate încet în geam —\n"
-            "poate-o frunză, poate-o amintire\n"
-            "care nu ştie că s-a dus."
+            "Ion Creangă\n\n"
+            "Titlu: Punguța cu doi bani\n\n"
+            "Era odată o babă și un moșneag. Baba avea o găină, iar moșneagul "
+            "avea un cocoș. Găina babei făcea ouă în fiecare zi, pe când "
+            "cocoșul moșneagului nu aducea nimic în casă, lucru pentru care "
+            "baba îl tot ocăra pe bietul moșneag.\n\n"
+            "Alungat de acasă, cocoșul pleacă în lume și găsește o punguță cu "
+            "doi bani. De aici începe drumul lui plin de încăpățânare și noroc."
         ),
     },
     {
-        "author": "mireasufletului",
-        "title": "Dimineaţa ta",
-        "slug": "dimineata-ta",
-        "category": "poezie",
+        "author": "gocandan",
+        "title": "Ursul păcălit de vulpe",
+        "slug": "ursul-pacalit-de-vulpe",
+        "category": "proza_scurta",
         "days_ago": 6,
         "content": (
-            "Mi-ai spus odată\n"
-            "că dimineţile tale\n"
-            "miros a cafea şi a pagini nescrise.\n"
-            "\n"
-            "Eu ţi-am răspuns\n"
-            "că dimineţile mele\n"
-            "miros a tine\n"
-            "şi atât."
+            "Ion Creangă\n\n"
+            "Titlu: Ursul păcălit de vulpe\n\n"
+            "Vulpea, șireată cum o știe toată lumea, se preface moartă în drum "
+            "și ajunge în carul unui țăran încărcat cu pește. Când omul nu se "
+            "uită, ea aruncă peștii jos unul câte unul, apoi sare din car și "
+            "își strânge prada.\n\n"
+            "Ursul o găsește ospătându-se și cere și el pește. Vulpea îl învață "
+            "să-și bage coada în baltă, iar ursul, lacom și credul, plătește "
+            "scump ascultarea."
         ),
     },
     {
-        "author": "mireasufletului",
-        "title": "Scrisoare pentru luni",
-        "slug": "scrisoare-pentru-luni",
-        "category": "poezie",
+        "author": "gocandan",
+        "title": "Capra cu trei iezi",
+        "slug": "capra-cu-trei-iezi",
+        "category": "proza_scurta",
         "days_ago": 14,
         "content": (
-            "Dragă luni,\n"
-            "nu-ţi port pică.\n"
-            "\n"
-            "Ştiu că şi tu\n"
-            "ai vrea câteodată\n"
-            "să fii duminică seara —\n"
-            "să te amâni pe tine însăţi\n"
-            "până când cineva\n"
-            "ţi-ar spune în sfârşit\n"
-            "că e bine aşa."
+            "Ion Creangă\n\n"
+            "Titlu: Capra cu trei iezi\n\n"
+            "Capra pleacă după hrană și își lasă iezii singuri acasă, poruncindu-le "
+            "să nu deschidă ușa nimănui până nu vor auzi cântecul ei. Lupul "
+            "pândește vorbele, își subțiază glasul și încearcă să-i păcălească.\n\n"
+            "Doi dintre iezi uită sfatul mamei și cad în cursă. Cel mic se ascunde "
+            "bine, iar întoarcerea caprei schimbă frica în judecată aspră."
         ),
     },
-    # ── vanatordecuvinte — poezie ───────────────────────────
     {
-        "author": "vanatordecuvinte",
-        "title": "Oraşul dimineaţa",
-        "slug": "orasul-dimineata",
+        "author": "gocandan",
+        "title": "Povestea unui om leneș",
+        "slug": "povestea-unui-om-lenes",
+        "category": "proza_scurta",
+        "days_ago": 20,
+        "content": (
+            "Ion Creangă\n\n"
+            "Titlu: Povestea unui om leneș\n\n"
+            "Se spune că era într-un sat un om atât de leneș, încât nici mâncarea "
+            "nu și-ar fi dus-o singur la gură dacă ar fi găsit pe altcineva s-o "
+            "facă pentru el. Sătenii, sătui de neputința lui, hotărăsc să-l ducă "
+            "departe de sat.\n\n"
+            "Pe drum, o femeie miloasă vrea să-i dea posmagi. Leneșul întreabă "
+            "dacă sunt muiați, iar răspunsul lui îi lămurește pe toți."
+        ),
+    },
+    {
+        "author": "gocandan",
+        "title": "Dănilă Prepeleac",
+        "slug": "danila-prepeleac",
+        "category": "proza_scurta",
+        "days_ago": 28,
+        "content": (
+            "Ion Creangă\n\n"
+            "Titlu: Dănilă Prepeleac\n\n"
+            "Dănilă pornește la târg cu doi boi zdraveni și se întoarce, după "
+            "schimburi tot mai păguboase, aproape cu nimic. Fratele său îl "
+            "mustră, dar Dănilă nu se leapădă de felul lui năuc și încăpățânat.\n\n"
+            "Când ajunge însă față în față cu dracii, nepriceputul de până atunci "
+            "găsește destulă istețime cât să-i încurce pe toți."
+        ),
+    },
+    # ── dangocan — Mihai Eminescu ───────────────────────────
+    {
+        "author": "dangocan",
+        "title": "Somnoroase păsărele",
+        "slug": "somnoroase-pasarele",
         "category": "poezie",
         "days_ago": 1,
         "content": (
-            "Oraşul dimineaţa\n"
-            "e un animal blând\n"
-            "care se întinde în soare\n"
-            "şi uită că are gheare.\n"
+            "Somnoroase păsărele\n"
+            "Pe la cuiburi se adună,\n"
+            "Se ascund în rămurele -\n"
+            "Noapte bună!\n"
             "\n"
-            "Trecem pe lângă el\n"
-            "fără să-l atingem,\n"
-            "cu grija copiilor\n"
-            "care trec pe lângă câinii străzii."
+            "Doar izvoarele suspină,\n"
+            "Pe când codrul negru tace;\n"
+            "Dorm și florile-n grădină -\n"
+            "Dormi în pace!\n"
+            "\n"
+            "Trece lebăda pe ape\n"
+            "Între trestii să se culce -\n"
+            "Fie-ți îngerii aproape,\n"
+            "Somnul dulce!\n"
+            "\n"
+            "Peste-a nopții feerie\n"
+            "Se ridică mândra lună,\n"
+            "Totu-i vis și armonie -\n"
+            "Noapte bună!"
         ),
     },
     {
-        "author": "vanatordecuvinte",
-        "title": "Cuvinte fără adresă",
-        "slug": "cuvinte-fara-adresa",
+        "author": "dangocan",
+        "title": "La steaua",
+        "slug": "la-steaua",
         "category": "poezie",
-        "days_ago": 9,
-        "content": (
-            "Sunt cuvinte\n"
-            "pe care le-am rostit\n"
-            "doar pentru ca ele să existe.\n"
-            "\n"
-            "Le-am pus pe masă,\n"
-            "le-am privit o vreme,\n"
-            "apoi le-am trimis\n"
-            "la o adresă\n"
-            "pe care n-am scris-o\n"
-            "niciodată."
-        ),
-    },
-    {
-        "author": "vanatordecuvinte",
-        "title": "Manual",
-        "slug": "manual",
-        "category": "poezie",
-        "days_ago": 20,
-        "content": (
-            "Se scrie aşa:\n"
-            "o frază\n"
-            "care să pară că ştie ceva.\n"
-            "\n"
-            "Apoi, imediat dedesubt,\n"
-            "încă una\n"
-            "care să recunoască\n"
-            "că nu ştie nimic.\n"
-            "\n"
-            "Restul —\n"
-            "tăcere dactilografiată."
-        ),
-    },
-    # ── filedintramvai — proză ──────────────────────────────
-    {
-        "author": "filedintramvai",
-        "title": "Tramvaiul 21",
-        "slug": "tramvaiul-21",
-        "category": "proza_scurta",
-        "days_ago": 3,
-        "content": (
-            "Tramvaiul opreşte în ceaţă şi nimeni nu coboară. E aceea dintre "
-            "staţii care există numai pe hartă, un nume pus de cineva acum "
-            "şaptezeci de ani, care a rămas cum rămâne un semn de carte într-o "
-            "carte pe care n-o mai deschide nimeni.\n"
-            "\n"
-            "Şoferul deschide uşa mai mult din obişnuinţă. Aerul de-afară e "
-            "umed, miroase a iarnă veche şi a pâine proaspătă dintr-o brutărie "
-            "care nu se vede. Aştept trei secunde, ca o formalitate, apoi "
-            "uşile se închid şi mergem mai departe.\n"
-            "\n"
-            "În geam, pentru o clipă, cineva îmi face semn cu mâna. Nu ştiu "
-            "dacă sunt eu — sau cine altcineva."
-        ),
-    },
-    {
-        "author": "filedintramvai",
-        "title": "Geamantan",
-        "slug": "geamantan",
-        "category": "proza_scurta",
-        "days_ago": 8,
-        "content": (
-            "Avea un geamantan maro cu colţurile tocite şi îl ducea cu mâna "
-            "stângă, deşi se vedea că e mai uşor decât pretindea. Când a "
-            "trecut pe lângă mine, mirosea a colonie ieftină şi a cafea "
-            "băută în grabă la un bar de gară.\n"
-            "\n"
-            "M-am gândit că poate se întoarce acasă. M-am gândit că poate "
-            "pleacă. M-am gândit că poate, de fapt, nu se duce nicăieri — că "
-            "pur şi simplu îşi poartă geamantanul prin oraş, ca alţii îşi "
-            "poartă câinele, ca să nu rămână singuri cu ei înşişi."
-        ),
-    },
-    {
-        "author": "filedintramvai",
-        "title": "Doamna cu pâine",
-        "slug": "doamna-cu-paine",
-        "category": "proza_scurta",
-        "days_ago": 17,
-        "content": (
-            "O doamnă de vreo şaptezeci de ani s-a aşezat lângă mine, a pus "
-            "plasa cu pâine pe genunchi şi a scos din ea o carte. Era un "
-            "roman pe care îl citisem în liceu.\n"
-            "\n"
-            "Am stat aşa, şase staţii. Ea citea; eu mă uitam pe geam. La un "
-            "moment dat, fără să ridice ochii, mi-a spus: „am ajuns la partea "
-            "în care se despart.\"\n"
-            "\n"
-            "I-am răspuns că îmi pare rău. A dat din cap — şi şi-a văzut, "
-            "liniştită, de pagină."
-        ),
-    },
-    # ── noaptedetarziu — amestec ────────────────────────────
-    {
-        "author": "noaptedetarziu",
-        "title": "Trei dimineaţa",
-        "slug": "trei-dimineata",
-        "category": "poezie",
-        "days_ago": 0,
-        "content": (
-            "La trei dimineaţa\n"
-            "oraşul are vocea\n"
-            "unui prieten vechi\n"
-            "care şi-a uitat ultima replică.\n"
-            "\n"
-            "Îi ţin locul în linişte\n"
-            "până la lumină —\n"
-            "apoi plecăm amândoi\n"
-            "fără să ne mai datorăm nimic."
-        ),
-    },
-    {
-        "author": "noaptedetarziu",
-        "title": "Liftul",
-        "slug": "liftul",
-        "category": "proza_scurta",
         "days_ago": 4,
         "content": (
-            "Liftul s-a oprit între etaje şi am râs, aşa cum râde omul "
-            "cuminte când i se întâmplă ceva mic şi previzibil. Apoi am stat. "
-            "Am stat ceva mai mult decât mi-aş fi dorit.\n"
+            "La steaua care-a răsărit\n"
+            "E-o cale-atât de lungă,\n"
+            "Că mii de ani i-au trebuit\n"
+            "Luminii să ne-ajungă.\n"
             "\n"
-            "Într-un colţ, o oglindă care nu mă mai arăta decât pe jumătate. "
-            "Pe celălalt perete, un afiş cu instrucţiuni pe care le citisem "
-            "fără să le citesc, ani la rând.\n"
+            "Poate de mult s-a stins în drum\n"
+            "În depărtări albastre,\n"
+            "Iar raza ei abia acum\n"
+            "Luci vederii noastre.\n"
             "\n"
-            "Când s-au deschis uşile, nu eram la etajul meu. Nu era etajul "
-            "nimănui. Am ieşit oricum — pentru că liftul, ca multe altele în "
-            "oraşul ăsta, nu te aşteaptă să fii pregătit."
+            "Icoana stelei ce-a murit\n"
+            "Încet pe cer se suie;\n"
+            "Era pe când nu s-a zărit,\n"
+            "Azi o vedem, și nu e.\n"
+            "\n"
+            "Tot astfel când al nostru dor\n"
+            "Pieri în noapte-adâncă,\n"
+            "Lumina stinsului amor\n"
+            "Ne urmărește încă."
         ),
     },
     {
-        "author": "noaptedetarziu",
-        "title": "Exerciţiu",
-        "slug": "exercitiu",
+        "author": "dangocan",
+        "title": "Lacul",
+        "slug": "lacul",
+        "category": "poezie",
+        "days_ago": 8,
+        "content": (
+            "Lacul codrilor albastru\n"
+            "Nuferi galbeni îl încarcă;\n"
+            "Tresărind în cercuri albe\n"
+            "El cutremură o barcă.\n"
+            "\n"
+            "Și eu trec de-a lung de maluri,\n"
+            "Parc-ascult și parc-aștept\n"
+            "Ea din trestii să răsară\n"
+            "Și să-mi cadă lin pe piept;\n"
+            "\n"
+            "Să sărim în luntrea mică,\n"
+            "Îngânați de glas de ape,\n"
+            "Și să scap din mână cârma,\n"
+            "Și lopețile să-mi scape;\n"
+            "\n"
+            "Să plutim cuprinși de farmec\n"
+            "Sub lumina blândei lune -\n"
+            "Vântu-n trestii lin foșnească,\n"
+            "Unduioasa apă sune!\n"
+            "\n"
+            "Dar nu vine... Singuratic\n"
+            "În zadar suspin și sufăr\n"
+            "Lângă lacul cel albastru\n"
+            "Încărcat cu flori de nufăr."
+        ),
+    },
+    {
+        "author": "dangocan",
+        "title": "Dorința",
+        "slug": "dorinta",
         "category": "poezie",
         "days_ago": 12,
         "content": (
-            "Scrie ceva care să nu fie nici trist, nici vesel.\n"
-            "Un lucru mic, ca un cui într-un perete vechi.\n"
+            "Vino-n codru la izvorul\n"
+            "Care tremură pe prund,\n"
+            "Unde prispa cea de brazde\n"
+            "Crengi plecate o ascund.\n"
             "\n"
-            "Să ţină un tablou —\n"
-            "sau o haină —\n"
-            "sau nimic,\n"
-            "dacă nimic are nevoie, la rândul lui, de un cui."
+            "Și în brațele-mi întinse\n"
+            "Să alergi, pe piept să-mi cazi,\n"
+            "Să-ți desprind din creștet vălul,\n"
+            "Să-l ridic de pe obraz.\n"
+            "\n"
+            "Pe genunchii mei ședea-vei,\n"
+            "Vom fi singuri-singurei,\n"
+            "Iar în păr înfiorate\n"
+            "Or să-ți cadă flori de tei.\n"
+            "\n"
+            "Fruntea albă-n părul galben\n"
+            "Pe-al meu braț încet s-o culci,\n"
+            "Lăsând pradă gurii mele\n"
+            "Ale tale buze dulci...\n"
+            "\n"
+            "Vom visa un vis ferice,\n"
+            "Îngâna-ne-vor c-un cânt\n"
+            "Singuratece izvoare,\n"
+            "Blânda batere de vânt;\n"
+            "\n"
+            "Adormind de armonia\n"
+            "Codrului bătut de gânduri,\n"
+            "Flori de tei deasupra noastră\n"
+            "Or să cadă rânduri-rânduri."
+        ),
+    },
+    {
+        "author": "dangocan",
+        "title": "Ce te legeni...",
+        "slug": "ce-te-legeni",
+        "category": "poezie",
+        "days_ago": 16,
+        "content": (
+            "Ce te legeni, codrule,\n"
+            "Fără ploaie, fără vânt,\n"
+            "Cu crengile la pământ?\n"
+            "- De ce nu m-aș legăna,\n"
+            "Dacă trece vremea mea!\n"
+            "Ziua scade, noaptea crește\n"
+            "Și frunzișul mi-l rărește.\n"
+            "Bate vântul frunza-n dungă -\n"
+            "Cântăreții mi-i alungă;\n"
+            "Bate vântul dintr-o parte -\n"
+            "Iarna-i ici, vara-i departe.\n"
+            "Și de ce să nu mă plec,\n"
+            "Dacă păsările trec!\n"
+            "Peste vârf de rămurele\n"
+            "Trec în stoluri rândunele,\n"
+            "Ducând gândurile mele\n"
+            "Și norocul meu cu ele.\n"
+            "Și se duc pe rând, pe rând,\n"
+            "Zarea lumii-ntunecând,\n"
+            "Și se duc ca clipele,\n"
+            "Scuturând aripele,\n"
+            "Și mă lasă pustiit,\n"
+            "Vestejit și amorțit\n"
+            "Și cu doru-mi singurel,\n"
+            "De mă-ngân numai cu el!"
         ),
     },
 ]
 
 
-COMMENTS = [
-    {
-        "post_slug": "fereastra-stinsa",
-        "author_name": None,  # authenticated
-        "author_username": "vanatordecuvinte",
-        "content": "Versul despre cuvântul păstrat pentru altă iarnă mi-a rămas în minte.",
-        "days_ago": 1,
-    },
-    {
-        "post_slug": "fereastra-stinsa",
-        "author_name": "cititor anonim",
-        "author_email": "cititor@example.com",
-        "content": "Mulţumesc. Exact aşa se simte acum, la mine.",
-        "days_ago": 1,
-    },
-    {
-        "post_slug": "tramvaiul-21",
-        "author_username": "mireasufletului",
-        "content": "Finalul, cu mâna din geam, e o lovitură mică şi curată.",
-        "days_ago": 2,
-    },
-    {
-        "post_slug": "orasul-dimineata",
-        "author_username": "filedintramvai",
-        "content": "Imaginea cu animalul blând e pe gustul meu.",
-        "days_ago": 0,
-    },
-    {
-        "post_slug": "doamna-cu-paine",
-        "author_name": "maria",
-        "content": "Am recitit de două ori. E atât de liniştit.",
-        "days_ago": 10,
-    },
-    {
-        "post_slug": "trei-dimineata",
-        "author_username": "mireasufletului",
-        "content": "„Îi ţin locul în linişte\" — versul ăsta mă urmăreşte.",
-        "days_ago": 0,
-    },
-    {
-        "post_slug": "liftul",
-        "author_username": "vanatordecuvinte",
-        "content": "Ieşitul la un etaj care nu e al tău — foarte adevărat.",
-        "days_ago": 3,
-    },
-    {
-        "post_slug": "manual",
-        "author_name": "un trecător",
-        "content": "„Tăcere dactilografiată.\" Gata, am plecat cu ea.",
-        "days_ago": 18,
-    },
-]
+COMMENTS = []
 
 
-# Likes: mostly user-authored (some anonymous IPs sprinkled in)
-LIKES = [
-    ("fereastra-stinsa", "vanatordecuvinte"),
-    ("fereastra-stinsa", "filedintramvai"),
-    ("fereastra-stinsa", "noaptedetarziu"),
-    ("dimineata-ta", "noaptedetarziu"),
-    ("dimineata-ta", "filedintramvai"),
-    ("scrisoare-pentru-luni", "vanatordecuvinte"),
-    ("orasul-dimineata", "filedintramvai"),
-    ("orasul-dimineata", "mireasufletului"),
-    ("orasul-dimineata", "noaptedetarziu"),
-    ("cuvinte-fara-adresa", "mireasufletului"),
-    ("manual", "mireasufletului"),
-    ("manual", "noaptedetarziu"),
-    ("tramvaiul-21", "mireasufletului"),
-    ("tramvaiul-21", "noaptedetarziu"),
-    ("geamantan", "vanatordecuvinte"),
-    ("doamna-cu-paine", "mireasufletului"),
-    ("doamna-cu-paine", "vanatordecuvinte"),
-    ("trei-dimineata", "mireasufletului"),
-    ("trei-dimineata", "filedintramvai"),
-    ("liftul", "vanatordecuvinte"),
-    ("exercitiu", "mireasufletului"),
-]
+LIKES = []
 
-# IP-based anonymous likes for realism
-ANON_LIKES = [
-    ("fereastra-stinsa", "192.0.2.10"),
-    ("fereastra-stinsa", "192.0.2.11"),
-    ("dimineata-ta", "192.0.2.12"),
-    ("orasul-dimineata", "192.0.2.13"),
-    ("tramvaiul-21", "192.0.2.14"),
-    ("doamna-cu-paine", "192.0.2.15"),
-    ("trei-dimineata", "192.0.2.16"),
-    ("manual", "192.0.2.17"),
-]
+ANON_LIKES = []
 
 
-BEST_FRIENDS = [
-    # (user, friend, position)
-    ("mireasufletului", "vanatordecuvinte", 1),
-    ("mireasufletului", "filedintramvai", 2),
-    ("vanatordecuvinte", "mireasufletului", 1),
-    ("vanatordecuvinte", "noaptedetarziu", 2),
-    ("filedintramvai", "noaptedetarziu", 1),
-    ("filedintramvai", "mireasufletului", 2),
-    ("noaptedetarziu", "filedintramvai", 1),
-    ("noaptedetarziu", "mireasufletului", 2),
-]
+BEST_FRIENDS = []
 
 
-FEATURED = [
-    # (user, post_slug, position)
-    ("mireasufletului", "fereastra-stinsa", 1),
-    ("mireasufletului", "dimineata-ta", 2),
-    ("vanatordecuvinte", "manual", 1),
-    ("vanatordecuvinte", "orasul-dimineata", 2),
-    ("filedintramvai", "tramvaiul-21", 1),
-    ("filedintramvai", "doamna-cu-paine", 2),
-    ("noaptedetarziu", "trei-dimineata", 1),
-]
+FEATURED = []
 
 
-CLUBS = [
-    {
-        "owner": "mireasufletului",
-        "title": "Poeți la ceas târziu",
-        "slug": "poeti-la-ceas-tarziu",
-        "speciality": "poezie",
-        "theme": "Poezie melancolică",
-        "motto": "scriem când oraşul tace",
-        "description": (
-            "Un cerc de poeți care scriu între miezul nopții și primii zori, "
-            "împărtășind versuri despre orașe adormite, ferestre stinse și "
-            "absențe blânde."
-        ),
-        "avatar_seed": "club-poeti-melancolici",
-        "members": [
-            ("vanatordecuvinte", "admin"),
-            ("noaptedetarziu", "member"),
-        ],
-        "featured_post_slug": "fereastra-stinsa",
-    },
-    {
-        "owner": "mireasufletului",
-        "title": "Tramvaie și povești",
-        "slug": "tramvaie-si-povesti",
-        "speciality": "proza_scurta",
-        "theme": "Proză urbană scurtă",
-        "motto": "fragmente de oraș, șase staţii deodată",
-        "description": (
-            "Proză scurtă despre oameni întâlniți în tramvaie, lifturi blocate "
-            "și brutării din ceaţă. Pentru cei care colecționează detalii."
-        ),
-        "avatar_seed": "club-tramvaie-povesti",
-        "members": [
-            ("filedintramvai", "admin"),
-        ],
-        "featured_post_slug": None,
-    },
-]
+CLUBS = []
 
 
-CLUB_BOARD_MESSAGES = [
-    # (club_slug, author_username, content, parent_index_in_this_list_or_None, days_ago)
-    ("poeti-la-ceas-tarziu", "mireasufletului",
-     "Bun venit în club! Aici discutăm liber despre versurile noastre nocturne.", None, 5),
-    ("poeti-la-ceas-tarziu", "vanatordecuvinte",
-     "Mulțumesc pentru invitație. Am o întrebare despre ritmul versului scurt — cum decideți unde se rupe?", None, 3),
-    ("poeti-la-ceas-tarziu", "mireasufletului",
-     "De obicei las urechea să decidă: dacă pauza ar fi prea lungă rostită cu voce tare, e semn că versul s-a terminat.", 1, 2),
-    ("poeti-la-ceas-tarziu", "noaptedetarziu",
-     "La trei dimineața toate versurile par mai scurte decât sunt.", None, 0),
-    ("tramvaie-si-povesti", "mireasufletului",
-     "Bun venit! Postați aici fragmente, observații, dialoguri scurte auzite în tramvai.", None, 4),
-    ("tramvaie-si-povesti", "filedintramvai",
-     "Aseară am auzit un copil întrebând unde merg trenurile când nu sunt la lucru. Răspunsul mamei: „acasă, ca toți”. Mă bântuie.", None, 1),
-]
+CLUB_BOARD_MESSAGES = []
 
 
-AWARDS = [
-    {
-        "username": "mireasufletului",
-        "title": "Poetul lunii",
-        "description": "Martie 2026 — votat de cititori",
-        "award_date": date(2026, 3, 31),
-        "award_type": "community",
-    },
-    {
-        "username": "filedintramvai",
-        "title": "Proză scurtă a săptămânii",
-        "description": "Pentru „Doamna cu pâine\"",
-        "award_date": date(2026, 4, 5),
-        "award_type": "writing",
-    },
-    {
-        "username": "vanatordecuvinte",
-        "title": "100 de texte publicate",
-        "description": "O etapă rotundă — felicitări!",
-        "award_date": date(2026, 2, 18),
-        "award_type": "milestone",
-    },
-]
+AWARDS = []
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -523,19 +353,24 @@ def seed(session: Session, *, quiet: bool = False) -> None:
     log = (lambda *_a, **_k: None) if quiet else print
 
     # ── Users ──────────────────────────────────────────────
-    # `mireasufletului` is seeded with active premium so club ownership
-    # demos work locally without going through Stripe.
-    premium_until = datetime.now(tz=timezone.utc).replace(tzinfo=None) + timedelta(days=365)
     users_by_username: dict[str, models.User] = {}
     for row in AUTHORS:
+        premium_until = None
+        if row.get("premium_until_days"):
+            premium_until = (
+                datetime.now(tz=timezone.utc).replace(tzinfo=None)
+                + timedelta(days=row["premium_until_days"])
+            )
         u = models.User(
             username=row["username"],
             email=row["email"],
             google_id=row["google_id"],
             subtitle=row["subtitle"],
             avatar_seed=row["avatar_seed"],
-            premium_tier="trubadur" if row["username"] == "mireasufletului" else "free",
-            premium_until=premium_until if row["username"] == "mireasufletului" else None,
+            is_admin=row.get("is_admin", False),
+            is_moderator=row.get("is_moderator", False),
+            premium_tier=row.get("premium_tier", "free"),
+            premium_until=premium_until,
         )
         session.add(u)
         users_by_username[row["username"]] = u

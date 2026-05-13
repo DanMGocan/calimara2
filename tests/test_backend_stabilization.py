@@ -16,7 +16,7 @@ os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-secret")
 
 from app import auth, crud, local_auth, models, moderation, schemas, statistics
-from app.routers import admin_routes, api_pages, auth_routes, forum_routes, friend_routes, moderation_routes, post_routes, series_routes, user_routes
+from app.routers import admin_routes, api_pages, auth_routes, follow_routes, forum_routes, friend_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
 class DummyRequest:
@@ -289,6 +289,153 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(accepted["status"], "friends")
         self.assertEqual(accepted["friendship"]["id"], sent["friendship"]["id"])
         self.assertEqual(self.db.query(models.Friendship).count(), 1)
+
+    def test_follow_lifecycle_profile_context_and_public_lists(self):
+        alice = self.make_user("followalice")
+        bob = self.make_user("followbob")
+        carmen = self.make_user("followcarmen")
+
+        followed = follow_routes.follow_user(bob.id, db=self.db, current_user=alice)
+        self.assertTrue(followed["following"])
+        self.assertTrue(crud.is_following(self.db, alice.id, bob.id))
+        self.assertEqual(crud.get_follower_count_for_user(self.db, bob.id), 1)
+        self.assertEqual(crud.get_following_count_for_user(self.db, alice.id), 1)
+        self.assertEqual(self.db.query(models.Notification).filter_by(user_id=bob.id, type="follow").count(), 1)
+
+        duplicate = follow_routes.follow_user(bob.id, db=self.db, current_user=alice)
+        self.assertTrue(duplicate["following"])
+        self.assertEqual(self.db.query(models.UserFollow).count(), 1)
+        self.assertEqual(self.db.query(models.Notification).filter_by(user_id=bob.id, type="follow").count(), 1)
+
+        friend_routes.send_friend_request(carmen.id, db=self.db, current_user=alice)
+        self.assertFalse(crud.is_following(self.db, alice.id, carmen.id))
+
+        blog_payload = api_pages.blog_data(
+            DummyRequest(session={}),
+            bob.username,
+            db=self.db,
+            current_user=alice,
+        )
+        self.assertEqual(blog_payload["follower_count"], 1)
+        self.assertEqual(blog_payload["following_count"], 0)
+        self.assertTrue(blog_payload["viewer_following"])
+
+        followers_payload = follow_routes.get_public_followers(bob.username, db=self.db)
+        self.assertEqual(followers_payload["count"], 1)
+        self.assertEqual(followers_payload["followers"][0]["username"], alice.username)
+
+        following_payload = follow_routes.get_public_following(alice.username, db=self.db)
+        self.assertEqual(following_payload["count"], 1)
+        self.assertEqual(following_payload["following"][0]["username"], bob.username)
+
+        unfollowed = follow_routes.unfollow_user(bob.id, db=self.db, current_user=alice)
+        self.assertFalse(unfollowed["following"])
+        self.assertFalse(crud.is_following(self.db, alice.id, bob.id))
+        self.assertEqual(crud.get_follower_count_for_user(self.db, bob.id), 0)
+
+    def test_follow_blocks_self_and_suspended_users(self):
+        alice = self.make_user("blockfollowalice")
+        suspended = self.make_user("suspendedfollow")
+        suspended.is_suspended = True
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as self_error:
+            follow_routes.follow_user(alice.id, db=self.db, current_user=alice)
+        self.assertEqual(self_error.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as suspended_error:
+            follow_routes.follow_user(suspended.id, db=self.db, current_user=alice)
+        self.assertEqual(suspended_error.exception.status_code, 404)
+
+        alice.is_suspended = True
+        self.db.commit()
+        bob = self.make_user("targetfollowbob")
+        with self.assertRaises(HTTPException) as follower_error:
+            follow_routes.follow_user(bob.id, db=self.db, current_user=alice)
+        self.assertEqual(follower_error.exception.status_code, 403)
+
+    def test_users_directory_filters_metrics_and_sorting(self):
+        viewer = self.make_user("dirviewer")
+        friend = self.make_user("dirfriend")
+        outgoing = self.make_user("diroutgoing")
+        incoming = self.make_user("dirincoming")
+        unrelated = self.make_user("dirunrelated")
+        suspended = self.make_user("dirsuspended")
+        suspended.is_suspended = True
+
+        friend_first = self.make_post(friend, "Friend First")
+        friend_first.view_count = 4
+        friend_second = self.make_post(friend, "Friend Second")
+        friend_second.view_count = 3
+        friend_pending = self.make_post(friend, "Friend Pending", moderation_status="pending")
+        friend_pending.view_count = 100
+        outgoing_post = self.make_post(outgoing, "Outgoing Text")
+        outgoing_post.view_count = 20
+        self.db.add_all([
+            models.Comment(post_id=friend_first.id, user_id=viewer.id, content="approved", approved=True, moderation_status="approved"),
+            models.Comment(post_id=friend_first.id, user_id=viewer.id, content="pending", approved=False, moderation_status="pending"),
+            models.Comment(post_id=friend_pending.id, user_id=viewer.id, content="hidden", approved=True, moderation_status="approved"),
+        ])
+        self.db.commit()
+
+        sent = friend_routes.send_friend_request(friend.id, db=self.db, current_user=viewer)
+        friend_routes.accept_friend_request(sent["friendship"]["id"], db=self.db, current_user=friend)
+        friend_routes.send_friend_request(outgoing.id, db=self.db, current_user=viewer)
+        friend_routes.send_friend_request(viewer.id, db=self.db, current_user=incoming)
+        follow_routes.follow_user(outgoing.id, db=self.db, current_user=viewer)
+        follow_routes.follow_user(viewer.id, db=self.db, current_user=incoming)
+
+        payload = user_routes.list_users_directory(sort="posts", db=self.db, current_user=viewer)
+        usernames = [item["username"] for item in payload["users"]]
+        self.assertNotIn(viewer.username, usernames)
+        self.assertNotIn(suspended.username, usernames)
+        self.assertEqual(payload["total"], 4)
+        self.assertEqual(payload["users"][0]["username"], friend.username)
+        friend_payload = next(item for item in payload["users"] if item["username"] == friend.username)
+        self.assertEqual(friend_payload["approved_post_count"], 2)
+        self.assertEqual(friend_payload["total_view_count"], 7)
+        self.assertEqual(friend_payload["approved_comment_count"], 1)
+        self.assertEqual(friend_payload["friendship_status"], "friends")
+
+        views_payload = user_routes.list_users_directory(sort="views", db=self.db, current_user=viewer)
+        self.assertEqual(views_payload["users"][0]["username"], outgoing.username)
+        comments_payload = user_routes.list_users_directory(sort="comments", db=self.db, current_user=viewer)
+        self.assertEqual(comments_payload["users"][0]["username"], friend.username)
+        followers_payload = user_routes.list_users_directory(sort="followers", db=self.db, current_user=viewer)
+        self.assertEqual(followers_payload["users"][0]["username"], outgoing.username)
+
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="friends", db=self.db, current_user=viewer)["users"]],
+            [friend.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="outgoing_pending", db=self.db, current_user=viewer)["users"]],
+            [outgoing.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="incoming_pending", db=self.db, current_user=viewer)["users"]],
+            [incoming.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="following", db=self.db, current_user=viewer)["users"]],
+            [outgoing.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="followers", db=self.db, current_user=viewer)["users"]],
+            [incoming.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(relationship="not_friends", db=self.db, current_user=viewer)["users"]],
+            [unrelated.username],
+        )
+        self.assertEqual(
+            [item["username"] for item in user_routes.list_users_directory(q="outgo", db=self.db, current_user=viewer)["users"]],
+            [outgoing.username],
+        )
+
+        page = user_routes.list_users_directory(limit=2, db=self.db, current_user=viewer)
+        self.assertEqual(len(page["users"]), 2)
+        self.assertTrue(page["has_more"])
 
     def test_friend_request_blocks_self_and_suspended_targets(self):
         alice = self.make_user("blockalice")
@@ -777,6 +924,31 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertTrue(local_auth.verify_password("long-enough-password", created.password_hash))
         self.assertEqual(request.session["user_id"], created.id)
 
+    def test_password_login_uses_safe_return_target(self):
+        user = self.make_user("passwordlogin")
+        user.password_hash = local_auth.password_hash("long-enough-password")
+        user.email_verified_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        self.db.add(user)
+        self.db.commit()
+        request = DummyRequest({})
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
+        ), patch.object(auth_routes, "MAIN_DOMAIN", "lvh.me:8000"):
+            response = auth_routes.login_with_password.__wrapped__(
+                request,
+                schemas.PasswordLoginRequest(
+                    email=user.email,
+                    password="long-enough-password",
+                    return_to="/?post=42",
+                ),
+                self.db,
+            )
+
+        self.assertEqual(response["redirect_url"], "http://lvh.me:8000/?post=42")
+        self.assertEqual(request.session["user_id"], user.id)
+
     def test_password_reset_sets_password_for_existing_social_account(self):
         user = self.make_user("socialonly")
         user.email_verified_at = None
@@ -969,6 +1141,22 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(second_payload["likes_count"], 1)
         self.assertEqual(second_payload["super_likes_count"], 1)
 
+    def test_landing_data_returns_requested_approved_post(self):
+        user = self.make_user("landingtarget")
+        first = self.make_post(user, "First Landing")
+        second = self.make_post(user, "Second Landing")
+
+        payload = api_pages.landing_data(
+            DummyRequest({}),
+            category="toate",
+            post_id=second.id,
+            db=self.db,
+            current_user=None,
+        )
+
+        self.assertEqual(payload["random_posts"][0]["id"], second.id)
+        self.assertNotEqual(payload["random_posts"][0]["id"], first.id)
+
     def test_google_login_redirects_with_sync_auth_url_helper(self):
         request = DummyRequest({})
 
@@ -984,6 +1172,60 @@ class BackendStabilizationTests(unittest.TestCase):
             response.headers["location"],
             "https://accounts.google.com/o/oauth2/auth?client_id=test",
         )
+
+    def test_google_login_stores_same_site_return_target(self):
+        request = DummyRequest({})
+
+        with patch.object(
+            auth_routes.google_oauth,
+            "get_google_auth_url",
+            return_value="https://accounts.google.com/o/oauth2/auth?client_id=test",
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes,
+            "SUBDOMAIN_SUFFIX",
+            ".lvh.me:8000",
+        ):
+            response = self.async_run(
+                auth_routes.google_login.__wrapped__(
+                    request,
+                    return_to="http://writer.lvh.me:8000/post-title",
+                )
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            request.session[auth_routes.AUTH_RETURN_TO_SESSION_KEY],
+            "http://writer.lvh.me:8000/post-title",
+        )
+
+    def test_google_login_ignores_external_return_target(self):
+        request = DummyRequest({})
+
+        with patch.object(
+            auth_routes.google_oauth,
+            "get_google_auth_url",
+            return_value="https://accounts.google.com/o/oauth2/auth?client_id=test",
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes,
+            "SUBDOMAIN_SUFFIX",
+            ".lvh.me:8000",
+        ):
+            self.async_run(
+                auth_routes.google_login.__wrapped__(
+                    request,
+                    return_to="https://example.test/steal",
+                )
+            )
+
+        self.assertNotIn(auth_routes.AUTH_RETURN_TO_SESSION_KEY, request.session)
 
     def test_legacy_google_callback_route_remains_registered(self):
         routes = {
@@ -1043,6 +1285,7 @@ class BackendStabilizationTests(unittest.TestCase):
             schemas.PostDraftSave(
                 title="Ciornă",
                 content="<p>Text în lucru</p>",
+                explanatory_note="Nota ciornei",
                 category="proza_scurta",
             ),
             db=self.db,
@@ -1052,6 +1295,7 @@ class BackendStabilizationTests(unittest.TestCase):
         drafts = post_routes.list_post_drafts(db=self.db, current_user=user)["drafts"]
         self.assertEqual([item.id for item in drafts], [draft.id])
         self.assertEqual(draft.category, "proza_scurta")
+        self.assertEqual(drafts[0].explanatory_note, "Nota ciornei")
 
         second_draft = crud.create_post_draft(
             self.db,
@@ -1067,12 +1311,13 @@ class BackendStabilizationTests(unittest.TestCase):
 
         updated = post_routes.update_post_draft_api(
             draft.id,
-            schemas.PostDraftSave(title="Ciornă revizuită", content="<p>Alt text</p>", category="poezie"),
+            schemas.PostDraftSave(title="Ciornă revizuită", content="<p>Alt text</p>", explanatory_note="Nota revizuită", category="poezie"),
             db=self.db,
             current_user=user,
         )
         self.assertEqual(updated.title, "Ciornă revizuită")
         self.assertEqual(updated.category, "poezie")
+        self.assertEqual(updated.explanatory_note, "Nota revizuită")
 
         with self.assertRaises(HTTPException) as other_error:
             post_routes.get_post_draft_api(draft.id, db=self.db, current_user=other_user)
@@ -1087,7 +1332,7 @@ class BackendStabilizationTests(unittest.TestCase):
         other_user = self.make_user("otherpublishdrafter")
         draft = crud.create_post_draft(
             self.db,
-            schemas.PostDraftSave(title="Draft title", content="<p>Draft body</p>", category="poezie"),
+            schemas.PostDraftSave(title="Draft title", content="<p>Draft body</p>", explanatory_note="Nota publicată", category="poezie"),
             user.id,
         )
         other_draft = crud.create_post_draft(
@@ -1104,6 +1349,7 @@ class BackendStabilizationTests(unittest.TestCase):
                     schemas.PostCreate(
                         title="Publicat din ciornă",
                         content="<p>Text publicat</p>",
+                        explanatory_note="Nota publicată",
                         category="poezie",
                         draft_id=draft.id,
                     ),
@@ -1114,6 +1360,21 @@ class BackendStabilizationTests(unittest.TestCase):
 
         self.assertEqual(post.user_id, user.id)
         self.assertEqual(post.category, "poezie")
+        self.assertEqual(post.explanatory_note, "Nota publicată")
+        editable_post = post_routes.get_owned_post_for_edit(post.id, db=self.db, current_user=user)
+        self.assertEqual(editable_post.explanatory_note, "Nota publicată")
+        updated_post = post_routes.update_post_api(
+            post.id,
+            schemas.PostUpdate(
+                title="Publicat din ciornă revizuit",
+                content="<p>Text publicat revizuit</p>",
+                explanatory_note="Nota schimbată",
+                category="poezie",
+            ),
+            db=self.db,
+            current_user=user,
+        )
+        self.assertEqual(updated_post.explanatory_note, "Nota schimbată")
         self.assertIsNone(crud.get_post_draft(self.db, draft.id, user.id))
         self.assertIsNotNone(crud.get_post_draft(self.db, other_draft.id, other_user.id))
         enqueue.assert_called_once()
@@ -1604,6 +1865,39 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["location"], "http://lvh.me:8000/?auth_error=google")
         self.assertNotIn("user_id", request.session)
+
+    def test_google_callback_redirects_to_stored_return_target(self):
+        user = self.make_user("oauthreturn")
+        request = DummyRequest(
+            {auth_routes.AUTH_RETURN_TO_SESSION_KEY: "http://lvh.me:8000/?post=42"},
+            scheme="https",
+        )
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://lvh.me:8000/auth/google/callback"},
+        ), patch.object(
+            auth_routes,
+            "MAIN_DOMAIN",
+            "lvh.me:8000",
+        ), patch.object(
+            auth_routes,
+            "SUBDOMAIN_SUFFIX",
+            ".lvh.me:8000",
+        ), patch.object(
+            auth_routes.google_oauth,
+            "handle_google_callback",
+            new=AsyncMock(return_value=SimpleNamespace(email=user.email)),
+        ), patch.object(
+            auth_routes.google_oauth,
+            "find_or_create_user",
+            return_value=(user, False),
+        ):
+            response = self.async_run(auth_routes.google_callback.__wrapped__(request, self.db))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["location"], "http://lvh.me:8000/?post=42")
+        self.assertEqual(request.session["user_id"], user.id)
 
     def test_google_callback_sends_new_users_to_setup_and_clears_stale_login(self):
         existing_user = self.make_user("olduser")

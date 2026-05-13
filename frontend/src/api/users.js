@@ -42,6 +42,17 @@ export function searchUsers(query) {
   return api.get(`/api/utilizatori/cauta?q=${encodeURIComponent(query)}`);
 }
 
+export function fetchUsersDirectory(params = {}) {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.relationship) search.set("relationship", params.relationship);
+  if (params.sort) search.set("sort", params.sort);
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.limit != null) search.set("limit", String(params.limit));
+  const query = search.toString();
+  return api.get(`/api/utilizatori${query ? `?${query}` : ""}`);
+}
+
 export function fetchPublicProfile(username) {
   return api.get(`/api/utilizator/${encodeURIComponent(username)}/profil`);
 }

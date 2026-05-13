@@ -101,6 +101,20 @@ class User(Base):
         foreign_keys="BestFriend.friend_user_id", 
         back_populates="friend"
     )
+
+    # One-way follow relationships
+    following_relations: Mapped[List["UserFollow"]] = relationship(
+        "UserFollow",
+        foreign_keys="UserFollow.follower_id",
+        back_populates="follower",
+        cascade="all, delete-orphan",
+    )
+    follower_relations: Mapped[List["UserFollow"]] = relationship(
+        "UserFollow",
+        foreign_keys="UserFollow.followed_id",
+        back_populates="followed",
+        cascade="all, delete-orphan",
+    )
     
     # Featured posts by this user
     featured_posts: Mapped[List["FeaturedPost"]] = relationship(

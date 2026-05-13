@@ -22,6 +22,7 @@ DROP TABLE IF EXISTS conversations CASCADE;
 DROP TABLE IF EXISTS likes CASCADE;
 DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS friendships CASCADE;
+DROP TABLE IF EXISTS user_follows CASCADE;
 DROP TABLE IF EXISTS best_friends CASCADE;
 DROP TABLE IF EXISTS featured_posts CASCADE;
 DROP TABLE IF EXISTS user_equipped_items CASCADE;
@@ -176,6 +177,26 @@ CREATE INDEX idx_friendships_requested_by_id ON friendships(requested_by_id);
 CREATE INDEX idx_friendships_status_updated ON friendships(status, updated_at);
 
 -- ===================================
+-- USER FOLLOWS TABLE
+-- ===================================
+CREATE TABLE user_follows (
+    id SERIAL PRIMARY KEY,
+    follower_id INT NOT NULL,
+    followed_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT uq_user_follows_pair UNIQUE (follower_id, followed_id),
+    CONSTRAINT fk_user_follows_follower FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_follows_followed FOREIGN KEY (followed_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_user_follows_no_self CHECK (follower_id != followed_id)
+);
+
+CREATE INDEX idx_user_follows_follower_id ON user_follows(follower_id);
+CREATE INDEX idx_user_follows_followed_id ON user_follows(followed_id);
+CREATE INDEX idx_user_follows_created_at ON user_follows(created_at DESC);
+
+-- ===================================
 -- AUTH EMAIL CODES TABLE
 -- ===================================
 CREATE TABLE auth_email_codes (
@@ -268,6 +289,7 @@ CREATE TABLE post_drafts (
     user_id INT NOT NULL,
     title VARCHAR(255) DEFAULT '' NOT NULL,
     content TEXT DEFAULT '' NOT NULL,
+    explanatory_note VARCHAR(300),
     category VARCHAR(100) DEFAULT 'poezie' NOT NULL
         CHECK (category IN ('poezie', 'proza_scurta')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -288,6 +310,7 @@ CREATE TABLE posts (
     title VARCHAR(255) NOT NULL,
     slug VARCHAR(300) UNIQUE NOT NULL,
     content TEXT NOT NULL,
+    explanatory_note VARCHAR(300),
     category VARCHAR(100),
     genre VARCHAR(100),
     ai_critic_requested BOOLEAN DEFAULT FALSE NOT NULL,
@@ -1135,6 +1158,8 @@ CREATE TRIGGER trg_ai_jobs_updated_at BEFORE UPDATE ON ai_jobs
 CREATE TRIGGER trg_best_friends_updated_at BEFORE UPDATE ON best_friends
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_friendships_updated_at BEFORE UPDATE ON friendships
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_user_follows_updated_at BEFORE UPDATE ON user_follows
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_platform_access_settings_updated_at BEFORE UPDATE ON platform_access_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

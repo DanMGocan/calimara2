@@ -56,9 +56,9 @@ sudo -u postgres psql -c "ALTER USER calimara_user PASSWORD 'calimara_pass';"
 ```
 
 ### Test Data
-The schema includes sample data with 4 users and 10 posts:
-- **Admin**: dangocan / gocandan@gmail.com (admin + moderator)
-- **Test users**: mireasufletului, vanatordecuvinte, filedintramvai
+The seed script creates sample data with 2 users and 10 posts:
+- **gocandan / gocandan@gmail.com**: 5 Ion Creangă prose entries (admin + moderator, Rapsod tier)
+- **dangocan / dangocan@outlook.com**: 5 Mihai Eminescu poems
 
 ## Critical Configuration
 

@@ -2,9 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { GiRollingDices } from "react-icons/gi";
 import { fetchLanding, postPdfUrl } from "../api/public.js";
 import { PieceCol, fallbackPiece, postToPiece } from "../app/content.jsx";
-import { AdSlot } from "../app/layout.jsx";
-import { mainPath } from "../app/paths.js";
-import { PostActionTools, PostPromotionMenu } from "../app/post-actions.jsx";
+import { PostPromotionMenu } from "../app/post-actions.jsx";
 
 const LANDING_NETWORK_RETRY_DELAYS = [350, 900];
 const LANDING_POST_FADE_OUT_MS = 240;
@@ -15,11 +13,11 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function fetchLandingWithNetworkRetry(category) {
+async function fetchLandingWithNetworkRetry(category, postId = null) {
   let lastError;
   for (let attempt = 0; attempt <= LANDING_NETWORK_RETRY_DELAYS.length; attempt += 1) {
     try {
-      return await fetchLanding(category);
+      return await fetchLanding(category, postId);
     } catch (error) {
       lastError = error;
       const canRetry = error?.status === 0 && attempt < LANDING_NETWORK_RETRY_DELAYS.length;
@@ -46,47 +44,6 @@ function TitleShuffleButton({ onShuffle, disabled, spinning }) {
     </button>
   );
 }
-function Rail({ stats }) {
-  if (!stats) return null;
-  return (
-    <aside className="rail">
-      <div className="rail-stat">
-        <span className="rail-label">Texte</span>
-        <span className="rail-count">{Number(stats.total_posts ?? 0).toLocaleString("ro-RO")}</span>
-      </div>
-      <div className="rail-stat">
-        <span className="rail-label">Autori</span>
-        <span className="rail-count">{Number(stats.total_authors ?? 0).toLocaleString("ro-RO")}</span>
-      </div>
-    </aside>
-  );
-}
-function LandingLinks() {
-  const links = [
-    { label: "Ce este călimara.ro?", href: mainPath("/ce-este-calimara") },
-    { label: "De ce să ni te alături?", href: mainPath("/de-ce-sa-ni-te-alaturi") },
-    { label: "Funcții și caracteristici", href: mainPath("/functii-si-caracteristici") }
-  ];
-
-  return (
-    <aside className="landing-link-rail" aria-label="Informații călimara.ro">
-      <div className="landing-link-list">
-        {links.map((link, index) => (
-          <a className="landing-link-row" href={link.href} key={link.href}>
-            <span className="landing-link-number">{String(index + 1).padStart(2, "0")}</span>
-            <span className="landing-link-label">{link.label}</span>
-            <span className="landing-link-arrow" aria-hidden="true">
-              <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                <path d="M1 5h11m0 0L9 1m3 4l-3 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
-          </a>
-        ))}
-      </div>
-    </aside>
-  );
-}
-
 function AuthErrorModal({ open, errorKind, onClose }) {
   if (!open) return null;
   const inviteOnly = errorKind === "access";
@@ -103,7 +60,21 @@ function AuthErrorModal({ open, errorKind, onClose }) {
   );
 }
 
-function LandingView({ user }) {
+function landingPostIdFromUrl() {
+  const value = new URL(window.location.href).searchParams.get("post");
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function clearLandingPostUrlParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("post")) return;
+  url.searchParams.delete("post");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange }) {
   const [piece, setPiece] = useState(fallbackPiece("poem"));
   const [landingPost, setLandingPost] = useState(null);
   const [stats, setStats] = useState(null);
@@ -114,14 +85,18 @@ function LandingView({ user }) {
   const [error, setError] = useState("");
   const [authErrorOpen, setAuthErrorOpen] = useState(false);
   const [authErrorKind, setAuthErrorKind] = useState("");
+  const landingPdfHref = landingPost?.owner?.username && landingPost?.slug
+    ? postPdfUrl(landingPost.owner.username, landingPost.slug)
+    : "#";
 
-  const loadLanding = useCallback(async (initial = false) => {
+  const loadLanding = useCallback(async (initial = false, requestedPostId = null) => {
     const startedAt = Date.now();
+    if (!initial) clearLandingPostUrlParam();
     if (!initial) setTransitioning(true);
     if (!initial) setDiceSpinning(true);
     setError("");
     try {
-      const dataPromise = fetchLandingWithNetworkRetry("toate");
+      const dataPromise = fetchLandingWithNetworkRetry("toate", requestedPostId);
       const data = initial
         ? await dataPromise
         : (await Promise.all([dataPromise, wait(LANDING_POST_FADE_OUT_MS)]))[0];
@@ -147,8 +122,32 @@ function LandingView({ user }) {
   }, []);
 
   useEffect(() => {
-    loadLanding(true);
+    loadLanding(true, landingPostIdFromUrl());
   }, [loadLanding]);
+
+  useEffect(() => {
+    onAuthPostIdChange?.(landingPost?.id ?? null);
+    return () => onAuthPostIdChange?.(null);
+  }, [landingPost?.id, onAuthPostIdChange]);
+
+  useEffect(() => {
+    onLandingStatsChange?.(stats ?? null);
+    return () => onLandingStatsChange?.(null);
+  }, [stats, onLandingStatsChange]);
+
+  useEffect(() => {
+    if (!landingPost) {
+      onFooterPostActionsChange?.(null);
+      return undefined;
+    }
+    onFooterPostActionsChange?.({
+      key: `landing:${landingPost.id}`,
+      post: landingPost,
+      onPostChange: setLandingPost,
+      pdfHref: landingPdfHref
+    });
+    return () => onFooterPostActionsChange?.(null);
+  }, [landingPost, landingPdfHref, onFooterPostActionsChange]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -160,9 +159,6 @@ function LandingView({ user }) {
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
-  const landingPdfHref = landingPost?.owner?.username && landingPost?.slug
-    ? postPdfUrl(landingPost.owner.username, landingPost.slug)
-    : "#";
   const shuffleDisabled = transitioning || loading || diceSpinning;
 
   return (
@@ -182,12 +178,6 @@ function LandingView({ user }) {
             />
           )}
         />
-        <PostActionTools post={landingPost} user={user} onPostChange={setLandingPost} pdfHref={landingPdfHref} />
-      </div>
-      <div className="left-col landing-bottom-rail">
-        <Rail stats={stats} />
-        <LandingLinks />
-        <AdSlot placement="rail" />
         {error ? <div className="inline-error">{error}</div> : null}
       </div>
       <AuthErrorModal open={authErrorOpen} errorKind={authErrorKind} onClose={() => setAuthErrorOpen(false)} />
@@ -195,6 +185,13 @@ function LandingView({ user }) {
   );
 }
 
-export default function LandingRoute({ user }) {
-  return <LandingView user={user} />;
+export default function LandingRoute({ user, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange }) {
+  return (
+    <LandingView
+      user={user}
+      onAuthPostIdChange={onAuthPostIdChange}
+      onLandingStatsChange={onLandingStatsChange}
+      onFooterPostActionsChange={onFooterPostActionsChange}
+    />
+  );
 }

@@ -11,8 +11,8 @@ export function htmlToText(html) {
   }
   return normalized.replace(/<[^>]*>/g, "").replace(/\u00a0/g, " ").trim();
 }
-export function draftFingerprint(title, content) {
-  return `${(title || "").trim()}\n${content || ""}`;
+export function draftFingerprint(title, content, explanatoryNote = "") {
+  return `${(title || "").trim()}\n${content || ""}\n${(explanatoryNote || "").trim()}`;
 }
 export function draftHasContent(title, content) {
   return Boolean((title || "").trim() || htmlToText(content));

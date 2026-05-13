@@ -12,6 +12,7 @@ export const TITLE_CHARACTER_LIMIT = 120;
 export const POETRY_CHARACTER_LIMIT = 10000;
 export const SHORT_STORY_CHARACTER_LIMIT = 50000;
 export const COMMENT_CHARACTER_LIMIT = 2500;
+export const EXPLANATORY_NOTE_CHARACTER_LIMIT = 300;
 export const PROFILE_DESCRIPTION_CHARACTER_LIMIT = 1000;
 
 export const POST_CATEGORIES = [
@@ -70,7 +71,7 @@ export const CONTENT_TYPE_LABELS = {
   forum_reply: "Răspuns"
 };
 
-export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
+export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
 export const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
 export const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "blog", "post", "series"]);
 export const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";

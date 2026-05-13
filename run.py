@@ -40,8 +40,8 @@ DEV_PREMIUM_USER_EMAIL = "gocandan@gmail.com"
 DEV_PREMIUM_USER_USERNAME = "gocandan"
 DEV_PREMIUM_USER_GOOGLE_ID = "seed-google-gocandan"
 REQUIRED_SEED_TABLES = {
-    "users": 5,
-    "posts": 1,
+    "users": 2,
+    "posts": 10,
     "shop_items": 1,
 }
 # Track child processes for cleanup

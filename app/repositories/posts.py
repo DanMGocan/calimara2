@@ -45,6 +45,7 @@ def create_post_draft(db: Session, draft: schemas.PostDraftSave, user_id: int):
         user_id=user_id,
         title=draft.title,
         content=draft.content,
+        explanatory_note=draft.explanatory_note,
         category=draft.category,
     )
     db.add(db_draft)
@@ -58,6 +59,7 @@ def update_post_draft(db: Session, draft_id: int, draft_update: schemas.PostDraf
         return None
     db_draft.title = draft_update.title
     db_draft.content = draft_update.content
+    db_draft.explanatory_note = draft_update.explanatory_note
     db_draft.category = draft_update.category
     db.commit()
     db.refresh(db_draft)

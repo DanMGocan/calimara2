@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { FiBookOpen } from "react-icons/fi";
 import { fetchPostDetail, postPdfUrl } from "../api/public.js";
 import { TEXT_MODERATION_MESSAGE } from "../app/constants.js";
@@ -6,7 +7,7 @@ import { formatNumber } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, StatusPanel } from "../app/layout.jsx";
 import { mainPath } from "../app/paths.js";
-import { PostActionTools, PostPromotionMenu } from "../app/post-actions.jsx";
+import { PostPromotionMenu } from "../app/post-actions.jsx";
 function SeriesContextPanel({ context }) {
   if (!context?.series) return null;
   const { series, previous_post: previousPost, next_post: nextPost } = context;
@@ -30,13 +31,33 @@ function SeriesContextPanel({ context }) {
     </section>
   );
 }
-function PostDetailView({ username, slug, user }) {
+function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPostActionsChange }) {
   const { data, error, loading } = useAsync(() => fetchPostDetail(username, slug), [username, slug, user?.id]);
   const piece = data ? postToPiece({ ...data.post, owner: data.blog_owner }) : null;
   const actionPost = data ? { ...data.post, owner: data.blog_owner } : null;
   const pdfHref = data?.blog_owner?.username && data?.post?.slug
     ? postPdfUrl(data.blog_owner.username, data.post.slug)
     : "#";
+
+  useEffect(() => {
+    const visiblePostId = data?.post?.moderation_status === "approved" ? data.post.id : null;
+    onAuthPostIdChange?.(visiblePostId ?? null);
+    return () => onAuthPostIdChange?.(null);
+  }, [data?.post?.id, data?.post?.moderation_status, onAuthPostIdChange]);
+
+  useEffect(() => {
+    if (!data || data.post.moderation_status !== "approved") {
+      onFooterPostActionsChange?.(null);
+      return undefined;
+    }
+    onFooterPostActionsChange?.({
+      key: `post:${data.post.id}`,
+      post: { ...data.post, owner: data.blog_owner },
+      pdfHref
+    });
+    return () => onFooterPostActionsChange?.(null);
+  }, [data, pdfHref, onFooterPostActionsChange]);
+
   return (
     <main className="stage stage-single">
       {loading ? <StatusPanel title="Se încarcă" /> : null}
@@ -55,9 +76,6 @@ function PostDetailView({ username, slug, user }) {
               ) : null}
             />
             <SeriesContextPanel context={data.series_context} />
-            {data.post.moderation_status === "approved" ? (
-              <PostActionTools post={actionPost} user={user} pdfHref={pdfHref} className="detail-actions" />
-            ) : null}
             <AdSlot placement="postFooter" />
           </div>
         </div>
@@ -66,6 +84,14 @@ function PostDetailView({ username, slug, user }) {
   );
 }
 
-export default function PostRoute({ route, user }) {
-  return <PostDetailView username={route.username} slug={route.slug} user={user} />;
+export default function PostRoute({ route, user, onAuthPostIdChange, onFooterPostActionsChange }) {
+  return (
+    <PostDetailView
+      username={route.username}
+      slug={route.slug}
+      user={user}
+      onAuthPostIdChange={onAuthPostIdChange}
+      onFooterPostActionsChange={onFooterPostActionsChange}
+    />
+  );
 }

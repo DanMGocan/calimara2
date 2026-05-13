@@ -196,6 +196,12 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
             responded_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
     )
+    db.add_all(
+        [
+            models.UserFollow(follower_id=peer.id, followed_id=user.id),
+            models.UserFollow(follower_id=user.id, followed_id=target.id),
+        ]
+    )
 
     series = models.Series(
         owner_id=user.id,
@@ -505,12 +511,18 @@ SMOKE_CASES = [
     SmokeCase("deleteProfileMedia", "DELETE", _path("/api/utilizator/media/profil"), {200}),
     SmokeCase("updateBestFriends", "PUT", _path("/api/utilizator/prieteni-apropiati"), {200}, _json({"friends": ["smokereader"]})),
     SmokeCase("searchUsers", "GET", _path("/api/utilizatori/cauta?q=smoke"), {200}),
+    SmokeCase("fetchUsersDirectory", "GET", _path("/api/utilizatori?sort=newest&relationship=all"), {200}),
     SmokeCase("fetchFriendsState", "GET", _path("/api/prieteni"), {200}),
     SmokeCase("fetchFriendshipStatus", "GET", lambda data: f"/api/prieteni/status/{data.peer_id}", {200}),
     SmokeCase("sendFriendRequest", "POST", lambda data: f"/api/prieteni/cereri/{data.peer_id}", {200}, _json({})),
     SmokeCase("acceptFriendRequest", "POST", lambda data: f"/api/prieteni/cereri/{data.pending_friendship_id}/accepta", {200}, _json({})),
     SmokeCase("deleteFriendRequest", "DELETE", lambda data: f"/api/prieteni/cereri/{data.pending_friendship_id}", {200}),
     SmokeCase("removeFriend", "DELETE", lambda data: f"/api/prieteni/{data.target_id}", {200}),
+    SmokeCase("fetchFollowStatus", "GET", lambda data: f"/api/urmariri/status/{data.peer_id}", {200}),
+    SmokeCase("followUser", "POST", lambda data: f"/api/urmariri/{data.peer_id}", {200}, _json({})),
+    SmokeCase("unfollowUser", "DELETE", lambda data: f"/api/urmariri/{data.peer_id}", {200}),
+    SmokeCase("fetchFollowers", "GET", _path("/api/utilizatori/smokeauthor/urmaritori"), {200}),
+    SmokeCase("fetchFollowing", "GET", _path("/api/utilizatori/smokeauthor/urmariti"), {200}),
     SmokeCase("fetchPromotions", "GET", _path("/api/utilizator/promovari"), {200}),
     SmokeCase("searchPromotions", "GET", _path("/api/utilizator/promovari/cauta?q=smoke"), {200}),
     SmokeCase("updatePromotions", "PUT", _path("/api/utilizator/promovari"), {200}, lambda data: {

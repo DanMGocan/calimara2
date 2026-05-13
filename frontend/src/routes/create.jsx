@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPost, createPostDraft, fetchOwnedPostForEdit, fetchPostDraft, fetchPostDrafts, updatePost, updatePostDraft } from "../api/posts.js";
 import { addDiacritics } from "../api/writing.js";
-import { POST_CATEGORIES, POST_CONTENT_LIMITS, POST_DRAFT_AUTOSAVE_MS, SHORT_STORY_CHARACTER_LIMIT, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
+import { EXPLANATORY_NOTE_CHARACTER_LIMIT, POST_CATEGORIES, POST_CONTENT_LIMITS, POST_DRAFT_AUTOSAVE_MS, SHORT_STORY_CHARACTER_LIMIT, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
 import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
 import { categoryLabel, draftFingerprint, draftHasContent, formatDateTime, formatNumber, htmlToText } from "../app/format.js";
@@ -22,6 +22,7 @@ function CreatePostView({ user }) {
   }, []);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [explanatoryNote, setExplanatoryNote] = useState("");
   const [category, setCategory] = useState("poezie");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,6 +38,7 @@ function CreatePostView({ user }) {
   const contentLimit = POST_CONTENT_LIMITS[category] ?? SHORT_STORY_CHARACTER_LIMIT;
   const titleRef = useRef("");
   const contentRef = useRef("");
+  const explanatoryNoteRef = useRef("");
   const categoryRef = useRef("poezie");
   const draftIdRef = useRef(null);
   const lastSavedFingerprintRef = useRef("");
@@ -60,6 +62,10 @@ function CreatePostView({ user }) {
   useEffect(() => {
     contentRef.current = content;
   }, [content]);
+
+  useEffect(() => {
+    explanatoryNoteRef.current = explanatoryNote;
+  }, [explanatoryNote]);
 
   useEffect(() => {
     categoryRef.current = category;
@@ -90,12 +96,14 @@ function CreatePostView({ user }) {
         if (cancelled) return;
         const nextTitle = post.title || "";
         const nextContent = post.content || "";
+        const nextExplanatoryNote = post.explanatory_note || "";
         const nextCategory = post.category || "poezie";
         setDraftId(null);
         setTitle(nextTitle);
         setContent(nextContent);
+        setExplanatoryNote(nextExplanatoryNote);
         setCategory(nextCategory);
-        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent);
+        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent, nextExplanatoryNote);
         setDraftStatus("Postare încărcată pentru editare.");
       })
       .catch((requestError) => {
@@ -121,12 +129,14 @@ function CreatePostView({ user }) {
         if (cancelled) return;
         const nextTitle = draft.title || "";
         const nextContent = draft.content || "";
+        const nextExplanatoryNote = draft.explanatory_note || "";
         const nextCategory = draft.category || "poezie";
         setDraftId(draft.id);
         setTitle(nextTitle);
         setContent(nextContent);
+        setExplanatoryNote(nextExplanatoryNote);
         setCategory(nextCategory);
-        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent);
+        lastSavedFingerprintRef.current = draftFingerprint(`${nextCategory}:${nextTitle}`, nextContent, nextExplanatoryNote);
         setDraftStatus("Ciornă încărcată.");
       })
       .catch((requestError) => {
@@ -160,9 +170,10 @@ function CreatePostView({ user }) {
         const snapshot = {
           title: titleRef.current.trim(),
           content: contentRef.current || "",
+          explanatory_note: explanatoryNoteRef.current.trim() || null,
           category: categoryRef.current || "poezie"
         };
-        const fingerprint = draftFingerprint(`${snapshot.category}:${snapshot.title}`, snapshot.content);
+        const fingerprint = draftFingerprint(`${snapshot.category}:${snapshot.title}`, snapshot.content, snapshot.explanatory_note);
 
         if (!draftHasContent(snapshot.title, snapshot.content)) {
           if (source === "manual") {
@@ -173,6 +184,10 @@ function CreatePostView({ user }) {
 
         if (snapshot.title.length > TITLE_CHARACTER_LIMIT) {
           setDraftError(`Titlul poate avea cel mult ${formatNumber(TITLE_CHARACTER_LIMIT)} de caractere.`);
+          return null;
+        }
+        if ((snapshot.explanatory_note || "").length > EXPLANATORY_NOTE_CHARACTER_LIMIT) {
+          setDraftError(`Nota explicativă poate avea cel mult ${formatNumber(EXPLANATORY_NOTE_CHARACTER_LIMIT)} de caractere.`);
           return null;
         }
 
@@ -195,13 +210,14 @@ function CreatePostView({ user }) {
 
         draftIdRef.current = savedDraft.id;
         setDraftId(savedDraft.id);
-        lastSavedFingerprintRef.current = draftFingerprint(`${savedDraft.category}:${savedDraft.title}`, savedDraft.content);
+        lastSavedFingerprintRef.current = draftFingerprint(`${savedDraft.category}:${savedDraft.title}`, savedDraft.content, savedDraft.explanatory_note);
         setDraftStatus(source === "auto" ? "Salvat automat." : "Ciornă salvată.");
         setDraftsRefreshKey((key) => key + 1);
 
         const currentFingerprint = draftFingerprint(
           `${categoryRef.current || "poezie"}:${titleRef.current.trim()}`,
-          contentRef.current || ""
+          contentRef.current || "",
+          explanatoryNoteRef.current
         );
         if (currentFingerprint !== lastSavedFingerprintRef.current) {
           pendingDraftSaveRef.current = true;
@@ -250,6 +266,13 @@ function CreatePostView({ user }) {
       setDirectPublishing(false);
       return;
     }
+    const normalizedExplanatoryNote = explanatoryNote.trim();
+    if (normalizedExplanatoryNote.length > EXPLANATORY_NOTE_CHARACTER_LIMIT) {
+      setStatus(`Nota explicativă poate avea cel mult ${formatNumber(EXPLANATORY_NOTE_CHARACTER_LIMIT)} de caractere.`);
+      setSubmitting(false);
+      setDirectPublishing(false);
+      return;
+    }
     if (visibleContent.length > contentLimit) {
       const label = category === "poezie" ? "poezia" : "proza scurtă";
       setStatus(`Pentru ${label}, textul poate avea cel mult ${formatNumber(contentLimit)} de caractere.`);
@@ -273,10 +296,10 @@ function CreatePostView({ user }) {
         setDirectPublishing(false);
         return;
       }
-      const payload = { title, content, category };
+      const payload = { title, content, category, explanatory_note: normalizedExplanatoryNote || null };
       if (!postParam && draftIdRef.current) payload.draft_id = draftIdRef.current;
       const post = postParam ? await updatePost(postParam, payload) : await createPost(payload);
-      lastSavedFingerprintRef.current = draftFingerprint(`${category}:${title}`, content);
+      lastSavedFingerprintRef.current = draftFingerprint(`${category}:${title}`, content, normalizedExplanatoryNote);
       window.location.href = `${blogUrl(user.username)}/${post.slug}`;
     } catch (requestError) {
       failDiacriticsProgress();
@@ -319,6 +342,17 @@ function CreatePostView({ user }) {
         </select>
         <label className="auth-field" htmlFor="post-content">Text</label>
         <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} enterMode="soft-break" />
+        <label className="auth-field" htmlFor="post-explanatory-note">Notă explicativă (opțional)</label>
+        <textarea
+          id="post-explanatory-note"
+          className="cal-textarea explanatory-note-input"
+          value={explanatoryNote}
+          onChange={(event) => setExplanatoryNote(event.target.value)}
+          maxLength={EXPLANATORY_NOTE_CHARACTER_LIMIT}
+          rows={3}
+          placeholder="Ce ar ajuta cititorul să știe despre text?"
+        />
+        <div className="field-counter">{formatNumber(explanatoryNote.length)}/{formatNumber(EXPLANATORY_NOTE_CHARACTER_LIMIT)}</div>
         {postParam ? (
           <span className="draft-save-status">{draftLoading ? "Se încarcă postarea..." : draftStatus}</span>
         ) : (

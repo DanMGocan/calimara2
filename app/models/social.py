@@ -32,3 +32,20 @@ class Friendship(Base):
     user1: Mapped["User"] = relationship("User", foreign_keys=[user1_id])
     user2: Mapped["User"] = relationship("User", foreign_keys=[user2_id])
     requested_by: Mapped["User"] = relationship("User", foreign_keys=[requested_by_id])
+
+
+class UserFollow(Base):
+    __tablename__ = "user_follows"
+    __table_args__ = (
+        UniqueConstraint("follower_id", "followed_id", name="uq_user_follows_pair"),
+        CheckConstraint("follower_id != followed_id", name="chk_user_follows_no_self"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    follower_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    followed_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    follower: Mapped["User"] = relationship("User", foreign_keys=[follower_id], back_populates="following_relations")
+    followed: Mapped["User"] = relationship("User", foreign_keys=[followed_id], back_populates="follower_relations")

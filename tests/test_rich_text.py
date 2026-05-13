@@ -90,6 +90,30 @@ def test_post_content_limits_count_visible_text_not_html_tags():
         schemas.PostDraftSave(title="Ciornă", category="poezie", content=f"<p>{'x' * 10001}</p>")
 
 
+def test_explanatory_note_is_trimmed_optional_and_limited():
+    post = schemas.PostCreate(
+        title="Titlu",
+        category="poezie",
+        content="valid",
+        explanatory_note="  O notă scurtă.  ",
+    )
+    draft = schemas.PostDraftSave(
+        title="Ciornă",
+        category="poezie",
+        content="<p>valid</p>",
+        explanatory_note="   ",
+    )
+
+    assert post.explanatory_note == "O notă scurtă."
+    assert draft.explanatory_note is None
+
+    with pytest.raises(ValidationError):
+        schemas.PostCreate(title="Titlu", category="poezie", content="valid", explanatory_note="x" * 301)
+
+    with pytest.raises(ValidationError):
+        schemas.PostDraftSave(title="Ciornă", category="poezie", content="valid", explanatory_note="x" * 301)
+
+
 def test_comment_and_title_limits_are_enforced():
     assert schemas.CommentCreate(content=f"<p>{'x' * 2500}</p>").content == f"<p>{'x' * 2500}</p>"
 
