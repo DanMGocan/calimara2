@@ -949,6 +949,31 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response["redirect_url"], "http://lvh.me:8000/?post=42")
         self.assertEqual(request.session["user_id"], user.id)
 
+    def test_password_login_accepts_configured_frontend_port_return_target(self):
+        user = self.make_user("passwordloginport")
+        user.password_hash = local_auth.password_hash("long-enough-password")
+        user.email_verified_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        self.db.add(user)
+        self.db.commit()
+        request = DummyRequest({})
+
+        with patch.dict(
+            os.environ,
+            {"GOOGLE_REDIRECT_URI": "http://localhost:18173/auth/google/callback"},
+        ), patch.object(auth_routes, "MAIN_DOMAIN", "localhost"), patch.object(auth_routes, "SUBDOMAIN_SUFFIX", ".localhost"):
+            response = auth_routes.login_with_password.__wrapped__(
+                request,
+                schemas.PasswordLoginRequest(
+                    email=user.email,
+                    password="long-enough-password",
+                    return_to="http://localhost:18173/",
+                ),
+                self.db,
+            )
+
+        self.assertEqual(response["redirect_url"], "http://localhost:18173/")
+        self.assertEqual(request.session["user_id"], user.id)
+
     def test_password_reset_sets_password_for_existing_social_account(self):
         user = self.make_user("socialonly")
         user.email_verified_at = None
@@ -1947,6 +1972,31 @@ class BackendStabilizationTests(unittest.TestCase):
             self.assertEqual(response.headers["cache-control"], "no-store")
             self.assertEqual(response.headers["pragma"], "no-cache")
             self.assertEqual(response.headers["expires"], "0")
+
+    def test_docs_route_requires_admin(self):
+        from fastapi.testclient import TestClient
+        import app.main as main
+
+        client = TestClient(main.app)
+
+        anonymous = client.get("/docs", headers={"host": "lvh.me:8000"})
+        self.assertEqual(anonymous.status_code, 401)
+
+        non_admin = models.User(username="docsreader", email="docsreader@example.com", is_admin=False)
+        main.app.dependency_overrides[auth.get_current_user] = lambda: non_admin
+        try:
+            forbidden = client.get("/docs", headers={"host": "lvh.me:8000"})
+            self.assertEqual(forbidden.status_code, 403)
+        finally:
+            main.app.dependency_overrides.pop(auth.get_current_user, None)
+
+        admin_user = models.User(username="docsadmin", email="docsadmin@example.com", is_admin=True)
+        main.app.dependency_overrides[auth.get_current_user] = lambda: admin_user
+        try:
+            allowed = client.get("/docs", headers={"host": "lvh.me:8000"})
+            self.assertIn(allowed.status_code, {200, 404})
+        finally:
+            main.app.dependency_overrides.pop(auth.get_current_user, None)
 
     def test_ads_txt_uses_configured_publisher_id(self):
         from fastapi.testclient import TestClient

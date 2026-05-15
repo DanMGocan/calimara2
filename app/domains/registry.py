@@ -16,7 +16,9 @@ from . import (
     public_pages,
     series,
     stats,
+    stafeta,
     super_likes,
+    theatre,
     users,
     writing,
 )
@@ -37,6 +39,8 @@ DOMAIN_ROUTERS = [
     clubs.router,
     email.router,
     super_likes.router,
+    theatre.router,
+    stafeta.router,
     premium.router,
     audio.router,
     forum.router,

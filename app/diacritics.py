@@ -48,6 +48,27 @@ Returnează DOAR JSON valid:
 }
 """
 
+THEATRE_DIACRITICS_PROMPT = """Ești un editor român specializat în restaurarea diacriticelor.
+
+Primești datele unei piese de teatru colaborativ: titlu, descrierea piesei și descrierile personajelor. Sarcina ta este să adaugi contextual doar diacriticele corecte: ă, â, î, ș, ț și variantele majuscule.
+
+Reguli stricte:
+- Nu rescrie textul, nu schimba stilul, sensul, ordinea propozițiilor sau cuvintele.
+- Nu corecta gramatica, punctuația sau ortografia dacă nu ține strict de diacritice.
+- Păstrează exact paragrafele, rândurile goale, spațiile relevante, semnele de punctuație și majusculele.
+- Păstrează numele proprii, username-urile, URL-urile, emailurile, codul și citatele străine dacă diacriticele nu sunt evidente.
+- Nu modifica indexurile personajelor.
+
+Returnează DOAR JSON valid:
+{
+  "title": "titlul cu diacritice sau null",
+  "description": "descrierea piesei cu diacritice sau null",
+  "characters": [
+    { "index": 0, "description": "descrierea personajului cu diacritice" }
+  ]
+}
+"""
+
 
 def _load_json_response(text: str) -> dict:
     try:
@@ -103,4 +124,91 @@ def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
         "title": converted_title,
         "content": converted_content,
         "changed": converted_title != original_title or converted_content != original_content,
+    }
+
+
+def add_theatre_play_diacritics(
+    *,
+    title: Optional[str],
+    description: Optional[str],
+    characters: list[dict],
+) -> dict:
+    if not DIACRITICS_ENABLED:
+        raise RuntimeError("Conversia automată la diacritice este dezactivată.")
+    if not client:
+        raise RuntimeError("Serviciul AI pentru diacritice nu este configurat.")
+
+    original_title = title if title is not None else None
+    original_description = description if description is not None else None
+    original_characters = [
+        {
+            "index": int(item.get("index", index)),
+            "description": str(item.get("description") or ""),
+        }
+        for index, item in enumerate(characters or [])
+    ]
+    user_message = {
+        "kind": "theatre_play",
+        "title": original_title,
+        "description": original_description,
+        "characters": original_characters,
+    }
+
+    response = client.chat.complete(
+        model=DIACRITICS_MODEL,
+        max_tokens=DIACRITICS_MAX_TOKENS,
+        messages=[
+            {"role": "system", "content": THEATRE_DIACRITICS_PROMPT},
+            {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
+        ],
+        temperature=0.0,
+        response_format={"type": "json_object"},
+    )
+
+    parsed = _load_json_response((response.choices[0].message.content or "").strip())
+    converted_title = parsed.get("title", original_title)
+    converted_description = parsed.get("description", original_description)
+    converted_items = parsed.get("characters", [])
+
+    if original_title is None:
+        converted_title = None
+    elif not isinstance(converted_title, str):
+        converted_title = original_title
+
+    if original_description is None:
+        converted_description = None
+    elif not isinstance(converted_description, str):
+        converted_description = original_description
+
+    converted_by_index = {}
+    if isinstance(converted_items, list):
+        for item in converted_items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                index = int(item.get("index"))
+            except (TypeError, ValueError):
+                continue
+            description_value = item.get("description")
+            if isinstance(description_value, str):
+                converted_by_index[index] = description_value
+
+    converted_characters = []
+    for item in original_characters:
+        converted_description_value = converted_by_index.get(item["index"], item["description"])
+        converted_characters.append({
+            "index": item["index"],
+            "description": converted_description_value,
+        })
+
+    changed = (
+        converted_title != original_title
+        or converted_description != original_description
+        or converted_characters != original_characters
+    )
+    return {
+        "title": converted_title,
+        "description": converted_description,
+        "characters": converted_characters,
+        "changed": changed,
     }

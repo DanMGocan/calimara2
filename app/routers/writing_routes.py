@@ -20,9 +20,15 @@ def add_diacritics_api(
     current_user: models.User = Depends(auth.require_premium_user),
 ):
     try:
+        if body.kind == "theatre_play":
+            return diacritics.add_theatre_play_diacritics(
+                title=body.title,
+                description=body.description,
+                characters=[item.model_dump() for item in body.characters],
+            )
         return diacritics.add_diacritics(
             title=body.title,
-            content=body.content,
+            content=body.content or "",
             kind=body.kind,
         )
     except RuntimeError as exc:

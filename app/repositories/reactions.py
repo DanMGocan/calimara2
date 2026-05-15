@@ -1,5 +1,6 @@
 from ._shared import *
 from .economy import award_like_created, award_super_like_created
+from ..achievements import emit_super_like_created
 
 def create_like(db: Session, post_id: int, user_id: Optional[int] = None, ip_address: Optional[str] = None):
     existing_like = None
@@ -95,6 +96,7 @@ def create_super_like(db: Session, user: models.User, post_id: int) -> models.Su
         raise SuperLikeDuplicateError()
     db.refresh(sl)
     award_super_like_created(db, sl)
+    emit_super_like_created(db, sl)
     db.refresh(sl)
     return sl
 

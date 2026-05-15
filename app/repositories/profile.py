@@ -307,7 +307,12 @@ def search_promotable_content(db: Session, user: models.User, term: str, limit: 
 # ===================================
 
 def get_user_awards(db: Session, user_id: int):
-    return db.query(models.UserAward).filter(models.UserAward.user_id == user_id).order_by(models.UserAward.award_date.desc()).all()
+    return (
+        db.query(models.UserAward)
+        .filter(models.UserAward.user_id == user_id)
+        .order_by(models.UserAward.awarded_at.desc(), models.UserAward.id.desc())
+        .all()
+    )
 
 
 # ===================================

@@ -7,6 +7,7 @@ from .common import *
 
 ClubSpeciality = str  # "poezie" | "proza_scurta"
 ClubMemberRole = str  # "owner" | "admin" | "member"
+ClubJoinPolicy = str  # "open" | "private" | "closed"
 
 class ClubOwnerRef(BaseModel):
     id: int
@@ -29,6 +30,7 @@ class ClubMemberRef(BaseModel):
 class ClubCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     speciality: str = Field(..., pattern=r"^(poezie|proza_scurta)$")
+    join_policy: str = Field("private", pattern=r"^(open|private|closed)$")
     description: Optional[str] = Field(None, max_length=2000)
     motto: Optional[str] = Field(None, max_length=200)
     theme: Optional[str] = Field(None, max_length=200)
@@ -39,6 +41,7 @@ class ClubCreate(BaseModel):
 class ClubUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=120)
     speciality: Optional[str] = Field(None, pattern=r"^(poezie|proza_scurta)$")
+    join_policy: Optional[str] = Field(None, pattern=r"^(open|private|closed)$")
     description: Optional[str] = Field(None, max_length=2000)
     motto: Optional[str] = Field(None, max_length=200)
     theme: Optional[str] = Field(None, max_length=200)
@@ -56,8 +59,14 @@ class ClubFeaturedRef(BaseModel):
 
 
 class ClubBoardMessageCreate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=160)
     content: str = Field(..., min_length=1, max_length=4000)
     parent_id: Optional[int] = None
+
+
+
+class ClubJoinApplyRequest(BaseModel):
+    application_text: Optional[str] = Field(None, max_length=2000)
 
 
 
@@ -73,6 +82,7 @@ class ClubBoardMessageOut(BaseModel):
     id: int
     club_id: int
     parent_id: Optional[int] = None
+    title: Optional[str] = None
     content: str
     created_at: datetime
     updated_at: datetime
@@ -92,21 +102,43 @@ class ClubSummary(BaseModel):
     description: Optional[str] = None
     motto: Optional[str] = None
     avatar_seed: Optional[str] = None
+    avatar_url: Optional[str] = None
     theme: Optional[str] = None
     speciality: str
+    join_policy: str = "private"
     member_count: int = 0
     owner: Optional[ClubOwnerRef] = None
+    profile_photo_url: Optional[str] = None
+    cover_photo_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    has_profile_photo: bool = False
+    has_cover_photo: bool = False
+    my_role: Optional[str] = None
+    my_pending_request_status: Optional[str] = None
+    can_view_detail: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+
+class ClubAchievementOut(BaseModel):
+    id: int
+    key: str
+    label: str
+    description: str
+    unlocked_at: datetime
 
 
 
 class ClubDetail(ClubSummary):
     members: List[ClubMemberRef] = Field(default_factory=list)
     featured: Optional[ClubFeaturedRef] = None
+    achievements: List[ClubAchievementOut] = Field(default_factory=list)
     recent_messages: List[ClubBoardMessageOut] = Field(default_factory=list)
-    my_role: Optional[str] = None
-    my_pending_request_status: Optional[str] = None
+    can_post: bool = False
+    can_manage: bool = False
+    can_upload_media: bool = False
+    viewer_is_site_admin: bool = False
     pending_request_count: Optional[int] = None  # only populated for owner/admin
 
 
@@ -138,6 +170,7 @@ class ClubJoinRequestOut(BaseModel):
     direction: str
     status: str
     initiator_id: int
+    application_text: Optional[str] = None
     created_at: datetime
     responded_at: Optional[datetime] = None
 

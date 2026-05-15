@@ -1,8 +1,13 @@
+from types import SimpleNamespace
+
 from ._shared import *
 from .economy import award_content_approved
 from .forum import _notify_forum_reply_approved
 from .mentions import notify_mentions_for_comment, notify_mentions_for_forum_reply, notify_mentions_for_forum_thread
 from .notifications import create_notification
+from .stafeta import apply_stafeta_segment_moderation_result
+from .theatre import apply_theatre_entry_moderation_result
+from ..achievements import emit_post_approved
 from .. import email_service
 
 def get_posts_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
@@ -37,22 +42,81 @@ def get_moderation_stats(db: Session):
     stats['forum_replies_flagged'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "flagged").count()
     stats['forum_replies_rejected'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "rejected").count()
     stats['forum_replies_approved'] = db.query(models.ForumReply).filter(models.ForumReply.moderation_status == "approved").count()
+    stats['theatre_entries_pending'] = db.query(models.TheatreEntry).filter(models.TheatreEntry.moderation_status == "pending").count()
+    stats['theatre_entries_flagged'] = db.query(models.TheatreEntry).filter(models.TheatreEntry.moderation_status == "flagged").count()
+    stats['theatre_entries_rejected'] = db.query(models.TheatreEntry).filter(models.TheatreEntry.moderation_status == "rejected").count()
+    stats['theatre_entries_approved'] = db.query(models.TheatreEntry).filter(models.TheatreEntry.moderation_status == "approved").count()
+    stats['stafeta_segments_pending'] = db.query(models.StafetaSegment).filter(models.StafetaSegment.moderation_status == "pending").count()
+    stats['stafeta_segments_flagged'] = db.query(models.StafetaSegment).filter(models.StafetaSegment.moderation_status == "flagged").count()
+    stats['stafeta_segments_rejected'] = db.query(models.StafetaSegment).filter(models.StafetaSegment.moderation_status == "rejected").count()
+    stats['stafeta_segments_approved'] = db.query(models.StafetaSegment).filter(models.StafetaSegment.moderation_status == "approved").count()
 
     stats['total_pending'] = (
         stats['posts_pending'] + stats['comments_pending'] +
-        stats['forum_threads_pending'] + stats['forum_replies_pending']
+        stats['forum_threads_pending'] + stats['forum_replies_pending'] +
+        stats['theatre_entries_pending'] + stats['stafeta_segments_pending']
     )
     stats['total_flagged'] = (
         stats['posts_flagged'] + stats['comments_flagged'] +
-        stats['forum_threads_flagged'] + stats['forum_replies_flagged']
+        stats['forum_threads_flagged'] + stats['forum_replies_flagged'] +
+        stats['theatre_entries_flagged'] + stats['stafeta_segments_flagged']
     )
     stats['total_rejected'] = (
         stats['posts_rejected'] + stats['comments_rejected'] +
-        stats['forum_threads_rejected'] + stats['forum_replies_rejected']
+        stats['forum_threads_rejected'] + stats['forum_replies_rejected'] +
+        stats['theatre_entries_rejected'] + stats['stafeta_segments_rejected']
     )
     return stats
 
 def approve_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
+    if content_type == "stafeta_segment":
+        content = db.query(models.StafetaSegment).options(
+            joinedload(models.StafetaSegment.work),
+            joinedload(models.StafetaSegment.assignment),
+            joinedload(models.StafetaSegment.author),
+        ).filter(models.StafetaSegment.id == content_id).first()
+        if not content:
+            return None
+        result = SimpleNamespace(status="approved", toxicity_score=content.toxicity_score or 0.0, reason=reason)
+        content = apply_stafeta_segment_moderation_result(
+            db, content, result, moderator_id=moderator_id, reason=reason
+        )
+        _upsert_moderation_log(
+            db,
+            content_type,
+            content_id,
+            content.author_id,
+            "approved",
+            reason,
+            moderator_id,
+        )
+        return content
+
+    if content_type == "theatre_entry":
+        content = db.query(models.TheatreEntry).options(
+            joinedload(models.TheatreEntry.play),
+            joinedload(models.TheatreEntry.scene),
+            joinedload(models.TheatreEntry.author),
+            joinedload(models.TheatreEntry.character),
+            joinedload(models.TheatreEntry.next_character),
+        ).filter(models.TheatreEntry.id == content_id).first()
+        if not content:
+            return None
+        result = SimpleNamespace(status="approved", toxicity_score=content.toxicity_score or 0.0, reason=reason)
+        content = apply_theatre_entry_moderation_result(
+            db, content, result, moderator_id=moderator_id, reason=reason
+        )
+        _upsert_moderation_log(
+            db,
+            content_type,
+            content_id,
+            content.author_id,
+            "approved",
+            reason,
+            moderator_id,
+        )
+        return content
+
     if content_type == "post":
         content = db.query(models.Post).filter(models.Post.id == content_id).first()
     elif content_type == "audio":
@@ -76,7 +140,7 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
         if hasattr(content, "moderated_by"):
             content.moderated_by = moderator_id
         if hasattr(content, "moderated_at"):
-            content.moderated_at = func.now()
+            content.moderated_at = utcnow_naive()
         if reason:
             content.moderation_reason = reason
         if content_type == "comment":
@@ -93,6 +157,8 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
 
         if not was_content_approved:
             award_content_approved(db, content_type, content)
+            if content_type == "post":
+                emit_post_approved(db, content)
 
         if content_type == "forum_reply" and not was_forum_reply_approved:
             _notify_forum_reply_approved(db, content)
@@ -162,6 +228,50 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
     return None
 
 def reject_content(db: Session, content_type: str, content_id: int, moderator_id: int, reason: str = ""):
+    if content_type == "stafeta_segment":
+        content = db.query(models.StafetaSegment).options(
+            joinedload(models.StafetaSegment.work),
+            joinedload(models.StafetaSegment.author),
+        ).filter(models.StafetaSegment.id == content_id).first()
+        if not content:
+            return None
+        result = SimpleNamespace(status="rejected", toxicity_score=content.toxicity_score or 0.0, reason=reason)
+        content = apply_stafeta_segment_moderation_result(
+            db, content, result, moderator_id=moderator_id, reason=reason
+        )
+        _upsert_moderation_log(
+            db,
+            content_type,
+            content_id,
+            content.author_id,
+            "rejected",
+            reason,
+            moderator_id,
+        )
+        return content
+
+    if content_type == "theatre_entry":
+        content = db.query(models.TheatreEntry).options(
+            joinedload(models.TheatreEntry.play),
+            joinedload(models.TheatreEntry.author),
+        ).filter(models.TheatreEntry.id == content_id).first()
+        if not content:
+            return None
+        result = SimpleNamespace(status="rejected", toxicity_score=content.toxicity_score or 0.0, reason=reason)
+        content = apply_theatre_entry_moderation_result(
+            db, content, result, moderator_id=moderator_id, reason=reason
+        )
+        _upsert_moderation_log(
+            db,
+            content_type,
+            content_id,
+            content.author_id,
+            "rejected",
+            reason,
+            moderator_id,
+        )
+        return content
+
     if content_type == "post":
         content = db.query(models.Post).filter(models.Post.id == content_id).first()
     elif content_type == "audio":
@@ -242,6 +352,38 @@ def reject_content(db: Session, content_type: str, content_id: int, moderator_id
 # ===================================
 # LIKE CRUD FUNCTIONS
 # ===================================
+
+def _upsert_moderation_log(
+    db: Session,
+    content_type: str,
+    content_id: int,
+    user_id: Optional[int],
+    decision: str,
+    reason: str,
+    moderator_id: int,
+) -> None:
+    log_entry = db.query(models.ModerationLog).filter(
+        models.ModerationLog.content_type == content_type,
+        models.ModerationLog.content_id == content_id,
+    ).first()
+    if log_entry:
+        log_entry.human_decision = decision
+        log_entry.human_reason = reason
+        log_entry.moderated_by = moderator_id
+        log_entry.moderated_at = func.now()
+    else:
+        log_entry = models.ModerationLog(
+            content_type=content_type,
+            content_id=content_id,
+            user_id=user_id,
+            ai_decision=decision,
+            human_decision=decision,
+            human_reason=reason,
+            moderated_by=moderator_id,
+            moderated_at=func.now(),
+        )
+        db.add(log_entry)
+    db.commit()
 
 def get_moderation_logs(db: Session, limit: int = 100, offset: int = 0):
     return db.query(models.ModerationLog).order_by(models.ModerationLog.created_at.desc()).offset(offset).limit(limit).all()

@@ -23,10 +23,23 @@ class Club(Base):
     avatar_seed: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     theme: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     speciality: Mapped[str] = mapped_column(String(20), nullable=False)
+    join_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="private")
+    profile_photo_storage_backend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    profile_photo_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    profile_photo_content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    profile_photo_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    cover_photo_storage_backend: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    cover_photo_storage_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    cover_photo_content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cover_photo_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     featured_post_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("posts.id", ondelete="SET NULL"), nullable=True)
     featured_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", name="uq_clubs_owner"),
+    )
 
     owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id], back_populates="owned_clubs")
     memberships: Mapped[List["ClubMember"]] = relationship(
@@ -37,6 +50,9 @@ class Club(Base):
     )
     board_messages: Mapped[List["ClubBoardMessage"]] = relationship(
         "ClubBoardMessage", back_populates="club", cascade="all, delete-orphan"
+    )
+    achievements: Mapped[List["ClubAchievement"]] = relationship(
+        "ClubAchievement", back_populates="club", cascade="all, delete-orphan"
     )
     featured_post: Mapped[Optional["Post"]] = relationship("Post", foreign_keys=[featured_post_id])
 
@@ -71,6 +87,7 @@ class ClubJoinRequest(Base):
     direction: Mapped[str] = mapped_column(String(20), nullable=False)  # "application" | "invitation"
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     initiator_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    application_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     responded_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -90,6 +107,7 @@ class ClubBoardMessage(Base):
     club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("club_board_messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    title: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -107,4 +125,20 @@ class ClubBoardMessage(Base):
         cascade="all, delete-orphan",
     )
 
+
+
+
+class ClubAchievement(Base):
+    __tablename__ = "club_achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(60), nullable=False)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    club: Mapped["Club"] = relationship("Club", foreign_keys=[club_id], back_populates="achievements")
+
+    __table_args__ = (
+        UniqueConstraint("club_id", "key", name="uq_club_achievement"),
+    )
 

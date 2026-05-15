@@ -372,6 +372,28 @@ def moderate_forum_reply(content: str) -> ModerationResult:
     return _moderate_text(plain_content)
 
 
+def moderate_theatre_entry(entry_type: str, content: str, character_name: Optional[str] = None) -> ModerationResult:
+    plain_content = rich_text_to_plain_text(content)
+    label = {
+        "scene_opening": "Deschidere de scenă",
+        "line": "Replică de teatru",
+        "stage_direction": "Indicație scenică",
+        "scene_end": "Încheiere de scenă",
+    }.get(entry_type, "Text de teatru")
+    character_part = f"\nPersonaj: {character_name}" if character_name else ""
+    full_text = f"{label}{character_part}\n\nConținut:\n{plain_content}"
+    logger.info(f"Moderating theatre entry ({len(plain_content)} chars)")
+    return _moderate_text(full_text)
+
+
+def moderate_stafeta_segment(content: str, title: Optional[str] = None) -> ModerationResult:
+    plain_content = rich_text_to_plain_text(content)
+    title_part = f"Titlu ștafetă: {title}\n\n" if title else ""
+    full_text = f"{title_part}Contribuție Ștafeta:\n{plain_content}"
+    logger.info(f"Moderating stafeta segment ({len(plain_content)} chars)")
+    return _moderate_text(full_text)
+
+
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
     return moderation_result.status == ModerationStatus.APPROVED
 
@@ -459,4 +481,35 @@ def moderate_forum_reply_with_logging(content: str, reply_id: int, user_id: int,
         log_moderation_decision(db, "forum_reply", reply_id, user_id, result)
     except Exception as e:
         logger.error(f"Failed to log moderation for forum reply {reply_id}: {e}")
+    return result
+
+
+def moderate_theatre_entry_with_logging(
+    entry_type: str,
+    content: str,
+    entry_id: int,
+    user_id: int,
+    db: Session,
+    character_name: Optional[str] = None,
+) -> ModerationResult:
+    result = moderate_theatre_entry(entry_type, content, character_name)
+    try:
+        log_moderation_decision(db, "theatre_entry", entry_id, user_id, result)
+    except Exception as e:
+        logger.error(f"Failed to log moderation for theatre entry {entry_id}: {e}")
+    return result
+
+
+def moderate_stafeta_segment_with_logging(
+    content: str,
+    segment_id: int,
+    user_id: int,
+    db: Session,
+    title: Optional[str] = None,
+) -> ModerationResult:
+    result = moderate_stafeta_segment(content, title)
+    try:
+        log_moderation_decision(db, "stafeta_segment", segment_id, user_id, result)
+    except Exception as e:
+        logger.error(f"Failed to log moderation for stafeta segment {segment_id}: {e}")
     return result

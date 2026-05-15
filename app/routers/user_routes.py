@@ -118,6 +118,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "email_mention_notifications": user.email_mention_notifications,
         "email_analytics_digest": user.email_analytics_digest,
         "email_admin_announcements": user.email_admin_announcements,
+        "stafeta_participates": crud.get_stafeta_participation(db, user.id),
         "gologani_balance": user.gologani_balance or 0,
         "seconds_listened": user.seconds_listened or 0,
         "incoming_friend_request_count": crud.get_incoming_friend_request_count(db, user.id),

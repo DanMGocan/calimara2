@@ -45,6 +45,14 @@ class SmokeData:
     club_slug: str
     club_request_id: int
     board_message_id: int
+    theatre_play_id: int
+    theatre_slug: str
+    theatre_character_id: int
+    theatre_scene_id: int
+    theatre_request_id: int
+    stafeta_work_id: int
+    stafeta_slug: str
+    stafeta_assignment_id: int
     forum_thread_id: int
     forum_thread_slug: str
     forum_reply_id: int
@@ -251,6 +259,97 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
     )
     db.add(board_message)
 
+    theatre_play = models.TheatrePlay(
+        creator_id=user.id,
+        title="Smoke Theatre Play",
+        slug="smoke-theatre-play",
+        description="Smoke theatre description",
+        status="active",
+    )
+    db.add(theatre_play)
+    db.flush()
+    theatre_character = models.TheatreCharacter(
+        play_id=theatre_play.id,
+        name="Narator",
+        description="Smoke narrator",
+        status="approved",
+        approved_by=user.id,
+        approved_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        assigned_user_id=user.id,
+    )
+    db.add(theatre_character)
+    db.flush()
+    theatre_scene = models.TheatreScene(
+        play_id=theatre_play.id,
+        scene_number=1,
+        title="Smoke Scene",
+        opened_by=user.id,
+    )
+    db.add(theatre_scene)
+    db.flush()
+    theatre_play.current_scene_id = theatre_scene.id
+    theatre_play.current_character_id = theatre_character.id
+    theatre_play.current_actor_user_id = user.id
+    db.add_all(
+        [
+            models.TheatreMember(play_id=theatre_play.id, user_id=user.id, role="creator"),
+            models.TheatreEntry(
+                play_id=theatre_play.id,
+                scene_id=theatre_scene.id,
+                author_id=user.id,
+                character_id=theatre_character.id,
+                entry_type="line",
+                content="<p>Smoke theatre line</p>",
+                position=1,
+                moderation_status="approved",
+            ),
+        ]
+    )
+    theatre_request = models.TheatreJoinRequest(
+        play_id=theatre_play.id,
+        user_id=target.id,
+        direction="application",
+        status="pending",
+        initiator_id=target.id,
+    )
+    db.add(theatre_request)
+
+    db.add(models.StafetaParticipant(user_id=peer.id, is_active=True))
+    stafeta_work = models.StafetaWork(
+        creator_id=user.id,
+        title="Smoke Stafeta",
+        slug="smoke-stafeta",
+        category="poezie",
+        status="active",
+        deadline_days=1,
+        max_characters=400,
+        current_holder_user_id=user.id,
+    )
+    db.add(stafeta_work)
+    db.flush()
+    stafeta_assignment = models.StafetaAssignment(
+        work_id=stafeta_work.id,
+        user_id=user.id,
+        assigned_by_id=user.id,
+        source="creator",
+        status="active",
+        due_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1),
+    )
+    db.add(stafeta_assignment)
+    db.flush()
+    stafeta_work.current_assignment_id = stafeta_assignment.id
+    db.add(
+        models.StafetaSegment(
+            work_id=stafeta_work.id,
+            assignment_id=stafeta_assignment.id,
+            author_id=user.id,
+            content="<p>Smoke stafeta start</p>",
+            position=1,
+            next_target_mode="random",
+            moderation_status="approved",
+        )
+    )
+
     forum_thread = models.ForumThread(
         author_id=user.id,
         section="general",
@@ -357,6 +456,12 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         club,
         club_request,
         board_message,
+        theatre_play,
+        theatre_character,
+        theatre_scene,
+        theatre_request,
+        stafeta_work,
+        stafeta_assignment,
         forum_thread,
         forum_reply,
         owned_item,
@@ -386,6 +491,14 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
         club_slug=club.slug,
         club_request_id=club_request.id,
         board_message_id=board_message.id,
+        theatre_play_id=theatre_play.id,
+        theatre_slug=theatre_play.slug,
+        theatre_character_id=theatre_character.id,
+        theatre_scene_id=theatre_scene.id,
+        theatre_request_id=theatre_request.id,
+        stafeta_work_id=stafeta_work.id,
+        stafeta_slug=stafeta_work.slug,
+        stafeta_assignment_id=stafeta_assignment.id,
         forum_thread_id=forum_thread.id,
         forum_thread_slug=forum_thread.slug,
         forum_reply_id=forum_reply.id,
@@ -599,7 +712,7 @@ SMOKE_CASES = [
     SmokeCase("deleteForumThread", "DELETE", _path("/api/forum/discutii/999999"), {404}),
     SmokeCase("deleteForumReply", "DELETE", _path("/api/forum/raspunsuri/999999"), {404}),
     SmokeCase("updateForumThreadState", "POST", lambda data: f"/api/forum/discutii/{data.forum_thread_id}/stare", {200}, _json({"action": "lock"})),
-    SmokeCase("createClub", "POST", _path("/api/cluburi/"), {201}, _json({"title": "Created Smoke Club", "speciality": "poezie", "description": "Created club"})),
+    SmokeCase("createClub", "POST", _path("/api/cluburi/"), {409}, _json({"title": "Created Smoke Club", "speciality": "poezie", "description": "Created club"})),
     SmokeCase("updateClub", "PUT", lambda data: f"/api/cluburi/{data.club_id}", {200}, _json({"title": "Updated Smoke Club", "speciality": "poezie"})),
     SmokeCase("deleteClub", "DELETE", _path("/api/cluburi/999999"), {404}),
     SmokeCase("applyToClub", "POST", lambda data: f"/api/cluburi/{data.club_id}/inscriere", {409}, _json({})),
@@ -611,10 +724,41 @@ SMOKE_CASES = [
     SmokeCase("fetchMyClubs", "GET", _path("/api/utilizator/cluburi"), {200}),
     SmokeCase("fetchMyClubInvitations", "GET", _path("/api/utilizator/cluburi/in-asteptare"), {200}),
     SmokeCase("fetchClubBoard", "GET", lambda data: f"/api/cluburi/{data.club_id}/tabla", {200}),
-    SmokeCase("createClubBoardMessage", "POST", lambda data: f"/api/cluburi/{data.club_id}/tabla", {201}, _json({"content": "Created board message"})),
+    SmokeCase("createClubBoardMessage", "POST", lambda data: f"/api/cluburi/{data.club_id}/tabla", {201}, _json({"title": "Created board thread", "content": "Created board message"})),
     SmokeCase("deleteClubBoardMessage", "DELETE", lambda data: f"/api/cluburi/{data.club_id}/tabla/{data.board_message_id}", {204}),
+    SmokeCase("uploadClubMedia", "POST", lambda data: f"/api/cluburi/{data.club_id}/media/profil", {200}, files=lambda _data: {"file": ("club.png", SMOKE_PNG_BYTES, "image/png")}),
+    SmokeCase("deleteClubMedia", "DELETE", lambda data: f"/api/cluburi/{data.club_id}/media/profil", {200}),
     SmokeCase("setClubFeatured", "POST", lambda data: f"/api/cluburi/{data.club_id}/creatia-saptamanii", {200}, lambda data: {"post_id": data.post_id}),
     SmokeCase("clearClubFeatured", "DELETE", lambda data: f"/api/cluburi/{data.club_id}/creatia-saptamanii", {204}),
+    SmokeCase("fetchTheatrePlays", "GET", _path("/api/teatru"), {200}),
+    SmokeCase("createTheatrePlay", "POST", _path("/api/teatru"), {201}, _json({"title": "Created Smoke Theatre", "description": "Created theatre smoke"})),
+    SmokeCase("fetchTheatrePlay", "GET", lambda data: f"/api/teatru/{data.theatre_slug}", {200}),
+    SmokeCase("fetchTheatrePdf", "GET", lambda data: f"/api/teatru/{data.theatre_slug}/pdf", {200}),
+    SmokeCase("updateTheatrePlay", "PUT", lambda data: f"/api/teatru/{data.theatre_play_id}", {200}, _json({"title": "Updated Smoke Theatre"})),
+    SmokeCase("deleteTheatreMissing", "DELETE", _path("/api/teatru/999999"), {404}),
+    SmokeCase("applyToTheatrePlay", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/cereri", {400, 403, 409}, _json({"note": "smoke apply"})),
+    SmokeCase("inviteToTheatrePlay", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/invita", {200}, _json({"username": "smokeinvitee"})),
+    SmokeCase("fetchTheatreRequests", "GET", lambda data: f"/api/teatru/{data.theatre_play_id}/cereri", {200}),
+    SmokeCase("respondTheatreRequest", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/cereri/{data.theatre_request_id}/raspunde", {200}, _json({"action": "approve"})),
+    SmokeCase("createTheatreCharacter", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/personaje", {200, 201}, _json({"name": "Smoke Extra", "description": "extra character"})),
+    SmokeCase("assignTheatreCharacter", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/personaje/{data.theatre_character_id}/atribuie", {200}, _json({"username": "smokeauthor"})),
+    SmokeCase("startTheatreScene", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/scene", {201, 400, 409}, lambda data: {"title": "Smoke New Scene", "first_character_id": data.theatre_character_id, "content": "<p>Opening</p>"}),
+    SmokeCase("createTheatreReply", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/scene/{data.theatre_scene_id}/replici", {201}, lambda data: {"content": "<p>Reply</p>", "next_character_id": data.theatre_character_id}),
+    SmokeCase("createTheatreStageDirection", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/scene/{data.theatre_scene_id}/indicatii", {201}, _json({"content": "<p>Stage direction</p>"})),
+    SmokeCase("overrideTheatreTurn", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/rand", {200}, lambda data: {"character_id": data.theatre_character_id}),
+    SmokeCase("endTheatreScene", "POST", lambda data: f"/api/teatru/{data.theatre_play_id}/scene/{data.theatre_scene_id}/incheie", {200}, _json({"note": "smoke end"})),
+    SmokeCase("fetchMyTheatrePlays", "GET", _path("/api/utilizator/teatru"), {200}),
+    SmokeCase("fetchMyTheatreInvitations", "GET", _path("/api/utilizator/teatru/in-asteptare"), {200}),
+    SmokeCase("fetchStafetaWorks", "GET", _path("/api/stafeta"), {200}),
+    SmokeCase("fetchStafetaParticipation", "GET", _path("/api/stafeta/participare"), {200}),
+    SmokeCase("updateStafetaParticipation", "PUT", _path("/api/stafeta/participare"), {200}, _json({"participates": True})),
+    SmokeCase("createStafetaWork", "POST", _path("/api/stafeta"), {201}, _json({"title": "Created Smoke Stafeta", "category": "poezie", "initial_content": "<p>Start</p>", "first_target_mode": "specific", "assigned_username": "smokereader"})),
+    SmokeCase("fetchStafetaWork", "GET", lambda data: f"/api/stafeta/{data.stafeta_slug}", {200}),
+    SmokeCase("sendStafetaForward", "POST", lambda data: f"/api/stafeta/{data.stafeta_work_id}/trimite", {200}, _json({"content": "<p>Next</p>", "target_mode": "random"})),
+    SmokeCase("assignStafetaSpecific", "POST", lambda data: f"/api/stafeta/{data.stafeta_work_id}/atribuie", {200}, _json({"username": "smokereader"})),
+    SmokeCase("assignStafetaRandom", "POST", lambda data: f"/api/stafeta/{data.stafeta_work_id}/aleatoriu", {200}),
+    SmokeCase("publishStafeta", "POST", lambda data: f"/api/stafeta/{data.stafeta_work_id}/publica", {200}),
+    SmokeCase("cancelStafetaMissing", "DELETE", _path("/api/stafeta/999999"), {404}),
     SmokeCase("addSuperLike", "POST", lambda data: f"/api/postari/{data.peer_post_id}/super-aprecieri", {201}, _json({})),
     SmokeCase("removeSuperLike", "DELETE", lambda data: f"/api/postari/{data.super_liked_post_id}/super-aprecieri", {204}),
     SmokeCase("fetchSuperLikeQuota", "GET", _path("/api/utilizatori/eu/super-aprecieri/cota"), {200}),

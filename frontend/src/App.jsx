@@ -1,8 +1,9 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { fetchUnreadNotificationCount } from "./api/notifications.js";
 import { fetchMe } from "./api/users.js";
 import { AuthLoginModal, AuthModalProvider } from "./app/auth-modal.jsx";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
-import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, PageShell, SideMenu } from "./app/layout.jsx";
+import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu } from "./app/layout.jsx";
 import { ListeningOverlay, useListeningPlayer } from "./app/listening-player.jsx";
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, mainPath, subdomainUsername } from "./app/paths.js";
@@ -19,6 +20,21 @@ function authReturnParam(url) {
   return returnTo?.trim() || "";
 }
 
+const BACKGROUND_QUOTE = "Când viața însăși pare a fi un delir, cine știe unde sălășluiește nebunia? Poate că a fi prea practic este o nebunie. Să renunți la visuri, aceasta poate fi nebunie. Prea multă luciditate poate fi nebunie, iar cea mai mare nebunie dintre toate: să vezi viața așa cum este, și nu așa cum ar trebui să fie!";
+
+function BackgroundQuote() {
+  return (
+    <figure className="bg-quote">
+      <blockquote>
+        <span className="bg-quote-mark bg-quote-mark-open" aria-hidden="true">“</span>
+        <span className="bg-quote-text">{BACKGROUND_QUOTE}</span>
+        <span className="bg-quote-mark bg-quote-mark-close" aria-hidden="true">”</span>
+      </blockquote>
+      <figcaption>Miguel de Cervantes</figcaption>
+    </figure>
+  );
+}
+
 export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [routeVersion, setRouteVersion] = useState(0);
@@ -27,6 +43,8 @@ export function App() {
   const [authPostId, setAuthPostId] = useState(null);
   const [landingStats, setLandingStats] = useState(null);
   const [footerPostActions, setFooterPostActions] = useState(null);
+  const [profilePanelOpen, setProfilePanelOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +68,7 @@ export function App() {
 
   const route = useMemo(routeForLocation, [routeVersion]);
   const loggedIn = Boolean(auth.user);
+  const postSurface = route.name === "landing" || route.name === "post" ? "reader" : undefined;
   const buildLandingReturnTo = useCallback((postId = null) => {
     const destination = new URL(mainPath("/"), window.location.href);
     const pinnedPostId = postId || authPostId;
@@ -65,6 +84,7 @@ export function App() {
   const openAuthModal = useCallback((options = {}) => {
     const explicitReturnTo = typeof options.returnTo === "string" ? options.returnTo.trim() : "";
     setMenuOpen(false);
+    setProfilePanelOpen(false);
     setAuthModal({
       open: true,
       returnTo: explicitReturnTo || buildAuthReturnTo(options.postId)
@@ -82,9 +102,51 @@ export function App() {
     setAuth({ loaded: true, user: nextUser });
     return nextUser;
   }, []);
+  const refreshNotifications = useCallback(async () => {
+    if (!auth.user) {
+      setNotificationCount(0);
+      return 0;
+    }
+    try {
+      const data = await fetchUnreadNotificationCount();
+      const nextCount = Number(data?.unread_count ?? 0);
+      const safeCount = Number.isFinite(nextCount) ? Math.max(0, nextCount) : 0;
+      setNotificationCount(safeCount);
+      return safeCount;
+    } catch (error) {
+      if (error?.status === 401) setNotificationCount(0);
+      return null;
+    }
+  }, [auth.user?.id]);
   const toggleMenu = useCallback(() => {
+    setProfilePanelOpen(false);
     setMenuOpen((open) => !open);
   }, []);
+  const openProfilePanel = useCallback(() => {
+    if (!auth.user) return;
+    setMenuOpen(false);
+    setProfilePanelOpen(true);
+  }, [auth.user?.id]);
+  const closeProfilePanel = useCallback(() => {
+    setProfilePanelOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!auth.user) {
+      setNotificationCount(0);
+      setProfilePanelOpen(false);
+      return undefined;
+    }
+
+    refreshNotifications();
+    const intervalId = window.setInterval(refreshNotifications, 60000);
+    const onFocus = () => refreshNotifications();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [auth.user?.id, refreshNotifications]);
 
   useEffect(() => {
     if (!auth.loaded || !auth.user) return;
@@ -141,15 +203,19 @@ export function App() {
 
   return (
     <AuthModalProvider value={authModalContext}>
-      <div className="site" data-logged={loggedIn ? "in" : "out"} data-bg="on">
+      <div className="site" data-logged={loggedIn ? "in" : "out"} data-bg="on" data-post-surface={postSurface}>
         <div className="bg-atmos" aria-hidden="true">
           <FloatingBackgroundShapes />
+          <BackgroundQuote />
         </div>
         <NavBar
           loggedIn={loggedIn}
           user={auth.user}
           onMenu={toggleMenu}
           menuOpen={menuOpen}
+          onProfileNotifications={openProfilePanel}
+          profilePanelOpen={profilePanelOpen}
+          notificationCount={notificationCount}
           onOpenAudioPlayer={listeningPlayer.openListening}
           audioPlayerDisabled={!listeningPlayer.canListen}
           audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
@@ -186,6 +252,13 @@ export function App() {
         ) : null}
         <Footer user={auth.user} authLoaded={auth.loaded} landingStats={landingStats} showLandingInfo={route.name === "landing"} />
         <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
+        <NotificationPanel
+          open={profilePanelOpen}
+          user={auth.user}
+          notificationCount={notificationCount}
+          onNotificationsRefresh={refreshNotifications}
+          onClose={closeProfilePanel}
+        />
         <AuthLoginModal
           open={authModal.open}
           returnTo={authModal.returnTo}

@@ -65,6 +65,13 @@ def series_page_url(request: Any, slug: str) -> str:
     return f"{scheme}://{_join_host_port(host_name, port)}/serii/{quote(slug)}"
 
 
+def theatre_page_url(request: Any, slug: str) -> str:
+    scheme, host_name, port = _request_host_parts(request)
+    if host_name not in {"localhost"} and not IPV4_RE.match(host_name):
+        host_name = _root_host(host_name)
+    return f"{scheme}://{_join_host_port(host_name, port)}/teatru/{quote(slug)}"
+
+
 def render_post_pdf(
     *,
     post: Any,
@@ -115,6 +122,46 @@ def render_series_pdf(
         owner=getattr(owner, "username", "anonim"),
         description=getattr(series, "description", "") or "",
         posts=posts,
+        page_url=page_url,
+    )
+    return render_html_to_pdf(html_document)
+
+
+def render_theatre_pdf(
+    *,
+    play: Any,
+    creator: Any,
+    scenes: Iterable[Any],
+    page_url: str,
+) -> bytes:
+    scene_payloads = []
+    for scene in scenes:
+        entries = []
+        for entry in sorted(getattr(scene, "entries", []) or [], key=lambda item: (getattr(item, "position", 0), getattr(item, "id", 0))):
+            if getattr(entry, "moderation_status", None) != "approved":
+                continue
+            entries.append(
+                {
+                    "entry_type": getattr(entry, "entry_type", ""),
+                    "content": getattr(entry, "content", ""),
+                    "character": getattr(getattr(entry, "character", None), "name", None),
+                    "next_character": getattr(getattr(entry, "next_character", None), "name", None),
+                    "author": getattr(getattr(entry, "author", None), "username", None),
+                }
+            )
+        scene_payloads.append(
+            {
+                "scene_number": getattr(scene, "scene_number", 0),
+                "title": getattr(scene, "title", ""),
+                "entries": entries,
+            }
+        )
+
+    html_document = build_theatre_pdf_html(
+        title=getattr(play, "title", ""),
+        creator=getattr(creator, "username", "anonim"),
+        description=getattr(play, "description", "") or "",
+        scenes=scene_payloads,
         page_url=page_url,
     )
     return render_html_to_pdf(html_document)
@@ -181,8 +228,87 @@ def build_series_pdf_html(
     )
 
 
+def build_theatre_pdf_html(
+    *,
+    title: str,
+    creator: str,
+    description: str,
+    scenes: list[dict[str, Any]],
+    page_url: str,
+) -> str:
+    if scenes:
+        scene_sections = "\n".join(_theatre_scene_html(scene) for scene in scenes)
+    else:
+        scene_sections = '<p class="empty">Piesa nu are încă scene publice aprobate.</p>'
+
+    return _document(
+        page_url=page_url,
+        body=f"""
+        <main class="document theatre-document">
+          {_document_header(page_url)}
+          <section class="hero">
+            <div class="kicker">teatru colaborativ</div>
+            <h1>{_escape(title)}</h1>
+            <p class="byline">creat de {_escape(creator)}</p>
+            {f'<p class="description">{_escape(description)}</p>' if description else ''}
+          </section>
+          <section class="series-items">
+            {scene_sections}
+          </section>
+        </main>
+        """,
+    )
+
+
 def render_html_to_pdf(html_document: str) -> bytes:
     return HTML(string=html_document).write_pdf()
+
+
+def _theatre_scene_html(scene: dict[str, Any]) -> str:
+    entries = scene.get("entries") or []
+    if entries:
+        entry_html = "\n".join(_theatre_entry_html(entry) for entry in entries)
+    else:
+        entry_html = '<p class="empty">Scena nu are încă text public aprobat.</p>'
+    return f"""
+    <article class="series-item theatre-scene">
+      <header class="item-header">
+        <div class="kicker">scena {_escape(scene.get("scene_number") or "")}</div>
+        <h2>{_escape(scene.get("title") or "")}</h2>
+      </header>
+      <div class="prose theatre-prose">
+        {entry_html}
+      </div>
+    </article>
+    """
+
+
+def _theatre_entry_html(entry: dict[str, Any]) -> str:
+    entry_type = entry.get("entry_type")
+    character = entry.get("character")
+    if entry_type == "line":
+        heading = f'<p class="theatre-character">{_escape(character or "Personaj")}</p>'
+        return f"""
+        <section class="theatre-entry theatre-line">
+          {heading}
+          {_content_html(entry.get("content") or "")}
+        </section>
+        """
+    label = {
+        "scene_opening": "Deschidere",
+        "stage_direction": "Indicație scenică",
+        "scene_end": "Încheiere",
+    }.get(entry_type, "Notă")
+    return f"""
+    <section class="theatre-entry theatre-direction">
+      <p class="theatre-character">{_escape(label)}</p>
+      <div class="theatre-parenthetical">
+        <span class="theatre-paren">(</span>
+        <div class="theatre-parenthetical-content">{_content_html(entry.get("content") or "")}</div>
+        <span class="theatre-paren">)</span>
+      </div>
+    </section>
+    """
 
 
 def _series_post_html(post: dict[str, Any]) -> str:
@@ -365,6 +491,40 @@ def _document(*, page_url: str, body: str) -> str:
 
     .series-item:first-child {{
       break-before: auto;
+    }}
+
+    .theatre-entry {{
+      margin-bottom: 7mm;
+    }}
+
+    .theatre-character {{
+      margin: 0 0 2mm;
+      font-family: "DejaVu Sans", Arial, sans-serif;
+      font-size: 8.8pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #836b54;
+    }}
+
+    .theatre-direction {{
+      padding-left: 5mm;
+      border-left: 1.2pt solid #c7aa71;
+      color: #51433b;
+      font-style: italic;
+    }}
+
+    .theatre-parenthetical {{
+      display: block;
+    }}
+
+    .theatre-parenthetical-content {{
+      display: inline;
+    }}
+
+    .theatre-parenthetical-content p:first-child,
+    .theatre-parenthetical-content p:last-child {{
+      display: inline;
     }}
 
     .item-header {{

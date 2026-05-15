@@ -1,10 +1,14 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createSiteFeedback } from "../api/feedback.js";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../api/notifications.js";
-import { FaCoins } from "react-icons/fa6";
-import { FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiMessageSquare, FiPlay, FiUserPlus, FiUsers } from "react-icons/fi";
-import { GiQuillInk } from "react-icons/gi";
+import { BsPen } from "react-icons/bs";
+import { FaCoins, FaFacebookF } from "react-icons/fa6";
+import { FiBell, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiRepeat, FiUserPlus } from "react-icons/fi";
 import { IoShirtOutline } from "react-icons/io5";
+import { LiaBugSolid } from "react-icons/lia";
+import { MdOutlineFeedback } from "react-icons/md";
+import { PiMaskSad } from "react-icons/pi";
+import { RiTeamLine } from "react-icons/ri";
 import { useAuthModal } from "./auth-modal.jsx";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
@@ -107,9 +111,9 @@ function NavIconLink({ href, label, children, className = "" }) {
     </a>
   );
 }
-function NavIconButton({ label, children, className = "", onClick }) {
+function NavIconButton({ label, children, className = "", onClick, ...props }) {
   return (
-    <button className={`icon-btn nav-action ${className}`.trim()} type="button" onClick={onClick} aria-label={label} title={label}>
+    <button className={`icon-btn nav-action ${className}`.trim()} type="button" onClick={onClick} aria-label={label} title={label} {...props}>
       {children}
     </button>
   );
@@ -120,12 +124,16 @@ export function NavBar({
   user,
   onMenu,
   menuOpen,
+  onProfileNotifications,
+  profilePanelOpen = false,
+  notificationCount = 0,
   onOpenAudioPlayer,
   audioPlayerDisabled = true,
   audioPlayerTitle = "Player audio",
   audioPlayerOpen = false
 }) {
   const { openAuthModal } = useAuthModal();
+  const unreadNotifications = Math.max(0, Number(notificationCount) || 0);
   return (
     <nav className="nav">
       <div className="nav-left">
@@ -138,9 +146,25 @@ export function NavBar({
           </NavIconButton>
         ) : null}
         {loggedIn && user ? (
-          <NavIconLink href={blogUrl(user.username)} label="Călimara mea" className="inkwell">
-            <GiQuillInk aria-hidden="true" />
-          </NavIconLink>
+          <>
+            <NavIconLink href={blogUrl(user.username)} label="Călimara mea" className="inkwell">
+              <BsPen aria-hidden="true" />
+            </NavIconLink>
+            <NavIconButton
+              label="Notificări"
+              onClick={onProfileNotifications}
+              aria-haspopup="dialog"
+              aria-expanded={profilePanelOpen || undefined}
+              aria-controls="profile-notification-panel"
+            >
+              <FiBell aria-hidden="true" />
+              {unreadNotifications > 0 ? (
+                <span className="profile-notification-badge" aria-label={`${unreadNotifications} notificări necitite`}>
+                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                </span>
+              ) : null}
+            </NavIconButton>
+          </>
         ) : null}
         {loggedIn ? (
           <NavIconLink href={mainPath("/discutii")} label="Discuții" className="mobile-menu-only">
@@ -164,7 +188,17 @@ export function NavBar({
         ) : null}
         {loggedIn ? (
           <NavIconLink href={mainPath("/cluburi")} label="Cluburi" className="mobile-menu-only">
-            <FiUsers aria-hidden="true" />
+            <RiTeamLine aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href={mainPath("/teatru")} label="Teatru colaborativ" className="mobile-menu-only">
+            <PiMaskSad aria-hidden="true" />
+          </NavIconLink>
+        ) : null}
+        {loggedIn ? (
+          <NavIconLink href={mainPath("/stafeta")} label="Ștafeta" className="mobile-menu-only">
+            <FiRepeat aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn && user ? (
@@ -380,6 +414,8 @@ export function SideMenu({ open, onClose, user }) {
         ...adminItems,
         ["Mesaje", "conversații", authorPath(user, "/mesaje")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
+        ["Teatru colaborativ", "piese scrise pe rând", mainPath("/teatru")],
+        ["Ștafeta", "texte continuate pe rând", mainPath("/stafeta")],
         ["Discuții", "forum și întrebări", mainPath("/discutii")],
         ["Magazin", "cosmetice cu Gologani", mainPath("/magazin")],
         ["Inventar", "obiectele tale", mainPath("/inventar")],
@@ -390,6 +426,7 @@ export function SideMenu({ open, onClose, user }) {
         ["Acasă", "pagina principală", mainPath("/")],
         ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
         ["Cluburi", "comunități", mainPath("/cluburi")],
+        ["Teatru colaborativ", "piese publice", mainPath("/teatru")],
         ["Discuții", "forum și întrebări", mainPath("/discutii")],
         ["Premium", "abonament și super-aprecieri", mainPath("/premium")]
       ];
@@ -448,7 +485,10 @@ export function SideMenu({ open, onClose, user }) {
     </>
   );
 }
-const SITE_FEEDBACK_ENTRY = { kind: "feedback", label: "Sugestii / Gandaci", Icon: FiMessageSquare };
+const SITE_FEEDBACK_ENTRIES = {
+  feedback: { kind: "feedback", label: "Sugestii", Icon: MdOutlineFeedback },
+  bug: { kind: "bug", label: "Gandaci", Icon: LiaBugSolid }
+};
 
 function feedbackClientContext() {
   if (typeof window === "undefined") return {};
@@ -467,12 +507,13 @@ function feedbackClientContext() {
   };
 }
 
-function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
+function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
   const { openAuthModal } = useAuthModal();
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const activeEntry = entry ?? SITE_FEEDBACK_ENTRIES.feedback;
 
   useEffect(() => {
     setMessage("");
@@ -505,7 +546,7 @@ function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
     setError("");
     try {
       await createSiteFeedback({
-        kind: SITE_FEEDBACK_ENTRY.kind,
+        kind: activeEntry.kind,
         message: text,
         page_url: window.location.href,
         client_context: feedbackClientContext()
@@ -519,14 +560,14 @@ function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
     }
   };
 
-  const Icon = SITE_FEEDBACK_ENTRY.Icon;
+  const Icon = activeEntry.Icon;
   return (
     <div className="feedback-modal-scrim" role="presentation" onClick={onClose}>
       <section className="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="site-feedback-title" onClick={(event) => event.stopPropagation()}>
         <button className="feedback-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
         <div className="feedback-modal-head">
           <span className="feedback-modal-icon" aria-hidden="true"><Icon /></span>
-          <h2 id="site-feedback-title" className="feedback-modal-title">{SITE_FEEDBACK_ENTRY.label}</h2>
+          <h2 id="site-feedback-title" className="feedback-modal-title">{activeEntry.label}</h2>
         </div>
         {!authLoaded ? (
           <p className="feedback-modal-body">Se verifică sesiunea...</p>
@@ -571,57 +612,49 @@ function SiteFeedbackModal({ open, user, authLoaded, onClose }) {
   );
 }
 
-function FooterTopRow({ stats, FeedbackIcon, onFeedbackClick }) {
-  return (
-    <div className="footer-landing-info" aria-label="Informații călimara.ro">
-      {stats ? (
-        <div className="footer-stat-list">
-          <div className="footer-stat">
-            <span className="footer-stat-label">Texte</span>
-            <span className="footer-stat-count">{Number(stats.total_posts ?? 0).toLocaleString("ro-RO")}</span>
-          </div>
-          <div className="footer-stat">
-            <span className="footer-stat-label">Autori</span>
-            <span className="footer-stat-count">{Number(stats.total_authors ?? 0).toLocaleString("ro-RO")}</span>
-          </div>
-        </div>
-      ) : <span aria-hidden="true" />}
-      <div className="footer-info-actions">
-        <a className="footer-info-link" href={mainPath("/ce-este-calimara")}>Ce este calimara.ro?</a>
-        <button className="foot-feedback-btn" type="button" onClick={onFeedbackClick}>
-          <FeedbackIcon aria-hidden="true" />
-          <span>{SITE_FEEDBACK_ENTRY.label}</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function Footer({ user, authLoaded = false, landingStats = null, showLandingInfo = false }) {
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const FeedbackIcon = SITE_FEEDBACK_ENTRY.Icon;
+  const [feedbackEntry, setFeedbackEntry] = useState(null);
+  const stats = showLandingInfo ? landingStats : null;
+  const openFeedback = (entry) => setFeedbackEntry(entry);
   return (
     <>
       <footer className="site-foot">
-        <FooterTopRow
-          stats={showLandingInfo ? landingStats : null}
-          FeedbackIcon={FeedbackIcon}
-          onFeedbackClick={() => setFeedbackOpen(true)}
-        />
         <div className="foot-inner">
           <nav className="foot-links">
             <a href={mainPath("/confidentialitate")}>Politica de confidențialitate</a>
             <a href={mainPath("/termeni")}>Termeni și condiții</a>
-            <a href="mailto:contact@calimara.ro">Contact</a>
           </nav>
           <div className="foot-mark">© 2026 călimara.ro</div>
-          <div className="foot-social">
-            <a href="https://facebook.com" className="social-btn" aria-label="Facebook">f</a>
-            <a href="https://x.com" className="social-btn" aria-label="X">x</a>
+          {stats ? (
+            <div className="footer-stat-list">
+              <div className="footer-stat">
+                <span className="footer-stat-label">Texte</span>
+                <span className="footer-stat-count">{Number(stats.total_posts ?? 0).toLocaleString("ro-RO")}</span>
+              </div>
+              <div className="footer-stat">
+                <span className="footer-stat-label">Autori</span>
+                <span className="footer-stat-count">{Number(stats.total_authors ?? 0).toLocaleString("ro-RO")}</span>
+              </div>
+            </div>
+          ) : null}
+          <div className="foot-actions" aria-label="Informații și acțiuni călimara.ro">
+            <a className="footer-icon-btn footer-help-btn" href={mainPath("/ce-este-calimara")} aria-label="Ce este calimara.ro?" title="Ce este calimara.ro?">?</a>
+            <button className="footer-icon-btn footer-feedback-btn" type="button" aria-label="Sugestii" title="Sugestii" onClick={() => openFeedback(SITE_FEEDBACK_ENTRIES.feedback)}>
+              <MdOutlineFeedback aria-hidden="true" />
+            </button>
+            <button className="footer-icon-btn footer-feedback-btn" type="button" aria-label="Gandaci" title="Gandaci" onClick={() => openFeedback(SITE_FEEDBACK_ENTRIES.bug)}>
+              <LiaBugSolid aria-hidden="true" />
+            </button>
+            <a href="https://facebook.com" className="footer-icon-btn social-facebook" aria-label="Facebook" title="Facebook">
+              <FaFacebookF aria-hidden="true" />
+            </a>
+            <a href="mailto:contact@calimara.ro" className="footer-icon-btn social-email" aria-label="Contact" title="Contact">
+              <FiMail aria-hidden="true" />
+            </a>
           </div>
         </div>
       </footer>
-      <SiteFeedbackModal open={feedbackOpen} user={user} authLoaded={authLoaded} onClose={() => setFeedbackOpen(false)} />
+      <SiteFeedbackModal open={Boolean(feedbackEntry)} entry={feedbackEntry} user={user} authLoaded={authLoaded} onClose={() => setFeedbackEntry(null)} />
     </>
   );
 }
@@ -635,16 +668,22 @@ export function StatusPanel({ title, children, action }) {
     </div>
   );
 }
-export function PageShell({ kicker, title, sub, side, children }) {
+export function PageShell({ kicker, title, sub, side, titleAction = null, className = "", children }) {
+  const shellClassName = ["stage", "page-stage", side ? "" : "stage-single", className].filter(Boolean).join(" ");
   return (
-    <main className={`stage page-stage ${side ? "" : "stage-single"}`}>
+    <main className={shellClassName}>
       {side ? <div className="left-col">{side}</div> : null}
       <section className="page-col">
         <div className="piece-kind-row">
           <span className="piece-kind-badge">{kicker}</span>
           <span className="piece-kind-sep" />
         </div>
-        {title ? <h1 className="page-title">{title}</h1> : null}
+        {titleAction ? (
+          <div className="page-title-row">
+            {title ? <h1 className="page-title">{title}</h1> : null}
+            <div className="page-title-action">{titleAction}</div>
+          </div>
+        ) : title ? <h1 className="page-title">{title}</h1> : null}
         {sub ? (
           typeof sub === "string" ? <p className="page-sub">{sub}</p> : <div className="page-sub">{sub}</div>
         ) : null}
@@ -653,10 +692,10 @@ export function PageShell({ kicker, title, sub, side, children }) {
     </main>
   );
 }
-export function AuthRequired() {
+export function AuthRequired({ className = "" }) {
   const { openAuthModal } = useAuthModal();
   return (
-    <PageShell kicker="cont" title="Autentificare necesară" sub="Această zonă folosește sesiunea ta călimara.ro.">
+    <PageShell kicker="cont" title="Autentificare necesară" sub="Această zonă folosește sesiunea ta călimara.ro." className={className}>
       <button className="cal-btn primary" type="button" onClick={() => openAuthModal?.()}>Autentificare</button>
     </PageShell>
   );

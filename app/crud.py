@@ -23,3 +23,5 @@ from .repositories.series import *
 from .repositories.reactions import *
 from .repositories.premium import *
 from .repositories.clubs import *
+from .repositories.theatre import *
+from .repositories.stafeta import *

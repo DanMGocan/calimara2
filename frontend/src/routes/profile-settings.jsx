@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FiAlertTriangle, FiBookOpen, FiExternalLink, FiHeart, FiImage, FiMail, FiMapPin, FiSearch, FiStar, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
+import { updateStafetaParticipation } from "../api/stafeta.js";
 import { deleteProfileMedia, fetchPromotions, promoteAuthor, promotePost, searchPromotions, unpromoteAuthor, unpromotePost, updateEmailPreferences, updateProfileSettings, uploadProfileMedia } from "../api/users.js";
 import { AUTH_COVER_OPTIONS, PROFILE_DESCRIPTION_CHARACTER_LIMIT } from "../app/constants.js";
 import { RichTextEditor } from "../app/editor.jsx";
@@ -310,14 +311,18 @@ function PromotionSettingsPanel() {
 function ProfileSettingsView({ user, onUserUpdate }) {
   const [form, setForm] = useState(() => profileFormFromUser(user));
   const [emailPrefs, setEmailPrefs] = useState(() => emailPrefsFromUser(user));
+  const [stafetaParticipates, setStafetaParticipates] = useState(Boolean(user?.stafeta_participates));
   const [status, setStatus] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
+  const [stafetaStatus, setStafetaStatus] = useState("");
   const [savingEmailPrefs, setSavingEmailPrefs] = useState(false);
+  const [savingStafeta, setSavingStafeta] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setForm(profileFormFromUser(user));
     setEmailPrefs(emailPrefsFromUser(user));
+    setStafetaParticipates(Boolean(user?.stafeta_participates));
   }, [user?.id]);
 
   if (!user) return <AuthRequired />;
@@ -342,6 +347,25 @@ function ProfileSettingsView({ user, onUserUpdate }) {
       setEmailStatus(requestError.message || "Nu am putut salva preferințele de email.");
     } finally {
       setSavingEmailPrefs(false);
+    }
+  };
+
+  const saveStafetaParticipation = async (nextValue) => {
+    if (savingStafeta) return;
+    setSavingStafeta(true);
+    setStafetaStatus("");
+    setStafetaParticipates(nextValue);
+    try {
+      const result = await updateStafetaParticipation(nextValue);
+      const participates = Boolean(result?.participates);
+      setStafetaParticipates(participates);
+      onUserUpdate({ ...user, stafeta_participates: participates });
+      setStafetaStatus(participates ? "Participarea la Ștafeta este activă." : "Participarea la Ștafeta este oprită.");
+    } catch (requestError) {
+      setStafetaParticipates(Boolean(user?.stafeta_participates));
+      setStafetaStatus(requestError.message || "Nu am putut salva participarea la Ștafeta.");
+    } finally {
+      setSavingStafeta(false);
     }
   };
 
@@ -422,6 +446,24 @@ function ProfileSettingsView({ user, onUserUpdate }) {
         {status ? <div className={status.includes("Nu am putut") || status.includes("cel mult") ? "inline-error" : "inline-status"}>{status}</div> : null}
       </form>
       <PromotionSettingsPanel />
+      <section className="profile-settings-section email-preferences-section">
+        <div className="profile-panel-heading">
+          <FiUsers aria-hidden="true" />
+          <div className="piece-card-kicker">Ștafeta</div>
+        </div>
+        <div className="email-preference-grid">
+          <label className="email-preference-toggle">
+            <input
+              type="checkbox"
+              checked={stafetaParticipates}
+              onChange={(event) => saveStafetaParticipation(event.target.checked)}
+              disabled={savingStafeta}
+            />
+            <span>Particip la Ștafeta</span>
+          </label>
+        </div>
+        {stafetaStatus ? <div className={stafetaStatus.includes("Nu am putut") ? "inline-error" : "inline-status"}>{stafetaStatus}</div> : null}
+      </section>
       <section className="profile-settings-section email-preferences-section">
         <div className="profile-panel-heading">
           <FiMail aria-hidden="true" />

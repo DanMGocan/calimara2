@@ -1,9 +1,10 @@
 import os
+import re
 import logging
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +17,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
+from . import admin, models
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
 from .domains import DOMAIN_ROUTERS
 
@@ -47,7 +49,7 @@ ADSENSE_PUBLISHER_ID = os.getenv("ADSENSE_PUBLISHER_ID", "").strip()
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -83,11 +85,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 # CORS Middleware — build origin regex from env-configured domain.
-_main_escaped = MAIN_DOMAIN.replace(".", r"\.")
-_suffix_escaped = SUBDOMAIN_SUFFIX.replace(".", r"\.")
+_allowed_origin_hosts = [re.escape(MAIN_DOMAIN)]
+if SUBDOMAIN_SUFFIX:
+    _allowed_origin_hosts.insert(0, rf".*{re.escape(SUBDOMAIN_SUFFIX)}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=rf"https?://(.*{_suffix_escaped}|{_main_escaped})(:\d+)?",
+    allow_origin_regex=rf"https?://({'|'.join(_allowed_origin_hosts)})(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
@@ -101,7 +104,7 @@ app.add_middleware(
     max_age=14 * 24 * 60 * 60,  # 14 days
     same_site="lax",
     https_only=HTTPS_ONLY,
-    domain=SUBDOMAIN_SUFFIX
+    domain=SUBDOMAIN_SUFFIX or None,
 )
 
 # Mount legacy static files
@@ -127,7 +130,7 @@ class SubdomainMiddleware:
             headers = Headers(scope=scope)
             host = headers.get("host", "").split(":", 1)[0]
             state = scope.setdefault("state", {})
-            if host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
+            if SUBDOMAIN_SUFFIX and host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
                 state["is_subdomain"] = True
                 state["username"] = host.replace(SUBDOMAIN_SUFFIX, "")
             else:
@@ -168,6 +171,21 @@ def _legacy_frontend_path(path: str) -> bool:
         return True
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in LEGACY_FRONTEND_PREFIXES)
 
+
+def _react_index_response() -> FileResponse:
+    response = FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
+@app.get("/docs", include_in_schema=False)
+def serve_admin_documentation(current_user: models.User = Depends(admin.require_admin)):
+    if not os.path.isdir(FRONTEND_DIST):
+        return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
+    return _react_index_response()
+
 if os.path.isdir(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.isdir(assets_dir):
@@ -179,11 +197,7 @@ if os.path.isdir(FRONTEND_DIST):
         normalized_path = f"/{full_path.strip('/')}" if full_path else "/"
         if normalized_path.startswith("/api/") or _legacy_frontend_path(normalized_path):
             return JSONResponse(status_code=404, content={"detail": "Ruta nu a fost găsită"})
-        response = FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        return response
+        return _react_index_response()
 else:
     logger.warning(
         f"React build not found at {FRONTEND_DIST}. "

@@ -125,6 +125,7 @@ class UserInDB(UserBase):
     email_mention_notifications: bool = True
     email_analytics_digest: bool = True
     email_admin_announcements: bool = True
+    stafeta_participates: bool = False
     created_at: datetime
     updated_at: datetime
 

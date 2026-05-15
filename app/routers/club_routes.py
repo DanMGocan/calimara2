@@ -1,11 +1,14 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
-from .. import models, schemas, auth, crud
+from .. import models, schemas, auth, crud, profile_media
 from ..database import get_db
+from ..utils import get_avatar_url, get_cover_url
+from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +53,7 @@ def _board_message_payload(
         "id": msg.id,
         "club_id": msg.club_id,
         "parent_id": msg.parent_id,
+        "title": msg.title,
         "content": msg.content,
         "created_at": msg.created_at,
         "updated_at": msg.updated_at,
@@ -66,7 +70,41 @@ def _board_message_payload(
     return payload
 
 
-def _club_summary_payload(db: Session, club: models.Club) -> dict:
+def _club_media_url_if_visible(club: models.Club, kind: str) -> Optional[str]:
+    config = profile_media.media_kind_config(kind)
+    key = getattr(club, f"{config['prefix']}_storage_key", None)
+    if not key or not club.owner or not club.owner.has_audio_access:
+        return None
+    return profile_media.public_club_media_url(club.slug, kind)
+
+
+def _viewer_club_state(
+    db: Session,
+    club: models.Club,
+    current_user: Optional[models.User],
+) -> tuple[Optional[str], Optional[str], bool]:
+    if current_user is None:
+        return None, None, False
+    membership = crud.get_club_membership(db, club.id, current_user.id)
+    my_role = membership.role if membership else None
+    pending_status = None
+    if membership is None:
+        pending = crud.get_user_pending_request(db, club.id, current_user.id)
+        pending_status = pending.direction if pending else None
+    can_view_detail = bool(my_role or getattr(current_user, "is_admin", False))
+    return my_role, pending_status, can_view_detail
+
+
+def _club_summary_payload(
+    db: Session,
+    club: models.Club,
+    current_user: Optional[models.User] = None,
+) -> dict:
+    my_role, pending_status, can_view_detail = _viewer_club_state(db, club, current_user)
+    profile_photo_url = _club_media_url_if_visible(club, "profil")
+    cover_photo_url = _club_media_url_if_visible(club, "coperta")
+    avatar_seed = club.avatar_seed or f"{club.slug}-shapes"
+    cover_seed = f"{club.slug}-cover-sky"
     return {
         "id": club.id,
         "owner_id": club.owner_id,
@@ -74,11 +112,21 @@ def _club_summary_payload(db: Session, club: models.Club) -> dict:
         "slug": club.slug,
         "description": club.description,
         "motto": club.motto,
-        "avatar_seed": club.avatar_seed,
+        "avatar_seed": avatar_seed,
+        "avatar_url": profile_photo_url or get_avatar_url(avatar_seed, size=160),
         "theme": club.theme,
         "speciality": club.speciality,
+        "join_policy": club.join_policy,
         "member_count": crud.count_club_members(db, club.id),
         "owner": _owner_payload(club.owner),
+        "profile_photo_url": profile_photo_url,
+        "cover_photo_url": cover_photo_url,
+        "cover_url": cover_photo_url or get_cover_url(cover_seed, size=1600),
+        "has_profile_photo": bool(club.profile_photo_storage_key and profile_photo_url),
+        "has_cover_photo": bool(club.cover_photo_storage_key and cover_photo_url),
+        "my_role": my_role,
+        "my_pending_request_status": pending_status,
+        "can_view_detail": can_view_detail,
         "created_at": club.created_at,
         "updated_at": club.updated_at,
     }
@@ -105,8 +153,20 @@ def _join_request_payload(req: models.ClubJoinRequest) -> dict:
         "direction": req.direction,
         "status": req.status,
         "initiator_id": req.initiator_id,
+        "application_text": req.application_text,
         "created_at": req.created_at,
         "responded_at": req.responded_at,
+    }
+
+
+def _achievement_payload(achievement: models.ClubAchievement) -> dict:
+    definition = crud.achievement_definition(achievement.key)
+    return {
+        "id": achievement.id,
+        "key": achievement.key,
+        "label": definition["label"],
+        "description": definition["description"],
+        "unlocked_at": achievement.unlocked_at,
     }
 
 
@@ -135,27 +195,40 @@ def _build_club_detail(
     featured = crud.get_active_featured(db, club)
     messages = crud.list_board_messages(db, club.id, limit=20)
     recent_messages = [_board_message_payload(m, role_by_user) for m in messages]
+    achievements = [
+        _achievement_payload(item)
+        for item in crud.list_club_achievements(db, club.id)
+    ]
 
     my_role = None
     my_pending_request_status = None
     pending_request_count = None
+    viewer_is_site_admin = bool(getattr(current_user, "is_admin", False)) if current_user else False
     if current_user is not None:
         membership = crud.get_club_membership(db, club.id, current_user.id)
         my_role = membership.role if membership else None
         if membership is None:
             pending = crud.get_user_pending_request(db, club.id, current_user.id)
             my_pending_request_status = pending.direction if pending else None
-        if my_role in ("owner", "admin"):
+        if my_role in ("owner", "admin") or viewer_is_site_admin:
             pending_request_count = crud.count_pending_requests_for_club(db, club.id)
 
-    summary = _club_summary_payload(db, club)
+    can_manage = my_role in ("owner", "admin")
+    can_post = my_role is not None
+    can_upload_media = bool(current_user and club.owner_id == current_user.id and current_user.has_audio_access)
+    summary = _club_summary_payload(db, club, current_user=current_user)
     return {
         **summary,
         "members": member_payloads,
         "featured": _featured_payload(featured),
+        "achievements": achievements,
         "recent_messages": recent_messages,
         "my_role": my_role,
         "my_pending_request_status": my_pending_request_status,
+        "can_post": can_post,
+        "can_manage": can_manage,
+        "can_upload_media": can_upload_media,
+        "viewer_is_site_admin": viewer_is_site_admin,
         "pending_request_count": pending_request_count,
     }
 
@@ -166,23 +239,27 @@ def _build_club_detail(
 def create_club_api(
     data: schemas.ClubCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_premium_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     try:
         club = crud.create_club(db, owner=current_user, data=data)
     except ValueError as e:
+        if str(e) == "owner_already_has_club":
+            raise HTTPException(status_code=409, detail="Poți crea un singur club")
         raise HTTPException(status_code=400, detail=str(e))
     db.refresh(club)
-    return _club_summary_payload(db, club)
+    return _club_summary_payload(db, club, current_user=current_user)
 
 
 @router.get("/api/cluburi")
 def list_clubs_api(
     speciality: Optional[str] = None,
     theme: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     if speciality and speciality not in crud.CLUB_VALID_SPECIALITIES:
         raise HTTPException(status_code=400, detail="Specialitate invalidă")
@@ -190,29 +267,36 @@ def list_clubs_api(
         db,
         speciality=speciality,
         theme_query=theme,
+        search_query=q,
         limit=max(1, min(limit, 100)),
         offset=max(0, offset),
     )
-    return {"clubs": [_club_summary_payload(db, c) for c in clubs]}
+    return {"clubs": [_club_summary_payload(db, c, current_user=current_user) for c in clubs]}
 
 
 @router.get("/api/cluburi/aleatoriu")
-def random_club_api(db: Session = Depends(get_db)):
+def random_club_api(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
     club = crud.get_random_club(db)
     if not club:
         raise HTTPException(status_code=404, detail="Niciun club disponibil")
-    return _club_summary_payload(db, club)
+    return _club_summary_payload(db, club, current_user=current_user)
 
 
 @router.get("/api/cluburi/{slug}")
 def get_club_api(
     slug: str,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     club = crud.get_club_by_slug(db, slug)
     if not club:
         raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
+    membership = crud.get_club_membership(db, club.id, current_user.id)
+    if not membership and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Doar membrii clubului pot vedea această pagină")
     return _build_club_detail(db, club, current_user)
 
 
@@ -231,7 +315,7 @@ def update_club_api(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     db.refresh(updated)
-    return _club_summary_payload(db, updated)
+    return _club_summary_payload(db, updated, current_user=current_user)
 
 
 @router.delete("/api/cluburi/{club_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -252,19 +336,39 @@ def delete_club_api(
 @router.post("/api/cluburi/{club_id}/inscriere")
 def apply_to_club_api(
     club_id: int,
+    body: schemas.ClubJoinApplyRequest | None = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
     club = crud.get_club(db, club_id)
     if not club:
         raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
-    request, error = crud.apply_to_club(db, current_user, club)
+    request, error = crud.apply_to_club(
+        db,
+        current_user,
+        club,
+        application_text=body.application_text if body else None,
+    )
     if error == "suspended":
         raise HTTPException(status_code=403, detail="Contul tău este suspendat")
     if error == "already_member":
         raise HTTPException(status_code=409, detail="Ești deja membru al acestui club")
     if error == "already_pending":
         raise HTTPException(status_code=409, detail="Ai deja o cerere în așteptare")
+    if error == "closed":
+        raise HTTPException(status_code=403, detail="Acest club este pe bază de invitație")
+    if error == "application_text_required":
+        raise HTTPException(status_code=422, detail="Completează câmpul „De ce vrei să ni te alături\"")
+    if isinstance(request, models.ClubMember):
+        return {
+            "status": "joined",
+            "membership": {
+                "id": request.id,
+                "user_id": request.user_id,
+                "role": request.role,
+                "joined_at": request.joined_at,
+            },
+        }
     return _join_request_payload(request)
 
 
@@ -303,7 +407,7 @@ def list_club_requests_api(
     if not club:
         raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
     membership = crud.get_club_membership(db, club.id, current_user.id)
-    if not membership or membership.role not in ("owner", "admin"):
+    if not current_user.is_admin and (not membership or membership.role not in ("owner", "admin")):
         raise HTTPException(status_code=403, detail="Acces interzis")
     requests = crud.list_club_pending_requests(db, club.id)
     return {"requests": [_join_request_payload(r) for r in requests]}
@@ -395,7 +499,14 @@ def list_my_clubs_api(
     current_user: models.User = Depends(auth.get_required_user),
 ):
     clubs = crud.list_user_clubs(db, current_user.id)
-    return {"clubs": [_club_summary_payload(db, c) for c in clubs]}
+    owned_club = crud.get_owned_club(db, current_user.id)
+    return {
+        "clubs": [_club_summary_payload(db, c, current_user=current_user) for c in clubs],
+        "owned_club": (
+            _club_summary_payload(db, owned_club, current_user=current_user)
+            if owned_club else None
+        ),
+    }
 
 
 @router.get("/api/utilizator/cluburi/in-asteptare")
@@ -410,7 +521,7 @@ def list_my_club_invitations_api(
             continue
         items.append({
             "request": _join_request_payload(inv),
-            "club": _club_summary_payload(db, inv.club),
+            "club": _club_summary_payload(db, inv.club, current_user=current_user),
             "direction": inv.direction,
         })
     return {"items": items}
@@ -424,10 +535,13 @@ def list_club_board_api(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     club = crud.get_club(db, club_id)
     if not club:
         raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
+    if not current_user.is_admin and not crud.get_club_membership(db, club.id, current_user.id):
+        raise HTTPException(status_code=403, detail="Doar membrii clubului pot vedea discuțiile")
     messages = crud.list_board_messages(
         db, club_id, limit=max(1, min(limit, 100)), offset=max(0, offset)
     )
@@ -447,12 +561,16 @@ def post_club_board_message_api(
     if not club:
         raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
     msg, error = crud.post_board_message(
-        db, current_user, club, body.content, parent_id=body.parent_id
+        db, current_user, club, body.content, title=body.title, parent_id=body.parent_id
     )
     if error == "not_member":
         raise HTTPException(status_code=403, detail="Trebuie să fii membru ca să postezi")
     if error == "bad_parent":
         raise HTTPException(status_code=400, detail="Mesaj părinte invalid")
+    if error == "missing_title":
+        raise HTTPException(status_code=422, detail="Titlul firului este obligatoriu")
+    if error == "empty_content":
+        raise HTTPException(status_code=422, detail="Mesajul este obligatoriu")
     members = crud.list_club_members(db, club.id)
     role_by_user = {m.user_id: m.role for m in members}
     return _board_message_payload(msg, role_by_user, include_replies=False)
@@ -475,6 +593,123 @@ def delete_club_board_message_api(
     if not ok:
         raise HTTPException(status_code=403, detail="Nu ai permisiunea să ștergi mesajul")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ----- club media -----
+
+def _club_media_storage_attrs(kind: str) -> tuple[str, str, str, str]:
+    config = profile_media.media_kind_config(kind)
+    prefix = config["prefix"]
+    return (
+        f"{prefix}_storage_backend",
+        f"{prefix}_storage_key",
+        f"{prefix}_content_type",
+        f"{prefix}_updated_at",
+    )
+
+
+def _require_media_owner(club: models.Club, current_user: models.User) -> None:
+    if club.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Doar creatorul clubului poate gestiona imaginile")
+    if not current_user.has_audio_access:
+        raise HTTPException(status_code=403, detail="Imaginile clubului sunt disponibile pentru Cronicar și Rapsod")
+
+
+@router.post("/api/cluburi/{club_id}/media/{kind}")
+async def upload_club_media(
+    club_id: int,
+    kind: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    club = crud.get_club(db, club_id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
+    profile_media.media_kind_config(kind)
+    _require_media_owner(club, current_user)
+
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in profile_media.ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Format de imagine neacceptat")
+
+    max_bytes = profile_media.max_upload_bytes()
+    content = await file.read(max_bytes + 1)
+    if len(content) > max_bytes:
+        max_mb = max_bytes // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"Imaginea depășește {max_mb} MB")
+    if not content:
+        raise HTTPException(status_code=400, detail="Fișierul imagine este gol")
+
+    processed = profile_media.process_uploaded_image(content, kind)
+    backend_attr, key_attr, content_type_attr, updated_attr = _club_media_storage_attrs(kind)
+    old_backend = getattr(club, backend_attr)
+    old_key = getattr(club, key_attr)
+    backend, key, stored_content_type = profile_media.save_club_media_bytes(
+        club_id=club.id,
+        kind=kind,
+        content=processed,
+    )
+    setattr(club, backend_attr, backend)
+    setattr(club, key_attr, key)
+    setattr(club, content_type_attr, stored_content_type)
+    setattr(club, updated_attr, utcnow_naive())
+    db.add(club)
+    db.commit()
+    db.refresh(club)
+    profile_media.delete_stored_media(old_backend, old_key)
+    return _club_summary_payload(db, club, current_user=current_user)
+
+
+@router.delete("/api/cluburi/{club_id}/media/{kind}")
+def delete_club_media(
+    club_id: int,
+    kind: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    club = crud.get_club(db, club_id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Clubul nu a fost găsit")
+    _club_media_storage_attrs(kind)
+    _require_media_owner(club, current_user)
+    backend_attr, key_attr, content_type_attr, updated_attr = _club_media_storage_attrs(kind)
+    old_backend = getattr(club, backend_attr)
+    old_key = getattr(club, key_attr)
+    setattr(club, backend_attr, None)
+    setattr(club, key_attr, None)
+    setattr(club, content_type_attr, None)
+    setattr(club, updated_attr, None)
+    db.add(club)
+    db.commit()
+    db.refresh(club)
+    profile_media.delete_stored_media(old_backend, old_key)
+    return _club_summary_payload(db, club, current_user=current_user)
+
+
+@router.get("/api/cluburi/{slug}/media/{kind}")
+def get_public_club_media(
+    slug: str,
+    kind: str,
+    db: Session = Depends(get_db),
+):
+    club = crud.get_club_by_slug(db, slug)
+    if not club or not club.owner or not club.owner.has_audio_access:
+        raise HTTPException(status_code=404, detail="Imaginea nu a fost găsită")
+    backend_attr, key_attr, content_type_attr, _ = _club_media_storage_attrs(kind)
+    backend = getattr(club, backend_attr)
+    key = getattr(club, key_attr)
+    content_type = getattr(club, content_type_attr) or profile_media.PROFILE_MEDIA_CONTENT_TYPE
+    if not key:
+        raise HTTPException(status_code=404, detail="Imaginea nu a fost găsită")
+    if backend == "s3":
+        return RedirectResponse(profile_media.presigned_media_url(key))
+    if backend != "local":
+        raise HTTPException(status_code=404, detail="Imaginea nu a fost găsită")
+    path = profile_media.local_path_for_key(key)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Imaginea nu a fost găsită")
+    return FileResponse(path, media_type=content_type)
 
 
 # ----- featured creation -----

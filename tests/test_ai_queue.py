@@ -173,6 +173,46 @@ class AIQueueTests(unittest.TestCase):
         self.assertGreaterEqual(job.run_after, before_retry + timedelta(seconds=890))
         self.assertLessEqual(job.run_after, utcnow_naive() + timedelta(seconds=910))
 
+    def test_failed_flush_rolls_job_back_to_retry_without_sticking_processing(self):
+        job = crud.enqueue_ai_job(
+            self.db,
+            job_type="broken_flush",
+            target_type="post",
+            target_id=123,
+            max_attempts=2,
+        )
+
+        def broken_flush(db, claimed_job):
+            db.add(
+                models.User(
+                    username="duplicate",
+                    email="duplicate@example.com",
+                    google_id="duplicate-google",
+                )
+            )
+            db.flush()
+            db.add(
+                models.User(
+                    username="duplicate",
+                    email="other@example.com",
+                    google_id="other-google",
+                )
+            )
+            db.flush()
+
+        claimed = crud.claim_pending_ai_jobs(self.db, limit=1, worker_id="test-worker")
+        self.assertEqual([item.id for item in claimed], [job.id])
+
+        with patch.dict(ai_queue._HANDLERS, {"broken_flush": broken_flush}):
+            ai_queue.process_claimed_job(self.db, claimed[0])
+
+        refreshed = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.assertEqual(refreshed.status, "pending")
+        self.assertEqual(refreshed.attempts, 1)
+        self.assertIsNone(refreshed.locked_at)
+        self.assertIsNone(refreshed.locked_by)
+        self.assertIn("UNIQUE", refreshed.error_message.upper())
+
     def test_comment_moderation_job_updates_comment_without_blocking_create(self):
         user = self.make_user()
         target = self.make_user("target")

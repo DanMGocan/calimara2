@@ -21,6 +21,8 @@ def _content_type_label(content_type: str) -> str:
         "audio": "Audio",
         "forum_thread": "Discuția",
         "forum_reply": "Răspunsul",
+        "theatre_entry": "Textul de teatru",
+        "stafeta_segment": "Contribuția din Ștafeta",
     }
     return labels.get(content_type, "Conținutul")
 
@@ -54,6 +56,10 @@ def get_moderation_stats(
             models.ForumThread.moderated_at >= today
         ).count() + db.query(models.ForumReply).filter(
             models.ForumReply.moderated_at >= today
+        ).count() + db.query(models.TheatreEntry).filter(
+            models.TheatreEntry.moderated_at >= today
+        ).count() + db.query(models.StafetaSegment).filter(
+            models.StafetaSegment.moderated_at >= today
         ).count()
 
         return {
@@ -69,6 +75,10 @@ def get_moderation_stats(
             "forum_threads_flagged": stats['forum_threads_flagged'],
             "forum_replies_pending": stats['forum_replies_pending'],
             "forum_replies_flagged": stats['forum_replies_flagged'],
+            "theatre_entries_pending": stats['theatre_entries_pending'],
+            "theatre_entries_flagged": stats['theatre_entries_flagged'],
+            "stafeta_segments_pending": stats['stafeta_segments_pending'],
+            "stafeta_segments_flagged": stats['stafeta_segments_flagged'],
         }
 
     except Exception as e:
@@ -151,6 +161,36 @@ def get_pending_content(
                     "moderation_status": reply.moderation_status,
                     "moderation_reason": getattr(reply, "moderation_reason", ""),
                     "created_at": reply.created_at.isoformat()
+                })
+
+        if content_type in ["all", "theatre_entries"]:
+            entries = crud.list_theatre_entries_for_moderation(db, status_filter="pending", limit=50)
+            for entry in entries:
+                content.append({
+                    "id": entry.id,
+                    "type": "theatre_entry",
+                    "title": entry.play.title if entry.play else "Teatru colaborativ",
+                    "content": entry.content,
+                    "author": entry.author.username if entry.author else "Necunoscut",
+                    "toxicity_score": getattr(entry, "toxicity_score", 0.0) or 0.0,
+                    "moderation_status": entry.moderation_status,
+                    "moderation_reason": getattr(entry, "moderation_reason", ""),
+                    "created_at": entry.created_at.isoformat()
+                })
+
+        if content_type in ["all", "stafeta_segments"]:
+            segments = crud.list_stafeta_segments_for_moderation(db, status_filter="pending", limit=50)
+            for segment in segments:
+                content.append({
+                    "id": segment.id,
+                    "type": "stafeta_segment",
+                    "title": segment.work.title if segment.work else "Ștafeta",
+                    "content": segment.content,
+                    "author": segment.author.username if segment.author else "Necunoscut",
+                    "toxicity_score": getattr(segment, "toxicity_score", 0.0) or 0.0,
+                    "moderation_status": segment.moderation_status,
+                    "moderation_reason": getattr(segment, "moderation_reason", ""),
+                    "created_at": segment.created_at.isoformat()
                 })
 
         # Sort by creation date
@@ -258,6 +298,21 @@ def get_flagged_content(
                 "moderation_status": getattr(reply, "moderation_status", "flagged"),
                 "moderation_reason": getattr(reply, "moderation_reason", ""),
                 "created_at": reply.created_at.isoformat()
+            })
+
+        theatre_entries = crud.list_theatre_entries_for_moderation(db, status_filter="flagged", limit=50)
+        logger.info(f"Found {len(theatre_entries)} flagged theatre entries")
+        for entry in theatre_entries:
+            content.append({
+                "id": entry.id,
+                "type": "theatre_entry",
+                "title": entry.play.title if entry.play else "Teatru colaborativ",
+                "content": entry.content,
+                "author": entry.author.username if entry.author else "Necunoscut",
+                "toxicity_score": getattr(entry, "toxicity_score", 0.0) or 0.0,
+                "moderation_status": getattr(entry, "moderation_status", "flagged"),
+                "moderation_reason": getattr(entry, "moderation_reason", ""),
+                "created_at": entry.created_at.isoformat()
             })
 
         # Sort by toxicity score
@@ -370,7 +425,7 @@ def moderate_content_action(
         if action not in ["approve", "reject", "delete"]:
             raise HTTPException(status_code=400, detail="Acțiune invalidă")
 
-        if content_type not in ["post", "comment", "audio", "forum_thread", "forum_reply"]:
+        if content_type not in ["post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"]:
             raise HTTPException(status_code=400, detail="Tip de conținut invalid")
 
         # Use the new CRUD functions for approving/rejecting content
@@ -400,6 +455,10 @@ def moderate_content_action(
                 content = db.query(models.ForumThread).filter(models.ForumThread.id == content_id).first()
             elif content_type == "forum_reply":
                 content = db.query(models.ForumReply).filter(models.ForumReply.id == content_id).first()
+            elif content_type == "theatre_entry":
+                content = db.query(models.TheatreEntry).filter(models.TheatreEntry.id == content_id).first()
+            elif content_type == "stafeta_segment":
+                content = db.query(models.StafetaSegment).filter(models.StafetaSegment.id == content_id).first()
             else:
                 content = db.query(models.Comment).filter(models.Comment.id == content_id).first()
 
@@ -579,6 +638,15 @@ def get_moderation_logs_api(
                     content_title = f"Răspuns în: {reply.thread.title}" if reply.thread else "Răspuns pe forum"
                     content_preview = reply.content[:100] + "..." if len(reply.content) > 100 else reply.content
                     content_author = reply.author.username if reply.author else "Necunoscut"
+            elif log.content_type == "theatre_entry":
+                entry = db.query(models.TheatreEntry).options(
+                    joinedload(models.TheatreEntry.play),
+                    joinedload(models.TheatreEntry.author),
+                ).filter(models.TheatreEntry.id == log.content_id).first()
+                if entry:
+                    content_title = entry.play.title if entry.play else "Teatru colaborativ"
+                    content_preview = entry.content[:100] + "..." if len(entry.content) > 100 else entry.content
+                    content_author = entry.author.username if entry.author else "Necunoscut"
 
             result.append({
                 "id": log.id,
@@ -688,6 +756,25 @@ def get_moderation_queue_api(
                         "author": reply.author.username if reply.author else "Necunoscut",
                         "thread_id": reply.thread_id,
                         "created_at": reply.created_at.isoformat(),
+                    }
+            elif log.content_type == "theatre_entry":
+                entry = db.query(models.TheatreEntry).options(
+                    joinedload(models.TheatreEntry.author),
+                    joinedload(models.TheatreEntry.play),
+                    joinedload(models.TheatreEntry.scene),
+                    joinedload(models.TheatreEntry.character),
+                ).filter(models.TheatreEntry.id == log.content_id).first()
+                if entry:
+                    content_data = {
+                        "id": entry.id,
+                        "title": entry.play.title if entry.play else "Teatru colaborativ",
+                        "content": entry.content,
+                        "author": entry.author.username if entry.author else "Necunoscut",
+                        "play_id": entry.play_id,
+                        "scene_id": entry.scene_id,
+                        "entry_type": entry.entry_type,
+                        "character": entry.character.name if entry.character else None,
+                        "created_at": entry.created_at.isoformat(),
                     }
 
             if content_data:

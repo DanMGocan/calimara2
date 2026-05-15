@@ -5,6 +5,25 @@ from .slugs import generate_slug
 CLUB_FEATURED_DURATION = timedelta(days=7)
 
 CLUB_VALID_SPECIALITIES = ("poezie", "proza_scurta")
+CLUB_JOIN_POLICIES = ("open", "private", "closed")
+CLUB_ACHIEVEMENT_DEFINITIONS = {
+    "atelier_deschis": {
+        "label": "Atelier deschis",
+        "description": "Clubul a pornit primul fir de atelier.",
+    },
+    "cerc_de_cinci": {
+        "label": "Cerc de cinci",
+        "description": "Clubul a ajuns la cinci membri.",
+    },
+    "dialog_viu": {
+        "label": "Dialog viu",
+        "description": "Discuțiile clubului au adunat 25 de mesaje.",
+    },
+    "creatia_saptamanii": {
+        "label": "Creația săptămânii",
+        "description": "Clubul a ales prima creație a săptămânii.",
+    },
+}
 
 def _generate_club_slug(title: str) -> str:
     return generate_slug(title, fallback="club")
@@ -18,7 +37,7 @@ def _ensure_unique_club_slug(db: Session, base_slug: str) -> str:
     return slug
 
 def get_club(db: Session, club_id: int) -> Optional[models.Club]:
-    return db.query(models.Club).filter(models.Club.id == club_id).first()
+    return db.query(models.Club).options(joinedload(models.Club.owner)).filter(models.Club.id == club_id).first()
 
 def get_club_by_slug(db: Session, slug: str) -> Optional[models.Club]:
     return db.query(models.Club).options(
@@ -30,18 +49,21 @@ def list_clubs(
     *,
     speciality: Optional[str] = None,
     theme_query: Optional[str] = None,
+    search_query: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ):
     query = db.query(models.Club).options(joinedload(models.Club.owner))
     if speciality:
         query = query.filter(models.Club.speciality == speciality)
-    if theme_query:
-        like = f"%{theme_query.strip()}%"
+    query_text = (search_query or theme_query or "").strip()
+    if query_text:
+        like = f"%{query_text}%"
         query = query.filter(
             or_(
                 models.Club.theme.ilike(like),
                 models.Club.title.ilike(like),
+                models.Club.description.ilike(like),
             )
         )
     return (
@@ -68,6 +90,20 @@ def get_random_club(db: Session) -> Optional[models.Club]:
 
 def count_club_members(db: Session, club_id: int) -> int:
     return db.query(models.ClubMember).filter(models.ClubMember.club_id == club_id).count()
+
+def count_club_board_messages(db: Session, club_id: int) -> int:
+    return db.query(models.ClubBoardMessage).filter(models.ClubBoardMessage.club_id == club_id).count()
+
+def get_owned_club(db: Session, user_id: int) -> Optional[models.Club]:
+    return (
+        db.query(models.Club)
+        .options(joinedload(models.Club.owner))
+        .filter(models.Club.owner_id == user_id)
+        .first()
+    )
+
+def count_owned_clubs(db: Session, user_id: int) -> int:
+    return db.query(models.Club).filter(models.Club.owner_id == user_id).count()
 
 def get_club_membership(db: Session, club_id: int, user_id: int) -> Optional[models.ClubMember]:
     return db.query(models.ClubMember).filter(
@@ -102,6 +138,10 @@ def count_member_contributions(db: Session, club_id: int, user_id: int) -> int:
 def create_club(db: Session, owner: models.User, data: schemas.ClubCreate) -> models.Club:
     if data.speciality not in CLUB_VALID_SPECIALITIES:
         raise ValueError("speciality_invalid")
+    if data.join_policy not in CLUB_JOIN_POLICIES:
+        raise ValueError("join_policy_invalid")
+    if count_owned_clubs(db, owner.id) > 0:
+        raise ValueError("owner_already_has_club")
     base_slug = _generate_club_slug(data.title)
     slug = _ensure_unique_club_slug(db, base_slug)
     club = models.Club(
@@ -113,11 +153,18 @@ def create_club(db: Session, owner: models.User, data: schemas.ClubCreate) -> mo
         avatar_seed=(data.avatar_seed or "").strip() or None,
         theme=(data.theme or "").strip() or None,
         speciality=data.speciality,
+        join_policy=data.join_policy,
     )
-    db.add(club)
-    db.flush()
-    db.add(models.ClubMember(club_id=club.id, user_id=owner.id, role="owner"))
-    db.commit()
+    try:
+        db.add(club)
+        db.flush()
+        db.add(models.ClubMember(club_id=club.id, user_id=owner.id, role="owner"))
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if "uq_clubs_owner" in str(exc.orig):
+            raise ValueError("owner_already_has_club") from exc
+        raise
     db.refresh(club)
     return club
 
@@ -132,6 +179,10 @@ def update_club(db: Session, club_id: int, data: schemas.ClubUpdate) -> Optional
         if payload["speciality"] not in CLUB_VALID_SPECIALITIES:
             raise ValueError("speciality_invalid")
         club.speciality = payload["speciality"]
+    if "join_policy" in payload and payload["join_policy"]:
+        if payload["join_policy"] not in CLUB_JOIN_POLICIES:
+            raise ValueError("join_policy_invalid")
+        club.join_policy = payload["join_policy"]
     for field in ("description", "motto", "avatar_seed", "theme"):
         if field in payload:
             value = payload[field]
@@ -163,20 +214,41 @@ def get_user_pending_request(db: Session, club_id: int, user_id: int) -> Optiona
     ).first()
 
 def apply_to_club(
-    db: Session, applicant: models.User, club: models.Club
-) -> tuple[Optional[models.ClubJoinRequest], Optional[str]]:
+    db: Session,
+    applicant: models.User,
+    club: models.Club,
+    application_text: Optional[str] = None,
+) -> tuple[Optional[Any], Optional[str]]:
     if applicant.is_suspended:
         return None, "suspended"
     if get_club_membership(db, club.id, applicant.id):
         return None, "already_member"
     if _has_pending_request(db, club.id, applicant.id):
         return None, "already_pending"
+    if club.join_policy == "closed":
+        return None, "closed"
+    cleaned_text = (application_text or "").strip()
+    if club.join_policy == "open":
+        membership = models.ClubMember(
+            club_id=club.id,
+            user_id=applicant.id,
+            role="member",
+        )
+        db.add(membership)
+        db.commit()
+        db.refresh(membership)
+        _notify_club_open_join_to_admins(db, club, applicant)
+        evaluate_member_count_achievements(db, club)
+        return membership, None
+    if not cleaned_text:
+        return None, "application_text_required"
     request = models.ClubJoinRequest(
         club_id=club.id,
         user_id=applicant.id,
         direction="application",
         status="pending",
         initiator_id=applicant.id,
+        application_text=cleaned_text,
     )
     db.add(request)
     db.commit()
@@ -251,6 +323,8 @@ def respond_to_club_request(
     db.commit()
     db.refresh(request)
     _notify_club_request_outcome(db, request, action, responder)
+    if action == "approve":
+        evaluate_member_count_achievements(db, club)
     return request, None
 
 def kick_member(
@@ -370,6 +444,7 @@ def set_featured_post(
             link=f"/cluburi/{club.slug}",
             extra_data={"club_id": club.id, "club_slug": club.slug, "post_id": post.id},
         )
+    ensure_club_achievement(db, club, "creatia_saptamanii")
     return post, None
 
 def clear_featured_post(db: Session, actor: models.User, club: models.Club) -> tuple[bool, Optional[str]]:
@@ -438,10 +513,15 @@ def post_board_message(
     author: models.User,
     club: models.Club,
     content: str,
+    title: Optional[str] = None,
     parent_id: Optional[int] = None,
 ) -> tuple[Optional[models.ClubBoardMessage], Optional[str]]:
     if not get_club_membership(db, club.id, author.id):
         return None, "not_member"
+    cleaned_title = (title or "").strip()
+    cleaned_content = content.strip()
+    if not cleaned_content:
+        return None, "empty_content"
     if parent_id is not None:
         parent = get_board_message(db, parent_id)
         if not parent or parent.club_id != club.id:
@@ -450,21 +530,38 @@ def post_board_message(
         # to siblings of the original reply (frontend renders as a single thread).
         if parent.parent_id is not None:
             parent_id = parent.parent_id
+        cleaned_title = None
+    elif not cleaned_title:
+        return None, "missing_title"
     msg = models.ClubBoardMessage(
         club_id=club.id,
         author_id=author.id,
         parent_id=parent_id,
-        content=content.strip(),
+        title=cleaned_title,
+        content=cleaned_content,
     )
     db.add(msg)
     db.commit()
     db.refresh(msg)
+    if parent_id is None:
+        if db.query(models.ClubBoardMessage).filter(
+            models.ClubBoardMessage.club_id == club.id,
+            models.ClubBoardMessage.parent_id.is_(None),
+        ).count() == 1:
+            ensure_club_achievement(db, club, "atelier_deschis")
+        _notify_club_board_activity(db, club, author, msg, is_reply=False)
+    else:
+        _notify_club_board_activity(db, club, author, msg, is_reply=True)
+    if count_club_board_messages(db, club.id) >= 25:
+        ensure_club_achievement(db, club, "dialog_viu")
     return msg, None
 
 def delete_board_message(
     db: Session, actor: models.User, message: models.ClubBoardMessage
 ) -> tuple[bool, Optional[str]]:
     if actor.id == message.author_id:
+        allowed = True
+    elif getattr(actor, "is_admin", False):
         allowed = True
     else:
         membership = get_club_membership(db, message.club_id, actor.id)
@@ -540,7 +637,155 @@ def count_pending_requests_for_club(db: Session, club_id: int) -> int:
     )
 
 
+# ----- club achievements -----
+
+def achievement_definition(key: str) -> dict:
+    return CLUB_ACHIEVEMENT_DEFINITIONS.get(key, {
+        "label": key.replace("_", " ").title(),
+        "description": "Insignă de club.",
+    })
+
+
+def list_club_achievements(db: Session, club_id: int) -> List[models.ClubAchievement]:
+    return (
+        db.query(models.ClubAchievement)
+        .filter(models.ClubAchievement.club_id == club_id)
+        .order_by(models.ClubAchievement.unlocked_at.asc(), models.ClubAchievement.id.asc())
+        .all()
+    )
+
+
+def ensure_club_achievement(
+    db: Session, club: models.Club, key: str
+) -> Optional[models.ClubAchievement]:
+    if key not in CLUB_ACHIEVEMENT_DEFINITIONS:
+        return None
+    existing = db.query(models.ClubAchievement).filter(
+        models.ClubAchievement.club_id == club.id,
+        models.ClubAchievement.key == key,
+    ).first()
+    if existing:
+        return existing
+    achievement = models.ClubAchievement(club_id=club.id, key=key)
+    db.add(achievement)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return db.query(models.ClubAchievement).filter(
+            models.ClubAchievement.club_id == club.id,
+            models.ClubAchievement.key == key,
+        ).first()
+    db.refresh(achievement)
+    _notify_club_achievement_unlocked(db, club, achievement)
+    return achievement
+
+
+def evaluate_member_count_achievements(db: Session, club: models.Club) -> None:
+    if count_club_members(db, club.id) >= 5:
+        ensure_club_achievement(db, club, "cerc_de_cinci")
+
+
 # ----- club notification helpers -----
+
+def _admin_memberships(db: Session, club_id: int) -> List[models.ClubMember]:
+    return (
+        db.query(models.ClubMember)
+        .filter(
+            models.ClubMember.club_id == club_id,
+            models.ClubMember.role.in_(("owner", "admin")),
+        )
+        .all()
+    )
+
+
+def _member_user_ids(db: Session, club_id: int) -> List[int]:
+    return [
+        item[0]
+        for item in db.query(models.ClubMember.user_id)
+        .filter(models.ClubMember.club_id == club_id)
+        .all()
+    ]
+
+
+def _notify_club_open_join_to_admins(
+    db: Session,
+    club: models.Club,
+    member: models.User,
+) -> None:
+    for m in _admin_memberships(db, club.id):
+        if m.user_id == member.id:
+            continue
+        create_notification(
+            db=db,
+            user_id=m.user_id,
+            notif_type="club_member_joined",
+            title="Membru nou în club",
+            message=f"{member.username} s-a alăturat clubului „{club.title}\".",
+            link=f"/cluburi/{club.slug}",
+            extra_data={
+                "club_id": club.id,
+                "club_slug": club.slug,
+                "member_username": member.username,
+            },
+        )
+
+
+def _notify_club_board_activity(
+    db: Session,
+    club: models.Club,
+    author: models.User,
+    message: models.ClubBoardMessage,
+    *,
+    is_reply: bool,
+) -> None:
+    title = "Răspuns nou în club" if is_reply else "Fir nou în club"
+    subject = message.title or "discuția de pe tablă"
+    body = (
+        f"{author.username} a răspuns în „{subject}\"."
+        if is_reply
+        else f"{author.username} a deschis firul „{subject}\"."
+    )
+    notif_type = "club_board_reply" if is_reply else "club_board_thread"
+    for user_id in _member_user_ids(db, club.id):
+        if user_id == author.id:
+            continue
+        create_notification(
+            db=db,
+            user_id=user_id,
+            notif_type=notif_type,
+            title=title,
+            message=body,
+            link=f"/cluburi/{club.slug}#club-message-{message.id}",
+            extra_data={
+                "club_id": club.id,
+                "club_slug": club.slug,
+                "message_id": message.id,
+                "is_reply": is_reply,
+            },
+        )
+
+
+def _notify_club_achievement_unlocked(
+    db: Session,
+    club: models.Club,
+    achievement: models.ClubAchievement,
+) -> None:
+    definition = achievement_definition(achievement.key)
+    for user_id in _member_user_ids(db, club.id):
+        create_notification(
+            db=db,
+            user_id=user_id,
+            notif_type="club_achievement_unlocked",
+            title=f"Insignă nouă pentru „{club.title}\"",
+            message=f"Clubul a deblocat insigna „{definition['label']}\".",
+            link=f"/cluburi/{club.slug}",
+            extra_data={
+                "club_id": club.id,
+                "club_slug": club.slug,
+                "achievement_key": achievement.key,
+            },
+        )
 
 def _notify_club_application_to_admins(
     db: Session,
@@ -548,15 +793,7 @@ def _notify_club_application_to_admins(
     applicant: models.User,
     request: models.ClubJoinRequest,
 ) -> None:
-    admin_memberships = (
-        db.query(models.ClubMember)
-        .filter(
-            models.ClubMember.club_id == club.id,
-            models.ClubMember.role.in_(("owner", "admin")),
-        )
-        .all()
-    )
-    for m in admin_memberships:
+    for m in _admin_memberships(db, club.id):
         if m.user_id == applicant.id:
             continue
         create_notification(

@@ -701,6 +701,17 @@ function AdminDashboardView({ user }) {
               </div>
             </section>
           ))}
+          {canAdmin ? (
+            <section className="admin-nav-group">
+              <h2>Referință</h2>
+              <div className="admin-tabs">
+                <a className="admin-tab admin-tab-link" href="/docs">
+                  <span>Documentație</span>
+                  <strong>docs</strong>
+                </a>
+              </div>
+            </section>
+          ) : null}
         </nav>
 
         <div className="admin-status-stack">
@@ -970,6 +981,8 @@ function AdminDashboardView({ user }) {
                 <option value="audio">Audio</option>
                 <option value="forum_thread">Discuții</option>
                 <option value="forum_reply">Răspunsuri</option>
+                <option value="theatre_entry">Teatru</option>
+                <option value="stafeta_segment">Ștafeta</option>
               </select>
               <input className="cal-input admin-search" value={contentSearch} onChange={(event) => setContentSearch(event.target.value)} placeholder="Caută conținut" />
             </div>

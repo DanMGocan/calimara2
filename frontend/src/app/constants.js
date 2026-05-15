@@ -68,12 +68,14 @@ export const CONTENT_TYPE_LABELS = {
   comment: "Comentariu",
   audio: "Audio",
   forum_thread: "Discuție",
-  forum_reply: "Răspuns"
+  forum_reply: "Răspuns",
+  theatre_entry: "Teatru",
+  stafeta_segment: "Ștafeta"
 };
 
-export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "forum", "forumCreate", "forumThread", "shop", "inventory", "admin"]);
+export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "clubs", "club", "forum", "forumCreate", "forumThread", "theatreCreate", "stafeta", "stafetaCreate", "stafetaWork", "shop", "inventory", "admin", "docs"]);
 export const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
-export const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "blog", "post", "series"]);
+export const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "theatre", "theatrePlay", "blog", "post", "series"]);
 export const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";
 export const ADSENSE_CLIENT_ID = (import.meta.env.VITE_ADSENSE_CLIENT_ID || "").trim();
 export const ADSENSE_SLOTS = {

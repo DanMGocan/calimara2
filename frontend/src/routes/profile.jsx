@@ -321,14 +321,14 @@ function ProfileHero({ data, postCount, user, onUserRefresh }) {
         <ProfileCountLink Icon={FiUserPlus} href={`${blogUrl(owner.username)}/urmaritori`} value={followerCount} label="urmăritori" />
         <ProfileCountLink Icon={FiUserCheck} href={`${blogUrl(owner.username)}/urmariti`} value={data.following_count} label="urmăriți" />
         <ProfileStat Icon={FaCoins} value={owner.gologani_balance} label="Gologani" />
+      </div>
+      <div className="profile-stat-row profile-economy-row" aria-label="Opere și inventar">
         {isOwnProfile ? (
           <a className="profile-write-btn" href={authorPath(user, "/panou")}>
             <FiEdit3 aria-hidden="true" />
             <span>Scrie</span>
           </a>
         ) : null}
-      </div>
-      <div className="profile-stat-row profile-economy-row" aria-label="Opere și inventar">
         <ProfileStatLink Icon={FiBookOpen} href={`${blogUrl(owner.username)}/toate-operele`} label="Toate operele" />
         <ProfileStatLink Icon={FaShirt} href={`${blogUrl(owner.username)}/inventar`} label="Inventar" />
       </div>
@@ -353,7 +353,7 @@ function ProfileHighlights({ data }) {
         </div>
         <div className="profile-chip-list">
           {awards.slice(0, 4).map((award) => (
-            <span className="profile-chip" key={award.id}><FiAward aria-hidden="true" />{award.award_title}</span>
+            <span className="profile-chip" key={award.id} title={award.award_description || award.award_title}><FiAward aria-hidden="true" />{award.award_title}</span>
           ))}
         </div>
       </div>

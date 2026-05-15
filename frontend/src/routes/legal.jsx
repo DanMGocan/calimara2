@@ -58,7 +58,29 @@ function TermsView() {
   );
 }
 
+function AboutView() {
+  return (
+    <PageShell kicker="călimara.ro" title="Ce este calimara.ro?" sub="Un spațiu pentru autori, cititori și ateliere literare.">
+      <div className="legal-copy">
+        <section className="legal-section">
+          <h2>Publicare</h2>
+          <p>Autorii pot publica poezie și proză scurtă, pot păstra ciorne și pot primi reacții, comentarii și lecturi audio de la comunitate.</p>
+        </section>
+        <section className="legal-section">
+          <h2>Comunitate</h2>
+          <p>Platforma include profiluri publice, prieteni, mesaje, discuții, cluburi literare, teatru colaborativ și ștafete de scriere.</p>
+        </section>
+        <section className="legal-section">
+          <h2>Moderare</h2>
+          <p>Conținutul este moderat pentru a păstra un spațiu de lucru civilizat, iar utilizatorii pot trimite sugestii sau semnala probleme din subsolul paginii.</p>
+        </section>
+      </div>
+    </PageShell>
+  );
+}
+
 export default function LegalRoute({ route }) {
+  if (route.name === "about") return <AboutView />;
   if (route.name === "terms") return <TermsView />;
   return <PrivacyView />;
 }

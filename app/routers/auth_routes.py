@@ -26,15 +26,19 @@ def _frontend_base_url(request: Request) -> str:
     configured_callback = os.getenv("GOOGLE_REDIRECT_URI", "")
     parsed_callback = urlparse(configured_callback)
     scheme = parsed_callback.scheme or request.url.scheme
-    return f"{scheme}://{MAIN_DOMAIN}"
+    netloc = parsed_callback.netloc or MAIN_DOMAIN
+    return f"{scheme}://{netloc}"
 
 
 def _user_blog_url(request: Request, user) -> str:
     configured_callback = os.getenv("GOOGLE_REDIRECT_URI", "")
     parsed_callback = urlparse(configured_callback)
     scheme = parsed_callback.scheme or request.url.scheme
+    if not SUBDOMAIN_SUFFIX:
+        return _frontend_base_url(request)
     suffix = SUBDOMAIN_SUFFIX if SUBDOMAIN_SUFFIX.startswith(".") else f".{SUBDOMAIN_SUFFIX}"
-    return f"{scheme}://{user.username}{suffix}"
+    port = f":{parsed_callback.port}" if parsed_callback.port and ":" not in suffix else ""
+    return f"{scheme}://{user.username}{suffix}{port}"
 
 
 def _auth_failure_url(request: Request, provider: str = "auth") -> str:
@@ -62,6 +66,9 @@ def _safe_return_url(request: Request, return_to: str | None) -> str | None:
     if netloc == main_domain or netloc == frontend_netloc:
         return target
     if suffix and netloc.endswith(suffix):
+        return target
+    suffix_host = suffix.split(":", 1)[0]
+    if suffix_host and parsed.hostname and parsed.hostname.lower().endswith(suffix_host):
         return target
     return None
 

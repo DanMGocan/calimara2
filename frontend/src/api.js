@@ -10,6 +10,8 @@ export * from "./api/stats.js";
 export * from "./api/series.js";
 export * from "./api/forum.js";
 export * from "./api/clubs.js";
+export * from "./api/theatre.js";
+export * from "./api/stafeta.js";
 export * from "./api/super-likes.js";
 export * from "./api/economy.js";
 export * from "./api/premium.js";

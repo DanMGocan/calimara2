@@ -66,6 +66,10 @@ def build_storage_key(user_id: int, kind: str) -> str:
     return f"users/{user_id}/{kind}-{uuid4().hex}.webp"
 
 
+def build_club_storage_key(club_id: int, kind: str) -> str:
+    return f"clubs/{club_id}/{kind}-{uuid4().hex}.webp"
+
+
 def local_path_for_key(key: str) -> Path:
     return profile_media_dir() / key
 
@@ -74,8 +78,24 @@ def public_media_url(username: str, kind: str) -> str:
     return f"/api/utilizatori/{username}/media/{kind}"
 
 
+def public_club_media_url(slug: str, kind: str) -> str:
+    return f"/api/cluburi/{slug}/media/{kind}"
+
+
 def save_profile_media_bytes(*, user_id: int, kind: str, content: bytes) -> tuple[str, str, str]:
     key = build_storage_key(user_id, kind)
+    backend = storage_backend()
+    if backend == "s3":
+        object_storage.put_object(key, content, PROFILE_MEDIA_CONTENT_TYPE)
+        return "s3", key, PROFILE_MEDIA_CONTENT_TYPE
+    path = local_path_for_key(key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return "local", key, PROFILE_MEDIA_CONTENT_TYPE
+
+
+def save_club_media_bytes(*, club_id: int, kind: str, content: bytes) -> tuple[str, str, str]:
+    key = build_club_storage_key(club_id, kind)
     backend = storage_backend()
     if backend == "s3":
         object_storage.put_object(key, content, PROFILE_MEDIA_CONTENT_TYPE)

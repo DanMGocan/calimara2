@@ -7,7 +7,7 @@ from .. import rich_text
 from .common import *
 
 AdminPremiumTier = Literal["free", "trubadur", "cronicar", "rapsod"]
-AdminContentType = Literal["post", "comment", "audio", "forum_thread", "forum_reply"]
+AdminContentType = Literal["post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"]
 AdminModerationStatus = Literal["approved", "pending", "flagged", "rejected"]
 
 class ModerationActionRequest(BaseModel):
@@ -102,7 +102,7 @@ class AdminEmailCampaignCreate(BaseModel):
         return value
 
 
-AdminContentType = Literal["post", "comment", "audio", "forum_thread", "forum_reply"]
+AdminContentType = Literal["post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"]
 AdminModerationStatus = Literal["approved", "pending", "flagged", "rejected"]
 
 

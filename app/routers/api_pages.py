@@ -426,10 +426,15 @@ def blog_data(
         "user_awards": [
             {
                 "id": a.id,
+                "achievement_key": a.achievement_key,
                 "award_title": a.award_title,
                 "award_description": a.award_description,
                 "award_date": a.award_date.isoformat() if a.award_date else None,
                 "award_type": a.award_type,
+                "awarded_at": a.awarded_at.isoformat() if a.awarded_at else None,
+                "source_type": a.source_type,
+                "source_id": a.source_id,
+                "metadata": a.extra_data or {},
             }
             for a in (user_awards or [])
         ],

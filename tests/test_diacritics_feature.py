@@ -62,6 +62,31 @@ def test_add_diacritics_rejects_invalid_ai_output(monkeypatch):
         diacritics.add_diacritics(kind="comment", title=None, content="fara diacritice")
 
 
+def test_add_theatre_play_diacritics_uses_structured_response(monkeypatch):
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(
+            complete=lambda **kwargs: _fake_response(
+                '{"title": "Orașul", "description": "Șapte țări", "characters": [{"index": 0, "description": "Călător bătrân"}]}'
+            )
+        )
+    )
+    monkeypatch.setattr(diacritics, "DIACRITICS_ENABLED", True)
+    monkeypatch.setattr(diacritics, "client", fake_client)
+
+    result = diacritics.add_theatre_play_diacritics(
+        title="Orasul",
+        description="Sapte tari",
+        characters=[{"index": 0, "description": "Calator batran"}],
+    )
+
+    assert result == {
+        "title": "Orașul",
+        "description": "Șapte țări",
+        "characters": [{"index": 0, "description": "Călător bătrân"}],
+        "changed": True,
+    }
+
+
 def test_writing_diacritics_endpoint_requires_premium(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         auth.require_premium_user(_user(premium=False))
@@ -90,6 +115,38 @@ def test_writing_diacritics_endpoint_returns_converted_text(monkeypatch):
     assert response == {
         "title": "Orașul",
         "content": "Șapte țări",
+        "changed": True,
+    }
+
+
+def test_writing_diacritics_endpoint_returns_theatre_payload(monkeypatch):
+    monkeypatch.setattr(
+        writing_routes.diacritics,
+        "add_theatre_play_diacritics",
+        lambda **kwargs: {
+            "title": "Orașul",
+            "description": "Șapte țări",
+            "characters": [{"index": 0, "description": "Călător"}],
+            "changed": True,
+        },
+    )
+    handler = getattr(writing_routes.add_diacritics_api, "__wrapped__", writing_routes.add_diacritics_api)
+
+    response = handler(
+        request=SimpleNamespace(),
+        body=schemas.DiacriticsRequest(
+            kind="theatre_play",
+            title="Orasul",
+            description="Sapte tari",
+            characters=[{"index": 0, "description": "Calator"}],
+        ),
+        current_user=_user(premium=True),
+    )
+
+    assert response == {
+        "title": "Orașul",
+        "description": "Șapte țări",
+        "characters": [{"index": 0, "description": "Călător"}],
         "changed": True,
     }
 

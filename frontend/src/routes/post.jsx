@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { FiBookOpen } from "react-icons/fi";
 import { fetchPostDetail, postPdfUrl } from "../api/public.js";
 import { TEXT_MODERATION_MESSAGE } from "../app/constants.js";
@@ -8,6 +8,31 @@ import { useAsync } from "../app/hooks.js";
 import { AdSlot, StatusPanel } from "../app/layout.jsx";
 import { mainPath } from "../app/paths.js";
 import { PostPromotionMenu } from "../app/post-actions.jsx";
+
+const DESKTOP_READER_QUERY = "(min-width: 821px)";
+
+function useDesktopReaderSurface() {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia(DESKTOP_READER_QUERY).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const query = window.matchMedia(DESKTOP_READER_QUERY);
+    const update = () => setMatches(query.matches);
+    update();
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+
+  return matches;
+}
+
 function SeriesContextPanel({ context }) {
   if (!context?.series) return null;
   const { series, previous_post: previousPost, next_post: nextPost } = context;
@@ -33,6 +58,7 @@ function SeriesContextPanel({ context }) {
 }
 function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPostActionsChange }) {
   const { data, error, loading } = useAsync(() => fetchPostDetail(username, slug), [username, slug, user?.id]);
+  const desktopReaderSurface = useDesktopReaderSurface();
   const piece = data ? postToPiece({ ...data.post, owner: data.blog_owner }) : null;
   const actionPost = data ? { ...data.post, owner: data.blog_owner } : null;
   const pdfHref = data?.blog_owner?.username && data?.post?.slug
@@ -58,6 +84,13 @@ function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPost
     return () => onFooterPostActionsChange?.(null);
   }, [data, pdfHref, onFooterPostActionsChange]);
 
+  const detailExtras = data ? (
+    <>
+      <SeriesContextPanel context={data.series_context} />
+      <AdSlot placement="postFooter" />
+    </>
+  ) : null;
+
   return (
     <main className="stage stage-single">
       {loading ? <StatusPanel title="Se încarcă" /> : null}
@@ -74,9 +107,9 @@ function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPost
               titleAction={data.post.moderation_status === "approved" ? (
                 <PostPromotionMenu post={actionPost} author={data.blog_owner} user={user} />
               ) : null}
+              readerFooter={desktopReaderSurface ? detailExtras : null}
             />
-            <SeriesContextPanel context={data.series_context} />
-            <AdSlot placement="postFooter" />
+            {desktopReaderSurface ? null : detailExtras}
           </div>
         </div>
       ) : null}

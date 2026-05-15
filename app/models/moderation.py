@@ -15,7 +15,7 @@ class ModerationLog(Base):
     __tablename__ = "moderation_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    content_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'post' or 'comment'
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)
     content_id: Mapped[int] = mapped_column(Integer, nullable=False)
     user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     
@@ -45,14 +45,18 @@ class ModerationLog(Base):
     @property
     def content_preview(self) -> str:
         """Get a preview of the moderated content"""
-        if self.content_type == "post":
-            return f"Post ID {self.content_id}"
-        else:
-            return f"Comment ID {self.content_id}"
+        labels = {
+            "post": "Post",
+            "comment": "Comment",
+            "audio": "Audio",
+            "forum_thread": "Forum thread",
+            "forum_reply": "Forum reply",
+            "theatre_entry": "Theatre entry",
+            "stafeta_segment": "Stafeta segment",
+        }
+        return f"{labels.get(self.content_type, 'Content')} ID {self.content_id}"
     
     @property
     def needs_human_review(self) -> bool:
         """Check if this content needs human review"""
         return self.ai_decision == "flagged" and (self.human_decision is None or self.human_decision == "pending")
-
-

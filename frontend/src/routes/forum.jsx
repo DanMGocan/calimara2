@@ -18,13 +18,14 @@ function ForumListView({ user }) {
     [user?.id, section]
   );
 
-  if (!user) return <AuthRequired />;
+  if (!user) return <AuthRequired className="forum-page" />;
 
   return (
     <PageShell
       kicker="discuții"
       title="Discuții"
       sub="Discuții pentru întrebări, feedback și conversații între autori."
+      className="forum-page"
       side={
         <aside className="side-col">
           <div className="side-kicker">secțiuni</div>
@@ -85,7 +86,7 @@ function ForumThreadCreateView({ user }) {
     setDiacriticsReview(null);
   }, [user?.id, user?.is_premium]);
 
-  if (!user) return <AuthRequired />;
+  if (!user) return <AuthRequired className="forum-page" />;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -121,7 +122,7 @@ function ForumThreadCreateView({ user }) {
   };
 
   return (
-    <PageShell kicker="discuții" title="Discuție nouă" sub="Deschide o discuție în forum.">
+    <PageShell kicker="discuții" title="Discuție nouă" sub="Deschide o discuție în forum." className="forum-page">
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       <form className="form-stack" onSubmit={submit}>
         <label className="auth-field" htmlFor="forum-section">Secțiune</label>
@@ -186,7 +187,7 @@ function ForumThreadDetailView({ user, slug }) {
     setReplyReview(null);
   }, [user?.id, user?.is_premium, slug]);
 
-  if (!user) return <AuthRequired />;
+  if (!user) return <AuthRequired className="forum-page" />;
 
   const submitReply = async (event) => {
     event.preventDefault();
@@ -223,6 +224,7 @@ function ForumThreadDetailView({ user, slug }) {
       kicker={data ? forumSectionLabel(data.section) : "discuții"}
       title={data?.title ?? "Discuții"}
       sub={data?.author?.username ? <>Pornit de <AuthorLink user={data.author} /></> : ""}
+      className="forum-page"
     >
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       {loading ? <StatusPanel title="Se încarcă" /> : null}

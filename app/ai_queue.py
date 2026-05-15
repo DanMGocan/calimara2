@@ -6,7 +6,9 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session, joinedload
 
+from .achievements import emit_post_approved
 from . import ai_critic, audio_service, category_classifier, crud, email_service, models, moderation, theme_analysis
+from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +16,9 @@ JOB_POST_PUBLISH = "post_publish"
 JOB_COMMENT_MODERATION = "comment_moderation"
 JOB_FORUM_THREAD_MODERATION = "forum_thread_moderation"
 JOB_FORUM_REPLY_MODERATION = "forum_reply_moderation"
+JOB_THEATRE_ENTRY_MODERATION = "theatre_entry_moderation"
+JOB_STAFETA_SEGMENT_MODERATION = "stafeta_segment_moderation"
+JOB_STAFETA_TURN_TIMEOUT = "stafeta_turn_timeout"
 JOB_TTS_AUDIO = "tts_audio_generation"
 JOB_AUTHOR_AUDIO = "author_audio_moderation"
 JOB_THEME_ANALYSIS = "post_theme_analysis"
@@ -95,6 +100,21 @@ def enqueue_forum_reply_moderation_job(db: Session, reply: models.ForumReply) ->
     )
 
 
+def enqueue_theatre_entry_moderation_job(db: Session, entry: models.TheatreEntry) -> models.AIJob:
+    return crud.enqueue_ai_job(
+        db,
+        job_type=JOB_THEATRE_ENTRY_MODERATION,
+        target_type="theatre_entry",
+        target_id=entry.id,
+        payload={"content_hash": _content_hash(entry.entry_type, entry.content)},
+        max_attempts=3,
+    )
+
+
+def enqueue_stafeta_segment_moderation_job(db: Session, segment: models.StafetaSegment) -> models.AIJob:
+    return crud.enqueue_stafeta_segment_moderation_job(db, segment)
+
+
 def enqueue_tts_audio_job(db: Session, audio: models.PostAudio) -> models.AIJob:
     return crud.enqueue_ai_job(
         db,
@@ -146,19 +166,22 @@ def process_ai_jobs(db: Session, *, limit: int = 10, worker: str | None = None) 
 
 
 def process_claimed_job(db: Session, job: models.AIJob) -> None:
+    job_id = job.id
+    job_type = job.job_type
+    attempts = int(job.attempts or 0)
+    max_attempts = int(job.max_attempts or 1)
     try:
-        handler = _HANDLERS[job.job_type]
+        handler = _HANDLERS[job_type]
     except KeyError:
-        crud.fail_ai_job(db, job, f"Unknown AI job type: {job.job_type}", retry=False)
+        crud.fail_ai_job(db, job, f"Unknown AI job type: {job_type}", retry=False)
         return
 
     try:
         handler(db, job)
         crud.complete_ai_job(db, job)
     except Exception as exc:
-        logger.exception("AI job %s (%s) failed", job.id, job.job_type)
-        job_id = job.id
-        final_attempt = int(job.attempts or 0) >= int(job.max_attempts or 1)
+        logger.exception("AI job %s (%s) failed", job_id, job_type)
+        final_attempt = attempts >= max_attempts
         try:
             db.rollback()
         except Exception:
@@ -198,6 +221,8 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
     post.moderation_status = result.status.value
     post.toxicity_score = result.toxicity_score
     post.moderation_reason = result.reason
+    if post.moderation_status == "approved":
+        post.moderated_at = utcnow_naive()
     db.commit()
     db.refresh(post)
 
@@ -212,6 +237,7 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
         )
     elif post.moderation_status == "approved":
         crud.award_content_approved(db, "post", post)
+        emit_post_approved(db, post)
         enqueue_post_approval_jobs(db, post)
 
 
@@ -292,6 +318,76 @@ def _handle_forum_reply_moderation(db: Session, job: models.AIJob) -> None:
             link=None,
             extra_data={"thread_id": reply.thread_id, "reply_id": reply.id},
         )
+
+
+def _handle_theatre_entry_moderation(db: Session, job: models.AIJob) -> None:
+    entry = (
+        db.query(models.TheatreEntry)
+        .options(
+            joinedload(models.TheatreEntry.play),
+            joinedload(models.TheatreEntry.scene),
+            joinedload(models.TheatreEntry.character),
+            joinedload(models.TheatreEntry.author),
+        )
+        .filter(models.TheatreEntry.id == job.target_id)
+        .first()
+    )
+    expected = (job.payload or {}).get("content_hash")
+    if not entry or entry.moderation_status != "pending":
+        return
+    if expected and expected != _content_hash(entry.entry_type, entry.content):
+        return
+    result = moderation.moderate_theatre_entry_with_logging(
+        entry.entry_type,
+        entry.content,
+        entry.id,
+        entry.author_id,
+        db,
+        character_name=entry.character.name if entry.character else None,
+    )
+    crud.apply_theatre_entry_moderation_result(db, entry, result)
+
+
+def _handle_stafeta_segment_moderation(db: Session, job: models.AIJob) -> None:
+    segment = (
+        db.query(models.StafetaSegment)
+        .options(
+            joinedload(models.StafetaSegment.work),
+            joinedload(models.StafetaSegment.assignment),
+            joinedload(models.StafetaSegment.author),
+            joinedload(models.StafetaSegment.next_target_user),
+        )
+        .filter(models.StafetaSegment.id == job.target_id)
+        .first()
+    )
+    expected = (job.payload or {}).get("content_hash")
+    if not segment or segment.moderation_status != "pending":
+        return
+    if expected and expected != _content_hash(segment.content):
+        return
+    result = moderation.moderate_stafeta_segment_with_logging(
+        segment.content,
+        segment.id,
+        segment.author_id,
+        db,
+        title=segment.work.title if segment.work else None,
+    )
+    crud.apply_stafeta_segment_moderation_result(db, segment, result)
+
+
+def _handle_stafeta_turn_timeout(db: Session, job: models.AIJob) -> None:
+    assignment = (
+        db.query(models.StafetaAssignment)
+        .options(
+            joinedload(models.StafetaAssignment.work).joinedload(models.StafetaWork.creator),
+            joinedload(models.StafetaAssignment.user),
+        )
+        .filter(models.StafetaAssignment.id == job.target_id)
+        .first()
+    )
+    if not assignment:
+        return
+    crud.process_stafeta_turn_timeout(db, assignment)
 
 
 def _handle_tts_audio(db: Session, job: models.AIJob) -> None:
@@ -392,6 +488,14 @@ def _finalize_moderation_failure(db: Session, job: models.AIJob, exc: Exception)
         )
         if reply and reply.moderation_status == "pending":
             crud.apply_forum_reply_moderation_result(db, reply, flagged)
+    elif job.job_type == JOB_THEATRE_ENTRY_MODERATION:
+        entry = crud.get_theatre_entry(db, job.target_id)
+        if entry and entry.moderation_status == "pending":
+            crud.apply_theatre_entry_moderation_result(db, entry, flagged)
+    elif job.job_type == JOB_STAFETA_SEGMENT_MODERATION:
+        segment = crud.get_stafeta_segment(db, job.target_id)
+        if segment and segment.moderation_status == "pending":
+            crud.apply_stafeta_segment_moderation_result(db, segment, flagged)
 
 
 _HANDLERS = {
@@ -399,6 +503,9 @@ _HANDLERS = {
     JOB_COMMENT_MODERATION: _handle_comment_moderation,
     JOB_FORUM_THREAD_MODERATION: _handle_forum_thread_moderation,
     JOB_FORUM_REPLY_MODERATION: _handle_forum_reply_moderation,
+    JOB_THEATRE_ENTRY_MODERATION: _handle_theatre_entry_moderation,
+    JOB_STAFETA_SEGMENT_MODERATION: _handle_stafeta_segment_moderation,
+    JOB_STAFETA_TURN_TIMEOUT: _handle_stafeta_turn_timeout,
     JOB_TTS_AUDIO: _handle_tts_audio,
     JOB_AUTHOR_AUDIO: _handle_author_audio,
     JOB_THEME_ANALYSIS: _handle_theme_analysis,

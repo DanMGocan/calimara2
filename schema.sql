@@ -32,6 +32,17 @@ DROP TABLE IF EXISTS gologani_transactions CASCADE;
 DROP TABLE IF EXISTS user_awards CASCADE;
 DROP TABLE IF EXISTS forum_replies CASCADE;
 DROP TABLE IF EXISTS forum_threads CASCADE;
+DROP TABLE IF EXISTS stafeta_segments CASCADE;
+DROP TABLE IF EXISTS stafeta_assignments CASCADE;
+DROP TABLE IF EXISTS stafeta_participants CASCADE;
+DROP TABLE IF EXISTS stafeta_works CASCADE;
+DROP TABLE IF EXISTS theatre_entries CASCADE;
+DROP TABLE IF EXISTS theatre_scenes CASCADE;
+DROP TABLE IF EXISTS theatre_join_requests CASCADE;
+DROP TABLE IF EXISTS theatre_characters CASCADE;
+DROP TABLE IF EXISTS theatre_members CASCADE;
+DROP TABLE IF EXISTS theatre_plays CASCADE;
+DROP TABLE IF EXISTS club_achievements CASCADE;
 DROP TABLE IF EXISTS club_board_messages CASCADE;
 DROP TABLE IF EXISTS club_join_requests CASCADE;
 DROP TABLE IF EXISTS club_members CASCADE;
@@ -602,11 +613,22 @@ CREATE TABLE clubs (
     theme VARCHAR(200),
     speciality VARCHAR(20) NOT NULL
         CHECK (speciality IN ('poezie', 'proza_scurta')),
+    join_policy VARCHAR(20) NOT NULL DEFAULT 'private'
+        CHECK (join_policy IN ('open', 'private', 'closed')),
+    profile_photo_storage_backend VARCHAR(20),
+    profile_photo_storage_key VARCHAR(500),
+    profile_photo_content_type VARCHAR(100),
+    profile_photo_updated_at TIMESTAMP,
+    cover_photo_storage_backend VARCHAR(20),
+    cover_photo_storage_key VARCHAR(500),
+    cover_photo_content_type VARCHAR(100),
+    cover_photo_updated_at TIMESTAMP,
     featured_post_id INT,
     featured_until TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
+    CONSTRAINT uq_clubs_owner UNIQUE (owner_id),
     CONSTRAINT fk_clubs_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_clubs_featured_post FOREIGN KEY (featured_post_id) REFERENCES posts(id) ON DELETE SET NULL
 );
@@ -648,6 +670,7 @@ CREATE TABLE club_join_requests (
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'approved', 'rejected')),
     initiator_id INT NOT NULL,
+    application_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     responded_at TIMESTAMP,
     responded_by INT,
@@ -672,6 +695,7 @@ CREATE TABLE club_board_messages (
     club_id INT NOT NULL,
     author_id INT NOT NULL,
     parent_id INT,
+    title VARCHAR(160),
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -683,6 +707,306 @@ CREATE TABLE club_board_messages (
 
 CREATE INDEX idx_cbm_club_created ON club_board_messages(club_id, created_at DESC);
 CREATE INDEX idx_cbm_parent ON club_board_messages(parent_id);
+
+-- ===================================
+-- CLUB ACHIEVEMENTS TABLE
+-- ===================================
+CREATE TABLE club_achievements (
+    id SERIAL PRIMARY KEY,
+    club_id INT NOT NULL,
+    key VARCHAR(60) NOT NULL,
+    unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_club_achievement UNIQUE (club_id, key),
+    CONSTRAINT fk_ca_club FOREIGN KEY (club_id) REFERENCES clubs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_ca_club_unlocked ON club_achievements(club_id, unlocked_at DESC);
+
+-- ===================================
+-- THEATRE PLAYS TABLE
+-- ===================================
+CREATE TABLE theatre_plays (
+    id SERIAL PRIMARY KEY,
+    creator_id INT NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    slug VARCHAR(180) UNIQUE NOT NULL,
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'setup' NOT NULL
+        CHECK (status IN ('setup', 'active', 'completed')),
+    current_scene_id INT,
+    current_character_id INT,
+    current_actor_user_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_theatre_plays_creator FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_theatre_plays_creator ON theatre_plays(creator_id);
+CREATE INDEX idx_theatre_plays_slug ON theatre_plays(slug);
+CREATE INDEX idx_theatre_plays_status_updated ON theatre_plays(status, updated_at DESC);
+CREATE INDEX idx_theatre_plays_current_scene ON theatre_plays(current_scene_id);
+CREATE INDEX idx_theatre_plays_current_character ON theatre_plays(current_character_id);
+CREATE INDEX idx_theatre_plays_current_actor ON theatre_plays(current_actor_user_id);
+
+-- ===================================
+-- THEATRE MEMBERS TABLE
+-- ===================================
+CREATE TABLE theatre_members (
+    id SERIAL PRIMARY KEY,
+    play_id INT NOT NULL,
+    user_id INT NOT NULL,
+    role VARCHAR(20) DEFAULT 'actor' NOT NULL
+        CHECK (role IN ('creator', 'actor')),
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_theatre_member UNIQUE (play_id, user_id),
+    CONSTRAINT fk_theatre_members_play FOREIGN KEY (play_id) REFERENCES theatre_plays(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_members_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_theatre_members_play_role ON theatre_members(play_id, role);
+CREATE INDEX idx_theatre_members_user ON theatre_members(user_id);
+
+-- ===================================
+-- THEATRE CHARACTERS TABLE
+-- ===================================
+CREATE TABLE theatre_characters (
+    id SERIAL PRIMARY KEY,
+    play_id INT NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    description TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    proposed_by INT,
+    approved_by INT,
+    approved_at TIMESTAMP,
+    assigned_user_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_theatre_character_name UNIQUE (play_id, name),
+    CONSTRAINT fk_theatre_characters_play FOREIGN KEY (play_id) REFERENCES theatre_plays(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_characters_proposer FOREIGN KEY (proposed_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_characters_approver FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_characters_assigned FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_theatre_characters_play_status ON theatre_characters(play_id, status);
+CREATE INDEX idx_theatre_characters_assigned ON theatre_characters(assigned_user_id);
+CREATE INDEX idx_theatre_characters_proposed_by ON theatre_characters(proposed_by);
+CREATE UNIQUE INDEX uq_theatre_character_assigned_user ON theatre_characters(play_id, assigned_user_id) WHERE assigned_user_id IS NOT NULL;
+
+-- ===================================
+-- THEATRE JOIN REQUESTS TABLE
+-- ===================================
+CREATE TABLE theatre_join_requests (
+    id SERIAL PRIMARY KEY,
+    play_id INT NOT NULL,
+    user_id INT NOT NULL,
+    direction VARCHAR(20) NOT NULL
+        CHECK (direction IN ('application', 'invitation')),
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    initiator_id INT NOT NULL,
+    character_id INT,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    responded_at TIMESTAMP,
+    responded_by INT,
+
+    CONSTRAINT fk_theatre_join_requests_play FOREIGN KEY (play_id) REFERENCES theatre_plays(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_join_requests_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_join_requests_initiator FOREIGN KEY (initiator_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_join_requests_character FOREIGN KEY (character_id) REFERENCES theatre_characters(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_join_requests_responder FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX uq_theatre_join_requests_pending_character ON theatre_join_requests(play_id, character_id) WHERE status = 'pending' AND character_id IS NOT NULL;
+CREATE INDEX idx_theatre_join_requests_play_status ON theatre_join_requests(play_id, status);
+CREATE INDEX idx_theatre_join_requests_user_status ON theatre_join_requests(user_id, status);
+
+-- ===================================
+-- THEATRE SCENES TABLE
+-- ===================================
+CREATE TABLE theatre_scenes (
+    id SERIAL PRIMARY KEY,
+    play_id INT NOT NULL,
+    scene_number INT NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    status VARCHAR(20) DEFAULT 'active' NOT NULL
+        CHECK (status IN ('active', 'ended')),
+    opened_by INT NOT NULL,
+    ended_by INT,
+    ended_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_theatre_scene_number UNIQUE (play_id, scene_number),
+    CONSTRAINT fk_theatre_scenes_play FOREIGN KEY (play_id) REFERENCES theatre_plays(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_scenes_opener FOREIGN KEY (opened_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_scenes_ender FOREIGN KEY (ended_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_theatre_scenes_play_number ON theatre_scenes(play_id, scene_number);
+CREATE INDEX idx_theatre_scenes_status ON theatre_scenes(status);
+
+-- ===================================
+-- THEATRE ENTRIES TABLE
+-- ===================================
+CREATE TABLE theatre_entries (
+    id SERIAL PRIMARY KEY,
+    play_id INT NOT NULL,
+    scene_id INT NOT NULL,
+    author_id INT NOT NULL,
+    character_id INT,
+    next_character_id INT,
+    entry_type VARCHAR(30) NOT NULL
+        CHECK (entry_type IN ('scene_opening', 'line', 'stage_direction', 'scene_end')),
+    content TEXT NOT NULL,
+    position INT NOT NULL,
+    moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
+    moderation_reason TEXT,
+    toxicity_score FLOAT,
+    moderated_by INT,
+    moderated_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_theatre_entry_position UNIQUE (scene_id, position),
+    CONSTRAINT fk_theatre_entries_play FOREIGN KEY (play_id) REFERENCES theatre_plays(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_entries_scene FOREIGN KEY (scene_id) REFERENCES theatre_scenes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_entries_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_theatre_entries_character FOREIGN KEY (character_id) REFERENCES theatre_characters(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_entries_next_character FOREIGN KEY (next_character_id) REFERENCES theatre_characters(id) ON DELETE SET NULL,
+    CONSTRAINT fk_theatre_entries_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_theatre_entries_play_created ON theatre_entries(play_id, created_at DESC);
+CREATE INDEX idx_theatre_entries_scene_position ON theatre_entries(scene_id, position);
+CREATE INDEX idx_theatre_entries_author ON theatre_entries(author_id);
+CREATE INDEX idx_theatre_entries_status ON theatre_entries(moderation_status);
+
+ALTER TABLE theatre_plays
+    ADD CONSTRAINT fk_theatre_plays_current_scene
+        FOREIGN KEY (current_scene_id) REFERENCES theatre_scenes(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_theatre_plays_current_character
+        FOREIGN KEY (current_character_id) REFERENCES theatre_characters(id) ON DELETE SET NULL,
+    ADD CONSTRAINT fk_theatre_plays_current_actor
+        FOREIGN KEY (current_actor_user_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- ===================================
+-- STAFETA TABLES
+-- ===================================
+CREATE TABLE stafeta_participants (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_stafeta_participant_user UNIQUE (user_id),
+    CONSTRAINT fk_stafeta_participants_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_stafeta_participants_user ON stafeta_participants(user_id);
+CREATE INDEX idx_stafeta_participants_active ON stafeta_participants(is_active);
+
+CREATE TABLE stafeta_works (
+    id SERIAL PRIMARY KEY,
+    creator_id INT NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    slug VARCHAR(180) UNIQUE NOT NULL,
+    category VARCHAR(100) DEFAULT 'poezie' NOT NULL
+        CHECK (category IN ('poezie', 'proza_scurta')),
+    status VARCHAR(20) DEFAULT 'active' NOT NULL
+        CHECK (status IN ('active', 'published', 'cancelled')),
+    deadline_days INT DEFAULT 1 NOT NULL
+        CHECK (deadline_days IN (1, 3, 7)),
+    max_characters INT DEFAULT 400 NOT NULL
+        CHECK (max_characters BETWEEN 1 AND 10000),
+    current_assignment_id INT,
+    current_holder_user_id INT,
+    published_post_id INT,
+    published_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_stafeta_works_creator FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stafeta_works_current_holder FOREIGN KEY (current_holder_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_stafeta_works_published_post FOREIGN KEY (published_post_id) REFERENCES posts(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_stafeta_works_creator ON stafeta_works(creator_id);
+CREATE INDEX idx_stafeta_works_slug ON stafeta_works(slug);
+CREATE INDEX idx_stafeta_works_status_updated ON stafeta_works(status, updated_at DESC);
+CREATE INDEX idx_stafeta_works_current_assignment ON stafeta_works(current_assignment_id);
+CREATE INDEX idx_stafeta_works_current_holder ON stafeta_works(current_holder_user_id);
+CREATE INDEX idx_stafeta_works_published_post ON stafeta_works(published_post_id);
+
+CREATE TABLE stafeta_assignments (
+    id SERIAL PRIMARY KEY,
+    work_id INT NOT NULL,
+    user_id INT NOT NULL,
+    assigned_by_id INT,
+    source VARCHAR(20) NOT NULL
+        CHECK (source IN ('creator', 'specific', 'random', 'previous', 'timeout', 'return')),
+    status VARCHAR(20) DEFAULT 'active' NOT NULL
+        CHECK (status IN ('pending', 'active', 'refused', 'completed', 'expired', 'cancelled')),
+    due_at TIMESTAMP,
+    responded_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_stafeta_assignments_work FOREIGN KEY (work_id) REFERENCES stafeta_works(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stafeta_assignments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stafeta_assignments_assigned_by FOREIGN KEY (assigned_by_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_stafeta_assignments_work_status ON stafeta_assignments(work_id, status);
+CREATE INDEX idx_stafeta_assignments_user_status ON stafeta_assignments(user_id, status);
+CREATE INDEX idx_stafeta_assignments_due_at ON stafeta_assignments(due_at);
+CREATE INDEX idx_stafeta_assignments_assigned_by ON stafeta_assignments(assigned_by_id);
+
+ALTER TABLE stafeta_works
+    ADD CONSTRAINT fk_stafeta_works_current_assignment
+        FOREIGN KEY (current_assignment_id) REFERENCES stafeta_assignments(id) ON DELETE SET NULL;
+
+CREATE TABLE stafeta_segments (
+    id SERIAL PRIMARY KEY,
+    work_id INT NOT NULL,
+    assignment_id INT,
+    author_id INT NOT NULL,
+    content TEXT NOT NULL,
+    position INT NOT NULL,
+    next_target_mode VARCHAR(20) DEFAULT 'random' NOT NULL
+        CHECK (next_target_mode IN ('random', 'creator', 'previous', 'specific')),
+    next_target_user_id INT,
+    moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
+    moderation_reason TEXT,
+    toxicity_score FLOAT,
+    moderated_by INT,
+    moderated_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_stafeta_segment_position UNIQUE (work_id, position),
+    CONSTRAINT fk_stafeta_segments_work FOREIGN KEY (work_id) REFERENCES stafeta_works(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stafeta_segments_assignment FOREIGN KEY (assignment_id) REFERENCES stafeta_assignments(id) ON DELETE SET NULL,
+    CONSTRAINT fk_stafeta_segments_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_stafeta_segments_next_target FOREIGN KEY (next_target_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_stafeta_segments_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_stafeta_segments_work_position ON stafeta_segments(work_id, position);
+CREATE INDEX idx_stafeta_segments_assignment ON stafeta_segments(assignment_id);
+CREATE INDEX idx_stafeta_segments_author ON stafeta_segments(author_id);
+CREATE INDEX idx_stafeta_segments_status ON stafeta_segments(moderation_status);
+CREATE INDEX idx_stafeta_segments_next_target ON stafeta_segments(next_target_user_id);
 
 -- ===================================
 -- FORUM THREADS TABLE
@@ -750,20 +1074,30 @@ CREATE INDEX idx_forum_replies_status ON forum_replies(moderation_status);
 CREATE TABLE user_awards (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
+    achievement_key VARCHAR(120),
+    dedupe_key VARCHAR(160),
     award_title VARCHAR(255) NOT NULL,
     award_description TEXT,
     award_date DATE NOT NULL,
     award_type VARCHAR(20) DEFAULT 'writing' NOT NULL
         CHECK (award_type IN ('writing', 'community', 'milestone', 'special')),
+    source_type VARCHAR(50),
+    source_id INT,
+    awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_awards_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    CONSTRAINT fk_awards_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT uq_user_awards_achievement_dedupe UNIQUE (user_id, achievement_key, dedupe_key)
 );
 
 CREATE INDEX idx_awards_user_id ON user_awards(user_id);
 CREATE INDEX idx_awards_date ON user_awards(award_date);
 CREATE INDEX idx_awards_type ON user_awards(award_type);
+CREATE INDEX idx_awards_achievement_key ON user_awards(achievement_key);
+CREATE INDEX idx_awards_user_achievement ON user_awards(user_id, achievement_key);
+CREATE INDEX idx_awards_source ON user_awards(source_type, source_id);
 
 -- ===================================
 -- GOLOGANI LEDGER
@@ -911,7 +1245,7 @@ CREATE INDEX idx_msg_conversation_created ON messages(conversation_id, created_a
 -- ===================================
 CREATE TABLE moderation_logs (
     id SERIAL PRIMARY KEY,
-    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('post', 'comment', 'audio', 'forum_thread', 'forum_reply')),
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('post', 'comment', 'audio', 'forum_thread', 'forum_reply', 'theatre_entry', 'stafeta_segment')),
     content_id INT NOT NULL,
     user_id INT,
     ai_decision VARCHAR(20) NOT NULL CHECK (ai_decision IN ('approved', 'flagged', 'rejected')),
@@ -1172,6 +1506,14 @@ CREATE TRIGGER trg_series_updated_at BEFORE UPDATE ON series
 CREATE TRIGGER trg_clubs_updated_at BEFORE UPDATE ON clubs
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_club_board_messages_updated_at BEFORE UPDATE ON club_board_messages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_theatre_plays_updated_at BEFORE UPDATE ON theatre_plays
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_theatre_characters_updated_at BEFORE UPDATE ON theatre_characters
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_theatre_scenes_updated_at BEFORE UPDATE ON theatre_scenes
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_theatre_entries_updated_at BEFORE UPDATE ON theatre_entries
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_forum_threads_updated_at BEFORE UPDATE ON forum_threads
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -245,7 +245,7 @@ export function RevealText({ text, keySeed }) {
     </div>
   );
 }
-export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = null }) {
+export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = null, readerFooter = null }) {
   const scrollRef = useRef(null);
   const bodyRef = useRef(null);
   const [scrollState, setScrollState] = useState({
@@ -369,6 +369,7 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
               <span>fin</span>
               <span className="piece-end-mark">· · ·</span>
             </div>
+            {readerFooter ? <div className="piece-reader-footer">{readerFooter}</div> : null}
           </div>
         </div>
         <div className={`scroll-hint-wrap ${scrollState.hasOverflow ? "" : "hidden"}`} aria-hidden="true">

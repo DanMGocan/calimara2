@@ -54,13 +54,22 @@ class FeaturedPost(Base):
 
 class UserAward(Base):
     __tablename__ = "user_awards"
+    __table_args__ = (
+        UniqueConstraint("user_id", "achievement_key", "dedupe_key", name="uq_user_awards_achievement_dedupe"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    achievement_key: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
+    dedupe_key: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     award_title: Mapped[str] = mapped_column(String(255), nullable=False)
     award_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     award_date: Mapped[date_type] = mapped_column(Date, nullable=False)
     award_type: Mapped[str] = mapped_column(String(20), nullable=False, default="writing")
+    source_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    awarded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    extra_data: Mapped[Optional[dict]] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

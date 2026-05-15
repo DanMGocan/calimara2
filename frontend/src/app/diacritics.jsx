@@ -120,7 +120,7 @@ export function DiacriticsProgressOverlay({ active, progress, phase }) {
   );
 }
 
-export function DiacriticsControl({ user, enabled, onChange, disabled = false }) {
+export function DiacriticsControl({ user, enabled, onChange, disabled = false, label = "Adaugă automat diacritice (ăîâțș)?" }) {
   if (!user?.is_premium) {
     return (
       <p className="diacritics-note">
@@ -136,7 +136,7 @@ export function DiacriticsControl({ user, enabled, onChange, disabled = false })
         disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
-      <span>Adaugă automat diacritice (ăîâțș)?</span>
+      <span>{label}</span>
     </label>
   );
 }

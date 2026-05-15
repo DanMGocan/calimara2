@@ -5,7 +5,9 @@ from .premium import StripeEvent
 from .jobs import AIJob
 from .profile import BestFriend, FeaturedPost, UserAward
 from .series import Series, SeriesPost
-from .clubs import Club, ClubMember, ClubJoinRequest, ClubBoardMessage
+from .clubs import Club, ClubMember, ClubJoinRequest, ClubBoardMessage, ClubAchievement
+from .theatre import TheatrePlay, TheatreMember, TheatreCharacter, TheatreJoinRequest, TheatreScene, TheatreEntry
+from .stafeta import StafetaParticipant, StafetaWork, StafetaAssignment, StafetaSegment
 from .economy import GologaniTransaction, ShopItem, UserInventoryItem, UserEquippedItem
 from .forum import ForumThread, ForumReply
 from .messaging import Conversation, Message
@@ -38,6 +40,17 @@ __all__ = [
     "ClubMember",
     "ClubJoinRequest",
     "ClubBoardMessage",
+    "ClubAchievement",
+    "TheatrePlay",
+    "TheatreMember",
+    "TheatreCharacter",
+    "TheatreJoinRequest",
+    "TheatreScene",
+    "TheatreEntry",
+    "StafetaParticipant",
+    "StafetaWork",
+    "StafetaAssignment",
+    "StafetaSegment",
     "GologaniTransaction",
     "ShopItem",
     "UserInventoryItem",

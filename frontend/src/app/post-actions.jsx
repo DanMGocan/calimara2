@@ -487,6 +487,7 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   };
 
   const audioAvailable = Boolean(audioState.data?.available && audioState.data?.playback_url);
+  const hasPanelContent = Boolean(audioState.error || commentOpen || status);
 
   return (
     <div className={`post-action-tools landing-post-tools ${className}`.trim()}>
@@ -527,25 +528,29 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
         </div>
       </div>
 
-      {audioState.error ? <div className="inline-error post-audio-error-row">{audioState.error}</div> : null}
+      {hasPanelContent ? (
+        <div className="post-action-floating-panels">
+          {audioState.error ? <div className="inline-error post-audio-error-row">{audioState.error}</div> : null}
 
-      {commentOpen ? (
-        <CommentPanel
-          post={postState}
-          user={user}
-          busy={busy}
-          commentText={commentText}
-          commentAutoDiacritics={commentAutoDiacritics}
-          commentReview={commentReview}
-          onCommentTextChange={setCommentText}
-          onCommentAutoDiacriticsChange={setCommentAutoDiacritics}
-          onCommentReviewChange={setCommentReview}
-          onLoginRequired={() => showLoginModal("Pentru comentarii trebuie să intri în cont.")}
-          onSubmit={submitComment}
-        />
+          {commentOpen ? (
+            <CommentPanel
+              post={postState}
+              user={user}
+              busy={busy}
+              commentText={commentText}
+              commentAutoDiacritics={commentAutoDiacritics}
+              commentReview={commentReview}
+              onCommentTextChange={setCommentText}
+              onCommentAutoDiacriticsChange={setCommentAutoDiacritics}
+              onCommentReviewChange={setCommentReview}
+              onLoginRequired={() => showLoginModal("Pentru comentarii trebuie să intri în cont.")}
+              onSubmit={submitComment}
+            />
+          ) : null}
+
+          {status ? <div className="inline-error">{status}</div> : null}
+        </div>
       ) : null}
-
-      {status ? <div className="inline-error">{status}</div> : null}
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       <AccessModal modal={modal} onClose={() => setModal(null)} />
       <ReportModal

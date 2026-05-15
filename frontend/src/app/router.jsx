@@ -8,6 +8,12 @@ const ROUTE_COMPONENTS = {
   category: lazy(() => import("../routes/category.jsx")),
   clubs: lazy(() => import("../routes/clubs.jsx")),
   club: lazy(() => import("../routes/clubs.jsx")),
+  theatre: lazy(() => import("../routes/theatre.jsx")),
+  theatreCreate: lazy(() => import("../routes/theatre.jsx")),
+  theatrePlay: lazy(() => import("../routes/theatre.jsx")),
+  stafeta: lazy(() => import("../routes/stafeta.jsx")),
+  stafetaCreate: lazy(() => import("../routes/stafeta.jsx")),
+  stafetaWork: lazy(() => import("../routes/stafeta.jsx")),
   blog: lazy(() => import("../routes/profile.jsx")),
   allWorks: lazy(() => import("../routes/profile.jsx")),
   followers: lazy(() => import("../routes/profile.jsx")),
@@ -18,6 +24,7 @@ const ROUTE_COMPONENTS = {
   dashboard: lazy(() => import("../routes/dashboard.jsx")),
   profileSettings: lazy(() => import("../routes/profile-settings.jsx")),
   admin: lazy(() => import("../routes/admin.jsx")),
+  docs: lazy(() => import("../routes/docs.jsx")),
   create: lazy(() => import("../routes/create.jsx")),
   messages: lazy(() => import("../routes/messages.jsx")),
   friends: lazy(() => import("../routes/friends.jsx")),
@@ -28,6 +35,7 @@ const ROUTE_COMPONENTS = {
   shop: lazy(() => import("../routes/economy.jsx")),
   inventory: lazy(() => import("../routes/economy.jsx")),
   premium: lazy(() => import("../routes/premium.jsx")),
+  about: lazy(() => import("../routes/legal.jsx")),
   privacy: lazy(() => import("../routes/legal.jsx")),
   terms: lazy(() => import("../routes/legal.jsx")),
   authLogin: lazy(() => import("../routes/auth.jsx")),
@@ -63,16 +71,24 @@ export function routeForLocation() {
   if (path === "/prieteni") return { name: "friends" };
   if (path === "/utilizatori") return { name: "usersDirectory" };
   if (path === "/moderare") return { name: "admin" };
+  if (path === "/docs") return { name: "docs" };
   if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/cluburi") return { name: "clubs" };
   if (path.startsWith("/cluburi/")) return { name: "club", slug: decodeURIComponent(path.split("/")[2] || "") };
+  if (path === "/teatru") return { name: "theatre" };
+  if (path === "/teatru/nou") return { name: "theatreCreate" };
+  if (path.startsWith("/teatru/")) return { name: "theatrePlay", slug: decodeURIComponent(path.split("/")[2] || "") };
+  if (path === "/stafeta") return { name: "stafeta" };
+  if (path === "/stafeta/nou") return { name: "stafetaCreate" };
+  if (path.startsWith("/stafeta/")) return { name: "stafetaWork", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/discutii") return { name: "forum" };
   if (path === "/discutii/nou") return { name: "forumCreate" };
   if (path.startsWith("/discutii/")) return { name: "forumThread", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/magazin") return { name: "shop" };
   if (path === "/inventar") return { name: "inventory" };
   if (path === "/premium") return { name: "premium" };
+  if (path === "/ce-este-calimara") return { name: "about" };
   if (path === "/confidentialitate") return { name: "privacy" };
   if (path === "/termeni") return { name: "terms" };
   if (path === "/autentificare") return { name: "authLogin" };

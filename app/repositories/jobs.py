@@ -11,6 +11,7 @@ def enqueue_ai_job(
     payload: Optional[dict] = None,
     max_attempts: int = 3,
     dedupe: bool = True,
+    run_after: Optional[datetime] = None,
 ) -> models.AIJob:
     if dedupe:
         existing = (
@@ -33,7 +34,7 @@ def enqueue_ai_job(
         payload=payload or {},
         max_attempts=max_attempts,
         status="pending",
-        run_after=utcnow_naive(),
+        run_after=run_after or utcnow_naive(),
     )
     db.add(job)
     db.commit()

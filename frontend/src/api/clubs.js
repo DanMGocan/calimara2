@@ -1,7 +1,7 @@
-import { api } from "./client.js";
+import { api, buildQuery } from "./client.js";
 
-export function fetchClubs() {
-  return api.get("/api/cluburi?limit=50");
+export function fetchClubs(params = {}) {
+  return api.get(`/api/cluburi${buildQuery({ limit: 50, ...params })}`);
 }
 
 export function fetchRandomClub() {
@@ -76,3 +76,12 @@ export function clearClubFeatured(clubId) {
   return api.delete(`/api/cluburi/${encodeURIComponent(clubId)}/creatia-saptamanii`);
 }
 
+export function uploadClubMedia(clubId, kind, file) {
+  const form = new FormData();
+  form.append("file", file);
+  return api.post(`/api/cluburi/${encodeURIComponent(clubId)}/media/${encodeURIComponent(kind)}`, form);
+}
+
+export function deleteClubMedia(clubId, kind) {
+  return api.delete(`/api/cluburi/${encodeURIComponent(clubId)}/media/${encodeURIComponent(kind)}`);
+}

@@ -15,7 +15,7 @@ from ..week_util import utcnow_naive
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-CONTENT_TYPES = {"post", "comment", "audio", "forum_thread", "forum_reply"}
+CONTENT_TYPES = {"post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"}
 CONTENT_STATUSES = {"approved", "pending", "flagged", "rejected"}
 PREMIUM_TIERS = {"free", "trubadur", "cronicar", "rapsod"}
 
@@ -278,6 +278,40 @@ def _content_payload(item, content_type: str) -> dict:
             "created_at": _as_iso(item.created_at),
             "updated_at": _as_iso(item.updated_at),
         }
+    if content_type == "theatre_entry":
+        return {
+            "id": item.id,
+            "type": "theatre_entry",
+            "title": item.play.title if item.play else "Teatru colaborativ",
+            "content": item.content,
+            "author": item.author.username if item.author else None,
+            "author_id": item.author_id,
+            "status": item.moderation_status,
+            "reason": item.moderation_reason,
+            "toxicity_score": item.toxicity_score,
+            "play_id": item.play_id,
+            "scene_id": item.scene_id,
+            "entry_type": item.entry_type,
+            "character": item.character.name if item.character else None,
+            "created_at": _as_iso(item.created_at),
+            "updated_at": _as_iso(item.updated_at),
+        }
+    if content_type == "stafeta_segment":
+        return {
+            "id": item.id,
+            "type": "stafeta_segment",
+            "title": item.work.title if item.work else "Ștafeta",
+            "content": item.content,
+            "author": item.author.username if item.author else None,
+            "author_id": item.author_id,
+            "status": item.moderation_status,
+            "reason": item.moderation_reason,
+            "toxicity_score": item.toxicity_score,
+            "work_id": item.work_id,
+            "assignment_id": item.assignment_id,
+            "created_at": _as_iso(item.created_at),
+            "updated_at": _as_iso(item.updated_at),
+        }
     return {
         "id": item.id,
         "type": "forum_reply",
@@ -313,6 +347,18 @@ def _content_object(db: Session, content_type: str, content_id: int):
             joinedload(models.ForumReply.author),
             joinedload(models.ForumReply.thread),
         ).filter(models.ForumReply.id == content_id).first()
+    if content_type == "theatre_entry":
+        return db.query(models.TheatreEntry).options(
+            joinedload(models.TheatreEntry.author),
+            joinedload(models.TheatreEntry.play),
+            joinedload(models.TheatreEntry.scene),
+            joinedload(models.TheatreEntry.character),
+        ).filter(models.TheatreEntry.id == content_id).first()
+    if content_type == "stafeta_segment":
+        return db.query(models.StafetaSegment).options(
+            joinedload(models.StafetaSegment.author),
+            joinedload(models.StafetaSegment.work),
+        ).filter(models.StafetaSegment.id == content_id).first()
     return None
 
 
@@ -997,6 +1043,28 @@ def list_admin_content(
         if term:
             query = query.filter(models.ForumReply.content.ilike(f"%{term}%"))
         add_rows(query.order_by(models.ForumReply.created_at.desc()).limit(limit).offset(offset if content_type == "forum_reply" else 0).all(), "forum_reply")
+    if content_type in {"all", "theatre_entry"}:
+        query = db.query(models.TheatreEntry).options(
+            joinedload(models.TheatreEntry.author),
+            joinedload(models.TheatreEntry.play),
+            joinedload(models.TheatreEntry.scene),
+            joinedload(models.TheatreEntry.character),
+        )
+        if status_filter != "all":
+            query = query.filter(models.TheatreEntry.moderation_status == status_filter)
+        if term:
+            query = query.filter(models.TheatreEntry.content.ilike(f"%{term}%"))
+        add_rows(query.order_by(models.TheatreEntry.created_at.desc()).limit(limit).offset(offset if content_type == "theatre_entry" else 0).all(), "theatre_entry")
+    if content_type in {"all", "stafeta_segment"}:
+        query = db.query(models.StafetaSegment).options(
+            joinedload(models.StafetaSegment.author),
+            joinedload(models.StafetaSegment.work),
+        )
+        if status_filter != "all":
+            query = query.filter(models.StafetaSegment.moderation_status == status_filter)
+        if term:
+            query = query.filter(models.StafetaSegment.content.ilike(f"%{term}%"))
+        add_rows(query.order_by(models.StafetaSegment.created_at.desc()).limit(limit).offset(offset if content_type == "stafeta_segment" else 0).all(), "stafeta_segment")
 
     items.sort(key=lambda row: row.get("created_at") or "", reverse=True)
     if content_type == "all":

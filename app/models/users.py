@@ -148,6 +148,48 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    # Theatre plays created by this user
+    created_theatre_plays: Mapped[List["TheatrePlay"]] = relationship(
+        "TheatrePlay",
+        foreign_keys="TheatrePlay.creator_id",
+        back_populates="creator",
+        cascade="all, delete-orphan",
+    )
+
+    # Theatre play memberships for this user
+    theatre_memberships: Mapped[List["TheatreMember"]] = relationship(
+        "TheatreMember",
+        foreign_keys="TheatreMember.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    created_stafeta_works: Mapped[List["StafetaWork"]] = relationship(
+        "StafetaWork",
+        foreign_keys="StafetaWork.creator_id",
+        back_populates="creator",
+        cascade="all, delete-orphan",
+    )
+    stafeta_assignments: Mapped[List["StafetaAssignment"]] = relationship(
+        "StafetaAssignment",
+        foreign_keys="StafetaAssignment.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    stafeta_segments: Mapped[List["StafetaSegment"]] = relationship(
+        "StafetaSegment",
+        foreign_keys="StafetaSegment.author_id",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
+    stafeta_participation: Mapped[Optional["StafetaParticipant"]] = relationship(
+        "StafetaParticipant",
+        foreign_keys="StafetaParticipant.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
     # User awards
     awards: Mapped[List["UserAward"]] = relationship(
         "UserAward",
