@@ -62,13 +62,29 @@ def get_client_ip(request: Request):
     return request.client.host
 
 
+def normalize_external_url(url: str | None) -> str | None:
+    """Trim an external URL and add https:// when users omit the scheme."""
+    if url is None:
+        return None
+    value = url.strip()
+    if not value:
+        return None
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme:
+        return value
+    if parsed.netloc:
+        return f"https:{value}" if value.startswith("//") else f"https://{value}"
+    return f"https://{value}"
+
+
 def validate_social_url(url: str, platform: str) -> bool:
     """Validate that URL matches the expected platform domain"""
     if not url or not url.strip():
         return True  # Empty URLs are valid (will be stored as None)
 
     try:
-        parsed = urllib.parse.urlparse(url.strip())
+        normalized_url = normalize_external_url(url)
+        parsed = urllib.parse.urlparse(normalized_url or "")
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return False
 
@@ -106,7 +122,8 @@ def validate_youtube_playlist_url(url: str) -> bool:
         return True
 
     try:
-        parsed = urllib.parse.urlparse(url.strip())
+        normalized_url = normalize_external_url(url)
+        parsed = urllib.parse.urlparse(normalized_url or "")
         if parsed.scheme not in {"http", "https"}:
             return False
 

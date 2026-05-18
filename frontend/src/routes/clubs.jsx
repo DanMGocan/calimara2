@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { FiCheck, FiChevronDown, FiImage, FiLock, FiMessageCircle, FiPlus, FiSearch, FiSend, FiTrash2, FiUpload, FiUserPlus, FiX } from "react-icons/fi";
+import { FiAward, FiCheck, FiChevronDown, FiEdit3, FiImage, FiLock, FiMessageCircle, FiPlus, FiSearch, FiSend, FiStar, FiTrash2, FiUpload, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
 import {
   applyToClub,
   clearClubFeatured,
@@ -44,8 +44,31 @@ const CLUB_ROLE_LABELS = {
   member: "membru"
 };
 
+const CLUB_ACHIEVEMENT_ICONS = {
+  atelier_deschis: FiEdit3,
+  cerc_de_cinci: FiUsers,
+  dialog_viu: FiMessageCircle,
+  creatia_saptamanii: FiStar
+};
+
 function roleLabel(role) {
   return CLUB_ROLE_LABELS[role] || role || "membru";
+}
+
+function ClubAchievementCard({ achievement }) {
+  const Icon = CLUB_ACHIEVEMENT_ICONS[achievement.key] || FiAward;
+  return (
+    <article className="club-achievement">
+      <div className="club-achievement-icon" aria-hidden="true">
+        <Icon />
+      </div>
+      <div className="club-achievement-body">
+        <strong>{achievement.label}</strong>
+        <span>{achievement.description}</span>
+        <small>Obtinut la: {formatDateTime(achievement.unlocked_at)}</small>
+      </div>
+    </article>
+  );
 }
 
 function ownerTierClass(club) {
@@ -709,10 +732,7 @@ function ClubDetailView({ slug, user }) {
               </div>
               <div className="club-achievement-list">
                 {data.achievements.map((achievement) => (
-                  <article className="club-achievement" key={achievement.key}>
-                    <strong>{achievement.label}</strong>
-                    <span>{achievement.description}</span>
-                  </article>
+                  <ClubAchievementCard achievement={achievement} key={achievement.key} />
                 ))}
               </div>
             </section>

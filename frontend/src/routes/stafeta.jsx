@@ -45,10 +45,28 @@ function statusLabel(value) {
 }
 
 function assignmentStatus(assignment) {
-  if (!assignment) return "Fără rând activ.";
+  if (!assignment) return "În așteptare de participant.";
   if (assignment.status === "pending") return `Invitație trimisă către ${usernameHandle(assignment.user?.username)}.`;
   if (assignment.status === "active") return `Rândul este la ${usernameHandle(assignment.user?.username)}.`;
   return statusLabel(assignment.status);
+}
+
+function slotOptions(maxSlots) {
+  const limit = Math.max(1, Number(maxSlots) || 3);
+  return Array.from({ length: limit }, (_item, index) => index + 1);
+}
+
+function stafetaParticipationState(source = {}, user = {}) {
+  const maxSlots = Number(source.max_slots ?? user.stafeta_max_slots ?? 3) || 3;
+  const participates = Boolean(source.participates ?? user.stafeta_participates);
+  const fallbackSlots = participates ? maxSlots : 0;
+  const desiredSlots = Number(source.desired_slots ?? user.stafeta_desired_slots ?? fallbackSlots) || fallbackSlots;
+  return {
+    participates,
+    desiredSlots: participates ? Math.min(Math.max(1, desiredSlots), maxSlots) : 0,
+    maxSlots,
+    openAssignments: Number(source.open_assignments ?? user.stafeta_open_assignments ?? 0) || 0
+  };
 }
 
 function UserSearchInput({ id, value, onChange, label, placeholder }) {
@@ -97,19 +115,24 @@ function UserSearchInput({ id, value, onChange, label, placeholder }) {
   );
 }
 
-function ParticipationToggle({ participates, onChange }) {
+function ParticipationToggle({ state, onChange }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const participates = Boolean(state?.participates);
+  const maxSlots = Number(state?.maxSlots) || 3;
+  const desiredSlots = Number(state?.desiredSlots) || maxSlots;
 
-  const toggle = async () => {
+  const save = async (nextParticipates, nextSlots) => {
     if (busy) return;
-    const next = !participates;
     setBusy(true);
     setStatus("");
     try {
-      const result = await updateStafetaParticipation(next);
-      onChange(Boolean(result?.participates));
-      setStatus(result?.participates ? "Participi la tragerile aleatorii." : "Nu mai primești Ștafete aleatorii.");
+      const result = await updateStafetaParticipation(nextParticipates, nextParticipates ? nextSlots : 0);
+      const nextState = stafetaParticipationState(result, state);
+      onChange(nextState);
+      setStatus(nextState.participates
+        ? `Participi la până la ${formatNumber(nextState.desiredSlots)} Ștafete.`
+        : "Nu mai primești Ștafete aleatorii.");
     } catch (error) {
       setStatus(error.message || "Nu am putut salva participarea.");
     } finally {
@@ -120,9 +143,19 @@ function ParticipationToggle({ participates, onChange }) {
   return (
     <div className="stafeta-participation">
       <label className="email-preference-toggle">
-        <input type="checkbox" checked={participates} onChange={toggle} disabled={busy} />
+        <input type="checkbox" checked={participates} onChange={(event) => save(event.target.checked, event.target.checked ? (desiredSlots || maxSlots) : 0)} disabled={busy} />
         <span>Particip la Ștafeta</span>
       </label>
+      <label className="stafeta-slot-select" htmlFor="stafeta-slots">
+        <span>Număr Ștafete</span>
+        <select id="stafeta-slots" className="cal-input" value={participates ? desiredSlots : 0} onChange={(event) => save(true, Number(event.target.value))} disabled={busy || !participates}>
+          {!participates ? <option value={0}>0</option> : null}
+          {slotOptions(maxSlots).map((value) => (
+            <option value={value} key={value}>{value}</option>
+          ))}
+        </select>
+      </label>
+      <span className="muted">Active: {formatNumber(state?.openAssignments || 0)} / {formatNumber(participates ? desiredSlots : maxSlots)}</span>
       {status ? <div className={status.includes("Nu am putut") ? "inline-error" : "inline-status"}>{status}</div> : null}
     </div>
   );
@@ -132,11 +165,11 @@ function StafetaListView({ user }) {
   const [filter, setFilter] = useState("all");
   const [refreshKey, setRefreshKey] = useState(0);
   const { data, loading, error } = useAsync(() => fetchStafetaWorks({ filter }), [filter, refreshKey]);
-  const [participates, setParticipates] = useState(Boolean(user?.stafeta_participates));
+  const [participation, setParticipation] = useState(() => stafetaParticipationState({}, user));
 
   useEffect(() => {
-    setParticipates(Boolean(data?.participates ?? user?.stafeta_participates));
-  }, [data?.participates, user?.stafeta_participates]);
+    setParticipation(stafetaParticipationState(data || {}, user));
+  }, [data?.participates, data?.desired_slots, data?.max_slots, data?.open_assignments, user?.stafeta_participates, user?.stafeta_desired_slots, user?.stafeta_max_slots, user?.stafeta_open_assignments]);
 
   if (!user) return <AuthRequired />;
 
@@ -149,9 +182,9 @@ function StafetaListView({ user }) {
     >
       <section className="stafeta-toolbar">
         <ParticipationToggle
-          participates={participates}
+          state={participation}
           onChange={(value) => {
-            setParticipates(value);
+            setParticipation(value);
             setRefreshKey((key) => key + 1);
           }}
         />
@@ -258,7 +291,7 @@ function StafetaCreateView({ user }) {
         ) : null}
         <div className="theatre-form-actions">
           <button className="cal-btn primary" type="submit" disabled={submitting || !title.trim() || !htmlToText(initialContent)}>
-            {submitting ? "Se creează..." : "Creează și trimite"}
+            {submitting ? "Se creează..." : "Creează Ștafeta"}
           </button>
           {error ? <span className="inline-error">{error}</span> : null}
         </div>

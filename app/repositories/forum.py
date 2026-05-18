@@ -5,10 +5,21 @@ from .notifications import create_notification
 from .slugs import generate_slug
 from .users import get_user_by_id
 
-FORUM_SECTIONS = ("general", "poezie", "proza_scurta", "feedback", "anunturi")
+FORUM_SECTIONS = ("anunturi", "general", "poezie", "proza_scurta")
 
 def is_forum_section(section: str) -> bool:
     return section in FORUM_SECTIONS
+
+def count_approved_forum_contributions(db: Session, user_id: int) -> int:
+    thread_count = db.query(func.count(models.ForumThread.id)).filter(
+        models.ForumThread.author_id == user_id,
+        models.ForumThread.moderation_status == "approved",
+    ).scalar() or 0
+    reply_count = db.query(func.count(models.ForumReply.id)).filter(
+        models.ForumReply.author_id == user_id,
+        models.ForumReply.moderation_status == "approved",
+    ).scalar() or 0
+    return int(thread_count) + int(reply_count)
 
 def _forum_status_value(moderation_result) -> str:
     status = getattr(moderation_result, "status", "approved")
@@ -42,12 +53,12 @@ def get_forum_thread_by_slug(db: Session, slug: str) -> Optional[models.ForumThr
         .first()
     )
 
-def can_view_forum_thread(user: models.User, thread: models.ForumThread) -> bool:
+def can_view_forum_thread(user: Optional[models.User], thread: models.ForumThread) -> bool:
     return (
         thread.moderation_status == "approved"
-        or thread.author_id == user.id
-        or user.is_admin
-        or user.is_moderator
+        or bool(user and thread.author_id == user.id)
+        or bool(user and user.is_admin)
+        or bool(user and user.is_moderator)
     )
 
 def can_moderate_forum(user: models.User) -> bool:
@@ -106,14 +117,16 @@ def create_forum_thread(
     return thread
 
 def list_forum_replies_for_thread(
-    db: Session, thread_id: int, viewer: models.User
+    db: Session, thread_id: int, viewer: Optional[models.User]
 ) -> List[models.ForumReply]:
     query = (
         db.query(models.ForumReply)
         .options(joinedload(models.ForumReply.author))
         .filter(models.ForumReply.thread_id == thread_id)
     )
-    if not can_moderate_forum(viewer):
+    if viewer is None:
+        query = query.filter(models.ForumReply.moderation_status == "approved")
+    elif not can_moderate_forum(viewer):
         query = query.filter(
             or_(
                 models.ForumReply.moderation_status == "approved",

@@ -22,17 +22,22 @@ SOCIAL_LINKS = {
     "tiktok_url": ("tiktok", "URL-ul TikTok trebuie să conțină tiktok.com"),
     "x_url": ("x", "URL-ul X trebuie să conțină x.com sau twitter.com"),
     "bluesky_url": ("bluesky", "URL-ul BlueSky trebuie să conțină bsky.app"),
+}
+SUPPORT_LINKS = {
     "patreon_url": ("patreon", "URL-ul Patreon trebuie să conțină patreon.com"),
     "paypal_url": ("paypal", "URL-ul PayPal trebuie să conțină paypal.me sau paypal.com"),
     "buymeacoffee_url": ("buymeacoffee", "URL-ul Cumpără-mi o cafea trebuie să conțină buymeacoffee.com"),
 }
+PROFILE_LINKS = {**SOCIAL_LINKS, **SUPPORT_LINKS}
+SUPPORT_LINK_FIELDS = tuple(SUPPORT_LINKS.keys())
+SUPPORT_LINK_PREMIUM_TIERS = {"trubadur", "cronicar", "rapsod"}
 PROFILE_SETTINGS_FIELDS = (
     "subtitle",
     "avatar_seed",
     "cover_seed",
     "location",
     "youtube_playlist_url",
-    *SOCIAL_LINKS.keys(),
+    *PROFILE_LINKS.keys(),
 )
 
 USER_DIRECTORY_RELATIONSHIPS = {
@@ -77,10 +82,21 @@ def _serialize_equipped_items(db: Session, user: models.User) -> list[dict]:
     ]
 
 
+def _support_links_payload(user: models.User) -> dict[str, Optional[str]]:
+    if not _can_use_support_links(user):
+        return {field: None for field in SUPPORT_LINK_FIELDS}
+    return {field: getattr(user, field) for field in SUPPORT_LINK_FIELDS}
+
+
+def _can_use_support_links(user: models.User) -> bool:
+    return user.is_premium and (user.premium_tier or "free") in SUPPORT_LINK_PREMIUM_TIERS
+
+
 def _current_user_payload(db: Session, user: models.User) -> dict:
     profile_photo_url = _media_url_if_visible(user, "profil")
     cover_photo_url = _media_url_if_visible(user, "coperta")
     cover_seed = user.cover_seed or default_cover_seed(user)
+    stafeta_state = crud.get_stafeta_participation_state(db, user)
     return {
         "id": user.id,
         "username": user.username,
@@ -101,9 +117,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "instagram_url": user.instagram_url,
         "x_url": user.x_url,
         "bluesky_url": user.bluesky_url,
-        "patreon_url": user.patreon_url,
-        "paypal_url": user.paypal_url,
-        "buymeacoffee_url": user.buymeacoffee_url,
+        **_support_links_payload(user),
         "is_admin": user.is_admin,
         "is_moderator": user.is_moderator,
         "is_suspended": user.is_suspended,
@@ -118,7 +132,10 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "email_mention_notifications": user.email_mention_notifications,
         "email_analytics_digest": user.email_analytics_digest,
         "email_admin_announcements": user.email_admin_announcements,
-        "stafeta_participates": crud.get_stafeta_participation(db, user.id),
+        "stafeta_participates": stafeta_state["participates"],
+        "stafeta_desired_slots": stafeta_state["desired_slots"],
+        "stafeta_max_slots": stafeta_state["max_slots"],
+        "stafeta_open_assignments": stafeta_state["open_assignments"],
         "gologani_balance": user.gologani_balance or 0,
         "seconds_listened": user.seconds_listened or 0,
         "incoming_friend_request_count": crud.get_incoming_friend_request_count(db, user.id),
@@ -128,7 +145,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
 
 def _validate_profile_links(payload) -> None:
     validation_errors = []
-    for field, (platform, message) in SOCIAL_LINKS.items():
+    for field, (platform, message) in PROFILE_LINKS.items():
         value = getattr(payload, field, None)
         if value and not validate_social_url(value, platform):
             validation_errors.append(message)
@@ -146,6 +163,21 @@ def _apply_profile_fields(current_user: models.User, payload, fields=PROFILE_SET
     for field in fields:
         if field in provided_fields:
             setattr(current_user, field, getattr(payload, field))
+
+
+def _ensure_support_links_allowed(current_user: models.User, payload) -> None:
+    if _can_use_support_links(current_user):
+        return
+    provided_fields = getattr(payload, "model_fields_set", set())
+    has_support_value = any(
+        field in provided_fields and bool(getattr(payload, field, None))
+        for field in SUPPORT_LINK_FIELDS
+    )
+    if has_support_value:
+        raise HTTPException(
+            status_code=403,
+            detail="Linkurile pentru donații sunt disponibile pentru utilizatorii Premium.",
+        )
 
 
 def _site_feedback_payload(item: models.SiteFeedback) -> dict:
@@ -359,7 +391,12 @@ def update_profile_settings(
 ):
     logger.info(f"Se încearcă actualizarea experienței de profil pentru utilizatorul: {current_user.username}")
     _validate_profile_links(profile_update)
-    _apply_profile_fields(current_user, profile_update)
+    _ensure_support_links_allowed(current_user, profile_update)
+    can_use_support_links = _can_use_support_links(current_user)
+    fields = PROFILE_SETTINGS_FIELDS if can_use_support_links else tuple(
+        field for field in PROFILE_SETTINGS_FIELDS if field not in SUPPORT_LINK_FIELDS
+    )
+    _apply_profile_fields(current_user, profile_update, fields=fields)
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
@@ -406,10 +443,16 @@ def update_user_social_links(
 ):
     logger.info(f"Se încearcă actualizarea link-urilor sociale pentru utilizatorul: {current_user.username}")
     _validate_profile_links(social_update)
+    _ensure_support_links_allowed(current_user, social_update)
+    can_use_support_links = _can_use_support_links(current_user)
+    fields = (*PROFILE_LINKS.keys(), "youtube_playlist_url") if can_use_support_links else (
+        *SOCIAL_LINKS.keys(),
+        "youtube_playlist_url",
+    )
     _apply_profile_fields(
         current_user,
         social_update,
-        fields=(*SOCIAL_LINKS.keys(), "youtube_playlist_url"),
+        fields=fields,
     )
 
     db.add(current_user)

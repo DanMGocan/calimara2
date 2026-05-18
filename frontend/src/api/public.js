@@ -6,10 +6,6 @@ export function fetchLanding(category, postId = null) {
   return api.get(`/api/prima-pagina?${params.toString()}`);
 }
 
-export function fetchCategory(categoryKey, sortBy = "newest") {
-  return api.get(`/api/categorii/${encodeURIComponent(categoryKey)}?sort_by=${encodeURIComponent(sortBy)}`);
-}
-
 export function fetchBlog(username) {
   return api.get(`/api/bloguri/${encodeURIComponent(username)}`);
 }

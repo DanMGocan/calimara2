@@ -58,6 +58,10 @@ def _segment_payload(segment: models.StafetaSegment) -> dict:
     }
 
 
+def _participation_payload(db: Session, user: models.User) -> dict:
+    return crud.get_stafeta_participation_state(db, user)
+
+
 def _visible_segments(
     db: Session,
     work: models.StafetaWork,
@@ -134,7 +138,7 @@ def _detail_payload(db: Session, work: models.StafetaWork, current_user: models.
         "my_role": role,
         "can_write": is_holder and work.status == "active",
         "can_respond": can_respond and work.status == "active",
-        "participates": crud.get_stafeta_participation(db, current_user.id),
+        **_participation_payload(db, current_user),
     }
 
 
@@ -176,6 +180,8 @@ def _send_error(error: Optional[str]) -> None:
         raise HTTPException(status_code=404, detail="Destinatarul nu a fost găsit")
     if error == "target_is_current":
         raise HTTPException(status_code=400, detail="Nu poți trimite ștafeta către tine")
+    if error == "target_at_capacity":
+        raise HTTPException(status_code=409, detail="Utilizatorul are deja numărul maxim de Ștafete active")
     if error == "no_random_participant":
         raise HTTPException(status_code=409, detail="Nu există utilizatori disponibili în Ștafeta")
 
@@ -185,7 +191,7 @@ def get_stafeta_participation_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
-    return {"participates": crud.get_stafeta_participation(db, current_user.id)}
+    return _participation_payload(db, current_user)
 
 
 @router.put("/api/stafeta/participare")
@@ -194,8 +200,8 @@ def update_stafeta_participation_api(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
-    participant = crud.set_stafeta_participation(db, current_user, data.participates)
-    return {"participates": participant.is_active}
+    crud.set_stafeta_participation(db, current_user, data.participates, data.desired_slots)
+    return _participation_payload(db, current_user)
 
 
 @router.get("/api/stafeta")
@@ -209,7 +215,7 @@ def list_stafeta_api(
     works = crud.list_stafeta_works(db, current_user, filter_value=filter, limit=limit, offset=offset)
     return {
         "works": [_summary_payload(db, work) for work in works],
-        "participates": crud.get_stafeta_participation(db, current_user.id),
+        **_participation_payload(db, current_user),
     }
 
 
@@ -226,8 +232,8 @@ def create_stafeta_api(
         raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
     if error == "target_suspended":
         raise HTTPException(status_code=400, detail="Utilizatorul este suspendat")
-    if error == "no_random_participant":
-        raise HTTPException(status_code=409, detail="Nu există utilizatori disponibili în Ștafeta")
+    if error == "target_at_capacity":
+        raise HTTPException(status_code=409, detail="Utilizatorul are deja numărul maxim de Ștafete active")
     if error:
         raise HTTPException(status_code=400, detail="Nu am putut crea Ștafeta")
     return _detail_payload(db, work, current_user)
@@ -295,6 +301,8 @@ def assign_stafeta_specific_api(
         raise HTTPException(status_code=409, detail="Ștafeta nu mai este activă")
     if error == "target_suspended":
         raise HTTPException(status_code=400, detail="Utilizatorul este suspendat")
+    if error == "target_at_capacity":
+        raise HTTPException(status_code=409, detail="Utilizatorul are deja numărul maxim de Ștafete active")
     return _assignment_payload(assignment)
 
 

@@ -31,6 +31,7 @@ class StafetaUserRef(BaseModel):
 
 class StafetaParticipationUpdate(BaseModel):
     participates: bool = True
+    desired_slots: Optional[int] = Field(None, ge=0, le=10)
 
 
 class StafetaCreate(BaseModel):
@@ -165,8 +166,14 @@ class StafetaWorkDetail(StafetaWorkSummary):
     can_write: bool = False
     can_respond: bool = False
     participates: bool = False
+    desired_slots: int = 0
+    max_slots: int = 3
+    open_assignments: int = 0
 
 
 class StafetaWorkList(BaseModel):
     works: List[StafetaWorkSummary] = Field(default_factory=list)
     participates: bool = False
+    desired_slots: int = 0
+    max_slots: int = 3
+    open_assignments: int = 0

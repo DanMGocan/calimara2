@@ -30,10 +30,15 @@ test("forum list and thread detail render seeded discussion", async ({ page }) =
   await loginByApi(page, users.author);
   await page.goto("/discutii");
   await expectHeading(page, "Discuții");
+  await expect(page.getByRole("button", { name: "Anunțuri" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Discuții generale" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Impresii" })).toHaveCount(0);
   await expect(page.getByText("E2E Forum Thread")).toBeVisible();
 
   await page.goto("/discutii/e2e-forum-thread");
   await expectHeading(page, "E2E Forum Thread");
+  await expect(page.locator(".forum-author-avatar").first()).toBeVisible();
+  await expect(page.getByLabel("Statistici autor").first()).toBeVisible();
   await expect(page.getByText("Răspuns E2E")).toBeVisible();
 });
 

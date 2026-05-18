@@ -5,7 +5,6 @@ import { subdomainUsername } from "./paths.js";
 
 const ROUTE_COMPONENTS = {
   landing: lazy(() => import("../routes/landing.jsx")),
-  category: lazy(() => import("../routes/category.jsx")),
   clubs: lazy(() => import("../routes/clubs.jsx")),
   club: lazy(() => import("../routes/clubs.jsx")),
   theatre: lazy(() => import("../routes/theatre.jsx")),
@@ -72,7 +71,6 @@ export function routeForLocation() {
   if (path === "/utilizatori") return { name: "usersDirectory" };
   if (path === "/moderare") return { name: "admin" };
   if (path === "/docs") return { name: "docs" };
-  if (path.startsWith("/categorie/")) return { name: "category", categoryKey: decodeURIComponent(path.split("/")[2] || "poezie") };
   if (path.startsWith("/serii/")) return { name: "series", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/cluburi") return { name: "clubs" };
   if (path.startsWith("/cluburi/")) return { name: "club", slug: decodeURIComponent(path.split("/")[2] || "") };

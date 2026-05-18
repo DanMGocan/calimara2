@@ -9,6 +9,7 @@ from slowapi.util import get_remote_address
 
 from .. import ai_queue, auth, crud, models, rich_text, schemas
 from ..database import get_db
+from ..utils import get_avatar_url
 
 logger = logging.getLogger(__name__)
 
@@ -17,23 +18,26 @@ router = APIRouter(tags=["forum"])
 
 
 FORUM_SECTIONS = [
-    {"key": "general", "label": "General"},
+    {"key": "anunturi", "label": "Anunțuri"},
+    {"key": "general", "label": "Discuții generale"},
     {"key": "poezie", "label": "Poezie"},
     {"key": "proza_scurta", "label": "Proză scurtă"},
-    {"key": "feedback", "label": "Impresii"},
-    {"key": "anunturi", "label": "Anunțuri"},
 ]
 
 
-def _author_payload(user: Optional[models.User]) -> Optional[dict]:
+def _author_payload(db: Session, user: Optional[models.User]) -> Optional[dict]:
     if not user:
         return None
     return {
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "avatar_url": get_avatar_url(user, size=96),
         "is_premium": getattr(user, "is_premium", False),
         "premium_tier": getattr(user, "premium_tier", "free") or "free",
+        "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
+        "forum_post_count": crud.count_approved_forum_contributions(db, user.id),
+        "published_post_count": crud.count_posts_for_user(db, user.id),
     }
 
 
@@ -50,7 +54,7 @@ def _thread_summary_payload(db: Session, thread: models.ForumThread) -> dict:
         "section": thread.section,
         "title": thread.title,
         "slug": thread.slug,
-        "author": _author_payload(thread.author),
+        "author": _author_payload(db, thread.author),
         "reply_count": _reply_count(db, thread.id),
         "view_count": thread.view_count,
         "is_locked": thread.is_locked,
@@ -67,7 +71,7 @@ def _reply_payload(db: Session, reply: models.ForumReply) -> dict:
         "id": reply.id,
         "thread_id": reply.thread_id,
         "content": crud.link_mentions_in_rich_text(db, reply.content),
-        "author": _author_payload(reply.author),
+        "author": _author_payload(db, reply.author),
         "moderation_status": reply.moderation_status,
         "moderation_reason": reply.moderation_reason,
         "created_at": reply.created_at,
@@ -78,7 +82,7 @@ def _reply_payload(db: Session, reply: models.ForumReply) -> dict:
 def _thread_detail_payload(
     db: Session,
     thread: models.ForumThread,
-    current_user: models.User,
+    current_user: Optional[models.User],
 ) -> dict:
     replies = crud.list_forum_replies_for_thread(db, thread.id, current_user)
     return {
@@ -90,9 +94,7 @@ def _thread_detail_payload(
 
 
 @router.get("/api/forum/sectiuni")
-def list_forum_sections_api(
-    current_user: models.User = Depends(auth.get_required_user),
-):
+def list_forum_sections_api():
     return {"sections": FORUM_SECTIONS}
 
 
@@ -103,7 +105,7 @@ def list_forum_threads_api(
     limit: int = 30,
     offset: int = 0,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_required_user),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     if section and not crud.is_forum_section(section):
         raise HTTPException(status_code=400, detail="Secțiune invalidă")
@@ -139,7 +141,7 @@ def create_forum_thread_api(
 def get_forum_thread_api(
     slug: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_required_user),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     thread = crud.get_forum_thread_by_slug(db, slug)
     if not thread or not crud.can_view_forum_thread(current_user, thread):

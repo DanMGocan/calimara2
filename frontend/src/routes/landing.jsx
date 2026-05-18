@@ -53,7 +53,7 @@ function AuthErrorModal({ open, errorKind, onClose }) {
         <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
         <div className="piece-card-kicker">autentificare</div>
         <h2 id="auth-error-title" className="access-modal-title">{inviteOnly ? "Acces pe bază de invitație" : "Autentificarea a eșuat"}</h2>
-        <p className="access-modal-body">{inviteOnly ? "Platforma este momentan deschisă doar pentru emailurile adăugate în lista de acces." : "Nu am putut finaliza autentificarea. Încearcă din nou."}</p>
+        <p className="access-modal-body">{inviteOnly ? "Platforma este momentan disponibilă doar pentru emailurile adăugate în lista de acces." : "Nu am putut finaliza autentificarea. Încearcă din nou."}</p>
         <button className="cal-btn primary" type="button" onClick={onClose}>Închide</button>
       </section>
     </div>

@@ -72,11 +72,15 @@ class PlatformAccessTests(unittest.TestCase):
     def async_run(self, value):
         return asyncio.run(value)
 
-    def test_missing_setting_defaults_to_open_for_password_login(self):
+    def test_missing_setting_defaults_to_closed_for_password_login(self):
         user = self.make_user("openuser")
 
-        response = self.login(user.email)
+        with self.assertRaises(HTTPException) as login_error:
+            self.login(user.email)
+        self.assertEqual(login_error.exception.status_code, 403)
 
+        platform_access.add_allowed_email(self.db, email=user.email)
+        response = self.login(user.email)
         self.assertEqual(response["username"], user.username)
 
     def test_closed_platform_blocks_password_login_and_registration(self):
@@ -105,10 +109,15 @@ class PlatformAccessTests(unittest.TestCase):
 
         self.assertEqual(response["username"], user.username)
 
-    def test_closed_platform_allows_existing_admin_without_allowlist(self):
+    def test_closed_platform_requires_admin_email_in_allowlist(self):
         admin_user = self.make_user("adminuser", is_admin=True)
         self.close_platform()
 
+        with self.assertRaises(HTTPException) as login_error:
+            self.login(admin_user.email)
+        self.assertEqual(login_error.exception.status_code, 403)
+
+        platform_access.add_allowed_email(self.db, email=admin_user.email)
         response = self.login(admin_user.email)
 
         self.assertEqual(response["username"], admin_user.username)
@@ -169,6 +178,8 @@ class PlatformAccessTests(unittest.TestCase):
 
     def test_admin_platform_access_endpoints_manage_toggle_and_allowlist(self):
         admin_user = self.make_user("accessadmin", is_admin=True)
+        initial = admin_routes.get_platform_access(db=self.db, current_user=admin_user)
+        self.assertFalse(initial["open"])
 
         closed = admin_routes.update_platform_access(
             schemas.AdminPlatformAccessUpdate(open=False),

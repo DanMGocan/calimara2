@@ -23,11 +23,10 @@ export const POST_CATEGORIES = [
 export const POST_CONTENT_LIMITS = Object.fromEntries(POST_CATEGORIES.map((item) => [item.key, item.limit]));
 
 export const FORUM_SECTIONS = [
-  { key: "general", label: "General" },
+  { key: "anunturi", label: "Anunțuri", featured: true },
+  { key: "general", label: "Discuții generale" },
   { key: "poezie", label: "Poezie" },
-  { key: "proza_scurta", label: "Proză scurtă" },
-  { key: "feedback", label: "Impresii" },
-  { key: "anunturi", label: "Anunțuri" }
+  { key: "proza_scurta", label: "Proză scurtă" }
 ];
 
 export const PROFILE_TIER_BADGES = {
@@ -73,9 +72,9 @@ export const CONTENT_TYPE_LABELS = {
   stafeta_segment: "Ștafeta"
 };
 
-export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "clubs", "club", "forum", "forumCreate", "forumThread", "theatreCreate", "stafeta", "stafetaCreate", "stafetaWork", "shop", "inventory", "admin", "docs"]);
+export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "clubs", "club", "forumCreate", "theatreCreate", "stafeta", "stafetaCreate", "stafetaWork", "shop", "inventory", "admin", "docs"]);
 export const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
-export const AD_SUPPORTED_ROUTES = new Set(["landing", "category", "clubs", "club", "theatre", "theatrePlay", "blog", "post", "series"]);
+export const AD_SUPPORTED_ROUTES = new Set(["landing", "clubs", "club", "theatre", "theatrePlay", "blog", "post", "series"]);
 export const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";
 export const ADSENSE_CLIENT_ID = (import.meta.env.VITE_ADSENSE_CLIENT_ID || "").trim();
 export const ADSENSE_SLOTS = {

@@ -3,9 +3,9 @@
 Populate the database with sample Romanian content for local development.
 
 Runs after `run.py`'s `init_database()` has produced an empty schema. Creates
-two accounts and sixteen public-domain-attributed posts: eight Ion Creangă
-prose entries on the tier-3 premium gocandan account and eight Mihai Eminescu
-poetry entries on the dangocan account.
+three accounts and sixteen public-domain-attributed posts: eight Ion Creangă
+prose entries on the tier-3 premium gocandan account, eight Mihai Eminescu
+poetry entries on the dangocan account, and one local admin account.
 
 Invocation:
     python scripts/seed.py
@@ -14,8 +14,11 @@ Or called automatically at the end of `run.py`'s init step.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import html
 import os
+import secrets
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,11 +40,6 @@ from app import models  # noqa: E402
 # Content
 # ──────────────────────────────────────────────────────────────────────
 
-PUBLIC_DOMAIN_NOTICE = (
-    "Text de seed bazat pe o operă aflată în domeniul public."
-)
-
-
 def _clean_text(content: str) -> str:
     return dedent(content).strip()
 
@@ -54,16 +52,23 @@ def _plain_text_to_html(content: str) -> str:
     return "".join(paragraphs)
 
 
-def _content_with_public_domain_attribution(row: dict[str, str]) -> str:
-    attribution_lines = [
-        PUBLIC_DOMAIN_NOTICE,
-        f"Autor/reper: {row['source_author']}.",
-        f"Sursă: {row['source_name']}.",
-        f"URL: {row['source_url']}",
-    ]
-    attribution = "<br>".join(html.escape(line) for line in attribution_lines)
-    notice = f"<p><strong>{attribution}</strong></p>"
-    return notice + _plain_text_to_html(row["content"])
+def _seed_password_hash(password: str) -> str:
+    # Seed-only helper: keeps deliberately short fixture passwords out of normal signup validation.
+    iterations = 260_000
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "$".join(
+        [
+            "pbkdf2_sha256",
+            str(iterations),
+            base64.urlsafe_b64encode(salt).decode("ascii"),
+            base64.urlsafe_b64encode(digest).decode("ascii"),
+        ]
+    )
+
+
+def _seed_content_html(row: dict[str, str]) -> str:
+    return _plain_text_to_html(row["content"])
 
 
 AUTHORS = [
@@ -77,6 +82,15 @@ AUTHORS = [
         "is_moderator": True,
         "premium_tier": "rapsod",
         "premium_until_days": 3650,
+    },
+    {
+        "username": "sad",
+        "email": "sad@sad.com",
+        "subtitle": "cont admin local",
+        "avatar_seed": "sad-admin",
+        "password": "123",
+        "is_admin": True,
+        "is_moderator": True,
     },
     {
         "username": "dangocan",
@@ -635,16 +649,18 @@ def seed(session: Session, *, quiet: bool = False) -> None:
     # ── Users ──────────────────────────────────────────────
     users_by_username: dict[str, models.User] = {}
     for row in AUTHORS:
+        now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
         premium_until = None
         if row.get("premium_until_days"):
-            premium_until = (
-                datetime.now(tz=timezone.utc).replace(tzinfo=None)
-                + timedelta(days=row["premium_until_days"])
-            )
+            premium_until = now + timedelta(days=row["premium_until_days"])
+        password = row.get("password")
         u = models.User(
             username=row["username"],
             email=row["email"],
-            google_id=row["google_id"],
+            google_id=row.get("google_id"),
+            password_hash=_seed_password_hash(password) if password else None,
+            email_verified_at=now if password else None,
+            password_updated_at=now if password else None,
             subtitle=row["subtitle"],
             avatar_seed=row["avatar_seed"],
             is_admin=row.get("is_admin", False),
@@ -655,7 +671,16 @@ def seed(session: Session, *, quiet: bool = False) -> None:
         session.add(u)
         users_by_username[row["username"]] = u
     session.flush()
-    log(f"  Seed: {len(users_by_username)} authors")
+    log(f"  Seed: {len(users_by_username)} users")
+
+    for row in AUTHORS:
+        session.add(
+            models.PlatformAllowedEmail(
+                email=row["email"].lower(),
+                note="seed",
+            )
+        )
+    log(f"  Seed: {len(AUTHORS)} allowed platform emails")
 
     # ── Posts ──────────────────────────────────────────────
     posts_by_slug: dict[str, models.Post] = {}
@@ -666,7 +691,7 @@ def seed(session: Session, *, quiet: bool = False) -> None:
             user_id=author.id,
             title=row["title"],
             slug=row["slug"],
-            content=_content_with_public_domain_attribution(row),
+            content=_seed_content_html(row),
             category=row["category"],
             view_count=10 + (row["days_ago"] * 7) % 137,
             moderation_status="approved",

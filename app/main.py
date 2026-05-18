@@ -186,6 +186,16 @@ def serve_admin_documentation(current_user: models.User = Depends(admin.require_
         return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
     return _react_index_response()
 
+
+@app.get("/favicon.png", include_in_schema=False)
+@app.get("/favicon.ico", include_in_schema=False)
+def serve_favicon():
+    favicon_path = os.path.join(FRONTEND_DIST, "favicon.png")
+    if not os.path.isfile(favicon_path):
+        return JSONResponse(status_code=404, content={"detail": "Favicon not found"})
+    return FileResponse(favicon_path, media_type="image/png")
+
+
 if os.path.isdir(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.isdir(assets_dir):

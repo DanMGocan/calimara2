@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from . import admin, local_auth, models
 
 SETTING_ID = 1
-ACCESS_DENIED_MESSAGE = "Platforma este momentan deschisă doar pentru emailurile adăugate în lista de acces."
+ACCESS_DENIED_MESSAGE = "Platforma este momentan disponibilă doar pentru emailurile adăugate în lista de acces."
 
 
 def normalize_access_email(email: str) -> str:
@@ -22,7 +22,7 @@ def _tables_available(db: Session) -> bool:
         return True
     admin.warn_missing_table_once(
         settings_table,
-        "platform access gate is treated as open until schema.sql has created the access tables",
+        "platform access gate is treated as closed until schema.sql has created the access tables",
     )
     return False
 
@@ -33,7 +33,7 @@ def get_setting(db: Session, *, create: bool = False) -> Optional[models.Platfor
     setting = db.query(models.PlatformAccessSetting).filter(models.PlatformAccessSetting.id == SETTING_ID).first()
     if setting or not create:
         return setting
-    setting = models.PlatformAccessSetting(id=SETTING_ID, is_open=True)
+    setting = models.PlatformAccessSetting(id=SETTING_ID, is_open=False)
     db.add(setting)
     db.commit()
     db.refresh(setting)
@@ -42,12 +42,12 @@ def get_setting(db: Session, *, create: bool = False) -> Optional[models.Platfor
 
 def is_platform_open(db: Session) -> bool:
     setting = get_setting(db)
-    return True if setting is None else bool(setting.is_open)
+    return False if setting is None else bool(setting.is_open)
 
 
 def is_email_allowed(db: Session, email: str) -> bool:
     if not _tables_available(db):
-        return True
+        return False
     normalized = normalize_access_email(email)
     if not normalized:
         return False
@@ -55,8 +55,6 @@ def is_email_allowed(db: Session, email: str) -> bool:
 
 
 def can_access_platform(db: Session, *, email: str, user: Optional[models.User] = None) -> bool:
-    if user and user.is_admin:
-        return True
     if is_platform_open(db):
         return True
     return is_email_allowed(db, email)

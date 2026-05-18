@@ -23,7 +23,7 @@ NEW_LONG_POEM_SLUGS = {
 }
 
 
-def test_seed_posts_use_public_domain_attribution_and_expected_shape():
+def test_seed_posts_render_only_literary_text_and_expected_shape():
     assert len(seed.POSTS) == 16
     assert len({row["slug"] for row in seed.POSTS}) == 16
     assert Counter(row["category"] for row in seed.POSTS) == {
@@ -37,11 +37,12 @@ def test_seed_posts_use_public_domain_attribution_and_expected_shape():
         assert row["source_name"].startswith("Wikisource - ")
         assert row["source_url"].startswith("https://ro.wikisource.org/wiki/")
 
-        rendered = seed._content_with_public_domain_attribution(row)
+        rendered = seed._seed_content_html(row)
         plain_rendered = rich_text.rich_text_to_plain_text(rendered)
-        assert seed.PUBLIC_DOMAIN_NOTICE in plain_rendered
-        assert row["source_author"] in plain_rendered
-        assert row["source_url"] in plain_rendered
+        assert "Text de seed" not in plain_rendered
+        assert "domeniul public" not in plain_rendered
+        assert row["source_name"] not in plain_rendered
+        assert row["source_url"] not in plain_rendered
         assert "inteligență artificială" not in plain_rendered
 
         limit = POST_CONTENT_CHARACTER_LIMITS[row["category"]]

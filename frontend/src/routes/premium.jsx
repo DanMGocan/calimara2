@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FiCheckCircle, FiCreditCard, FiHeadphones, FiStar, FiTrendingUp } from "react-icons/fi";
+import { SiBuymeacoffee } from "react-icons/si";
 import { fetchAudioConversionQuota } from "../api/audio.js";
 import { fetchPremiumPlans, openPremiumPortal, startPremiumCheckout } from "../api/premium.js";
 import { useAuthModal } from "../app/auth-modal.jsx";
@@ -14,6 +15,7 @@ const TIER_RANK = {
   cronicar: 2,
   rapsod: 3
 };
+const BUY_ME_A_COFFEE_URL = "https://www.buymeacoffee.com/danmihaig";
 
 function tierByKey(key, tiers) {
   return tiers.find((tier) => tier.key === key) || tiers[0] || null;
@@ -91,6 +93,27 @@ function TierCard({ tier, user, selected, busy, onSelect, onStart }) {
   );
 }
 
+function CoffeeSupportPanel() {
+  return (
+    <section className="premium-coffee-panel" aria-label="Sprijină Călimara cu o cafea">
+      <div>
+        <div className="piece-card-kicker">fără abonament</div>
+        <h2>Te-ai săturat de subscripții și abonamente?</h2>
+        <p>
+          Înțeleg. Așa și eu. Dacă nu mai vrei încă o subscripție, sunt fericit să îmi cumperi o cafea.
+          Nu vine cu niciun beneficiu, în afară de un mic trofeu pe site, dar ajută cu întreținerea site-ului
+          și cu întreținerea unui stil de viață luxuriant pentru mine: ipoteca și factura la curent.
+        </p>
+        <span className="premium-coffee-signature">Dan</span>
+      </div>
+      <a className="cal-btn primary premium-coffee-link" href={BUY_ME_A_COFFEE_URL} target="_blank" rel="noreferrer">
+        <SiBuymeacoffee aria-hidden="true" />
+        Cumpără-mi o cafea
+      </a>
+    </section>
+  );
+}
+
 function PremiumView({ user }) {
   const { openAuthModal } = useAuthModal();
   const [status, setStatus] = useState("");
@@ -162,6 +185,8 @@ function PremiumView({ user }) {
             {busy ? "Se deschide..." : user?.is_premium ? "Gestionează abonamentul" : "Continuă către plată"}
           </button>
         </div>
+
+        <CoffeeSupportPanel />
 
         <div className="premium-metric-grid">
           <DashboardMetric icon={<FiStar />} label="Plan curent" value={planAccessLabel(user, tiers)} sub={user?.is_premium ? "activ" : "neabonat"} />

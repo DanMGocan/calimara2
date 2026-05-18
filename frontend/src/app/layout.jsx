@@ -140,11 +140,6 @@ export function NavBar({
         <a href={mainPath("/")} className="nav-home icon-btn" aria-label="Acasă" title="Acasă">
           <IconHouse className="nav-home-icon" />
         </a>
-        {!loggedIn ? (
-          <NavIconButton label="Autentificare" onClick={() => openAuthModal?.()}>
-            <FiLogIn aria-hidden="true" />
-          </NavIconButton>
-        ) : null}
         {loggedIn && user ? (
           <>
             <NavIconLink href={blogUrl(user.username)} label="Călimara mea" className="inkwell">
@@ -166,10 +161,13 @@ export function NavBar({
             </NavIconButton>
           </>
         ) : null}
-        {loggedIn ? (
-          <NavIconLink href={mainPath("/discutii")} label="Discuții" className="mobile-menu-only">
-            <FiMessageCircle aria-hidden="true" />
-          </NavIconLink>
+        <NavIconLink href={mainPath("/discutii")} label="Discuții" className={loggedIn ? "mobile-menu-only" : ""}>
+          <FiMessageCircle aria-hidden="true" />
+        </NavIconLink>
+        {!loggedIn ? (
+          <NavIconButton label="Autentificare" onClick={() => openAuthModal?.()}>
+            <FiLogIn aria-hidden="true" />
+          </NavIconButton>
         ) : null}
         {loggedIn && user ? (
           <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje" className="mobile-menu-only">
@@ -218,20 +216,22 @@ export function NavBar({
         ) : null}
       </div>
       <div className="nav-right">
-        <button
-          className="nav-audio-player"
-          type="button"
-          onClick={onOpenAudioPlayer}
-          disabled={audioPlayerDisabled}
-          title={audioPlayerTitle}
-          aria-label="Player audio"
-          aria-haspopup="dialog"
-          aria-expanded={audioPlayerOpen || undefined}
-          aria-controls="landing-listen-player"
-        >
-          <FiPlay aria-hidden="true" />
-          <span>Player audio</span>
-        </button>
+        {loggedIn ? (
+          <button
+            className="nav-audio-player"
+            type="button"
+            onClick={onOpenAudioPlayer}
+            disabled={audioPlayerDisabled}
+            title={audioPlayerTitle}
+            aria-label="Player audio"
+            aria-haspopup="dialog"
+            aria-expanded={audioPlayerOpen || undefined}
+            aria-controls="landing-listen-player"
+          >
+            <FiPlay aria-hidden="true" />
+            <span>Player audio</span>
+          </button>
+        ) : null}
         <button className={`icon-btn burger ${menuOpen ? "open" : ""}`} onClick={onMenu} aria-label="Meniu" type="button" aria-expanded={menuOpen}>
           <span />
           <span />
@@ -241,11 +241,11 @@ export function NavBar({
     </nav>
   );
 }
-export function ActionRow({ number, icon, label, sub, active, disabled, compact, onClick }) {
-  const className = ["action-row", active ? "active" : "", icon ? "has-icon" : "", compact ? "compact" : ""].filter(Boolean).join(" ");
+export function ActionRow({ number, icon, label, sub, active, disabled, compact, className = "", onClick }) {
+  const classes = ["action-row", active ? "active" : "", icon ? "has-icon" : "", compact ? "compact" : "", className].filter(Boolean).join(" ");
 
   return (
-    <button className={className} onClick={onClick} disabled={disabled} type="button" aria-label={label} title={label}>
+    <button className={classes} onClick={onClick} disabled={disabled} type="button" aria-label={label} title={label}>
       {icon ? <span className="action-icon" aria-hidden="true">{icon}</span> : <span className="action-num">{number}</span>}
       <span className="action-body">
         <span className="action-label">{label}</span>
@@ -407,7 +407,6 @@ export function SideMenu({ open, onClose, user }) {
     ? [
         ["Acasă", "pagina principală", mainPath("/")],
         ["Călimara mea", "profilul tău public", blogUrl(user.username)],
-        ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
         ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
         ["Panou", "textele tale", authorPath(user, "/panou")],
         ["Prieteni", "cereri și listă", mainPath("/prieteni")],
@@ -424,11 +423,7 @@ export function SideMenu({ open, onClose, user }) {
       ]
     : [
         ["Acasă", "pagina principală", mainPath("/")],
-        ["Categorii", "răsfoiește după gen", mainPath("/categorie/poezie")],
-        ["Cluburi", "comunități", mainPath("/cluburi")],
-        ["Teatru colaborativ", "piese publice", mainPath("/teatru")],
-        ["Discuții", "forum și întrebări", mainPath("/discutii")],
-        ["Premium", "abonament și super-aprecieri", mainPath("/premium")]
+        ["Discuții", "forum și întrebări", mainPath("/discutii")]
       ];
 
   return (
@@ -742,7 +737,22 @@ export const FLOATING_BACKGROUND_SHAPES = [
   { kind: "square", size: 148, left: "58%", top: "76%", velocityX: -15, velocityY: -18, rotation: "10deg", spin: 2 },
   { kind: "triangle", size: 176, left: "3%", top: "80%", velocityX: 16, velocityY: -12, rotation: "-22deg", spin: 2.5 },
   { kind: "line", width: 192, height: 8, left: "74%", top: "48%", velocityX: -17, velocityY: -11, rotation: "-28deg", spin: 1 },
-  { kind: "circle", size: 200, left: "78%", top: "82%", velocityX: -12, velocityY: -14, rotation: "0deg", spin: 1 }
+  { kind: "circle", size: 200, left: "78%", top: "82%", velocityX: -12, velocityY: -14, rotation: "0deg", spin: 1 },
+  { kind: "square", size: 8, left: "18%", top: "24%", velocityX: -16, velocityY: 19, rotation: "-6deg", spin: 4.5 },
+  { kind: "triangle", size: 12, left: "62%", top: "16%", velocityX: 21, velocityY: -15, rotation: "20deg", spin: -4 },
+  { kind: "circle", size: 22, left: "92%", top: "72%", velocityX: -18, velocityY: 12, rotation: "0deg", spin: 2 },
+  { kind: "line", width: 54, height: 8, left: "26%", top: "34%", velocityX: 15, velocityY: 22, rotation: "31deg", spin: -2.5 },
+  { kind: "square", size: 36, left: "44%", top: "62%", velocityX: -14, velocityY: -20, rotation: "18deg", spin: 3.2 },
+  { kind: "triangle", size: 52, left: "14%", top: "8%", velocityX: 19, velocityY: 14, rotation: "8deg", spin: -3.5 },
+  { kind: "circle", size: 70, left: "88%", top: "6%", velocityX: -13, velocityY: 21, rotation: "0deg", spin: 1.8 },
+  { kind: "line", width: 90, height: 8, left: "41%", top: "46%", velocityX: 23, velocityY: -16, rotation: "-34deg", spin: 2.2 },
+  { kind: "square", size: 102, left: "2%", top: "28%", velocityX: 12, velocityY: 18, rotation: "25deg", spin: -1.8 },
+  { kind: "triangle", size: 120, left: "53%", top: "4%", velocityX: -21, velocityY: 11, rotation: "-10deg", spin: 1.6 },
+  { kind: "circle", size: 132, left: "17%", top: "86%", velocityX: 16, velocityY: -22, rotation: "0deg", spin: 1.2 },
+  { kind: "line", width: 136, height: 8, left: "86%", top: "55%", velocityX: -15, velocityY: -18, rotation: "14deg", spin: -1.4 },
+  { kind: "square", size: 168, left: "46%", top: "91%", velocityX: 14, velocityY: -12, rotation: "-16deg", spin: 1.1 },
+  { kind: "triangle", size: 188, left: "70%", top: "18%", velocityX: -11, velocityY: 13, rotation: "28deg", spin: -0.9 },
+  { kind: "circle", size: 220, left: "24%", top: "54%", velocityX: 10, velocityY: -16, rotation: "0deg", spin: 0.8 }
 ];
 
 export function clampNumber(value, min, max) {

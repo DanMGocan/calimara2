@@ -1,5 +1,6 @@
 import os
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -36,11 +37,19 @@ class StafetaFeatureTests(unittest.TestCase):
         models.Base.metadata.drop_all(self.engine)
         self.engine.dispose()
 
-    def make_user(self, username):
+    def make_user(self, username, *, premium_tier="free"):
+        is_premium = premium_tier != "free"
         user = models.User(
             username=username,
             email=f"{username}@example.com",
             google_id=f"google-{username}",
+            premium_tier=premium_tier,
+            premium_period_start=(
+                datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+            ) if is_premium else None,
+            premium_until=(
+                datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)
+            ) if is_premium else None,
         )
         self.db.add(user)
         self.db.commit()
@@ -56,6 +65,95 @@ class StafetaFeatureTests(unittest.TestCase):
         self.assertIn("CHECK (deadline_days IN (1, 3, 7))", schema)
         self.assertIn("max_characters INT DEFAULT 400 NOT NULL", schema)
         self.assertIn("fk_stafeta_works_current_assignment", schema)
+        self.assertIn("desired_slots INT DEFAULT 0 NOT NULL", schema)
+        self.assertIn("last_assigned_at TIMESTAMP", schema)
+
+    def test_random_creation_without_participants_stays_in_pool(self):
+        creator = self.make_user("creator")
+
+        work, error = crud.create_stafeta_work(
+            self.db,
+            creator,
+            StafetaCreate(
+                title="În așteptare",
+                category="poezie",
+                initial_content="<p>Început.</p>",
+                first_target_mode="random",
+            ),
+        )
+
+        self.assertIsNone(error)
+        self.assertIsNotNone(work)
+        self.db.refresh(work)
+        self.assertIsNone(work.current_assignment_id)
+        self.assertIsNone(work.current_holder_user_id)
+        self.assertEqual(crud.count_stafeta_segments(self.db, work.id), 1)
+
+    def test_joining_stafeta_assigns_pooled_work(self):
+        creator = self.make_user("creator")
+        participant = self.make_user("participant")
+        work, error = crud.create_stafeta_work(
+            self.db,
+            creator,
+            StafetaCreate(
+                title="Pool",
+                category="poezie",
+                initial_content="<p>Început.</p>",
+                first_target_mode="random",
+            ),
+        )
+        self.assertIsNone(error)
+        self.assertIsNone(work.current_assignment_id)
+
+        settings = crud.set_stafeta_participation(self.db, participant, True)
+
+        self.assertEqual(settings.desired_slots, 3)
+        self.db.refresh(work)
+        self.assertEqual(work.current_holder_user_id, participant.id)
+        assignment = crud.get_current_stafeta_assignment(self.db, work)
+        self.assertEqual(assignment.user_id, participant.id)
+        self.assertEqual(assignment.status, "active")
+
+    def test_stafeta_desired_slots_are_capped_by_tier(self):
+        free = self.make_user("free")
+        cronicar = self.make_user("cronicar", premium_tier="cronicar")
+        rapsod = self.make_user("rapsod", premium_tier="rapsod")
+
+        free_settings = crud.set_stafeta_participation(self.db, free, True, desired_slots=10)
+        cronicar_settings = crud.set_stafeta_participation(self.db, cronicar, True, desired_slots=10)
+        rapsod_settings = crud.set_stafeta_participation(self.db, rapsod, True, desired_slots=10)
+
+        self.assertEqual(free_settings.desired_slots, 3)
+        self.assertEqual(cronicar_settings.desired_slots, 6)
+        self.assertEqual(rapsod_settings.desired_slots, 10)
+
+    def test_pool_matches_all_users_before_second_assignment(self):
+        creator = self.make_user("creator")
+        first = self.make_user("first")
+        second = self.make_user("second")
+        crud.set_stafeta_participation(self.db, first, True, desired_slots=2)
+        crud.set_stafeta_participation(self.db, second, True, desired_slots=2)
+
+        works = []
+        for index in range(2):
+            work, error = crud.create_stafeta_work(
+                self.db,
+                creator,
+                StafetaCreate(
+                    title=f"Pool {index}",
+                    category="poezie",
+                    initial_content="<p>Start.</p>",
+                    first_target_mode="random",
+                ),
+            )
+            self.assertIsNone(error)
+            self.db.refresh(work)
+            works.append(work)
+
+        holders = {work.current_holder_user_id for work in works}
+        self.assertEqual(holders, {first.id, second.id})
+        self.assertEqual(crud.count_user_open_stafeta_assignments(self.db, first.id), 1)
+        self.assertEqual(crud.count_user_open_stafeta_assignments(self.db, second.id), 1)
 
     def test_random_assignment_uses_opted_in_user_and_avoids_creator(self):
         creator = self.make_user("creator")

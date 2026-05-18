@@ -134,7 +134,7 @@ CREATE INDEX idx_users_last_login_at ON users(last_login_at);
 -- ===================================
 CREATE TABLE platform_access_settings (
     id INTEGER PRIMARY KEY,
-    is_open BOOLEAN DEFAULT TRUE NOT NULL,
+    is_open BOOLEAN DEFAULT FALSE NOT NULL,
     updated_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -143,7 +143,7 @@ CREATE TABLE platform_access_settings (
     CONSTRAINT fk_platform_access_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
-INSERT INTO platform_access_settings (id, is_open) VALUES (1, TRUE);
+INSERT INTO platform_access_settings (id, is_open) VALUES (1, FALSE);
 
 CREATE TABLE platform_allowed_emails (
     id SERIAL PRIMARY KEY,
@@ -904,6 +904,10 @@ CREATE TABLE stafeta_participants (
     id SERIAL PRIMARY KEY,
     user_id INT NOT NULL,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    desired_slots INT DEFAULT 0 NOT NULL
+        CONSTRAINT ck_stafeta_participants_desired_slots
+        CHECK (desired_slots BETWEEN 0 AND 10),
+    last_assigned_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -913,6 +917,7 @@ CREATE TABLE stafeta_participants (
 
 CREATE INDEX idx_stafeta_participants_user ON stafeta_participants(user_id);
 CREATE INDEX idx_stafeta_participants_active ON stafeta_participants(is_active);
+CREATE INDEX idx_stafeta_participants_last_assigned ON stafeta_participants(last_assigned_at);
 
 CREATE TABLE stafeta_works (
     id SERIAL PRIMARY KEY,
@@ -1015,7 +1020,7 @@ CREATE TABLE forum_threads (
     id SERIAL PRIMARY KEY,
     author_id INT NOT NULL,
     section VARCHAR(40) NOT NULL
-        CHECK (section IN ('general', 'poezie', 'proza_scurta', 'feedback', 'anunturi')),
+        CHECK (section IN ('anunturi', 'general', 'poezie', 'proza_scurta')),
     title VARCHAR(160) NOT NULL,
     slug VARCHAR(220) UNIQUE NOT NULL,
     content TEXT NOT NULL,

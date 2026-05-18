@@ -35,7 +35,7 @@ PREMIUM_TIER_ORDER = ("trubadur", "cronicar", "rapsod")
 PREMIUM_TIER_DETAILS = {
     "trubadur": {
         "name": "Trubadur",
-        "eyebrow": "Premium",
+        "eyebrow": "Bronz",
         "summary": "Super-aprecieri și funcțiile premium de bază. Ascultarea audio este publică.",
         "benefits": [
             "3 super-aprecieri pe săptămână",
@@ -46,7 +46,7 @@ PREMIUM_TIER_DETAILS = {
     },
     "cronicar": {
         "name": "Cronicar",
-        "eyebrow": "Audio",
+        "eyebrow": "Argint",
         "summary": "Generează audio pentru textele tale: 100.000 caractere per ciclu de facturare.",
         "benefits": [
             "Tot ce include Trubadur",
@@ -58,7 +58,7 @@ PREMIUM_TIER_DETAILS = {
     },
     "rapsod": {
         "name": "Rapsod",
-        "eyebrow": "Audio de autor",
+        "eyebrow": "Aur",
         "summary": "Generează 250.000 caractere per ciclu și poți încărca înregistrări audio de autor.",
         "benefits": [
             "Tot ce include Cronicar",

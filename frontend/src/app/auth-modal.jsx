@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { SiFacebook, SiGoogle } from "react-icons/si";
-import { AUTH_FACEBOOK_PATH, AUTH_GOOGLE_PATH, loginWithPassword } from "../api/auth.js";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { FaFacebookF, FaGoogle } from "react-icons/fa";
+import { PiCubeFill } from "react-icons/pi";
+import { AUTH_FACEBOOK_PATH, AUTH_GOOGLE_PATH, activatePasswordSignup, loginWithPassword, registerWithPassword } from "../api/auth.js";
 import { mainPath } from "./paths.js";
 
 const AuthModalContext = createContext({
@@ -26,10 +27,14 @@ function navigateToAuthReturn(destination) {
 }
 
 export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
+  const formRef = useRef(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [activationCode, setActivationCode] = useState("");
+  const [activationEmail, setActivationEmail] = useState("");
   const [status, setStatus] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [statusKind, setStatusKind] = useState("error");
+  const [busyAction, setBusyAction] = useState("");
 
   useEffect(() => {
     if (!open) return undefined;
@@ -52,8 +57,11 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
     if (!open) {
       setEmail("");
       setPassword("");
+      setActivationCode("");
+      setActivationEmail("");
       setStatus("");
-      setSubmitting(false);
+      setStatusKind("error");
+      setBusyAction("");
     }
   }, [open]);
 
@@ -61,15 +69,49 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
 
   const submitLogin = async (event) => {
     event.preventDefault();
-    setSubmitting(true);
+    if (busyAction) return;
+    setBusyAction("login");
     setStatus("");
+    setStatusKind("error");
     try {
       const response = await loginWithPassword({ email, password, return_to: returnTo || "" });
       await onAuthenticated?.();
       navigateToAuthReturn(response.redirect_url || returnTo || mainPath("/"));
     } catch (requestError) {
       setStatus(requestError.message || "Nu am putut autentifica acest cont.");
-      setSubmitting(false);
+      setBusyAction("");
+    }
+  };
+
+  const submitRegistration = async () => {
+    if (busyAction || !formRef.current?.reportValidity()) return;
+    setBusyAction("register");
+    setStatus("");
+    setStatusKind("error");
+    try {
+      const response = await registerWithPassword({ email, password });
+      setActivationEmail(response.email || email);
+      setActivationCode("");
+      setStatus(response.message || "Ți-am trimis un cod de activare pe email.");
+      setStatusKind("success");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut crea contul.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const submitActivation = async () => {
+    if (busyAction || !activationCode.trim()) return;
+    setBusyAction("activate");
+    setStatus("");
+    setStatusKind("error");
+    try {
+      const response = await activatePasswordSignup({ email: activationEmail || email, code: activationCode.trim() });
+      window.location.href = response.setup_url || mainPath("/autentificare/configurare");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut verifica acest cod.");
+      setBusyAction("");
     }
   };
 
@@ -78,8 +120,11 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
       <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title" onClick={(event) => event.stopPropagation()}>
         <button className="auth-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
         <div className="piece-card-kicker">cont</div>
-        <h2 id="auth-modal-title" className="auth-modal-title">Autentificare</h2>
-        <form className="auth-modal-form" onSubmit={submitLogin}>
+        <h2 id="auth-modal-title" className="auth-modal-title">Cont utilizator</h2>
+        <p className="auth-modal-copy">
+          Dacă ai deja un cont, te poți loga aici cu datele tale. Dacă nu ai cont, introdu adresa de e-mail dorită și parola și apasă pe Creează cont. Alternativ, te poți loga prin Google sau Facebook.
+        </p>
+        <form ref={formRef} className="auth-modal-form" onSubmit={submitLogin}>
           <input
             id="auth-modal-email"
             className="cal-input"
@@ -92,27 +137,56 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
             required
             autoFocus
           />
-          <input
-            id="auth-modal-password"
-            className="cal-input"
-            type="password"
-            aria-label="Parolă"
-            placeholder="Parolă"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            required
-          />
-          {status ? <div className="inline-error">{status}</div> : null}
+          <div className="auth-modal-password-row">
+            <input
+              id="auth-modal-password"
+              className="cal-input"
+              type="password"
+              aria-label="Parolă"
+              placeholder="Parolă"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            <button className="cal-btn primary auth-modal-submit" type="submit" disabled={Boolean(busyAction)}>
+              {busyAction === "login" ? "Se autentifică..." : "Intră în cont"}
+            </button>
+          </div>
+          {activationEmail ? (
+            <div className="auth-modal-code-row">
+              <input
+                className="cal-input auth-code-input"
+                type="text"
+                inputMode="numeric"
+                aria-label="Cod de activare"
+                placeholder="Cod email"
+                value={activationCode}
+                onChange={(event) => setActivationCode(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    submitActivation();
+                  }
+                }}
+                autoComplete="one-time-code"
+              />
+              <button className="cal-btn auth-modal-verify" type="button" onClick={submitActivation} disabled={Boolean(busyAction) || !activationCode.trim()}>
+                {busyAction === "activate" ? "Se verifică..." : "Verifică"}
+              </button>
+            </div>
+          ) : null}
+          {status ? <div className={statusKind === "success" ? "inline-status" : "inline-error"}>{status}</div> : null}
           <div className="auth-modal-action-row">
-            <button className="cal-btn primary auth-modal-submit" type="submit" disabled={submitting}>
-              {submitting ? "Se autentifică..." : "Intră în cont"}
+            <button className="cal-btn auth-modal-create" type="button" onClick={submitRegistration} disabled={Boolean(busyAction)}>
+              <PiCubeFill className="auth-modal-create-logo" aria-hidden="true" />
+              {busyAction === "register" ? "Se trimite..." : "Creează cont"}
             </button>
             <a className="cal-btn auth-provider google" href={providerHref(AUTH_GOOGLE_PATH, returnTo)}>
-              <SiGoogle aria-hidden="true" /> Google
+              <FaGoogle aria-hidden="true" /> Google
             </a>
             <a className="cal-btn auth-provider facebook" href={providerHref(AUTH_FACEBOOK_PATH, returnTo)}>
-              <SiFacebook aria-hidden="true" /> Facebook
+              <FaFacebookF aria-hidden="true" /> Facebook
             </a>
           </div>
         </form>

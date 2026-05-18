@@ -49,4 +49,5 @@ test("stafeta creation form exposes deadline and character limit controls", asyn
   await expect(page.getByLabel("Timp la fiecare participant")).toBeVisible();
   await expect(page.getByLabel("Numărul maxim de caractere:")).toHaveValue("400");
   await expect(page.getByText("Aleatoriu din participanții înscriși")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Creează Ștafeta" })).toBeVisible();
 });

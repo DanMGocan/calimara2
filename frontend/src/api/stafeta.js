@@ -12,8 +12,10 @@ export function createStafetaWork(data) {
   return api.post("/api/stafeta", data);
 }
 
-export function updateStafetaParticipation(participates) {
-  return api.put("/api/stafeta/participare", { participates });
+export function updateStafetaParticipation(participates, desiredSlots) {
+  const payload = { participates };
+  if (desiredSlots !== undefined) payload.desired_slots = desiredSlots;
+  return api.put("/api/stafeta/participare", payload);
 }
 
 export function respondStafetaAssignment(workId, assignmentId, data) {

@@ -251,21 +251,6 @@ def get_available_months_for_user(db: Session, user_id: int, include_unapproved:
     
     return [{"month": int(r.month), "year": int(r.year), "post_count": r.post_count} for r in results]
 
-def get_posts_by_category_sorted(db: Session, category: str, sort_by: str = "newest", limit: int = 20):
-    query = db.query(models.Post).filter(
-        models.Post.category == category,
-        models.Post.moderation_status == "approved"
-    )
-    
-    if sort_by == "newest":
-        query = query.order_by(models.Post.created_at.desc())
-    elif sort_by == "oldest":
-        query = query.order_by(models.Post.created_at.asc())
-    elif sort_by == "popular":
-        query = query.order_by(models.Post.view_count.desc())
-        
-    return query.limit(limit).all()
-
 def get_distinct_categories_used(db: Session, user_id: Optional[int] = None):
     query = db.query(models.Post.category).filter(models.Post.moderation_status == "approved")
     if user_id:

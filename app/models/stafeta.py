@@ -13,12 +13,15 @@ from .base import Base
 class StafetaParticipant(Base):
     __tablename__ = "stafeta_participants"
     __table_args__ = (
+        CheckConstraint("desired_slots BETWEEN 0 AND 10", name="ck_stafeta_participants_desired_slots"),
         UniqueConstraint("user_id", name="uq_stafeta_participant_user"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    desired_slots: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

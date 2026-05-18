@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { FaFlag, FaHeart } from "react-icons/fa";
 import { FiChevronDown, FiDownload, FiEye, FiMessageCircle } from "react-icons/fi";
 import { fetchPostAudioStatus } from "../api/audio.js";
@@ -101,15 +101,62 @@ function pdfFilename(post) {
 
 export function PostPromotionMenu({ post, author, user }) {
   const menuRef = useRef(null);
+  const buttonRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
+  const [panelStyle, setPanelStyle] = useState(null);
+
+  const updatePanelPosition = useCallback(() => {
+    const button = buttonRef.current;
+    if (!button || typeof window === "undefined") return;
+
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 320;
+    const edge = viewportWidth <= 520 ? 12 : 16;
+    const preferredWidth = viewportWidth <= 520 ? 236 : 280;
+    const panelWidth = Math.max(196, Math.min(preferredWidth, viewportWidth - edge * 2));
+    const rect = button.getBoundingClientRect();
+    const maxLeft = Math.max(edge, viewportWidth - panelWidth - edge);
+    const left = Math.min(Math.max(rect.right - panelWidth, edge), maxLeft);
+
+    setPanelStyle({
+      position: "fixed",
+      top: `${Math.max(edge, rect.bottom + 8)}px`,
+      left: `${left}px`,
+      right: "auto",
+      width: `${panelWidth}px`,
+      maxWidth: `calc(100vw - ${edge * 2}px)`,
+      transform: "none"
+    });
+  }, []);
 
   useEffect(() => {
     setOpen(false);
     setBusy("");
     setStatus("");
+    setPanelStyle(null);
   }, [post?.id, author?.id, user?.id]);
+
+  useEffect(() => {
+    if (!open) {
+      setPanelStyle(null);
+      return undefined;
+    }
+
+    let frame = window.requestAnimationFrame(updatePanelPosition);
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(updatePanelPosition);
+    };
+
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+    };
+  }, [open, updatePanelPosition]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -159,6 +206,7 @@ export function PostPromotionMenu({ post, author, user }) {
     <span className="title-promotion-menu" ref={menuRef}>
       <button
         className={`title-promotion-toggle ${open ? "open" : ""}`.trim()}
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-label="Opțiuni de promovare"
@@ -168,7 +216,7 @@ export function PostPromotionMenu({ post, author, user }) {
         <FiChevronDown aria-hidden="true" />
       </button>
       {open ? (
-        <span className="title-promotion-panel" role="menu" aria-label="Opțiuni de promovare">
+        <span className="title-promotion-panel" role="menu" aria-label="Opțiuni de promovare" style={panelStyle || undefined}>
           <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentPost} disabled={!user || Boolean(busy)}>
             {busy === "post" ? "Se promovează..." : "Promovează postarea pe profilul tău"}
           </button>

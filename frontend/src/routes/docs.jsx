@@ -16,11 +16,12 @@ const DOC_SECTIONS = [
   {
     id: "auth",
     title: "Conturi, acces și sesiuni",
-    summary: "Utilizatorii intră prin Google, Facebook sau autentificare locală cu coduri email. Platforma poate fi publică sau limitată la o listă de emailuri.",
+    summary: "Utilizatorii intră prin Google, Facebook sau autentificare locală cu coduri email. Platforma pornește închisă și acceptă doar emailuri din lista de acces până când un admin o deschide manual.",
     bullets: [
       "Fluxurile OAuth păstrează return_to doar pentru domeniul principal sau subdomenii valide și trimit utilizatorii noi în configurarea profilului.",
+      "Fereastra de autentificare permite intrare locală, creare cont cu email și parolă, plus Google și Facebook.",
       "Autentificarea locală trimite coduri pentru activarea contului și resetarea parolei prin EmailOutbox.",
-      "Panoul admin controlează deschiderea platformei și lista de emailuri permise.",
+      "Panoul admin controlează deschiderea platformei și lista de emailuri permise; starea implicită este închisă.",
       "Rolurile principale sunt utilizator, moderator și admin; adminul include drepturi de moderare."
     ]
   },
@@ -31,7 +32,7 @@ const DOC_SECTIONS = [
     bullets: [
       "Editorul folosește RichTextEditor și limitele din constants.js: titlu 120 caractere, poezie 10.000, proză scurtă 50.000.",
       "O postare nouă pornește cu moderation_status pending și intră în coada AI post_publish.",
-      "După aprobare, postarea devine vizibilă pe landing, categorii, profil public, arhivă și subdomeniul autorului.",
+      "După aprobare, postarea devine vizibilă pe landing, profil public, arhivă și subdomeniul autorului.",
       "Pagina de lectură comună folosește PieceCol, post actions, progres de derulare și export PDF."
     ]
   },
@@ -64,6 +65,7 @@ const DOC_SECTIONS = [
     summary: "Profilul public este hubul autorului: opere, bio, linkuri, media, inventar echipat și promovări.",
     bullets: [
       "Setările profilului includ subtitlu, descriere, avatar, copertă, locație, playlist YouTube și linkuri sociale.",
+      "Linkurile de donații PayPal, Patreon și Cafea sunt vizibile și editabile doar pentru tierurile premium Bronz, Argint și Aur.",
       "Călimara mea are trei zone promovate: opere proprii, autori promovați și opere de la alți autori.",
       "Structura curentă de promovare folosește limitele 2 / 3 / 3 și câmpurile promoted_own_posts, promoted_authors, promoted_external_posts.",
       "Profilul păstrează acces către toate operele, urmăritori, urmăriți și inventarul public."
@@ -158,9 +160,20 @@ const DOC_SECTIONS = [
     ]
   },
   {
+    id: "stafeta",
+    title: "Ștafeta",
+    summary: "Ștafeta creează texte private pornite de un autor și continuate pe rând de participanți, cu potrivire automată dintr-un pool.",
+    bullets: [
+      "O Ștafetă se poate crea chiar dacă nu există destinatar disponibil; rămâne activă fără rând curent până intră în potrivirea automată.",
+      "Participarea are un număr dorit de Ștafete active: Gratuit și Trubadur până la 3, Cronicar până la 6, Rapsod până la 10.",
+      "Potrivirea folosește doar invitații/rânduri pending sau active pentru limită și alocă întâi utilizatorii cu cele mai puține Ștafete deschise.",
+      "Când un rând nu poate merge mai departe aleatoriu, Ștafeta revine în pool în loc să eșueze cererea."
+    ]
+  },
+  {
     id: "forum",
     title: "Discuții",
-    summary: "Forumul are secțiuni pentru general, poezie, proză scurtă, impresii și anunțuri.",
+    summary: "Forumul are secțiuni pentru anunțuri, discuții generale, poezie și proză scurtă.",
     bullets: [
       "Threadurile și răspunsurile intră în moderare AI înainte să fie publice.",
       "Moderatorii pot șterge sau schimba starea discuțiilor, iar adminii pot administra conținutul din panoul central.",
@@ -175,7 +188,7 @@ const DOC_SECTIONS = [
     bullets: [
       "Un text poate fi într-o singură serie a autorului; ordinea capitolelor se poate schimba.",
       "Paginile publice ascund postările neaprobate, dar panoul autorului le poate afișa pentru editare.",
-      "Categorii, landing, profile și toate-operele folosesc payloaduri publice cu statistici și acțiuni permise.",
+      "Landing, profilele publice și toate-operele folosesc payloaduri publice cu statistici și acțiuni permise.",
       "Exporturile refuză conținutul neaprobat pentru a evita publicarea accidentală."
     ]
   },

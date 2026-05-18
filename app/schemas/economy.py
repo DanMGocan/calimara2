@@ -95,7 +95,6 @@ class GologaniTransactionOut(BaseModel):
 # FORUM SCHEMAS
 # ===================================
 
-ForumSection = Literal["general", "poezie", "proza_scurta", "feedback", "anunturi"]
+ForumSection = Literal["anunturi", "general", "poezie", "proza_scurta"]
 ForumModerationStatus = Literal["pending", "approved", "flagged", "rejected"]
-
 

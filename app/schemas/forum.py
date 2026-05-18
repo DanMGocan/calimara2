@@ -5,13 +5,19 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, fie
 
 from .common import *
 
-ForumSection = Literal["general", "poezie", "proza_scurta", "feedback", "anunturi"]
+ForumSection = Literal["anunturi", "general", "poezie", "proza_scurta"]
 ForumModerationStatus = Literal["pending", "approved", "flagged", "rejected"]
 
 class ForumAuthorRef(BaseModel):
     id: int
     username: str
     avatar_seed: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_premium: bool = False
+    premium_tier: str = "free"
+    gologani_balance: int = 0
+    forum_post_count: int = 0
+    published_post_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -83,4 +89,3 @@ class ForumThreadDetail(ForumThreadSummary):
 # ===================================
 # SERIES SCHEMAS
 # ===================================
-

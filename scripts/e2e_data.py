@@ -35,6 +35,7 @@ USERNAMES = [
     "e2e_target",
     "e2e_suspended",
 ]
+USER_EMAILS = [f"{username}@example.com" for username in USERNAMES]
 POST_SLUGS = ["e2e-poem", "e2e-story", "e2e-pending"]
 SHOP_SLUGS = ["e2e-badge", "e2e-costume"]
 
@@ -62,6 +63,7 @@ def cleanup(db: Session) -> None:
     db.execute(delete(models.SiteFeedback).where(models.SiteFeedback.username_snapshot.like("e2e\\_%", escape="\\")))
     db.execute(delete(models.EmailOutbox).where(models.EmailOutbox.recipient_email.like("e2e\\_%@example.com", escape="\\")))
     db.execute(delete(models.EmailCampaign).where(models.EmailCampaign.subject.like("E2E%")))
+    delete_where_in(db, models.PlatformAllowedEmail, models.PlatformAllowedEmail.email, USER_EMAILS)
     delete_where_in(db, models.User, models.User.username, USERNAMES)
     db.commit()
 
@@ -106,6 +108,7 @@ def make_user(
         paypal_url=f"https://paypal.me/{username}",
     )
     db.add(user)
+    db.add(models.PlatformAllowedEmail(email=user.email, note="e2e"))
     db.flush()
     return user
 
@@ -346,7 +349,7 @@ def seed(db: Session) -> None:
     )
 
     for user in (reader, participant):
-        db.add(models.StafetaParticipant(user_id=user.id, is_active=True))
+        db.add(models.StafetaParticipant(user_id=user.id, is_active=True, desired_slots=3))
     work = models.StafetaWork(
         creator_id=author.id,
         title="E2E Ștafeta",

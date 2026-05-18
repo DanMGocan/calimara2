@@ -672,7 +672,7 @@ function AdminDashboardView({ user }) {
   const jobsByStatus = state.overview?.jobs?.by_status || {};
   const traffic = state.overview?.traffic || {};
   const activeUserFilterCount = countActiveUserFilters(userSearch, userFilters);
-  const platformAccess = state.platformAccess || { open: true, allowed_count: 0, emails: [] };
+  const platformAccess = state.platformAccess || { open: false, allowed_count: 0, emails: [] };
 
   return (
     <PageShell kicker="admin" title={canAdmin ? "Admin" : "Moderare"} sub={`Conectat ca ${user.username}.`}>
@@ -751,7 +751,7 @@ function AdminDashboardView({ user }) {
 
       {!state.loading && !state.error && canAdmin && activeTab === "access" ? (
         <div className="admin-grid">
-          <AdminPanel title="Acces platformă" description="Controlează dacă platforma este publică sau doar pe bază de listă.">
+          <AdminPanel title="Acces platformă" description="Platforma pornește închisă; doar emailurile permise pot intra până este deschisă manual.">
             <div className="admin-access-status">
               <div>
                 <span className="rail-label">Stare</span>

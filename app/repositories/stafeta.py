@@ -16,6 +16,13 @@ from ..schemas.common import _validate_post_content_limit
 
 JOB_STAFETA_SEGMENT_MODERATION = "stafeta_segment_moderation"
 JOB_STAFETA_TURN_TIMEOUT = "stafeta_turn_timeout"
+STAFETA_OPEN_ASSIGNMENT_STATUSES = ("pending", "active")
+STAFETA_SLOT_CAPS = {
+    "free": 3,
+    "trubadur": 3,
+    "cronicar": 6,
+    "rapsod": 10,
+}
 
 
 def _generate_stafeta_slug(title: str) -> str:
@@ -53,19 +60,104 @@ def _user_ref(user: Optional[models.User]) -> Optional[dict]:
     }
 
 
-def set_stafeta_participation(db: Session, user: models.User, participates: bool) -> models.StafetaParticipant:
+def stafeta_max_slots_for_user(user: models.User) -> int:
+    if not getattr(user, "is_premium", False):
+        return STAFETA_SLOT_CAPS["free"]
+    tier = getattr(user, "premium_tier", "free") or "free"
+    return STAFETA_SLOT_CAPS.get(tier, STAFETA_SLOT_CAPS["free"])
+
+
+def _normalize_stafeta_desired_slots(
+    user: models.User,
+    participates: bool,
+    desired_slots: Optional[int],
+    existing_slots: Optional[int] = None,
+) -> int:
+    if not participates:
+        return 0
+    max_slots = stafeta_max_slots_for_user(user)
+    raw_slots = desired_slots
+    if raw_slots is None:
+        raw_slots = existing_slots if existing_slots and existing_slots > 0 else max_slots
+    return max(1, min(int(raw_slots or max_slots), max_slots))
+
+
+def count_user_open_stafeta_assignments(
+    db: Session,
+    user_id: int,
+    *,
+    ignore_assignment_id: Optional[int] = None,
+) -> int:
+    query = (
+        db.query(func.count(models.StafetaAssignment.id))
+        .join(models.StafetaWork, models.StafetaWork.id == models.StafetaAssignment.work_id)
+        .filter(
+            models.StafetaAssignment.user_id == user_id,
+            models.StafetaAssignment.status.in_(STAFETA_OPEN_ASSIGNMENT_STATUSES),
+            models.StafetaWork.status == "active",
+        )
+    )
+    if ignore_assignment_id:
+        query = query.filter(models.StafetaAssignment.id != ignore_assignment_id)
+    return int(query.scalar() or 0)
+
+
+def get_stafeta_participation_state(db: Session, user: models.User) -> dict:
     participant = (
         db.query(models.StafetaParticipant)
         .filter(models.StafetaParticipant.user_id == user.id)
         .first()
     )
+    max_slots = stafeta_max_slots_for_user(user)
+    participates = bool(participant and participant.is_active)
+    desired_slots = 0
+    if participates:
+        desired_slots = _normalize_stafeta_desired_slots(
+            user,
+            True,
+            getattr(participant, "desired_slots", 0) or None,
+            getattr(participant, "desired_slots", 0) or None,
+        )
+    return {
+        "participates": participates,
+        "desired_slots": desired_slots,
+        "max_slots": max_slots,
+        "open_assignments": count_user_open_stafeta_assignments(db, user.id),
+    }
+
+
+def set_stafeta_participation(
+    db: Session,
+    user: models.User,
+    participates: bool,
+    desired_slots: Optional[int] = None,
+) -> models.StafetaParticipant:
+    participant = (
+        db.query(models.StafetaParticipant)
+        .filter(models.StafetaParticipant.user_id == user.id)
+        .first()
+    )
+    normalized_slots = _normalize_stafeta_desired_slots(
+        user,
+        bool(participates),
+        desired_slots,
+        getattr(participant, "desired_slots", None) if participant else None,
+    )
     if participant:
         participant.is_active = bool(participates)
+        participant.desired_slots = normalized_slots
     else:
-        participant = models.StafetaParticipant(user_id=user.id, is_active=bool(participates))
+        participant = models.StafetaParticipant(
+            user_id=user.id,
+            is_active=bool(participates),
+            desired_slots=normalized_slots,
+        )
         db.add(participant)
     db.commit()
     db.refresh(participant)
+    if participant.is_active and participant.desired_slots > 0:
+        match_stafeta_pool(db)
+        db.refresh(participant)
     return participant
 
 
@@ -250,19 +342,109 @@ def list_previous_stafeta_participants(
     )
 
 
-def _random_candidate_query(db: Session, excluded_ids: Iterable[int]):
-    excluded = {item for item in excluded_ids if item}
+def _user_open_stafeta_counts(
+    db: Session,
+    user_ids: Iterable[int],
+    *,
+    ignore_assignment_id: Optional[int] = None,
+) -> dict[int, int]:
+    ids = {item for item in user_ids if item}
+    if not ids:
+        return {}
     query = (
-        db.query(models.User)
+        db.query(models.StafetaAssignment.user_id, func.count(models.StafetaAssignment.id))
+        .join(models.StafetaWork, models.StafetaWork.id == models.StafetaAssignment.work_id)
+        .filter(
+            models.StafetaAssignment.user_id.in_(ids),
+            models.StafetaAssignment.status.in_(STAFETA_OPEN_ASSIGNMENT_STATUSES),
+            models.StafetaWork.status == "active",
+        )
+        .group_by(models.StafetaAssignment.user_id)
+    )
+    if ignore_assignment_id:
+        query = query.filter(models.StafetaAssignment.id != ignore_assignment_id)
+    return {int(user_id): int(count or 0) for user_id, count in query.all()}
+
+
+def _participant_effective_slots(user: models.User, participant: models.StafetaParticipant) -> int:
+    return _normalize_stafeta_desired_slots(
+        user,
+        True,
+        getattr(participant, "desired_slots", 0) or None,
+        getattr(participant, "desired_slots", 0) or None,
+    )
+
+
+def _eligible_random_stafeta_recipients(
+    db: Session,
+    *,
+    excluded_ids: Iterable[int],
+) -> list[tuple[int, datetime, int, models.User]]:
+    excluded = {item for item in excluded_ids if item}
+    rows = (
+        db.query(models.User, models.StafetaParticipant)
         .join(models.StafetaParticipant, models.StafetaParticipant.user_id == models.User.id)
         .filter(
             models.StafetaParticipant.is_active == True,
             models.User.is_suspended == False,
         )
+        .all()
     )
-    if excluded:
-        query = query.filter(~models.User.id.in_(excluded))
-    return query
+    rows = [(user, participant) for user, participant in rows if user.id not in excluded]
+    counts = _user_open_stafeta_counts(db, [user.id for user, _participant in rows])
+    candidates: list[tuple[int, datetime, int, models.User]] = []
+    far_past = datetime(1970, 1, 1)
+    for user, participant in rows:
+        desired_slots = _participant_effective_slots(user, participant)
+        open_count = counts.get(user.id, 0)
+        if desired_slots <= 0 or open_count >= desired_slots:
+            continue
+        last_assigned_at = participant.last_assigned_at or participant.created_at or far_past
+        candidates.append((open_count, last_assigned_at, user.id, user))
+    return sorted(candidates, key=lambda item: (item[0], item[1], item[2]))
+
+
+def stafeta_assignment_limit_for_user(db: Session, user: models.User) -> int:
+    participant = (
+        db.query(models.StafetaParticipant)
+        .filter(models.StafetaParticipant.user_id == user.id)
+        .first()
+    )
+    if participant and participant.is_active:
+        return _participant_effective_slots(user, participant)
+    return stafeta_max_slots_for_user(user)
+
+
+def user_has_stafeta_assignment_capacity(
+    db: Session,
+    user: models.User,
+    *,
+    ignore_assignment_id: Optional[int] = None,
+) -> bool:
+    return count_user_open_stafeta_assignments(
+        db,
+        user.id,
+        ignore_assignment_id=ignore_assignment_id,
+    ) < stafeta_assignment_limit_for_user(db, user)
+
+
+def _touch_stafeta_participant_assignment(db: Session, user_id: int, when: Optional[datetime] = None) -> None:
+    participant = (
+        db.query(models.StafetaParticipant)
+        .filter(models.StafetaParticipant.user_id == user_id)
+        .first()
+    )
+    if participant:
+        participant.last_assigned_at = when or utcnow_naive()
+
+
+def _clear_stafeta_current_turn(db: Session, work: models.StafetaWork, *, commit: bool = False) -> None:
+    work.current_assignment_id = None
+    work.current_holder_user_id = None
+    work.updated_at = utcnow_naive()
+    if commit:
+        db.commit()
+        db.refresh(work)
 
 
 def choose_random_stafeta_recipient(
@@ -277,11 +459,11 @@ def choose_random_stafeta_recipient(
         excluded.add(work.current_holder_user_id)
 
     prior_ids = _participant_user_ids(db, work.id)
-    fresh_query = _random_candidate_query(db, excluded | prior_ids)
-    target = fresh_query.order_by(func.random()).first()
-    if target:
-        return target
-    return _random_candidate_query(db, excluded).order_by(func.random()).first()
+    fresh_candidates = _eligible_random_stafeta_recipients(db, excluded_ids=excluded | prior_ids)
+    if fresh_candidates:
+        return fresh_candidates[0][3]
+    candidates = _eligible_random_stafeta_recipients(db, excluded_ids=excluded)
+    return candidates[0][3] if candidates else None
 
 
 def _create_assignment(
@@ -303,10 +485,37 @@ def _create_assignment(
     )
     db.add(assignment)
     db.flush()
+    _touch_stafeta_participant_assignment(db, target.id, assignment.created_at or utcnow_naive())
     work.current_assignment_id = assignment.id
     work.current_holder_user_id = target.id
     work.updated_at = utcnow_naive()
     return assignment
+
+
+def match_stafeta_pool(db: Session) -> list[models.StafetaAssignment]:
+    assignments: list[models.StafetaAssignment] = []
+    works = (
+        db.query(models.StafetaWork)
+        .options(joinedload(models.StafetaWork.creator))
+        .filter(
+            models.StafetaWork.status == "active",
+            models.StafetaWork.current_assignment_id.is_(None),
+            models.StafetaWork.current_holder_user_id.is_(None),
+        )
+        .order_by(models.StafetaWork.updated_at.asc(), models.StafetaWork.id.asc())
+        .all()
+    )
+    for work in works:
+        target = choose_random_stafeta_recipient(db, work)
+        if not target:
+            continue
+        assignment = _create_assignment(db, work, target, assigned_by=work.creator, source="random", status="active")
+        db.commit()
+        db.refresh(assignment)
+        assignments.append(assignment)
+        _notify_assignment(db, work, assignment)
+        enqueue_stafeta_turn_timeout_job(db, assignment)
+    return assignments
 
 
 def _notify_assignment(db: Session, work: models.StafetaWork, assignment: models.StafetaAssignment) -> None:
@@ -342,7 +551,8 @@ def assign_stafeta_to_random(
 ) -> tuple[Optional[models.StafetaAssignment], Optional[str]]:
     target = choose_random_stafeta_recipient(db, work, exclude_user_ids=exclude_user_ids)
     if not target:
-        return None, "no_random_participant"
+        _clear_stafeta_current_turn(db, work, commit=True)
+        return None, None
     assignment = _create_assignment(db, work, target, assigned_by=assigned_by, source=source, status="active")
     db.commit()
     db.refresh(assignment)
@@ -391,16 +601,18 @@ def create_stafeta_work(
         if target.is_suspended:
             db.rollback()
             return None, "target_suspended"
+        if not user_has_stafeta_assignment_capacity(db, target):
+            db.rollback()
+            return None, "target_at_capacity"
         assignment = _create_assignment(db, work, target, assigned_by=creator, source="specific", status="pending")
         db.commit()
         db.refresh(work)
         _notify_assignment(db, work, assignment)
         return work, None
 
-    assignment, error = assign_stafeta_to_random(db, work, assigned_by=creator, source="random")
-    if error:
-        db.rollback()
-        return None, error
+    db.commit()
+    db.refresh(work)
+    match_stafeta_pool(db)
     db.refresh(work)
     return work, None
 
@@ -510,7 +722,11 @@ def respond_to_stafeta_assignment(
         assignment.status = "refused"
         assignment.completed_at = now
         creator = work.creator or db.query(models.User).filter(models.User.id == work.creator_id).first()
-        creator_assignment = _create_assignment(db, work, creator, assigned_by=actor, source="return", status="active")
+        creator_assignment = None
+        if creator and user_has_stafeta_assignment_capacity(db, creator):
+            creator_assignment = _create_assignment(db, work, creator, assigned_by=actor, source="return", status="active")
+        else:
+            _clear_stafeta_current_turn(db, work)
         db.commit()
         db.refresh(assignment)
         create_notification(
@@ -522,7 +738,8 @@ def respond_to_stafeta_assignment(
             link=_stafeta_link(work),
             extra_data={"work_id": work.id, "work_slug": work.slug, "assignment_id": assignment.id},
         )
-        _notify_assignment(db, work, creator_assignment)
+        if creator_assignment:
+            _notify_assignment(db, work, creator_assignment)
         return assignment, None
     return None, "bad_action"
 
@@ -553,6 +770,9 @@ def _validate_stafeta_destination(
         previous_ids = {user.id for user in list_previous_stafeta_participants(db, work, exclude_user_id=actor.id)}
         if data.target_user_id not in previous_ids:
             return "target_not_previous"
+        target = db.query(models.User).filter(models.User.id == data.target_user_id).first()
+        if target and not user_has_stafeta_assignment_capacity(db, target):
+            return "target_at_capacity"
         return None
     if data.target_mode == "specific":
         if data.target_user_id == actor.id:
@@ -560,6 +780,8 @@ def _validate_stafeta_destination(
         target = db.query(models.User).filter(models.User.id == data.target_user_id).first()
         if not target or target.is_suspended:
             return "target_not_found"
+        if not user_has_stafeta_assignment_capacity(db, target):
+            return "target_at_capacity"
         return None
     return "bad_target"
 
@@ -611,11 +833,14 @@ def send_stafeta_forward(
         return segment, None
 
     target = choose_random_stafeta_recipient(db, work, exclude_user_ids={actor.id})
-    if not target:
-        return None, "no_random_participant"
     now = utcnow_naive()
     assignment.status = "completed"
     assignment.completed_at = now
+    if not target:
+        _clear_stafeta_current_turn(db, work)
+        db.commit()
+        db.refresh(assignment)
+        return None, None
     next_assignment = _create_assignment(db, work, target, assigned_by=actor, source="random", status="active")
     db.commit()
     db.refresh(next_assignment)
@@ -637,6 +862,9 @@ def creator_assign_stafeta_user(
     if target.is_suspended:
         return None, "target_suspended"
     current = get_current_stafeta_assignment(db, work)
+    ignore_assignment_id = current.id if current and current.user_id == target.id else None
+    if not user_has_stafeta_assignment_capacity(db, target, ignore_assignment_id=ignore_assignment_id):
+        return None, "target_at_capacity"
     if current and current.status in {"pending", "active"}:
         current.status = "cancelled"
         current.completed_at = utcnow_naive()
@@ -680,10 +908,13 @@ def _assign_after_approved_segment(
 
     if segment.next_target_mode == "creator":
         target = work.creator or db.query(models.User).filter(models.User.id == work.creator_id).first()
-        next_assignment = _create_assignment(db, work, target, assigned_by=segment.author, source="return", status="active")
-        db.commit()
-        db.refresh(next_assignment)
-        _notify_assignment(db, work, next_assignment)
+        if target and user_has_stafeta_assignment_capacity(db, target):
+            next_assignment = _create_assignment(db, work, target, assigned_by=segment.author, source="return", status="active")
+            db.commit()
+            db.refresh(next_assignment)
+            _notify_assignment(db, work, next_assignment)
+        else:
+            _clear_stafeta_current_turn(db, work, commit=True)
         return
 
     if segment.next_target_mode in {"previous", "specific"} and segment.next_target_user_id:
@@ -691,7 +922,7 @@ def _assign_after_approved_segment(
             models.User.id == segment.next_target_user_id,
             models.User.is_suspended == False,
         ).first()
-        if target:
+        if target and user_has_stafeta_assignment_capacity(db, target):
             next_assignment = _create_assignment(db, work, target, assigned_by=segment.author, source="previous", status="active")
             db.commit()
             db.refresh(next_assignment)
@@ -708,11 +939,7 @@ def _assign_after_approved_segment(
         enqueue_stafeta_turn_timeout_job(db, next_assignment)
         return
 
-    target = work.creator or db.query(models.User).filter(models.User.id == work.creator_id).first()
-    next_assignment = _create_assignment(db, work, target, assigned_by=segment.author, source="return", status="active")
-    db.commit()
-    db.refresh(next_assignment)
-    _notify_assignment(db, work, next_assignment)
+    _clear_stafeta_current_turn(db, work, commit=True)
 
 
 def apply_stafeta_segment_moderation_result(
@@ -770,11 +997,20 @@ def process_stafeta_turn_timeout(
     assignment.completed_at = utcnow_naive()
     target = choose_random_stafeta_recipient(db, work, exclude_user_ids={assignment.user_id})
     if not target:
-        target = work.creator or db.query(models.User).filter(models.User.id == work.creator_id).first()
-        source = "return"
-    else:
-        source = "timeout"
-    next_assignment = _create_assignment(db, work, target, assigned_by=assignment.user, source=source, status="active")
+        _clear_stafeta_current_turn(db, work)
+        db.commit()
+        db.refresh(assignment)
+        create_notification(
+            db=db,
+            user_id=assignment.user_id,
+            notif_type="stafeta_turn_expired",
+            title="Ștafeta a mers mai departe",
+            message=f"Termenul pentru „{work.title}\" a expirat.",
+            link=_stafeta_link(work),
+            extra_data={"work_id": work.id, "work_slug": work.slug, "assignment_id": assignment.id},
+        )
+        return None, None
+    next_assignment = _create_assignment(db, work, target, assigned_by=assignment.user, source="timeout", status="active")
     db.commit()
     db.refresh(next_assignment)
     _notify_assignment(db, work, next_assignment)

@@ -39,8 +39,9 @@ SYSTEMD_SERVICE_NAME = os.getenv("SYSTEMD_SERVICE_NAME", "calimara").strip()
 DEV_PREMIUM_USER_EMAIL = "gocandan@gmail.com"
 DEV_PREMIUM_USER_USERNAME = "gocandan"
 DEV_PREMIUM_USER_GOOGLE_ID = "seed-google-gocandan"
+DEV_ADMIN_PASSWORD_USER_EMAIL = "sad@sad.com"
 REQUIRED_SEED_TABLES = {
-    "users": 2,
+    "users": 3,
     "posts": 16,
     "shop_items": 1,
 }
@@ -425,6 +426,43 @@ def verify_seed_data(database_url):
             if dev_user is None:
                 raise RuntimeError(
                     f"Seed verification failed: {DEV_PREMIUM_USER_EMAIL} was not created."
+                )
+            admin_password_user = connection.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM users
+                    WHERE email = :email
+                      AND is_admin = TRUE
+                      AND password_hash IS NOT NULL
+                      AND email_verified_at IS NOT NULL
+                    """
+                ),
+                {"email": DEV_ADMIN_PASSWORD_USER_EMAIL},
+            ).first()
+            if admin_password_user is None:
+                raise RuntimeError(
+                    f"Seed verification failed: {DEV_ADMIN_PASSWORD_USER_EMAIL} admin password account was not created."
+                )
+            access_setting = connection.execute(
+                text("SELECT is_open FROM platform_access_settings WHERE id = 1")
+            ).scalar_one_or_none()
+            if access_setting is not False:
+                raise RuntimeError("Seed verification failed: platform access is not closed by default.")
+            allowed_seed_emails = {
+                row.email
+                for row in connection.execute(text("SELECT email FROM platform_allowed_emails"))
+            }
+            required_allowed_emails = {
+                DEV_PREMIUM_USER_EMAIL,
+                DEV_ADMIN_PASSWORD_USER_EMAIL,
+                "dangocan@outlook.com",
+            }
+            missing_allowed_emails = required_allowed_emails - allowed_seed_emails
+            if missing_allowed_emails:
+                raise RuntimeError(
+                    "Seed verification failed: missing allowed platform emails: "
+                    + ", ".join(sorted(missing_allowed_emails))
                 )
     finally:
         engine.dispose()

@@ -103,6 +103,7 @@ def _create_user(
         gologani_balance=balance,
     )
     db.add(user)
+    db.add(models.PlatformAllowedEmail(email=user.email, note="smoke"))
     db.flush()
     return user
 
@@ -143,6 +144,7 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
     peer = _create_user(db, "smokereader", premium=True, balance=50)
     target = _create_user(db, "smoketarget")
     invitee = _create_user(db, "smokeinvitee")
+    db.add(models.PlatformAllowedEmail(email="new-password-smoke@example.com", note="smoke"))
 
     post = _create_post(db, user, "smoke-poem", category="poezie")
     peer_post = _create_post(db, peer, "reader-story", category="proza_scurta")
@@ -314,7 +316,7 @@ def _seed_smoke_data(db: Session, audio_dir) -> SmokeData:
     )
     db.add(theatre_request)
 
-    db.add(models.StafetaParticipant(user_id=peer.id, is_active=True))
+    db.add(models.StafetaParticipant(user_id=peer.id, is_active=True, desired_slots=3))
     stafeta_work = models.StafetaWork(
         creator_id=user.id,
         title="Smoke Stafeta",
@@ -541,7 +543,7 @@ def smoke_client(monkeypatch, tmp_path):
             {
                 "key": "trubadur",
                 "name": "Trubadur",
-                "eyebrow": "Premium",
+                "eyebrow": "Bronz",
                 "price": "3,99 €",
                 "cadence": "/ lună",
                 "summary": "Smoke premium plan",
@@ -650,7 +652,6 @@ SMOKE_CASES = [
     SmokeCase("fetchPublicProfile", "GET", _path("/api/utilizator/smokeauthor/profil"), {200}),
     SmokeCase("updateFeaturedPosts", "PUT", _path("/api/utilizator/postari-recomandate"), {200}, lambda data: {"post_ids": [data.post_id]}),
     SmokeCase("fetchLanding", "GET", _path("/api/prima-pagina?category=toate"), {200}),
-    SmokeCase("fetchCategory", "GET", _path("/api/categorii/poezie?sort_by=newest"), {200}),
     SmokeCase("fetchBlog", "GET", _path("/api/bloguri/smokeauthor"), {200}),
     SmokeCase("fetchPostDetail", "GET", _path("/api/bloguri/smokeauthor/postari/smoke-poem"), {200}),
     SmokeCase("fetchPostAudioStatus", "GET", lambda data: f"/api/audio/postari/{data.post_id}", {200}),
@@ -751,7 +752,7 @@ SMOKE_CASES = [
     SmokeCase("fetchMyTheatreInvitations", "GET", _path("/api/utilizator/teatru/in-asteptare"), {200}),
     SmokeCase("fetchStafetaWorks", "GET", _path("/api/stafeta"), {200}),
     SmokeCase("fetchStafetaParticipation", "GET", _path("/api/stafeta/participare"), {200}),
-    SmokeCase("updateStafetaParticipation", "PUT", _path("/api/stafeta/participare"), {200}, _json({"participates": True})),
+    SmokeCase("updateStafetaParticipation", "PUT", _path("/api/stafeta/participare"), {200}, _json({"participates": True, "desired_slots": 3})),
     SmokeCase("createStafetaWork", "POST", _path("/api/stafeta"), {201}, _json({"title": "Created Smoke Stafeta", "category": "poezie", "initial_content": "<p>Start</p>", "first_target_mode": "specific", "assigned_username": "smokereader"})),
     SmokeCase("fetchStafetaWork", "GET", lambda data: f"/api/stafeta/{data.stafeta_slug}", {200}),
     SmokeCase("sendStafetaForward", "POST", lambda data: f"/api/stafeta/{data.stafeta_work_id}/trimite", {200}, _json({"content": "<p>Next</p>", "target_mode": "random"})),
@@ -907,6 +908,13 @@ def test_landing_api_returns_json_stats(smoke_client, path: str):
     payload = response.json()
     assert payload["stats"]["total_posts"] > 0
     assert payload["stats"]["total_authors"] > 0
+
+
+def test_category_page_api_is_removed(smoke_client):
+    client, _data = smoke_client
+    response = client.get("/api/categorii/poezie?sort_by=newest")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
 
 
 def test_audio_download_returns_attachment(smoke_client):

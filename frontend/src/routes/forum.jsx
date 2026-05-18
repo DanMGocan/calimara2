@@ -2,29 +2,89 @@ import { useEffect, useState } from "react";
 import { createForumReply, createForumThread, fetchForumThread, fetchForumThreads } from "../api/forum.js";
 import { searchUsers } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
+import { useAuthModal } from "../app/auth-modal.jsx";
 import { FORUM_MODERATION_MESSAGE, FORUM_SECTIONS, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
 import { AuthorLink, RichTextContent } from "../app/content.jsx";
 import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
-import { formatDateTime, forumSectionLabel, htmlToText } from "../app/format.js";
+import { formatDateTime, formatGologani, formatNumber, forumSectionLabel, htmlToText } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { ActionRow, AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
-import { mainPath } from "../app/paths.js";
+import { mainPath, profileAvatarUrl } from "../app/paths.js";
 
-function ForumListView({ user }) {
+function ForumAuthorPanel({ author }) {
+  if (!author?.username) {
+    return (
+      <aside className="forum-author-panel">
+        <span className="forum-author-name">anonim</span>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="forum-author-panel" aria-label={`Autor ${author.username}`}>
+      <img className="forum-author-avatar profile-picture" src={profileAvatarUrl(author, 96)} alt="" aria-hidden="true" />
+      <AuthorLink user={author} className="forum-author-name author-link" />
+      <dl className="forum-author-stats" aria-label="Statistici autor">
+        <div>
+          <dt>forum</dt>
+          <dd>{formatNumber(author.forum_post_count)}</dd>
+        </div>
+        <div>
+          <dt>Gologani</dt>
+          <dd>{formatGologani(author.gologani_balance)}</dd>
+        </div>
+        <div>
+          <dt>publicate</dt>
+          <dd>{formatNumber(author.published_post_count)}</dd>
+        </div>
+      </dl>
+    </aside>
+  );
+}
+
+function ForumMessage({ item, isThread = false }) {
+  return (
+    <article className={isThread ? "forum-post" : "forum-reply"} id={isThread ? undefined : `reply-${item.id}`}>
+      <ForumAuthorPanel author={item.author} />
+      <div className="forum-message-content">
+        <div className="piece-card-meta">
+          <span>{formatDateTime(item.created_at)}</span>
+          {item.moderation_status !== "approved" ? <span>{item.moderation_status}</span> : null}
+        </div>
+        <RichTextContent html={item.content} className="forum-body" />
+      </div>
+    </article>
+  );
+}
+
+function ForumListView({ user, authLoaded }) {
   const [section, setSection] = useState("general");
+  const { openAuthModal } = useAuthModal();
   const { data, error, loading } = useAsync(
-    () => (user ? fetchForumThreads(section) : Promise.resolve({ threads: [] })),
-    [user?.id, section]
+    () => fetchForumThreads(section),
+    [section]
   );
 
-  if (!user) return <AuthRequired className="forum-page" />;
+  const createHref = mainPath("/discutii/nou");
+  const newThreadAction = user ? (
+    <a className="cal-btn primary" href={createHref}>Discuție nouă</a>
+  ) : (
+    <button
+      className="cal-btn primary"
+      type="button"
+      disabled={!authLoaded}
+      onClick={() => openAuthModal?.({ returnTo: createHref })}
+    >
+      Discuție nouă
+    </button>
+  );
 
   return (
     <PageShell
       kicker="discuții"
       title="Discuții"
-      sub="Discuții pentru întrebări, feedback și conversații între autori."
+      sub="Discuții pentru întrebări și conversații între autori."
       className="forum-page"
       side={
         <aside className="side-col">
@@ -35,12 +95,13 @@ function ForumListView({ user }) {
                 key={item.key}
                 number={String(index + 1).padStart(2, "0")}
                 label={item.label}
+                className={item.featured ? "forum-section-featured" : ""}
                 active={section === item.key}
                 onClick={() => setSection(item.key)}
               />
             ))}
           </div>
-          <a className="cal-btn primary" href={mainPath("/discutii/nou")}>Discuție nouă</a>
+          {newThreadAction}
         </aside>
       }
     >
@@ -164,7 +225,7 @@ function ForumThreadCreateView({ user }) {
     </PageShell>
   );
 }
-function ForumThreadDetailView({ user, slug }) {
+function ForumThreadDetailView({ user, authLoaded, slug }) {
   const [reply, setReply] = useState("");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -177,17 +238,16 @@ function ForumThreadDetailView({ user, slug }) {
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const { openAuthModal } = useAuthModal();
   const { data, error, loading } = useAsync(
-    () => (user ? fetchForumThread(slug) : Promise.resolve(null)),
-    [user?.id, slug, refreshKey]
+    () => fetchForumThread(slug),
+    [slug, refreshKey]
   );
 
   useEffect(() => {
     setReplyAutoDiacritics(Boolean(user?.is_premium));
     setReplyReview(null);
   }, [user?.id, user?.is_premium, slug]);
-
-  if (!user) return <AuthRequired className="forum-page" />;
 
   const submitReply = async (event) => {
     event.preventDefault();
@@ -234,34 +294,20 @@ function ForumThreadDetailView({ user, slug }) {
           {data.moderation_status !== "approved" ? (
             <StatusPanel title="Mesaj în curs de moderare">{FORUM_MODERATION_MESSAGE}</StatusPanel>
           ) : null}
-          <article className="forum-post">
-            <div className="piece-card-meta">
-              {data.author?.username ? <AuthorLink user={data.author} /> : <span>anonim</span>}
-              <span>{formatDateTime(data.created_at)}</span>
-              {data.moderation_status !== "approved" ? <span>{data.moderation_status}</span> : null}
-            </div>
-            <RichTextContent html={data.content} className="forum-body" />
-          </article>
+          <ForumMessage item={data} isThread />
           <section className="forum-replies" aria-label="Răspunsuri">
             <div className="piece-card-kicker">răspunsuri</div>
             {data.replies?.length ? (
               <div className="reply-list">
                 {data.replies.map((item) => (
-                  <article className="forum-reply" id={`reply-${item.id}`} key={item.id}>
-                    <div className="piece-card-meta">
-                      {item.author?.username ? <AuthorLink user={item.author} /> : <span>anonim</span>}
-                      <span>{formatDateTime(item.created_at)}</span>
-                      {item.moderation_status !== "approved" ? <span>{item.moderation_status}</span> : null}
-                    </div>
-                    <RichTextContent html={item.content} className="forum-body" />
-                  </article>
+                  <ForumMessage item={item} key={item.id} />
                 ))}
               </div>
             ) : <p className="auth-sub">Nu există răspunsuri încă.</p>}
           </section>
           {data.is_locked ? (
             <StatusPanel title="Discuție închisă">Nu mai pot fi adăugate răspunsuri.</StatusPanel>
-          ) : (
+          ) : user ? (
             <form className="form-stack" onSubmit={submitReply}>
               <label className="auth-field" htmlFor="forum-reply">Răspuns</label>
               <RichTextEditor id="forum-reply" value={reply} onChange={setReply} maxLength={4000} mentionSearch={searchUsers} />
@@ -292,6 +338,15 @@ function ForumThreadDetailView({ user, slug }) {
                 })}
               </button>
             </form>
+          ) : authLoaded ? (
+            <StatusPanel
+              title="Autentificare necesară"
+              action={<button className="cal-btn primary" type="button" onClick={() => openAuthModal?.({ returnTo: window.location.href })}>Autentificare</button>}
+            >
+              Autentifică-te ca să răspunzi.
+            </StatusPanel>
+          ) : (
+            <StatusPanel title="Se verifică sesiunea" />
           )}
         </div>
       ) : null}
@@ -299,8 +354,8 @@ function ForumThreadDetailView({ user, slug }) {
   );
 }
 
-export default function ForumRoute({ route, user }) {
+export default function ForumRoute({ route, user, authLoaded }) {
   if (route.name === "forumCreate") return <ForumThreadCreateView user={user} />;
-  if (route.name === "forumThread") return <ForumThreadDetailView user={user} slug={route.slug} />;
-  return <ForumListView user={user} />;
+  if (route.name === "forumThread") return <ForumThreadDetailView user={user} authLoaded={authLoaded} slug={route.slug} />;
+  return <ForumListView user={user} authLoaded={authLoaded} />;
 }

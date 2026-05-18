@@ -3,6 +3,7 @@ from typing import Literal, Optional, List
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator, model_validator
 
+from ..utils import normalize_external_url
 from .common import *
 
 class UserBase(BaseModel):
@@ -126,6 +127,9 @@ class UserInDB(UserBase):
     email_analytics_digest: bool = True
     email_admin_announcements: bool = True
     stafeta_participates: bool = False
+    stafeta_desired_slots: int = 0
+    stafeta_max_slots: int = 3
+    stafeta_open_assignments: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -163,7 +167,7 @@ class SocialLinksUpdate(BaseModel):
     @classmethod
     def sanitize_url(cls, value: Optional[str], info: ValidationInfo) -> Optional[str]:
         limit = 500 if info.field_name == "youtube_playlist_url" else 300
-        return _trim_optional_string(value, limit, "Linkul")
+        return normalize_external_url(_trim_optional_string(value, limit, "Linkul"))
 
 
 
@@ -216,7 +220,7 @@ class UserProfileSettingsUpdate(BaseModel):
     @classmethod
     def sanitize_url(cls, value: Optional[str], info: ValidationInfo) -> Optional[str]:
         limit = 500 if info.field_name == "youtube_playlist_url" else 300
-        return _trim_optional_string(value, limit, "Linkul")
+        return normalize_external_url(_trim_optional_string(value, limit, "Linkul"))
 
 
 class BestFriendsUpdate(BaseModel):

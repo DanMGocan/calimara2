@@ -20,11 +20,8 @@ test("free user can submit a new post without premium diacritics flow", async ({
   await expect(page).toHaveURL(/e2e_participant\.localhost|\/$/);
 });
 
-test("category, archive, and seeded post data are reachable", async ({ page }) => {
+test("archive and seeded post data are reachable", async ({ page }) => {
   await loginByApi(page, users.author);
-  await page.goto("/categorie/poezie");
-  await expectHeading(page, "Poezie");
-
   await page.goto("/api/postari/arhiva");
   await expect(page.locator("body")).toContainText("e2e-poem");
 });

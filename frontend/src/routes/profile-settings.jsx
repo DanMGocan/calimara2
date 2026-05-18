@@ -37,6 +37,12 @@ const EMAIL_PREFERENCE_OPTIONS = [
   ["email_analytics_digest", "Analitice avansate"],
   ["email_admin_announcements", "Anunțuri administrative"]
 ];
+const SUPPORT_LINK_PREMIUM_TIERS = new Set(["trubadur", "cronicar", "rapsod"]);
+
+function stafetaSlotOptions(maxSlots) {
+  const limit = Math.max(1, Number(maxSlots) || 3);
+  return Array.from({ length: limit }, (_item, index) => index + 1);
+}
 
 function emailPrefsFromUser(user) {
   return {
@@ -312,6 +318,7 @@ function ProfileSettingsView({ user, onUserUpdate }) {
   const [form, setForm] = useState(() => profileFormFromUser(user));
   const [emailPrefs, setEmailPrefs] = useState(() => emailPrefsFromUser(user));
   const [stafetaParticipates, setStafetaParticipates] = useState(Boolean(user?.stafeta_participates));
+  const [stafetaSlots, setStafetaSlots] = useState(Number(user?.stafeta_desired_slots || user?.stafeta_max_slots || 3));
   const [status, setStatus] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
   const [stafetaStatus, setStafetaStatus] = useState("");
@@ -323,9 +330,12 @@ function ProfileSettingsView({ user, onUserUpdate }) {
     setForm(profileFormFromUser(user));
     setEmailPrefs(emailPrefsFromUser(user));
     setStafetaParticipates(Boolean(user?.stafeta_participates));
-  }, [user?.id]);
+    setStafetaSlots(Number(user?.stafeta_desired_slots || user?.stafeta_max_slots || 3));
+  }, [user?.id, user?.stafeta_participates, user?.stafeta_desired_slots, user?.stafeta_max_slots]);
 
   if (!user) return <AuthRequired />;
+
+  const supportLinksLocked = !(user.is_premium && SUPPORT_LINK_PREMIUM_TIERS.has(user.premium_tier || "free"));
 
   const setField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -350,19 +360,31 @@ function ProfileSettingsView({ user, onUserUpdate }) {
     }
   };
 
-  const saveStafetaParticipation = async (nextValue) => {
+  const saveStafetaParticipation = async (nextValue, nextSlots = stafetaSlots) => {
     if (savingStafeta) return;
+    const maxSlots = Number(user?.stafeta_max_slots || 3);
+    const normalizedSlots = nextValue ? Math.min(Math.max(1, Number(nextSlots) || maxSlots), maxSlots) : 0;
     setSavingStafeta(true);
     setStafetaStatus("");
     setStafetaParticipates(nextValue);
+    if (nextValue) setStafetaSlots(normalizedSlots);
     try {
-      const result = await updateStafetaParticipation(nextValue);
+      const result = await updateStafetaParticipation(nextValue, normalizedSlots);
       const participates = Boolean(result?.participates);
+      const desiredSlots = Number(result?.desired_slots || result?.max_slots || maxSlots);
       setStafetaParticipates(participates);
-      onUserUpdate({ ...user, stafeta_participates: participates });
-      setStafetaStatus(participates ? "Participarea la Ștafeta este activă." : "Participarea la Ștafeta este oprită.");
+      setStafetaSlots(desiredSlots);
+      onUserUpdate({
+        ...user,
+        stafeta_participates: participates,
+        stafeta_desired_slots: desiredSlots,
+        stafeta_max_slots: Number(result?.max_slots || maxSlots),
+        stafeta_open_assignments: Number(result?.open_assignments || 0)
+      });
+      setStafetaStatus(participates ? `Participarea la Ștafeta este activă pentru ${formatNumber(desiredSlots)} texte.` : "Participarea la Ștafeta este oprită.");
     } catch (requestError) {
       setStafetaParticipates(Boolean(user?.stafeta_participates));
+      setStafetaSlots(Number(user?.stafeta_desired_slots || user?.stafeta_max_slots || 3));
       setStafetaStatus(requestError.message || "Nu am putut salva participarea la Ștafeta.");
     } finally {
       setSavingStafeta(false);
@@ -378,7 +400,13 @@ function ProfileSettingsView({ user, onUserUpdate }) {
     }
     setSaving(true);
     try {
-      const nextUser = await updateProfileSettings(form);
+      const nextForm = supportLinksLocked
+        ? {
+            ...form,
+            ...Object.fromEntries(SUPPORT_PROFILE_LINKS.map(({ field }) => [field, ""]))
+          }
+        : form;
+      const nextUser = await updateProfileSettings(nextForm);
       onUserUpdate(nextUser);
       setForm(profileFormFromUser(nextUser));
       setStatus("Profilul a fost salvat.");
@@ -402,7 +430,7 @@ function ProfileSettingsView({ user, onUserUpdate }) {
           <label className="auth-field profile-inline-label" htmlFor="profile-location"><FiMapPin aria-hidden="true" />Locație</label>
           <input id="profile-location" className="cal-input" value={form.location} onChange={(event) => setField("location", event.target.value)} maxLength="120" />
           <label className="auth-field profile-inline-label" htmlFor="profile-youtube"><SiYoutube aria-hidden="true" />Playlist YouTube</label>
-          <input id="profile-youtube" className="cal-input" type="url" value={form.youtube_playlist_url} onChange={(event) => setField("youtube_playlist_url", event.target.value)} placeholder="https://www.youtube.com/playlist?list=..." />
+          <input id="profile-youtube" className="cal-input" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" value={form.youtube_playlist_url} onChange={(event) => setField("youtube_playlist_url", event.target.value)} placeholder="youtube.com/playlist?list=..." />
         </section>
         <section className="profile-settings-section">
           <div className="profile-panel-heading">
@@ -420,7 +448,7 @@ function ProfileSettingsView({ user, onUserUpdate }) {
             {SOCIAL_PROFILE_LINKS.map(({ field, label, Icon, className }) => (
               <label className={`profile-field ${className || ""}`.trim()} key={field}>
                 <span className="profile-field-label"><Icon aria-hidden="true" />{label}</span>
-                <input className="cal-input" type="url" value={form[field]} onChange={(event) => setField(field, event.target.value)} />
+                <input className="cal-input" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" value={form[field]} onChange={(event) => setField(field, event.target.value)} />
               </label>
             ))}
           </div>
@@ -430,11 +458,17 @@ function ProfileSettingsView({ user, onUserUpdate }) {
             <FiHeart aria-hidden="true" />
             <div className="piece-card-kicker">donații</div>
           </div>
+          {supportLinksLocked ? (
+            <div className="profile-support-lock">
+              <p className="auth-sub">Linkurile PayPal, Patreon și Cafea sunt disponibile pentru utilizatorii Premium.</p>
+              <a className="cal-btn primary" href={mainPath("/premium")}>Premium</a>
+            </div>
+          ) : null}
           <div className="profile-field-grid">
             {SUPPORT_PROFILE_LINKS.map(({ field, label, Icon, className }) => (
               <label className={`profile-field ${className || ""}`.trim()} key={field}>
                 <span className="profile-field-label"><Icon aria-hidden="true" />{label}</span>
-                <input className="cal-input" type="url" value={form[field]} onChange={(event) => setField(field, event.target.value)} />
+                <input className="cal-input" type="text" inputMode="url" autoCapitalize="none" autoCorrect="off" value={form[field]} onChange={(event) => setField(field, event.target.value)} disabled={supportLinksLocked} />
               </label>
             ))}
           </div>
@@ -456,12 +490,22 @@ function ProfileSettingsView({ user, onUserUpdate }) {
             <input
               type="checkbox"
               checked={stafetaParticipates}
-              onChange={(event) => saveStafetaParticipation(event.target.checked)}
+              onChange={(event) => saveStafetaParticipation(event.target.checked, event.target.checked ? stafetaSlots || user?.stafeta_max_slots || 3 : 0)}
               disabled={savingStafeta}
             />
             <span>Particip la Ștafeta</span>
           </label>
+          <label className="profile-field">
+            <span className="profile-field-label">Număr Ștafete</span>
+            <select className="cal-input" value={stafetaParticipates ? stafetaSlots : 0} onChange={(event) => saveStafetaParticipation(true, Number(event.target.value))} disabled={savingStafeta || !stafetaParticipates}>
+              {!stafetaParticipates ? <option value={0}>0</option> : null}
+              {stafetaSlotOptions(user?.stafeta_max_slots || 3).map((value) => (
+                <option value={value} key={value}>{value}</option>
+              ))}
+            </select>
+          </label>
         </div>
+        <p className="muted">Active: {formatNumber(user?.stafeta_open_assignments || 0)} / {formatNumber(stafetaParticipates ? stafetaSlots : user?.stafeta_max_slots || 3)}</p>
         {stafetaStatus ? <div className={stafetaStatus.includes("Nu am putut") ? "inline-error" : "inline-status"}>{stafetaStatus}</div> : null}
       </section>
       <section className="profile-settings-section email-preferences-section">

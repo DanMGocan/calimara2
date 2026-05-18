@@ -19,11 +19,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["api-pages"])
 
+SUPPORT_LINK_PREMIUM_TIERS = {"trubadur", "cronicar", "rapsod"}
+
+
+def _can_use_support_links(user) -> bool:
+    premium_tier = getattr(user, "premium_tier", "free") or "free"
+    return bool(getattr(user, "is_premium", False)) and premium_tier in SUPPORT_LINK_PREMIUM_TIERS
+
 
 def serialize_user(user):
     """Serialize a user object to dict for JSON response"""
     profile_photo_url = None
     cover_photo_url = None
+    support_links_visible = _can_use_support_links(user)
     if getattr(user, "is_premium", False):
         if getattr(user, "profile_photo_storage_key", None):
             profile_photo_url = profile_media.public_media_url(user.username, "profil")
@@ -70,9 +78,9 @@ def serialize_user(user):
         "instagram_url": getattr(user, 'instagram_url', None),
         "x_url": getattr(user, 'x_url', None),
         "bluesky_url": getattr(user, 'bluesky_url', None),
-        "patreon_url": getattr(user, 'patreon_url', None),
-        "paypal_url": getattr(user, 'paypal_url', None),
-        "buymeacoffee_url": getattr(user, 'buymeacoffee_url', None),
+        "patreon_url": getattr(user, 'patreon_url', None) if support_links_visible else None,
+        "paypal_url": getattr(user, 'paypal_url', None) if support_links_visible else None,
+        "buymeacoffee_url": getattr(user, 'buymeacoffee_url', None) if support_links_visible else None,
     }
 
 
@@ -577,29 +585,6 @@ def post_pdf_download(
         media_type=pdf_exporter.PDF_MEDIA_TYPE,
         headers=pdf_exporter.pdf_response_headers(post.slug),
     )
-
-
-@router.get("/api/categorii/{category_key}")
-def category_page_data(
-    request: Request,
-    category_key: str,
-    sort_by: str = "newest",
-    db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_current_user),
-):
-    """Category page data"""
-    if category_key not in CATEGORIES:
-        raise HTTPException(status_code=404, detail="Categoria nu a fost găsită")
-
-    posts = crud.get_posts_by_category_sorted(db, category_key, sort_by=sort_by, limit=6)
-    statistics.record_view(db, request, "category", None, category_key, None, None)
-
-    return {
-        "category_key": category_key,
-        "category_name": get_category_name(category_key),
-        "posts": serialize_posts_with_super_likes(db, posts, current_user, include_owner=True),
-        "sort_by": sort_by,
-    }
 
 
 @router.get("/api/utilizator/{username}/profil")

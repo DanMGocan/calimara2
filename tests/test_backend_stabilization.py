@@ -15,7 +15,7 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-secret")
 
-from app import auth, crud, local_auth, models, moderation, schemas, statistics
+from app import auth, crud, local_auth, models, moderation, platform_access, schemas, statistics
 from app.routers import admin_routes, api_pages, auth_routes, follow_routes, forum_routes, friend_routes, moderation_routes, post_routes, series_routes, user_routes
 
 
@@ -61,6 +61,9 @@ class BackendStabilizationTests(unittest.TestCase):
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def allow_email(self, email: str) -> None:
+        platform_access.add_allowed_email(self.db, email=email)
 
     def make_post(
         self,
@@ -867,6 +870,7 @@ class BackendStabilizationTests(unittest.TestCase):
                 "cover_seed": "coveruser-cover-forest",
             }
         )
+        self.allow_email("coveruser@example.com")
 
         response = auth_routes.complete_user_setup(request, payload, self.db)
         created = crud.get_user_by_username(self.db, "coveruser")
@@ -877,6 +881,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_password_signup_requires_activation_code_before_setup(self):
         request = DummyRequest({})
+        self.allow_email("newauthor@example.com")
         with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
             auth_routes.email_service,
             "_send_with_brevo",
@@ -926,6 +931,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_password_login_uses_safe_return_target(self):
         user = self.make_user("passwordlogin")
+        self.allow_email(user.email)
         user.password_hash = local_auth.password_hash("long-enough-password")
         user.email_verified_at = datetime.now(timezone.utc).replace(tzinfo=None)
         self.db.add(user)
@@ -951,6 +957,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_password_login_accepts_configured_frontend_port_return_target(self):
         user = self.make_user("passwordloginport")
+        self.allow_email(user.email)
         user.password_hash = local_auth.password_hash("long-enough-password")
         user.email_verified_at = datetime.now(timezone.utc).replace(tzinfo=None)
         self.db.add(user)
@@ -976,6 +983,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_password_reset_sets_password_for_existing_social_account(self):
         user = self.make_user("socialonly")
+        self.allow_email(user.email)
         user.email_verified_at = None
         self.db.add(user)
         self.db.commit()
@@ -1017,6 +1025,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_facebook_callback_links_verified_email_to_existing_user(self):
         user = self.make_user("facebooklink")
+        self.allow_email(user.email)
         facebook_user = schemas.FacebookUserInfo(
             facebook_id="fb-123",
             email=user.email,
@@ -1034,6 +1043,7 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(request.session["user_id"], user.id)
 
     def test_facebook_callback_sends_new_users_to_generic_setup(self):
+        self.allow_email("fbnew@example.com")
         facebook_user = schemas.FacebookUserInfo(
             facebook_id="fb-new",
             email="fbnew@example.com",
@@ -1060,15 +1070,51 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(request.session["pending_auth"]["provider_user"]["email"], "fbnew@example.com")
 
     def test_profile_settings_update_links_location_and_donations(self):
+        free_user = self.make_user("profilefree")
+        free_payload = schemas.UserProfileSettingsUpdate.model_validate(
+            {
+                "location": "Cluj",
+                "paypal_url": "paypal.me/profilefree",
+            }
+        )
+        with self.assertRaises(HTTPException) as free_error:
+            user_routes.update_profile_settings(free_payload, db=self.db, current_user=free_user)
+        self.assertEqual(free_error.exception.status_code, 403)
+
+        with self.assertRaises(HTTPException) as social_error:
+            user_routes.update_user_social_links(
+                schemas.SocialLinksUpdate.model_validate({"patreon_url": "patreon.com/profilefree"}),
+                db=self.db,
+                current_user=free_user,
+            )
+        self.assertEqual(social_error.exception.status_code, 403)
+
+        free_response = user_routes.update_profile_settings(
+            schemas.UserProfileSettingsUpdate.model_validate({"location": "Cluj", "paypal_url": ""}),
+            db=self.db,
+            current_user=free_user,
+        )
+        self.assertEqual(free_response["location"], "Cluj")
+        self.assertIsNone(free_response["paypal_url"])
+
+        free_user.paypal_url = "https://paypal.me/profilefree"
+        self.db.commit()
+        self.db.refresh(free_user)
+        self.assertIsNone(api_pages.serialize_user(free_user)["paypal_url"])
+
         user = self.make_user("profilelinks")
+        user.premium_tier = "trubadur"
+        user.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=30)
+        self.db.commit()
+        self.db.refresh(user)
         payload = schemas.UserProfileSettingsUpdate.model_validate(
             {
                 "location": "Iași",
                 "cover_seed": "profilelinks-cover-garden",
-                "youtube_playlist_url": "https://www.youtube.com/playlist?list=PL123",
-                "paypal_url": "https://paypal.me/profilelinks",
-                "patreon_url": "https://patreon.com/profilelinks",
-                "instagram_url": "https://instagram.com/profilelinks",
+                "youtube_playlist_url": "www.youtube.com/playlist?list=PL123",
+                "paypal_url": "paypal.me/profilelinks",
+                "patreon_url": "patreon.com/profilelinks",
+                "instagram_url": "instagram.com/profilelinks",
             }
         )
 
@@ -1080,6 +1126,7 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response["youtube_playlist_url"], "https://www.youtube.com/playlist?list=PL123")
         self.assertEqual(response["paypal_url"], "https://paypal.me/profilelinks")
         self.assertEqual(response["patreon_url"], "https://patreon.com/profilelinks")
+        self.assertEqual(api_pages.serialize_user(user)["paypal_url"], "https://paypal.me/profilelinks")
 
         bad_payload = schemas.UserProfileSettingsUpdate.model_validate(
             {"paypal_url": "https://example.com/not-paypal"}
@@ -1839,6 +1886,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_google_callback_redirect_uses_configured_local_scheme(self):
         user = self.make_user("oauthuser")
+        self.allow_email(user.email)
         request = DummyRequest({}, scheme="https")
 
         with patch.dict(
@@ -1893,6 +1941,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_google_callback_redirects_to_stored_return_target(self):
         user = self.make_user("oauthreturn")
+        self.allow_email(user.email)
         request = DummyRequest(
             {auth_routes.AUTH_RETURN_TO_SESSION_KEY: "http://lvh.me:8000/?post=42"},
             scheme="https",
@@ -1926,6 +1975,7 @@ class BackendStabilizationTests(unittest.TestCase):
 
     def test_google_callback_sends_new_users_to_setup_and_clears_stale_login(self):
         existing_user = self.make_user("olduser")
+        self.allow_email("newuser@example.com")
         request = DummyRequest({"user_id": existing_user.id, "db_epoch": "old"}, scheme="https")
         google_user = SimpleNamespace(
             google_id="google-new-user",
@@ -2256,6 +2306,62 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertTrue(crud.delete_forum_reply(self.db, bob, reply))
         self.assertEqual(self.db.query(models.ForumReply).count(), 0)
 
+    def test_forum_read_routes_allow_anonymous_viewers(self):
+        alice = self.make_user("forumreader")
+        bob = self.make_user("forumreply")
+        alice.gologani_balance = 77
+        bob.gologani_balance = 6
+        self.db.commit()
+        self.make_post(alice, "Forum Reader Text")
+        self.make_post(bob, "Forum Reply Text")
+        approved = SimpleNamespace(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="ok",
+        )
+
+        thread = crud.create_forum_thread(
+            self.db,
+            alice,
+            schemas.ForumThreadCreate(
+                section="general",
+                title="Atelier public",
+                content="O discuție care poate fi citită fără cont.",
+            ),
+        )
+
+        with self.assertRaises(HTTPException) as pending_error:
+            forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
+        self.assertEqual(pending_error.exception.status_code, 404)
+
+        crud.apply_forum_thread_moderation_result(self.db, thread, approved)
+        reply, error = crud.create_forum_reply(
+            self.db,
+            bob,
+            thread,
+            schemas.ForumReplyCreate(content="Un răspuns aprobat pentru cititori publici."),
+        )
+        self.assertIsNone(error)
+        self.assertEqual(crud.list_forum_replies_for_thread(self.db, thread.id, None), [])
+        crud.apply_forum_reply_moderation_result(self.db, reply, approved)
+
+        sections = forum_routes.list_forum_sections_api()
+        listing = forum_routes.list_forum_threads_api(section="general", db=self.db, current_user=None)
+        detail = forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
+
+        self.assertEqual([item["key"] for item in sections["sections"]], ["anunturi", "general", "poezie", "proza_scurta"])
+        self.assertEqual(sections["sections"][1]["label"], "Discuții generale")
+        self.assertEqual([item["id"] for item in listing["threads"]], [thread.id])
+        self.assertEqual(detail["id"], thread.id)
+        self.assertEqual(detail["author"]["gologani_balance"], 92)
+        self.assertEqual(detail["author"]["forum_post_count"], 1)
+        self.assertEqual(detail["author"]["published_post_count"], 1)
+        self.assertIn("avatar_url", detail["author"])
+        self.assertEqual([item["id"] for item in detail["replies"]], [reply.id])
+        self.assertEqual(detail["replies"][0]["author"]["gologani_balance"], 14)
+        self.assertEqual(detail["replies"][0]["author"]["forum_post_count"], 1)
+        self.assertEqual(detail["replies"][0]["author"]["published_post_count"], 1)
+
     def test_forum_content_integrates_with_moderation_helpers(self):
         alice = self.make_user("alice")
         bob = self.make_user("bob")
@@ -2278,7 +2384,7 @@ class BackendStabilizationTests(unittest.TestCase):
             self.db,
             alice,
             schemas.ForumThreadCreate(
-                section="feedback",
+                section="general",
                 title="Critică pentru un fragment",
                 content="Aș vrea feedback pe ritm de la @bob.",
             ),
