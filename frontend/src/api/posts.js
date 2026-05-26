@@ -65,8 +65,20 @@ export function deleteComment(commentId) {
   return api.delete(`/api/comentarii/${encodeURIComponent(commentId)}`);
 }
 
+export function reactToComment(commentId, reactionType) {
+  return api.post(`/api/comentarii/${encodeURIComponent(commentId)}/reactii`, { reaction_type: reactionType });
+}
+
+export function removeCommentReaction(commentId) {
+  return api.delete(`/api/comentarii/${encodeURIComponent(commentId)}/reactii`);
+}
+
 export function likePost(postId) {
   return api.post(`/api/postari/${encodeURIComponent(postId)}/aprecieri`, {});
+}
+
+export function removeLike(postId) {
+  return api.delete(`/api/postari/${encodeURIComponent(postId)}/aprecieri`);
 }
 
 export function fetchLikeCount(postId) {

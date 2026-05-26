@@ -1,4 +1,5 @@
 import { api } from "./client.js";
+export { fetchMyReferrals } from "./referrals.js";
 
 export function fetchPremiumPlans() {
   return api.get("/api/premium/planuri");

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -13,6 +13,14 @@ from .base import Base
 
 class ModerationLog(Base):
     __tablename__ = "moderation_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "content_type IN ('post', 'comment', 'audio', 'forum_thread', 'forum_reply', 'theatre_entry', 'stafeta_segment')",
+            name="ck_moderation_logs_content_type",
+        ),
+        CheckConstraint("ai_decision IN ('approved', 'flagged', 'rejected')", name="ck_moderation_logs_ai_decision"),
+        CheckConstraint("human_decision IN ('approved', 'rejected', 'pending')", name="ck_moderation_logs_human_decision"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     content_type: Mapped[str] = mapped_column(String(20), nullable=False)

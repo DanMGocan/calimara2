@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { FaFlag, FaHeart } from "react-icons/fa";
-import { FiChevronDown, FiDownload, FiEye, FiMessageCircle } from "react-icons/fi";
-import { fetchPostAudioStatus } from "../api/audio.js";
-import { createComment, likePost, reportPost } from "../api/posts.js";
-import { addSuperLike, removeSuperLike } from "../api/super-likes.js";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { FaFlag, FaHandsHelping, FaHeart, FaRegLaughSquint } from "react-icons/fa";
+import { FiCheck, FiChevronDown, FiDownload, FiEye, FiList, FiMessageCircle, FiPlus } from "react-icons/fi";
+import { TfiThought } from "react-icons/tfi";
+import { addPostToAudioPlaylist, createAudioPlaylist, fetchAudioPlaylists, fetchPostAudioStatus } from "../api/audio.js";
+import { createComment, likePost, reactToComment, removeCommentReaction, reportPost } from "../api/posts.js";
+import { addSuperLike } from "../api/super-likes.js";
 import { promoteAuthor, promotePost, searchUsers } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
 import { useAuthModal } from "./auth-modal.jsx";
-import { COMMENT_CHARACTER_LIMIT, COMMENT_MODERATION_MESSAGE } from "./constants.js";
-import { CompactAudioPlayer, RichTextContent } from "./content.jsx";
-import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "./diacritics.jsx";
+import { COMMENT_CHARACTER_LIMIT, MODERATING_STATUSES, TEXT_MODERATION_MESSAGE } from "./constants.js";
+import { CompactAudioPlayer, ModerationOverlay, RichTextContent } from "./content.jsx";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress, useDiacriticsQuota } from "./diacritics.jsx";
 import { RichTextEditor } from "./editor.jsx";
 import { formatDateTime, formatNumber, htmlToText, usernameHandle } from "./format.js";
 import { mainPath } from "./paths.js";
@@ -19,6 +21,11 @@ const REPORT_TITLES = {
   offensive: "Raportează conținut ofensiv",
   plagiarism: "Raportează plagiat"
 };
+const COMMENT_REACTIONS = [
+  { type: "helpful", label: "Util", Icon: FaHandsHelping },
+  { type: "funny", label: "Amuzant", Icon: FaRegLaughSquint },
+  { type: "insightful", label: "Profund", Icon: TfiThought }
+];
 
 function AccessModal({ modal, onClose }) {
   if (!modal) return null;
@@ -38,11 +45,12 @@ function AccessModal({ modal, onClose }) {
   );
 }
 
-function ReportModal({
+export function ReportModal({
   modal,
   busy,
   details,
   evidenceUrl,
+  allowPlagiarism = true,
   onDetailsChange,
   onEvidenceUrlChange,
   onSelectReason,
@@ -65,9 +73,11 @@ function ReportModal({
             <button className="report-choice-btn" type="button" onClick={() => onSelectReason("offensive")}>
               Raportează conținut ofensiv
             </button>
-            <button className="report-choice-btn" type="button" onClick={() => onSelectReason("plagiarism")}>
-              Raportează plagiat
-            </button>
+            {allowPlagiarism ? (
+              <button className="report-choice-btn" type="button" onClick={() => onSelectReason("plagiarism")}>
+                Raportează plagiat
+              </button>
+            ) : null}
           </div>
         ) : (
           <form className="report-form" onSubmit={onSubmit}>
@@ -94,78 +104,147 @@ function ReportModal({
   );
 }
 
+function PlaylistModal({
+  open,
+  loading,
+  playlists,
+  addedIds,
+  status,
+  busy,
+  title,
+  onTitleChange,
+  onClose,
+  onReload,
+  onAdd,
+  onCreate
+}) {
+  if (!open) return null;
+  const cleanTitle = title.trim();
+  return (
+    <div className="access-modal-scrim" role="presentation" onClick={onClose}>
+      <section className="access-modal playlist-modal" role="dialog" aria-modal="true" aria-labelledby="playlist-modal-title" onClick={(event) => event.stopPropagation()}>
+        <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
+        <div className="piece-card-kicker">playlisturi</div>
+        <h2 id="playlist-modal-title" className="access-modal-title">Adaugă în playlist</h2>
+        <div className="playlist-modal-create">
+          <input
+            className="cal-input"
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            maxLength={120}
+            placeholder="Playlist nou"
+            aria-label="Titlu playlist nou"
+          />
+          <button className="cal-btn primary" type="button" onClick={onCreate} disabled={Boolean(busy) || !cleanTitle}>
+            <FiPlus aria-hidden="true" />
+            Creează
+          </button>
+        </div>
+        {loading ? <p className="auth-sub">Se încarcă playlisturile...</p> : null}
+        {status ? <p className="inline-error">{status}</p> : null}
+        {!loading && playlists.length ? (
+          <div className="playlist-modal-list">
+            {playlists.map((playlist) => {
+              const added = addedIds.has(playlist.id);
+              return (
+                <button
+                  className={`playlist-modal-item ${added ? "is-added" : ""}`.trim()}
+                  type="button"
+                  key={playlist.id}
+                  onClick={() => onAdd(playlist)}
+                  disabled={Boolean(busy) || added}
+                  aria-pressed={added}
+                >
+                  {added ? <FiCheck aria-hidden="true" /> : <FiList aria-hidden="true" />}
+                  <span>{playlist.title}</span>
+                  <small>{added ? "adăugat" : `${formatNumber(playlist.item_count || 0)} texte`}</small>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        {!loading && !playlists.length ? <p className="auth-sub">Nu ai playlisturi încă.</p> : null}
+        <div className="button-row">
+          <button className="cal-btn" type="button" onClick={onReload} disabled={loading || Boolean(busy)}>Reîncarcă</button>
+          <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MetricCount({ value }) {
+  const text = String(value ?? "");
+  return (
+    <span className="react-count metric-count" key={text}>
+      {text}
+    </span>
+  );
+}
+
+function CommentReactionRow({ comment, user, busy, onReact }) {
+  const counts = comment.reaction_counts || {};
+  const commentBusy = String(busy || "").startsWith(`comment-reaction:${comment.id}:`);
+  const ownComment = Boolean(user?.id && comment.user_id === user.id);
+  return (
+    <div className="comment-reactions" aria-label="Reacții comentariu">
+      {COMMENT_REACTIONS.map(({ type, label, Icon }) => {
+        const active = comment.viewer_reaction === type;
+        const count = formatNumber(Number(counts[type] || 0));
+        const title = ownComment ? "Nu poți reacționa la propriul comentariu" : label;
+        return (
+          <button
+            className={`comment-reaction-btn comment-reaction-${type} ${active ? "on" : ""}`}
+            type="button"
+            key={type}
+            onClick={() => onReact(comment, type)}
+            disabled={commentBusy || ownComment}
+            aria-pressed={active}
+            aria-label={`${label}: ${count}${ownComment ? ". Nu poți reacționa la propriul comentariu." : ""}`}
+            title={title}
+          >
+            <Icon className="comment-reaction-symbol" aria-hidden="true" focusable="false" />
+            <MetricCount value={count} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function pdfFilename(post) {
   const stem = String(post?.slug || "calimara-export").replace(/\.pdf$/i, "").trim();
   return `${stem || "calimara-export"}.pdf`;
 }
 
 export function PostPromotionMenu({ post, author, user }) {
-  const menuRef = useRef(null);
   const buttonRef = useRef(null);
+  const modalTitleId = useId();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
-  const [panelStyle, setPanelStyle] = useState(null);
-
-  const updatePanelPosition = useCallback(() => {
-    const button = buttonRef.current;
-    if (!button || typeof window === "undefined") return;
-
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 320;
-    const edge = viewportWidth <= 520 ? 12 : 16;
-    const preferredWidth = viewportWidth <= 520 ? 236 : 280;
-    const panelWidth = Math.max(196, Math.min(preferredWidth, viewportWidth - edge * 2));
-    const rect = button.getBoundingClientRect();
-    const maxLeft = Math.max(edge, viewportWidth - panelWidth - edge);
-    const left = Math.min(Math.max(rect.right - panelWidth, edge), maxLeft);
-
-    setPanelStyle({
-      position: "fixed",
-      top: `${Math.max(edge, rect.bottom + 8)}px`,
-      left: `${left}px`,
-      right: "auto",
-      width: `${panelWidth}px`,
-      maxWidth: `calc(100vw - ${edge * 2}px)`,
-      transform: "none"
-    });
-  }, []);
 
   useEffect(() => {
     setOpen(false);
     setBusy("");
     setStatus("");
-    setPanelStyle(null);
   }, [post?.id, author?.id, user?.id]);
 
   useEffect(() => {
-    if (!open) {
-      setPanelStyle(null);
-      return undefined;
-    }
+    if (!open || typeof document === "undefined") return undefined;
 
-    let frame = window.requestAnimationFrame(updatePanelPosition);
-    const scheduleUpdate = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(updatePanelPosition);
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
     };
 
-    window.addEventListener("resize", scheduleUpdate);
-    window.addEventListener("scroll", scheduleUpdate, true);
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
     return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("resize", scheduleUpdate);
-      window.removeEventListener("scroll", scheduleUpdate, true);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, updatePanelPosition]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onPointerDown = (event) => {
-      if (!menuRef.current || menuRef.current.contains(event.target)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   const promoteCurrentPost = async () => {
@@ -202,8 +281,34 @@ export function PostPromotionMenu({ post, author, user }) {
     }
   };
 
+  const promotionModal = open && typeof document !== "undefined" ? createPortal(
+    <div className="access-modal-scrim title-promotion-scrim" role="presentation" onClick={() => setOpen(false)}>
+      <section
+        className="access-modal title-promotion-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={modalTitleId}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button className="access-modal-close" type="button" aria-label="Închide" onClick={() => setOpen(false)}>x</button>
+        <div className="piece-card-kicker">promovare</div>
+        <h2 id={modalTitleId} className="access-modal-title">Opțiuni de promovare</h2>
+        <div className="title-promotion-modal-options">
+          <button className="title-promotion-option" type="button" onClick={promoteCurrentPost} disabled={!user || Boolean(busy)}>
+            {busy === "post" ? "Se promovează..." : "Promovează postarea pe profilul tău"}
+          </button>
+          <button className="title-promotion-option" type="button" onClick={promoteCurrentAuthor} disabled={!user || Boolean(busy)}>
+            {busy === "author" ? "Se promovează..." : "Promovează autorul pe profilul tău"}
+          </button>
+        </div>
+        {status ? <p className="title-promotion-status title-promotion-modal-status" role="status">{status}</p> : null}
+      </section>
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <span className="title-promotion-menu" ref={menuRef}>
+    <span className="title-promotion-menu">
       <button
         className={`title-promotion-toggle ${open ? "open" : ""}`.trim()}
         ref={buttonRef}
@@ -215,17 +320,7 @@ export function PostPromotionMenu({ post, author, user }) {
       >
         <FiChevronDown aria-hidden="true" />
       </button>
-      {open ? (
-        <span className="title-promotion-panel" role="menu" aria-label="Opțiuni de promovare" style={panelStyle || undefined}>
-          <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentPost} disabled={!user || Boolean(busy)}>
-            {busy === "post" ? "Se promovează..." : "Promovează postarea pe profilul tău"}
-          </button>
-          <button className="title-promotion-option" type="button" role="menuitem" onClick={promoteCurrentAuthor} disabled={!user || Boolean(busy)}>
-            {busy === "author" ? "Se promovează..." : "Promovează autorul pe profilul tău"}
-          </button>
-          {status ? <span className="title-promotion-status">{status}</span> : null}
-        </span>
-      ) : null}
+      {promotionModal}
     </span>
   );
 }
@@ -237,11 +332,16 @@ function CommentPanel({
   commentText,
   commentAutoDiacritics,
   commentReview,
+  diacriticsQuota,
+  diacriticsQuotaLoading,
+  diacriticsQuotaError,
   onCommentTextChange,
   onCommentAutoDiacriticsChange,
   onCommentReviewChange,
   onLoginRequired,
-  onSubmit
+  onReactToComment,
+  onSubmit,
+  submitButtonRef
 }) {
   const comments = Array.isArray(post.approved_comments) ? post.approved_comments : [];
   const editorId = `post-comment-${post.id}`;
@@ -250,21 +350,30 @@ function CommentPanel({
     <div className="piece-comments" id={`comments-${post.id}`}>
       {comments.length ? (
         <ul className="comment-list">
-          {comments.map((comment) => {
+          {comments.filter((comment) => comment.moderation_status !== "rejected").map((comment) => {
             const author = comment.user?.username ? usernameHandle(comment.user.username) : comment.author_name || "cititor";
+            const isModerating = MODERATING_STATUSES.has(comment.moderation_status);
             return (
-              <li className="comment" id={`comment-${comment.id}`} key={comment.id}>
+              <li className={`comment ${isModerating ? "has-moderation-overlay" : ""}`.trim()} id={`comment-${comment.id}`} key={comment.id}>
                 <div className="comment-head">
                   <span className="comment-author">{author}</span>
                   {comment.created_at ? <span className="comment-time">{formatDateTime(comment.created_at)}</span> : null}
                 </div>
-                <RichTextContent html={comment.content} className="comment-body" />
+                <div className={`comment-body-wrap ${isModerating ? "has-moderation-overlay" : ""}`.trim()}>
+                  <RichTextContent html={comment.content} className="comment-body" />
+                  {isModerating ? (
+                    <ModerationOverlay className="comment-moderation-overlay">{TEXT_MODERATION_MESSAGE}</ModerationOverlay>
+                  ) : null}
+                </div>
+                {!isModerating ? (
+                  <CommentReactionRow comment={comment} user={user} busy={busy} onReact={onReactToComment} />
+                ) : null}
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="auth-sub post-comments-empty">Nu există comentarii aprobate încă.</p>
+        <p className="auth-sub post-comments-empty">Nu există comentarii încă.</p>
       )}
 
       {user ? (
@@ -275,6 +384,9 @@ function CommentPanel({
             user={user}
             enabled={commentAutoDiacritics}
             disabled={Boolean(commentReview)}
+            quota={diacriticsQuota}
+            quotaLoading={diacriticsQuotaLoading}
+            quotaError={diacriticsQuotaError}
             onChange={(checked) => {
               onCommentAutoDiacriticsChange(checked);
               onCommentReviewChange(null);
@@ -288,14 +400,21 @@ function CommentPanel({
               onCommentReviewChange(null);
             } : null}
           />
-          <button className="cal-btn primary" type="submit" disabled={busy === "comment"}>
-            {diacriticsSubmitLabel({
-              submitting: busy === "comment",
-              reviewing: Boolean(commentReview),
-              enabled: Boolean(user?.is_premium && commentAutoDiacritics),
-              submitLabel: "Trimite comentariul"
-            })}
-          </button>
+          <div className="post-comment-actions">
+            <button ref={submitButtonRef} className="cal-btn primary post-comment-submit" type="submit" disabled={busy === "comment"}>
+              {diacriticsSubmitLabel({
+                submitting: busy === "comment",
+                reviewing: Boolean(commentReview),
+                enabled: Boolean(user && commentAutoDiacritics),
+                submitLabel: "Trimite comentariul"
+              })}
+            </button>
+            {user && commentAutoDiacritics && !commentReview ? (
+              <button className="cal-btn post-comment-submit" type="button" onClick={() => submitComment(null, { skipDiacritics: true })} disabled={busy === "comment"}>
+                Trimite fără Diacritice
+              </button>
+            ) : null}
+          </div>
         </form>
       ) : (
         <div className="post-comment-auth">
@@ -309,42 +428,66 @@ function CommentPanel({
 export function PostActionTools({ post, user, onPostChange, pdfHref = "#", className = "" }) {
   const { openAuthModal } = useAuthModal();
   const [postState, setPostState] = useState(post);
-  const [liked, setLiked] = useState(false);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [modal, setModal] = useState(null);
   const [reportModal, setReportModal] = useState(null);
   const [reportDetails, setReportDetails] = useState("");
   const [reportEvidenceUrl, setReportEvidenceUrl] = useState("");
+  const [playlistModalOpen, setPlaylistModalOpen] = useState(false);
+  const [playlistOptions, setPlaylistOptions] = useState([]);
+  const [playlistAddedIds, setPlaylistAddedIds] = useState(() => new Set());
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [playlistStatus, setPlaylistStatus] = useState("");
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState("");
   const [audioState, setAudioState] = useState({ loading: false, data: null, error: "" });
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [commentAutoDiacritics, setCommentAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [commentAutoDiacritics, setCommentAutoDiacritics] = useState(false);
   const [commentReview, setCommentReview] = useState(null);
+  const commentSubmitRef = useRef(null);
   const {
     diacriticsProgress,
     startDiacriticsProgress,
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
 
   useEffect(() => {
     setPostState(post);
-    setLiked(false);
     setStatus("");
     setModal(null);
     setReportModal(null);
     setReportDetails("");
     setReportEvidenceUrl("");
+    setPlaylistModalOpen(false);
+    setPlaylistOptions([]);
+    setPlaylistAddedIds(new Set());
+    setPlaylistStatus("");
+    setNewPlaylistTitle("");
     setCommentOpen(false);
     setCommentText("");
     setCommentReview(null);
   }, [post?.id, user?.id]);
 
   useEffect(() => {
-    setCommentAutoDiacritics(Boolean(user?.is_premium));
+    setCommentAutoDiacritics(false);
     setCommentReview(null);
-  }, [user?.id, user?.is_premium]);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!commentOpen || !commentReview) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      commentSubmitRef.current?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [commentOpen, commentReview]);
 
   useEffect(() => {
     if (!post?.id) return undefined;
@@ -368,6 +511,82 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     };
   }, [post?.id]);
 
+  const loadPlaylistOptions = useCallback(async () => {
+    if (!postState?.id || !user?.has_author_audio_access) return;
+    setPlaylistLoading(true);
+    setPlaylistStatus("");
+    try {
+      const [allData, addedData] = await Promise.all([
+        fetchAudioPlaylists(),
+        fetchAudioPlaylists(postState.id)
+      ]);
+      setPlaylistOptions(Array.isArray(allData?.playlists) ? allData.playlists : []);
+      setPlaylistAddedIds(new Set((addedData?.playlists || []).map((playlist) => playlist.id)));
+    } catch (requestError) {
+      setPlaylistStatus(requestError.message || "Nu am putut încărca playlisturile.");
+    } finally {
+      setPlaylistLoading(false);
+    }
+  }, [postState?.id, user?.has_author_audio_access]);
+
+  const openPlaylistModal = () => {
+    if (!user) {
+      showLoginModal("Pentru playlisturi trebuie să intri în cont.");
+      return;
+    }
+    if (!user.has_author_audio_access) {
+      setModal({
+        kicker: "playlisturi",
+        title: "Playlisturi indisponibile",
+        message: "Crearea playlisturilor necesită abonament Rapsod.",
+        actionHref: mainPath("/premium"),
+        actionLabel: "Vezi Premium"
+      });
+      return;
+    }
+    setPlaylistModalOpen(true);
+    setPlaylistStatus("");
+    setNewPlaylistTitle("");
+    loadPlaylistOptions();
+  };
+
+  const addCurrentPostToPlaylist = async (playlist) => {
+    if (!playlist?.id || !postState?.id || playlistAddedIds.has(playlist.id)) return;
+    setBusy(`playlist:${playlist.id}`);
+    setPlaylistStatus("");
+    try {
+      await addPostToAudioPlaylist(playlist.id, postState.id);
+      setPlaylistAddedIds((current) => new Set([...current, playlist.id]));
+      setPlaylistOptions((current) => current.map((item) => (
+        item.id === playlist.id ? { ...item, item_count: Number(item.item_count || 0) + 1 } : item
+      )));
+      setPlaylistStatus("Postarea a fost adăugată în playlist.");
+    } catch (requestError) {
+      setPlaylistStatus(requestError.message || "Nu am putut adăuga postarea în playlist.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const createPlaylistAndAddPost = async () => {
+    const title = newPlaylistTitle.trim();
+    if (!title || !postState?.id) return;
+    setBusy("playlist:create");
+    setPlaylistStatus("");
+    try {
+      const playlist = await createAudioPlaylist(title);
+      await addPostToAudioPlaylist(playlist.id, postState.id);
+      setPlaylistOptions((current) => [{ ...playlist, item_count: 1 }, ...current]);
+      setPlaylistAddedIds((current) => new Set([...current, playlist.id]));
+      setNewPlaylistTitle("");
+      setPlaylistStatus("Playlistul a fost creat și postarea a fost adăugată.");
+    } catch (requestError) {
+      setPlaylistStatus(requestError.message || "Nu am putut crea playlistul.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   if (!postState) return null;
 
   const comments = Array.isArray(postState.approved_comments) ? postState.approved_comments : [];
@@ -382,13 +601,15 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   const likesCount = formatNumber(postState.likes_count);
   const viewsCount = formatNumber(postState.view_count ?? postState.vizualizari);
   const commentsCountLabel = formatNumber(commentsCount);
+  const ownPost = Boolean(user?.id && postState.user_id && Number(postState.user_id) === Number(user.id));
+  const liked = Boolean(postState.viewer_liked) && !ownPost;
+  const ownPostLikeMessage = "Nu poți aprecia propria postare.";
+  const ownPostSuperLikeMessage = "Nu îți poți super-aprecia propria postare.";
 
   const updatePost = (updater) => {
-    setPostState((current) => {
-      const next = updater(current || postState);
-      onPostChange?.(next);
-      return next;
-    });
+    const next = updater(postState);
+    setPostState(next);
+    onPostChange?.(next);
   };
 
   const showLoginModal = (message = "Pentru această acțiune trebuie să intri în cont.") => {
@@ -398,15 +619,30 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   };
 
   const handleLike = async () => {
+    if (ownPost) {
+      setStatus(ownPostLikeMessage);
+      return;
+    }
+    if (liked) {
+      setStatus("Ai apreciat deja acest text.");
+      return;
+    }
     setBusy("like");
     setStatus("");
     try {
       await likePost(postState.id);
-      setLiked(true);
-      updatePost((current) => ({ ...current, likes_count: (current.likes_count ?? 0) + 1 }));
+      updatePost((current) => ({
+        ...current,
+        viewer_liked: true,
+        likes_count: (current.likes_count ?? 0) + 1
+      }));
     } catch (requestError) {
       if (requestError.status === 409) {
-        setLiked(true);
+        updatePost((current) => ({
+          ...current,
+          viewer_liked: true,
+          likes_count: Math.max(1, current.likes_count ?? 0)
+        }));
         setStatus("Ai apreciat deja acest text.");
       } else {
         setStatus(requestError.message || "Nu am putut salva aprecierea.");
@@ -421,32 +657,40 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
       showLoginModal("Pentru super-apreciere trebuie să intri în cont.");
       return;
     }
+    if (ownPost) {
+      setStatus(ownPostSuperLikeMessage);
+      return;
+    }
+    if (postState.viewer_super_liked) {
+      setStatus("Ai super-apreciat deja acest text.");
+      return;
+    }
     setBusy("super");
     setStatus("");
     try {
-      if (postState.viewer_super_liked) {
-        await removeSuperLike(postState.id);
-        updatePost((current) => ({
-          ...current,
-          viewer_super_liked: false,
-          super_likes_count: Math.max(0, (current.super_likes_count ?? 0) - 1)
-        }));
-      } else {
-        await addSuperLike(postState.id);
+      await addSuperLike(postState.id);
+      updatePost((current) => ({
+        ...current,
+        viewer_super_liked: true,
+        super_likes_count: (current.super_likes_count ?? 0) + 1
+      }));
+    } catch (requestError) {
+      if (requestError.status === 409) {
         updatePost((current) => ({
           ...current,
           viewer_super_liked: true,
-          super_likes_count: (current.super_likes_count ?? 0) + 1
+          super_likes_count: Math.max(1, current.super_likes_count ?? 0)
         }));
+        setStatus("Ai super-apreciat deja acest text.");
+      } else {
+        setModal({
+          kicker: "super-apreciez",
+          title: "Super-apreciere indisponibilă",
+          message: requestError.message || "Nu am putut salva super-aprecierea.",
+          actionHref: requestError.status === 403 ? mainPath("/premium") : null,
+          actionLabel: "Vezi Premium"
+        });
       }
-    } catch (requestError) {
-      setModal({
-        kicker: "super-apreciez",
-        title: "Super-apreciere indisponibilă",
-        message: requestError.message || "Nu am putut salva super-aprecierea.",
-        actionHref: requestError.status === 403 ? mainPath("/premium") : null,
-        actionLabel: "Vezi Premium"
-      });
     } finally {
       setBusy("");
     }
@@ -498,8 +742,52 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     }
   };
 
-  const submitComment = async (event) => {
-    event.preventDefault();
+  const applyCommentReactionSummary = (commentId, summary) => {
+    updatePost((current) => ({
+      ...current,
+      approved_comments: (Array.isArray(current.approved_comments) ? current.approved_comments : []).map((comment) => (
+        comment.id === commentId
+          ? {
+              ...comment,
+              reaction_counts: summary.counts || comment.reaction_counts || {},
+              reaction_total: summary.total ?? comment.reaction_total ?? 0,
+              viewer_reaction: summary.viewer_reaction || null
+            }
+          : comment
+      ))
+    }));
+  };
+
+  const handleCommentReaction = async (comment, reactionType) => {
+    if (!user) {
+      showLoginModal("Pentru reacții la comentarii trebuie să intri în cont.");
+      return;
+    }
+    if (comment.user_id === user.id) {
+      setStatus("Nu poți reacționa la propriul comentariu.");
+      return;
+    }
+    const active = comment.viewer_reaction === reactionType;
+    setBusy(`comment-reaction:${comment.id}:${reactionType}`);
+    setStatus("");
+    try {
+      const summary = active
+        ? await removeCommentReaction(comment.id)
+        : await reactToComment(comment.id, reactionType);
+      applyCommentReactionSummary(comment.id, summary);
+    } catch (requestError) {
+      if (requestError.status === 401) {
+        showLoginModal("Pentru reacții la comentarii trebuie să intri în cont.");
+      } else {
+        setStatus(requestError.message || "Nu am putut salva reacția la comentariu.");
+      }
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const submitComment = async (event, { skipDiacritics = false } = {}) => {
+    event?.preventDefault();
     if (!user) {
       showLoginModal("Pentru comentarii trebuie să intri în cont.");
       return;
@@ -514,18 +802,44 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
     setBusy("comment");
     setStatus("");
     try {
-      if (user?.is_premium && commentAutoDiacritics && !commentReview) {
+      if (!skipDiacritics && user && commentAutoDiacritics && !commentReview) {
         startDiacriticsProgress({ content });
         const converted = await addDiacritics({ kind: "comment", content });
         finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
         setCommentText(converted.content);
         setCommentReview({ originalContent: commentText, changed: converted.changed });
         return;
       }
-      await createComment(postState.id, { content });
+      const createdComment = await createComment(postState.id, { content });
+      const localComment = {
+        ...createdComment,
+        reaction_counts: createdComment.reaction_counts || {},
+        reaction_total: createdComment.reaction_total || 0,
+        viewer_reaction: createdComment.viewer_reaction || null,
+        user: createdComment.user || (user ? {
+          id: user.id,
+          username: user.username,
+          avatar_seed: user.avatar_seed,
+          avatar_url: user.avatar_url,
+          is_premium: user.is_premium,
+          premium_tier: user.premium_tier
+        } : null)
+      };
+      setPostState((current) => {
+        const currentComments = Array.isArray(current.approved_comments) ? current.approved_comments : [];
+        if (currentComments.some((comment) => comment.id === localComment.id)) return current;
+        const next = {
+          ...current,
+          approved_comments: [...currentComments, localComment],
+          comments_count: Number(current.comments_count || 0) + 1
+        };
+        onPostChange?.(next);
+        return next;
+      });
       setCommentText("");
       setCommentReview(null);
-      setStatus(COMMENT_MODERATION_MESSAGE);
+      setStatus("");
     } catch (requestError) {
       failDiacriticsProgress();
       setStatus(requestError.message || "Nu am putut trimite comentariul.");
@@ -535,26 +849,27 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
   };
 
   const audioAvailable = Boolean(audioState.data?.available && audioState.data?.playback_url);
+  const canAddToPlaylist = Boolean(user?.has_author_audio_access && audioAvailable);
   const hasPanelContent = Boolean(audioState.error || commentOpen || status);
 
   return (
     <div className={`post-action-tools landing-post-tools ${className}`.trim()}>
       <div className="piece-actions post-engagement-row" aria-label="Acțiuni text">
-        <button className={`react-btn react-super ${postState.viewer_super_liked ? "on" : ""}`} type="button" onClick={handleSuperLike} disabled={busy === "super"} aria-pressed={Boolean(postState.viewer_super_liked)} aria-label={`${superLikesLabel}: ${superLikesCount}`} title={superLikesLabel}>
+        <button className={`react-btn react-super ${postState.viewer_super_liked && !ownPost ? "on" : ""}`} type="button" onClick={handleSuperLike} disabled={ownPost || Boolean(postState.viewer_super_liked) || busy === "super"} aria-pressed={Boolean(postState.viewer_super_liked) && !ownPost} aria-label={`${superLikesLabel}: ${superLikesCount}${ownPost ? `. ${ownPostSuperLikeMessage}` : postState.viewer_super_liked ? ". Ai super-apreciat deja acest text." : ""}`} title={ownPost ? ownPostSuperLikeMessage : postState.viewer_super_liked ? "Ai super-apreciat deja acest text" : superLikesLabel}>
           <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
-          <span className="react-count">{superLikesCount}</span>
+          <MetricCount value={superLikesCount} />
         </button>
-        <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={busy === "like"} aria-pressed={liked} aria-label={`${likesLabel}: ${likesCount}`} title={likesLabel}>
+        <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={ownPost || liked || busy === "like"} aria-pressed={liked} aria-label={`${likesLabel}: ${likesCount}${ownPost ? `. ${ownPostLikeMessage}` : liked ? ". Ai apreciat deja acest text." : ""}`} title={ownPost ? ownPostLikeMessage : liked ? "Ai apreciat deja acest text" : likesLabel}>
           <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
-          <span className="react-count">{likesCount}</span>
+          <MetricCount value={likesCount} />
         </button>
         <span className="react-btn react-stat" title={viewsLabel} aria-label={`${viewsLabel}: ${viewsCount}`}>
           <FiEye className="react-symbol" aria-hidden="true" focusable="false" />
-          <span className="react-count">{viewsCount}</span>
+          <MetricCount value={viewsCount} />
         </span>
         <button className="react-btn react-comments" type="button" onClick={() => setCommentOpen((open) => !open)} aria-expanded={commentOpen} aria-controls={`comments-${postState.id}`} aria-label={`${commentsLabel}: ${commentsCountLabel}`} title={commentsLabel}>
           <FiMessageCircle className="react-symbol" aria-hidden="true" focusable="false" />
-          <span className="react-count">{commentsCountLabel}</span>
+          <MetricCount value={commentsCountLabel} />
         </button>
         <a className="react-btn react-link post-pdf-download" href={pdfHref} download={filename} aria-label={downloadLabel} title={downloadLabel}>
           <FiDownload aria-hidden="true" focusable="false" />
@@ -562,9 +877,19 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
         <button className="react-btn react-report-trigger" type="button" onClick={openReportModal} disabled={busy === "report"} aria-label="Raportează" title="Raportează">
           <FaFlag aria-hidden="true" />
         </button>
+        {canAddToPlaylist ? (
+          <button className="react-btn react-playlist-trigger" type="button" onClick={openPlaylistModal} disabled={String(busy).startsWith("playlist")} aria-label="Adaugă în playlist" title="Adaugă în playlist">
+            <FiList aria-hidden="true" />
+          </button>
+        ) : null}
         <div className="post-audio-inline">
           {audioAvailable ? (
-            <CompactAudioPlayer src={audioState.data.playback_url} showDownload={false} />
+            <CompactAudioPlayer
+              src={audioState.data.playback_url}
+              audioId={audioState.data.audio_id}
+              listenMode={postState.category}
+              showDownload={false}
+            />
           ) : (
             <CompactAudioPlayer
               src=""
@@ -588,11 +913,16 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
               commentText={commentText}
               commentAutoDiacritics={commentAutoDiacritics}
               commentReview={commentReview}
+              diacriticsQuota={diacriticsQuota}
+              diacriticsQuotaLoading={diacriticsQuotaLoading}
+              diacriticsQuotaError={diacriticsQuotaError}
               onCommentTextChange={setCommentText}
               onCommentAutoDiacriticsChange={setCommentAutoDiacritics}
               onCommentReviewChange={setCommentReview}
               onLoginRequired={() => showLoginModal("Pentru comentarii trebuie să intri în cont.")}
+              onReactToComment={handleCommentReaction}
               onSubmit={submitComment}
+              submitButtonRef={commentSubmitRef}
             />
           ) : null}
 
@@ -601,6 +931,20 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
       ) : null}
       <DiacriticsProgressOverlay {...diacriticsProgress} />
       <AccessModal modal={modal} onClose={() => setModal(null)} />
+      <PlaylistModal
+        open={playlistModalOpen}
+        loading={playlistLoading}
+        playlists={playlistOptions}
+        addedIds={playlistAddedIds}
+        status={playlistStatus}
+        busy={String(busy).startsWith("playlist") ? busy : ""}
+        title={newPlaylistTitle}
+        onTitleChange={setNewPlaylistTitle}
+        onClose={() => setPlaylistModalOpen(false)}
+        onReload={loadPlaylistOptions}
+        onAdd={addCurrentPostToPlaylist}
+        onCreate={createPlaylistAndAddPost}
+      />
       <ReportModal
         modal={reportModal}
         busy={busy}

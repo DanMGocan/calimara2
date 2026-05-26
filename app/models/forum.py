@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -13,6 +13,13 @@ from .base import Base
 
 class ForumThread(Base):
     __tablename__ = "forum_threads"
+    __table_args__ = (
+        CheckConstraint("section IN ('anunturi', 'general', 'poezie', 'proza_scurta')", name="ck_forum_threads_section"),
+        CheckConstraint(
+            "moderation_status IN ('pending', 'approved', 'flagged', 'rejected')",
+            name="ck_forum_threads_moderation_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -27,7 +34,7 @@ class ForumThread(Base):
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toxicity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -63,6 +70,12 @@ class ForumThread(Base):
 
 class ForumReply(Base):
     __tablename__ = "forum_replies"
+    __table_args__ = (
+        CheckConstraint(
+            "moderation_status IN ('pending', 'approved', 'flagged', 'rejected')",
+            name="ck_forum_replies_moderation_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     thread_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -72,7 +85,7 @@ class ForumReply(Base):
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toxicity_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -81,5 +94,3 @@ class ForumReply(Base):
     thread: Mapped["ForumThread"] = relationship("ForumThread", foreign_keys=[thread_id], back_populates="replies")
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], back_populates="forum_replies")
     moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
-
-

@@ -3,7 +3,7 @@ import html
 from ._shared import *
 from .notifications import create_notification
 from .. import email_service
-from ..utils import SUBDOMAIN_SUFFIX
+from ..utils import author_public_url, post_public_url
 
 MENTION_RE = re.compile(r"(?<![A-Za-z0-9])@([A-Za-z0-9]{1,255})")
 HTML_TAG_RE = re.compile(r"(<[^>]+>)")
@@ -65,8 +65,7 @@ def _users_for_mention_links(db: Session, content: str | None) -> Dict[str, mode
 
 
 def _blog_href(username: str) -> str:
-    suffix = SUBDOMAIN_SUFFIX if SUBDOMAIN_SUFFIX.startswith(".") else f".{SUBDOMAIN_SUFFIX}"
-    return f"//{username}{suffix}"
+    return author_public_url(username) or "#"
 
 
 def _link_mentions_in_text_chunk(chunk: str, users_by_username: Dict[str, models.User]) -> str:
@@ -183,8 +182,7 @@ def notify_mentions_for_comment(db: Session, comment: models.Comment) -> None:
         return
 
     owner = post.owner or db.query(models.User).filter(models.User.id == post.user_id).first()
-    suffix = SUBDOMAIN_SUFFIX if SUBDOMAIN_SUFFIX.startswith(".") else f".{SUBDOMAIN_SUFFIX}"
-    link = f"//{owner.username}{suffix}/{post.slug}#comment-{comment.id}" if owner else f"/{post.slug}#comment-{comment.id}"
+    link = post_public_url(owner, post.slug, f"comment-{comment.id}") if owner else None
     _create_mention_notifications(
         db,
         actor=actor,

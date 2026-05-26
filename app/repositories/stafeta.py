@@ -12,6 +12,7 @@ from .posts import create_user_post
 from .slugs import generate_slug
 from .users import get_user_by_username
 from ..schemas.common import _validate_post_content_limit
+from ..utils import post_public_url
 
 
 JOB_STAFETA_SEGMENT_MODERATION = "stafeta_segment_moderation"
@@ -1090,8 +1091,14 @@ def publish_stafeta_work(
             notif_type="stafeta_published",
             title="Ștafetă publicată",
             message=f"„{work.title}\" a fost închisă și trimisă la publicare.",
-            link=f"/{post.slug}",
-            extra_data={"work_id": work.id, "work_slug": work.slug, "post_id": post.id},
+            link=post_public_url(creator, post.slug),
+            extra_data={
+                "work_id": work.id,
+                "work_slug": work.slug,
+                "post_id": post.id,
+                "post_slug": post.slug,
+                "author_username": creator.username,
+            },
         )
     return post, None
 

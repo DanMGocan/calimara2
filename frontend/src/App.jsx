@@ -1,5 +1,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { fetchUnreadMessageCount } from "./api/messages.js";
 import { fetchUnreadNotificationCount } from "./api/notifications.js";
+import { fetchPlatformStats } from "./api/stats.js";
 import { fetchMe } from "./api/users.js";
 import { AuthLoginModal, AuthModalProvider } from "./app/auth-modal.jsx";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
@@ -8,6 +10,7 @@ import { ListeningOverlay, useListeningPlayer } from "./app/listening-player.jsx
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, mainPath, subdomainUsername } from "./app/paths.js";
 import { PostActionTools } from "./app/post-actions.jsx";
+import { useRouteSeo } from "./app/seo.js";
 
 function stripAuthModalParams(url) {
   url.searchParams.delete("auth_modal");
@@ -41,10 +44,11 @@ export function App() {
   const [auth, setAuth] = useState({ loaded: false, user: null });
   const [authModal, setAuthModal] = useState({ open: false, returnTo: "" });
   const [authPostId, setAuthPostId] = useState(null);
-  const [landingStats, setLandingStats] = useState(null);
+  const [platformStats, setPlatformStats] = useState(null);
   const [footerPostActions, setFooterPostActions] = useState(null);
   const [profilePanelOpen, setProfilePanelOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [messageCount, setMessageCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +71,7 @@ export function App() {
   }, []);
 
   const route = useMemo(routeForLocation, [routeVersion]);
+  useRouteSeo(route);
   const loggedIn = Boolean(auth.user);
   const postSurface = route.name === "landing" || route.name === "post" ? "reader" : undefined;
   const buildLandingReturnTo = useCallback((postId = null) => {
@@ -118,6 +123,22 @@ export function App() {
       return null;
     }
   }, [auth.user?.id]);
+  const refreshMessages = useCallback(async () => {
+    if (!auth.user) {
+      setMessageCount(0);
+      return 0;
+    }
+    try {
+      const data = await fetchUnreadMessageCount();
+      const nextCount = Number(data?.unread_count ?? 0);
+      const safeCount = Number.isFinite(nextCount) ? Math.max(0, nextCount) : 0;
+      setMessageCount(safeCount);
+      return safeCount;
+    } catch (error) {
+      if (error?.status === 401) setMessageCount(0);
+      return null;
+    }
+  }, [auth.user?.id]);
   const toggleMenu = useCallback(() => {
     setProfilePanelOpen(false);
     setMenuOpen((open) => !open);
@@ -134,19 +155,27 @@ export function App() {
   useEffect(() => {
     if (!auth.user) {
       setNotificationCount(0);
+      setMessageCount(0);
       setProfilePanelOpen(false);
       return undefined;
     }
 
     refreshNotifications();
-    const intervalId = window.setInterval(refreshNotifications, 60000);
-    const onFocus = () => refreshNotifications();
+    refreshMessages();
+    const intervalId = window.setInterval(() => {
+      refreshNotifications();
+      refreshMessages();
+    }, 60000);
+    const onFocus = () => {
+      refreshNotifications();
+      refreshMessages();
+    };
     window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };
-  }, [auth.user?.id, refreshNotifications]);
+  }, [auth.user?.id, refreshMessages, refreshNotifications]);
 
   useEffect(() => {
     if (!auth.loaded || !auth.user) return;
@@ -189,14 +218,28 @@ export function App() {
   }, [route.name]);
 
   useEffect(() => {
-    if (route.name !== "landing") setLandingStats(null);
-  }, [route.name]);
+    let cancelled = false;
+    fetchPlatformStats()
+      .then((stats) => {
+        if (!cancelled) setPlatformStats(stats);
+      })
+      .catch(() => {
+        if (!cancelled) setPlatformStats(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handlePlatformStatsChange = useCallback((stats) => {
+    if (stats) setPlatformStats(stats);
+  }, []);
 
   useEffect(() => {
     if (route.name !== "landing" && route.name !== "post") setFooterPostActions(null);
   }, [route.name]);
 
-  const listeningPlayer = useListeningPlayer(auth.user, auth.loaded);
+  const listeningPlayer = useListeningPlayer(auth.user, auth.loaded, refreshAuthUser);
   const authModalContext = useMemo(() => ({
     openAuthModal
   }), [openAuthModal]);
@@ -216,6 +259,7 @@ export function App() {
           onProfileNotifications={openProfilePanel}
           profilePanelOpen={profilePanelOpen}
           notificationCount={notificationCount}
+          messageCount={messageCount}
           onOpenAudioPlayer={listeningPlayer.openListening}
           audioPlayerDisabled={!listeningPlayer.canListen}
           audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
@@ -230,27 +274,30 @@ export function App() {
                 authLoaded={auth.loaded}
                 onUserUpdate={updateAuthUser}
                 onUserRefresh={refreshAuthUser}
+                onMessagesRefresh={refreshMessages}
                 onAuthPostIdChange={setAuthPostId}
-                onLandingStatsChange={setLandingStats}
+                onLandingStatsChange={handlePlatformStatsChange}
                 onFooterPostActionsChange={setFooterPostActions}
+                onStartAuthorListening={listeningPlayer.startAuthorListening}
+                onStartPlaylistListening={listeningPlayer.startPlaylistListening}
               />
             </Suspense>
           </ErrorBoundary>
         </AdSenseProvider>
         <ListeningOverlay {...listeningPlayer.overlayProps} />
         {footerPostActions?.post ? (
-          <div className="footer-post-actions-row">
+          <div className={`footer-post-actions-row ${footerPostActions.transitioning ? "is-reader-switching" : ""}`.trim()}>
             <PostActionTools
               key={footerPostActions.key}
               post={footerPostActions.post}
               user={auth.user}
               onPostChange={footerPostActions.onPostChange}
               pdfHref={footerPostActions.pdfHref}
-              className="footer-post-tools"
+              className={`footer-post-tools ${footerPostActions.transitioning ? "is-reader-switching" : ""}`.trim()}
             />
           </div>
         ) : null}
-        <Footer user={auth.user} authLoaded={auth.loaded} landingStats={landingStats} showLandingInfo={route.name === "landing"} />
+        <Footer user={auth.user} authLoaded={auth.loaded} platformStats={platformStats} />
         <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
         <NotificationPanel
           open={profilePanelOpen}

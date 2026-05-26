@@ -20,6 +20,10 @@ export function fetchUnreadMessageCount() {
   return api.get("/api/mesaje/necitite");
 }
 
+export function reportMessage(messageId, data) {
+  return api.post(`/api/mesaje/${encodeURIComponent(messageId)}/raportari`, data);
+}
+
 export function deleteConversation(conversationId) {
   return api.delete(`/api/mesaje/conversatii/${encodeURIComponent(conversationId)}`);
 }
@@ -27,4 +31,3 @@ export function deleteConversation(conversationId) {
 export function searchConversations(query) {
   return api.get(`/api/mesaje/cauta?q=${encodeURIComponent(query)}`);
 }
-

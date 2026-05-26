@@ -23,6 +23,18 @@ def list_plans():
     return stripe_service.list_premium_plans()
 
 
+@router.get("/api/recomandari/eu")
+def my_referrals(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
+):
+    user = _require_user(current_user)
+    payload = crud.referral_summary(db, user)
+    payload["referral_url"] = f"{str(request.base_url).rstrip('/')}{payload['referral_path']}"
+    return payload
+
+
 @router.post("/api/premium/plata", response_model=schemas.PremiumCheckoutResponse)
 def create_checkout(
     body: schemas.PremiumCheckoutRequest = schemas.PremiumCheckoutRequest(),

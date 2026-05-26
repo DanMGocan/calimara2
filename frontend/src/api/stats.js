@@ -1,5 +1,9 @@
 import { api } from "./client.js";
 
+export function fetchPlatformStats() {
+  return api.get("/api/statistici/platforma");
+}
+
 export function fetchPostStats(postId) {
   return api.get(`/api/statistici/postare/${encodeURIComponent(postId)}`);
 }
@@ -12,11 +16,6 @@ export function fetchCategoryStats(categoryKey) {
   return api.get(`/api/statistici/categorie/${encodeURIComponent(categoryKey)}`);
 }
 
-export function fetchOverviewStats() {
-  return api.get("/api/statistici/ansamblu");
-}
-
 export function fetchMyStats() {
   return api.get("/api/statistici/ale-mele");
 }
-

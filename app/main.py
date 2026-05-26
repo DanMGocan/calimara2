@@ -5,8 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -17,7 +18,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from .error_logging import configure_error_logging
-from . import admin, models
+from . import admin, models, seo
+from .database import get_db
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
 from .domains import DOMAIN_ROUTERS
 
@@ -46,12 +48,34 @@ if not SESSION_SECRET_KEY:
 HTTPS_ONLY = os.getenv("HTTPS_ONLY", "True").lower() in ("true", "1", "yes")
 ADSENSE_PUBLISHER_ID = os.getenv("ADSENSE_PUBLISHER_ID", "").strip()
 
+
+def session_cookie_domain(subdomain_suffix: str) -> str | None:
+    suffix = (subdomain_suffix or "").strip()
+    host = suffix.lstrip(".").split(":", 1)[0].lower()
+    if not suffix or host == "localhost" or re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", host):
+        return None
+    return suffix
+
+
+SESSION_COOKIE_DOMAIN = session_cookie_domain(SUBDOMAIN_SUFFIX)
+
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(docs_url=None, redoc_url=None)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _validation_error_payload(exc: RequestValidationError) -> dict:
+    errors = []
+    for error in exc.errors():
+        item = dict(error)
+        ctx = item.get("ctx")
+        if isinstance(ctx, dict) and "error" in ctx:
+            item["ctx"] = {**ctx, "error": str(ctx["error"])}
+        errors.append(item)
+    return {"detail": errors}
 
 
 def _request_context(request: Request) -> str:
@@ -76,7 +100,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     logger.warning("Validation error while handling %s: %s", _request_context(request), exc)
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    return JSONResponse(status_code=422, content=jsonable_encoder(_validation_error_payload(exc)))
 
 
 @app.exception_handler(Exception)
@@ -104,7 +128,7 @@ app.add_middleware(
     max_age=14 * 24 * 60 * 60,  # 14 days
     same_site="lax",
     https_only=HTTPS_ONLY,
-    domain=SUBDOMAIN_SUFFIX or None,
+    domain=SESSION_COOKIE_DOMAIN,
 )
 
 # Mount legacy static files
@@ -120,6 +144,22 @@ def ads_txt():
     )
 
 
+@app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)
+def robots_txt():
+    return PlainTextResponse(
+        seo.build_robots_txt(),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml(db=Depends(get_db)):
+    return PlainTextResponse(
+        seo.build_sitemap_xml(db),
+        media_type="application/xml; charset=utf-8",
+    )
+
+
 # Subdomain Middleware
 class SubdomainMiddleware:
     def __init__(self, app):
@@ -128,7 +168,7 @@ class SubdomainMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             headers = Headers(scope=scope)
-            host = headers.get("host", "").split(":", 1)[0]
+            host = headers.get("host", "").split(":", 1)[0].lower()
             state = scope.setdefault("state", {})
             if SUBDOMAIN_SUFFIX and host.endswith(SUBDOMAIN_SUFFIX) and not host.startswith("www.") and host != MAIN_DOMAIN:
                 state["is_subdomain"] = True
@@ -172,19 +212,64 @@ def _legacy_frontend_path(path: str) -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in LEGACY_FRONTEND_PREFIXES)
 
 
-def _react_index_response() -> FileResponse:
-    response = FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+def _author_subdomain_not_found_response(request: Request, db):
+    username = getattr(getattr(request, "state", None), "username", None)
+    if not username:
+        return None
+    user_exists = (
+        db.query(models.User.id)
+        .filter(models.User.username == username)
+        .first()
+        is not None
+    )
+    if user_exists:
+        return None
+    return JSONResponse(status_code=404, content={"detail": "Autorul nu a fost găsit"})
+
+
+def _apply_no_store_headers(response):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
 
 
+def _react_index_response(
+    request: Request | None = None,
+    db=None,
+    metadata: seo.PageMetadata | None = None,
+):
+    index_path = os.path.join(FRONTEND_DIST, "index.html")
+    if not os.path.isfile(index_path):
+        return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
+    if metadata is None and request is not None and db is not None:
+        metadata = seo.build_page_metadata(db, request)
+    if metadata is None:
+        return _apply_no_store_headers(FileResponse(index_path))
+    with open(index_path, "r", encoding="utf-8") as file:
+        html = file.read()
+    response = HTMLResponse(seo.render_index_html(html, metadata))
+    if metadata.noindex:
+        response.headers["X-Robots-Tag"] = metadata.robots
+    return _apply_no_store_headers(response)
+
+
 @app.get("/docs", include_in_schema=False)
-def serve_admin_documentation(current_user: models.User = Depends(admin.require_admin)):
+def serve_admin_documentation(
+    request: Request,
+    current_user: models.User = Depends(admin.require_admin),
+):
     if not os.path.isdir(FRONTEND_DIST):
         return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
-    return _react_index_response()
+    return _react_index_response(
+        request=request,
+        metadata=seo.PageMetadata(
+            title=f"Documentație admin | {seo.SITE_NAME}",
+            description="Documentație internă pentru administratorii Călimara.",
+            canonical_url=seo.main_url("/docs"),
+            robots="noindex, nofollow",
+        ),
+    )
 
 
 @app.get("/favicon.png", include_in_schema=False)
@@ -202,12 +287,15 @@ if os.path.isdir(FRONTEND_DIST):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="react-assets")
 
     @app.get("/{full_path:path}")
-    def serve_react(full_path: str):
+    def serve_react(full_path: str, request: Request, db=Depends(get_db)):
         """Catch-all: serve React index.html for client-side routing"""
         normalized_path = f"/{full_path.strip('/')}" if full_path else "/"
         if normalized_path.startswith("/api/") or _legacy_frontend_path(normalized_path):
             return JSONResponse(status_code=404, content={"detail": "Ruta nu a fost găsită"})
-        return _react_index_response()
+        missing_author = _author_subdomain_not_found_response(request, db)
+        if missing_author is not None:
+            return missing_author
+        return _react_index_response(request=request, db=db)
 else:
     logger.warning(
         f"React build not found at {FRONTEND_DIST}. "

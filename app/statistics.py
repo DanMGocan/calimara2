@@ -12,6 +12,7 @@ from sqlalchemy import func, case, distinct, and_, cast, Date as SQLDate
 from sqlalchemy.orm import Session
 
 from . import models, crud
+from .utils import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,7 @@ _RATE_WINDOW = 60  # seconds
 
 
 def _get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "0.0.0.0"
+    return get_client_ip(request)
 
 
 def _get_session_fingerprint(request: Request) -> Optional[str]:

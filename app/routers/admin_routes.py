@@ -5,11 +5,13 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import and_, func, or_
+from sqlalchemy import String, and_, case, func, or_
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, models, platform_access, schemas, statistics
+from .. import admin, crud, email_service, invitations, models, object_storage, platform_access, schemas, statistics
 from ..database import get_db
+from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,10 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 CONTENT_TYPES = {"post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"}
 CONTENT_STATUSES = {"approved", "pending", "flagged", "rejected"}
 PREMIUM_TIERS = {"free", "trubadur", "cronicar", "rapsod"}
+STORAGE_APP_PREFIXES = ("posts/", "users/", "clubs/")
+STORAGE_STATUS_FILTERS = {"all", "referenced", "unreferenced", "deletable", "protected"}
+QA_REPORT_MESSAGE_PREFIX = "Raport QA"
+QA_REPORT_CONTEXT_FIELD = "report_stamp"
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
@@ -75,8 +81,307 @@ def _ensure_can_remove_admin(db: Session, target: models.User) -> None:
         raise HTTPException(status_code=400, detail="Nu poți modifica ultimul administrator.")
 
 
+def _delete_user_owned_content(db: Session, user_id: int) -> dict:
+    """Remove user-authored content that would otherwise be anonymized."""
+    counts = {}
+
+    def delete_rows(label: str, query) -> None:
+        counts[label] = query.delete(synchronize_session=False)
+
+    counts["theatre_scenes_opened"] = (
+        db.query(models.TheatreScene)
+        .filter(models.TheatreScene.opened_by == user_id)
+        .update({models.TheatreScene.opened_by: None}, synchronize_session=False)
+    )
+    delete_rows("comments", db.query(models.Comment).filter(models.Comment.user_id == user_id))
+    delete_rows("likes", db.query(models.Like).filter(models.Like.user_id == user_id))
+    delete_rows("audio_listen_events", db.query(models.AudioListenEvent).filter(models.AudioListenEvent.listener_user_id == user_id))
+    delete_rows("forum_replies", db.query(models.ForumReply).filter(models.ForumReply.author_id == user_id))
+    delete_rows("forum_threads", db.query(models.ForumThread).filter(models.ForumThread.author_id == user_id))
+    delete_rows("club_board_messages", db.query(models.ClubBoardMessage).filter(models.ClubBoardMessage.author_id == user_id))
+    delete_rows("theatre_entries", db.query(models.TheatreEntry).filter(models.TheatreEntry.author_id == user_id))
+    delete_rows("stafeta_segments", db.query(models.StafetaSegment).filter(models.StafetaSegment.author_id == user_id))
+    delete_rows("post_drafts", db.query(models.PostDraft).filter(models.PostDraft.user_id == user_id))
+    delete_rows("posts", db.query(models.Post).filter(models.Post.user_id == user_id))
+
+    return counts
+
+
 def _as_iso(value):
     return value.isoformat() if value else None
+
+
+def _storage_prefix_type(key: str) -> str:
+    for prefix in STORAGE_APP_PREFIXES:
+        if key.startswith(prefix):
+            return prefix.rstrip("/")
+    return "outside"
+
+
+def _add_storage_reference(references: dict[str, list[dict]], key: Optional[str], payload: dict) -> None:
+    if not key:
+        return
+    references.setdefault(key, []).append(payload)
+
+
+def _main_path(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    return path if path.startswith("/") else f"/{path}"
+
+
+def _forum_thread_url(thread: Optional[models.ForumThread], anchor: Optional[str] = None) -> Optional[str]:
+    if not thread or not thread.slug:
+        return None
+    path = f"/discutii/{thread.slug}"
+    if anchor:
+        path = f"{path}#{str(anchor).lstrip('#')}"
+    return path
+
+
+def _theatre_play_url(play: Optional[models.TheatrePlay]) -> Optional[str]:
+    return f"/teatru/{play.slug}" if play and play.slug else None
+
+
+def _stafeta_work_url(work: Optional[models.StafetaWork]) -> Optional[str]:
+    return f"/stafeta/{work.slug}" if work and work.slug else None
+
+
+def _storage_reference_map(db: Session) -> dict[str, list[dict]]:
+    references: dict[str, list[dict]] = {}
+
+    audio_rows = (
+        db.query(models.PostAudio)
+        .options(joinedload(models.PostAudio.post).joinedload(models.Post.owner))
+        .filter(
+            models.PostAudio.storage_backend == "s3",
+            models.PostAudio.storage_key.isnot(None),
+        )
+        .all()
+    )
+    for audio in audio_rows:
+        post = audio.post
+        title = post.title if post else "Audio"
+        author = post.owner.username if post and post.owner else None
+        label = f"Audio #{audio.id} · {title}"
+        if author:
+            label = f"{label} · @{author}"
+        _add_storage_reference(
+            references,
+            audio.storage_key,
+            {
+                "type": "audio",
+                "id": audio.id,
+                "label": label,
+                "target_url": post_public_url(post.owner, post.slug) if post and post.owner else None,
+            },
+        )
+
+    users = (
+        db.query(models.User)
+        .filter(
+            or_(
+                and_(models.User.profile_photo_storage_backend == "s3", models.User.profile_photo_storage_key.isnot(None)),
+                and_(models.User.cover_photo_storage_backend == "s3", models.User.cover_photo_storage_key.isnot(None)),
+            )
+        )
+        .all()
+    )
+    for user in users:
+        _add_storage_reference(
+            references,
+            user.profile_photo_storage_key,
+            {
+                "type": "user_profile_photo",
+                "id": user.id,
+                "label": f"Profil utilizator · @{user.username}",
+                "target_url": author_public_url(user),
+            },
+        )
+        _add_storage_reference(
+            references,
+            user.cover_photo_storage_key,
+            {
+                "type": "user_cover_photo",
+                "id": user.id,
+                "label": f"Copertă utilizator · @{user.username}",
+                "target_url": author_public_url(user),
+            },
+        )
+
+    clubs = (
+        db.query(models.Club)
+        .filter(
+            or_(
+                and_(models.Club.profile_photo_storage_backend == "s3", models.Club.profile_photo_storage_key.isnot(None)),
+                and_(models.Club.cover_photo_storage_backend == "s3", models.Club.cover_photo_storage_key.isnot(None)),
+            )
+        )
+        .all()
+    )
+    for club in clubs:
+        _add_storage_reference(
+            references,
+            club.profile_photo_storage_key,
+            {
+                "type": "club_profile_photo",
+                "id": club.id,
+                "label": f"Profil club · {club.title}",
+                "target_url": _main_path(f"/cluburi/{club.slug}") if club.slug else None,
+            },
+        )
+        _add_storage_reference(
+            references,
+            club.cover_photo_storage_key,
+            {
+                "type": "club_cover_photo",
+                "id": club.id,
+                "label": f"Copertă club · {club.title}",
+                "target_url": _main_path(f"/cluburi/{club.slug}") if club.slug else None,
+            },
+        )
+
+    return references
+
+
+def _serialize_storage_time(value) -> Optional[str]:
+    if not value:
+        return None
+    return value.isoformat() if hasattr(value, "isoformat") else str(value)
+
+
+def _storage_object_payload(raw: dict, references: dict[str, list[dict]]) -> dict:
+    key = str(raw.get("Key") or "")
+    refs = references.get(key, [])
+    prefix_type = _storage_prefix_type(key)
+    known_prefix = prefix_type != "outside"
+    can_delete = known_prefix and not refs
+    protected_reason = None
+    if refs:
+        protected_reason = "Obiectul este folosit de înregistrări din baza de date."
+    elif not known_prefix:
+        protected_reason = "Obiectul este în afara prefixelor Călimara și este doar vizibil."
+    return {
+        "key": key,
+        "size": raw.get("Size") or 0,
+        "last_modified": _serialize_storage_time(raw.get("LastModified")),
+        "etag": str(raw.get("ETag") or "").strip('"'),
+        "storage_class": raw.get("StorageClass"),
+        "prefix_type": prefix_type,
+        "known_prefix": known_prefix,
+        "references": refs,
+        "can_delete": can_delete,
+        "protected_reason": protected_reason,
+    }
+
+
+def _matches_storage_status(payload: dict, status_filter: str) -> bool:
+    if status_filter == "all":
+        return True
+    has_references = bool(payload["references"])
+    if status_filter == "referenced":
+        return has_references
+    if status_filter == "unreferenced":
+        return not has_references
+    if status_filter == "deletable":
+        return bool(payload["can_delete"])
+    if status_filter == "protected":
+        return not payload["can_delete"]
+    return False
+
+
+def _storage_error(detail: str, exc: Exception) -> HTTPException:
+    logger.warning("Object storage admin operation failed: %s", detail, exc_info=True)
+    return HTTPException(status_code=503, detail=detail)
+
+
+def _storage_metadata_payload(object_metadata: dict) -> dict:
+    return {
+        "size": object_metadata.get("ContentLength"),
+        "content_type": object_metadata.get("ContentType"),
+        "etag": str(object_metadata.get("ETag") or "").strip('"'),
+        "last_modified": _serialize_storage_time(object_metadata.get("LastModified")),
+    }
+
+
+def _clear_media_reference(item, prefix: str) -> None:
+    setattr(item, f"{prefix}_storage_backend", None)
+    setattr(item, f"{prefix}_storage_key", None)
+    setattr(item, f"{prefix}_content_type", None)
+    setattr(item, f"{prefix}_updated_at", None)
+
+
+def _cleanup_storage_references(db: Session, key: str, reason: str) -> dict:
+    counts = {
+        "audio": 0,
+        "user_profile_photo": 0,
+        "user_cover_photo": 0,
+        "club_profile_photo": 0,
+        "club_cover_photo": 0,
+    }
+    now = utcnow_naive()
+    cancelled_reason = f"Fișier curățat din panoul admin: {reason}"
+
+    audio_rows = (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.storage_backend == "s3",
+            models.PostAudio.storage_key == key,
+        )
+        .all()
+    )
+    for audio in audio_rows:
+        audio.status = "cancelled"
+        audio.storage_backend = None
+        audio.storage_key = None
+        audio.content_type = None
+        audio.byte_size = None
+        audio.moderation_status = "cancelled"
+        audio.moderation_reason = cancelled_reason
+        audio.updated_at = now
+        counts["audio"] += 1
+
+    users = (
+        db.query(models.User)
+        .filter(
+            or_(
+                and_(models.User.profile_photo_storage_backend == "s3", models.User.profile_photo_storage_key == key),
+                and_(models.User.cover_photo_storage_backend == "s3", models.User.cover_photo_storage_key == key),
+            )
+        )
+        .all()
+    )
+    for user in users:
+        if user.profile_photo_storage_backend == "s3" and user.profile_photo_storage_key == key:
+            _clear_media_reference(user, "profile_photo")
+            counts["user_profile_photo"] += 1
+        if user.cover_photo_storage_backend == "s3" and user.cover_photo_storage_key == key:
+            _clear_media_reference(user, "cover_photo")
+            counts["user_cover_photo"] += 1
+
+    clubs = (
+        db.query(models.Club)
+        .filter(
+            or_(
+                and_(models.Club.profile_photo_storage_backend == "s3", models.Club.profile_photo_storage_key == key),
+                and_(models.Club.cover_photo_storage_backend == "s3", models.Club.cover_photo_storage_key == key),
+            )
+        )
+        .all()
+    )
+    for club in clubs:
+        if club.profile_photo_storage_backend == "s3" and club.profile_photo_storage_key == key:
+            _clear_media_reference(club, "profile_photo")
+            counts["club_profile_photo"] += 1
+        if club.cover_photo_storage_backend == "s3" and club.cover_photo_storage_key == key:
+            _clear_media_reference(club, "cover_photo")
+            counts["club_cover_photo"] += 1
+
+    total = sum(counts.values())
+    return {
+        "counts": counts,
+        "total": total,
+    }
 
 
 def _user_payload(db: Session, user: models.User, include_counts: bool = False) -> dict:
@@ -118,14 +423,16 @@ def _user_payload(db: Session, user: models.User, include_counts: bool = False) 
     return payload
 
 
-def _audit_payload(log: models.AdminAuditLog) -> dict:
+def _audit_payload(log: models.AdminAuditLog, db: Optional[Session] = None) -> dict:
     return {
         "id": log.id,
         "actor_user_id": log.actor_user_id,
         "actor_username": log.actor_username,
+        "actor_url": author_public_url(log.actor_username) if log.actor_username else None,
         "action": log.action,
         "target_type": log.target_type,
         "target_id": log.target_id,
+        "target_url": _admin_target_url(db, log.target_type, log.target_id) if db else None,
         "reason": log.reason,
         "ip_address": log.ip_address,
         "metadata": log.extra_data or {},
@@ -133,8 +440,120 @@ def _audit_payload(log: models.AdminAuditLog) -> dict:
     }
 
 
-def _site_feedback_payload(item: models.SiteFeedback) -> dict:
-    return {
+def _coerce_int(value) -> Optional[int]:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _site_feedback_reply_targets_for_conversation(db: Session, conversation_id: int) -> list[tuple[datetime, int, int]]:
+    logs = (
+        db.query(models.AdminAuditLog)
+        .filter(
+            models.AdminAuditLog.action == "site_feedback_reply",
+            models.AdminAuditLog.target_type == "site_feedback",
+            models.AdminAuditLog.target_id != None,
+        )
+        .all()
+    )
+    message_to_feedback: dict[int, int] = {}
+    for log in logs:
+        metadata = log.extra_data or {}
+        if _coerce_int(metadata.get("conversation_id")) != conversation_id:
+            continue
+        message_id = _coerce_int(metadata.get("message_id"))
+        if message_id is not None and log.target_id is not None:
+            message_to_feedback[message_id] = log.target_id
+
+    if not message_to_feedback:
+        return []
+
+    reply_messages = (
+        db.query(models.Message.id, models.Message.created_at)
+        .filter(
+            models.Message.conversation_id == conversation_id,
+            models.Message.id.in_(message_to_feedback.keys()),
+        )
+        .order_by(models.Message.created_at.asc(), models.Message.id.asc())
+        .all()
+    )
+    return [
+        (created_at or datetime.min, message_id, message_to_feedback[message_id])
+        for message_id, created_at in reply_messages
+        if message_id in message_to_feedback
+    ]
+
+
+def _site_feedback_target_for_user_reply(
+    message: models.Message,
+    reply_targets: list[tuple[datetime, int, int]],
+) -> Optional[int]:
+    message_key = (message.created_at or datetime.min, message.id or 0)
+    matched_target_id: Optional[int] = None
+    for reply_created_at, reply_message_id, feedback_id in reply_targets:
+        if (reply_created_at, reply_message_id) < message_key:
+            matched_target_id = feedback_id
+        else:
+            break
+    return matched_target_id
+
+
+def _site_feedback_unread_reply_messages(db: Session, item: models.SiteFeedback) -> list[models.Message]:
+    if not item.support_conversation_id or not item.user_id:
+        return []
+
+    messages = (
+        db.query(models.Message)
+        .filter(
+            models.Message.conversation_id == item.support_conversation_id,
+            models.Message.sender_id == item.user_id,
+            models.Message.is_read == False,
+        )
+        .order_by(models.Message.created_at.desc(), models.Message.id.desc())
+        .all()
+    )
+    reply_targets = _site_feedback_reply_targets_for_conversation(db, item.support_conversation_id)
+    if not reply_targets:
+        return messages
+    return [
+        message
+        for message in messages
+        if _site_feedback_target_for_user_reply(message, reply_targets) == item.id
+    ]
+
+
+def _mark_site_feedback_replies_as_read(db: Session, item: models.SiteFeedback) -> int:
+    unread_messages = _site_feedback_unread_reply_messages(db, item)
+    if not unread_messages:
+        return 0
+    unread_message_ids = [message.id for message in unread_messages]
+    return db.query(models.Message).filter(
+        models.Message.id.in_(unread_message_ids),
+        models.Message.is_read == False,
+    ).update({"is_read": True}, synchronize_session=False)
+
+
+def _site_feedback_unread_reply_summary(db: Session, item: models.SiteFeedback) -> dict:
+    summary = {
+        "unread_reply_count": 0,
+        "latest_unread_reply_at": None,
+        "latest_unread_reply_preview": None,
+    }
+    unread_messages = _site_feedback_unread_reply_messages(db, item)
+    summary["unread_reply_count"] = len(unread_messages)
+    if not unread_messages:
+        return summary
+
+    latest_reply = unread_messages[0]
+    if latest_reply:
+        summary["latest_unread_reply_at"] = _as_iso(latest_reply.created_at)
+        summary["latest_unread_reply_preview"] = latest_reply.content
+    return summary
+
+
+def _site_feedback_payload(item: models.SiteFeedback, db: Optional[Session] = None) -> dict:
+    payload = {
         "id": item.id,
         "kind": item.kind,
         "user_id": item.user_id,
@@ -149,9 +568,113 @@ def _site_feedback_payload(item: models.SiteFeedback) -> dict:
         "resolved_by": item.resolved_by,
         "resolver_username": item.resolver.username if item.resolver else None,
         "resolved_at": _as_iso(item.resolved_at),
+        "support_conversation_id": item.support_conversation_id,
+        "support_started_at": _as_iso(item.support_started_at),
         "created_at": _as_iso(item.created_at),
         "updated_at": _as_iso(item.updated_at),
     }
+    if db is not None:
+        payload.update(_site_feedback_unread_reply_summary(db, item))
+    return payload
+
+
+def _site_feedback_thread_message_payload(message: models.Message) -> dict:
+    sender = message.sender
+    return {
+        "id": message.id,
+        "conversation_id": message.conversation_id,
+        "sender_id": message.sender_id,
+        "sender_username": sender.username if sender else None,
+        "sender_is_system": bool(getattr(sender, "is_system", False)),
+        "sender_label": "Călimara" if getattr(sender, "is_system", False) else (sender.username if sender else "Utilizator"),
+        "content": message.content,
+        "created_at": _as_iso(message.created_at),
+    }
+
+
+def _site_feedback_thread_payload(db: Session, item: models.SiteFeedback) -> dict:
+    messages = []
+    if item.support_conversation_id:
+        messages = (
+            db.query(models.Message)
+            .options(joinedload(models.Message.sender))
+            .filter(models.Message.conversation_id == item.support_conversation_id)
+            .order_by(models.Message.created_at.asc(), models.Message.id.asc())
+            .all()
+        )
+    return {
+        "feedback": _site_feedback_payload(item, db),
+        "conversation_id": item.support_conversation_id,
+        "messages": [_site_feedback_thread_message_payload(message) for message in messages],
+        "unread_reply_count": _admin_site_feedback_unread_reply_count(db),
+    }
+
+
+def _qa_report_feedback_filter():
+    context_text = models.SiteFeedback.client_context.cast(String)
+    return or_(
+        models.SiteFeedback.message.ilike(f"{QA_REPORT_MESSAGE_PREFIX}%"),
+        context_text.ilike(f"%{QA_REPORT_CONTEXT_FIELD}%"),
+    )
+
+
+def _admin_site_feedback_unread_reply_count(db: Session) -> int:
+    return int(
+        db.query(func.count(func.distinct(models.Message.id)))
+        .join(
+            models.SiteFeedback,
+            models.SiteFeedback.support_conversation_id == models.Message.conversation_id,
+        )
+        .filter(
+            ~_qa_report_feedback_filter(),
+            models.SiteFeedback.support_conversation_id != None,
+            models.SiteFeedback.user_id != None,
+            models.Message.sender_id == models.SiteFeedback.user_id,
+            models.Message.is_read == False,
+        )
+        .scalar()
+        or 0
+    )
+
+
+def _admin_site_feedback_unread_reply_ids(db: Session) -> set[int]:
+    unread_messages = (
+        db.query(models.Message)
+        .join(
+            models.SiteFeedback,
+            models.SiteFeedback.support_conversation_id == models.Message.conversation_id,
+        )
+        .filter(
+            ~_qa_report_feedback_filter(),
+            models.SiteFeedback.support_conversation_id != None,
+            models.SiteFeedback.user_id != None,
+            models.Message.sender_id == models.SiteFeedback.user_id,
+            models.Message.is_read == False,
+        )
+        .order_by(models.Message.created_at.asc(), models.Message.id.asc())
+        .all()
+    )
+    targets_by_conversation: dict[int, list[tuple[datetime, int, int]]] = {}
+    feedback_ids: set[int] = set()
+    for message in {message.id: message for message in unread_messages}.values():
+        targets = targets_by_conversation.setdefault(
+            message.conversation_id,
+            _site_feedback_reply_targets_for_conversation(db, message.conversation_id),
+        )
+        target_id = _site_feedback_target_for_user_reply(message, targets)
+        if target_id is not None:
+            feedback_ids.add(target_id)
+    return feedback_ids
+
+
+def _qa_report_feedback_payload(item: models.SiteFeedback) -> dict:
+    payload = _site_feedback_payload(item)
+    message_lines = [line.strip() for line in str(item.message or "").splitlines() if line.strip()]
+    payload["title"] = message_lines[0] if message_lines else QA_REPORT_MESSAGE_PREFIX
+    payload["body"] = "\n".join(message_lines[1:]) if len(message_lines) > 1 else item.message
+    payload["report_stamp"] = payload["client_context"].get(QA_REPORT_CONTEXT_FIELD)
+    payload["report_part"] = payload["client_context"].get("part")
+    return payload
 
 
 def _platform_allowed_email_payload(item: models.PlatformAllowedEmail) -> dict:
@@ -165,13 +688,59 @@ def _platform_allowed_email_payload(item: models.PlatformAllowedEmail) -> dict:
     }
 
 
+def _platform_invitation_payload(item: models.PlatformInvitation) -> dict:
+    return {
+        "id": item.id,
+        "email": item.email,
+        "status": invitations.invitation_display_status(item),
+        "stored_status": item.status,
+        "premium_tier": item.premium_tier,
+        "premium_days": item.premium_days,
+        "note": item.note,
+        "created_by": item.created_by,
+        "accepted_user_id": item.accepted_user_id,
+        "expires_at": _as_iso(item.expires_at),
+        "accepted_at": _as_iso(item.accepted_at),
+        "revoked_at": _as_iso(item.revoked_at),
+        "resent_at": _as_iso(item.resent_at),
+        "created_at": _as_iso(item.created_at),
+        "updated_at": _as_iso(item.updated_at),
+    }
+
+
 def _platform_access_payload(db: Session) -> dict:
     emails = platform_access.list_allowed_emails(db)
+    invite_rows = invitations.list_invitations(db)
     return {
         "open": platform_access.is_platform_open(db),
         "allowed_count": len(emails),
         "emails": [_platform_allowed_email_payload(item) for item in emails],
+        "invitation_count": len(invite_rows),
+        "invitations": [_platform_invitation_payload(item) for item in invite_rows],
     }
+
+
+def _queue_platform_invitation(
+    db: Session,
+    *,
+    invitation: models.PlatformInvitation,
+    token: str,
+    temporary_password: str,
+    actor: models.User,
+) -> Optional[models.EmailOutbox]:
+    invite_url = email_service.main_url(f"/invitatie/{token}")
+    row = email_service.queue_platform_invitation_email(
+        db,
+        recipient_email=invitation.email,
+        invitation_url=invite_url,
+        temporary_password=temporary_password,
+        premium_tier=invitation.premium_tier,
+        premium_days=invitation.premium_days,
+        actor=actor,
+        invitation_id=invitation.id,
+    )
+    email_service.send_queued_email_now(db, row, worker=f"admin-invitation:{actor.id}")
+    return row
 
 
 def _admin_daily_metrics_available(db: Session) -> bool:
@@ -194,12 +763,13 @@ def _admin_audit_logs_available(db: Session) -> bool:
     return False
 
 
-def _job_payload(job: models.AIJob) -> dict:
+def _job_payload(job: models.AIJob, db: Optional[Session] = None) -> dict:
     return {
         "id": job.id,
         "job_type": job.job_type,
         "target_type": job.target_type,
         "target_id": job.target_id,
+        "target_url": _admin_target_url(db, job.target_type, job.target_id) if db else None,
         "status": job.status,
         "attempts": job.attempts,
         "max_attempts": job.max_attempts,
@@ -218,9 +788,12 @@ def _content_payload(item, content_type: str) -> dict:
             "id": item.id,
             "type": "post",
             "title": item.title,
+            "slug": item.slug,
             "content": item.content,
             "author": item.owner.username if item.owner else None,
             "author_id": item.user_id,
+            "author_url": author_public_url(item.owner) if item.owner else None,
+            "target_url": post_public_url(item.owner, item.slug) if item.owner else None,
             "status": item.moderation_status,
             "reason": item.moderation_reason,
             "toxicity_score": item.toxicity_score,
@@ -238,10 +811,14 @@ def _content_payload(item, content_type: str) -> dict:
             "content": item.content,
             "author": item.commenter.username if item.commenter else (item.author_name or "Anonim"),
             "author_id": item.user_id,
+            "author_url": author_public_url(item.commenter) if item.commenter else None,
             "status": item.moderation_status,
             "reason": item.moderation_reason,
             "toxicity_score": item.toxicity_score,
             "post_id": item.post_id,
+            "post_slug": item.post.slug if item.post else None,
+            "post_author": item.post.owner.username if item.post and item.post.owner else None,
+            "target_url": post_public_url(item.post.owner, item.post.slug, f"comment-{item.id}") if item.post and item.post.owner else None,
             "created_at": _as_iso(item.created_at),
             "updated_at": None,
         }
@@ -253,10 +830,14 @@ def _content_payload(item, content_type: str) -> dict:
             "content": item.transcript or item.moderation_reason or "",
             "author": item.post.owner.username if item.post and item.post.owner else None,
             "author_id": item.post.user_id if item.post else None,
+            "author_url": author_public_url(item.post.owner) if item.post and item.post.owner else None,
             "status": item.status,
             "reason": item.moderation_reason,
             "toxicity_score": None,
             "post_id": item.post_id,
+            "post_slug": item.post.slug if item.post else None,
+            "post_author": item.post.owner.username if item.post and item.post.owner else None,
+            "target_url": post_public_url(item.post.owner, item.post.slug) if item.post and item.post.owner else None,
             "source": item.source,
             "duration_seconds": item.duration_seconds,
             "created_at": _as_iso(item.created_at),
@@ -267,9 +848,12 @@ def _content_payload(item, content_type: str) -> dict:
             "id": item.id,
             "type": "forum_thread",
             "title": item.title,
+            "slug": item.slug,
             "content": item.content,
             "author": item.author.username if item.author else None,
             "author_id": item.author_id,
+            "author_url": author_public_url(item.author) if item.author else None,
+            "target_url": _forum_thread_url(item),
             "status": item.moderation_status,
             "reason": item.moderation_reason,
             "toxicity_score": item.toxicity_score,
@@ -286,10 +870,13 @@ def _content_payload(item, content_type: str) -> dict:
             "content": item.content,
             "author": item.author.username if item.author else None,
             "author_id": item.author_id,
+            "author_url": author_public_url(item.author) if item.author else None,
+            "target_url": _theatre_play_url(item.play),
             "status": item.moderation_status,
             "reason": item.moderation_reason,
             "toxicity_score": item.toxicity_score,
             "play_id": item.play_id,
+            "play_slug": item.play.slug if item.play else None,
             "scene_id": item.scene_id,
             "entry_type": item.entry_type,
             "character": item.character.name if item.character else None,
@@ -304,10 +891,13 @@ def _content_payload(item, content_type: str) -> dict:
             "content": item.content,
             "author": item.author.username if item.author else None,
             "author_id": item.author_id,
+            "author_url": author_public_url(item.author) if item.author else None,
+            "target_url": _stafeta_work_url(item.work),
             "status": item.moderation_status,
             "reason": item.moderation_reason,
             "toxicity_score": item.toxicity_score,
             "work_id": item.work_id,
+            "work_slug": item.work.slug if item.work else None,
             "assignment_id": item.assignment_id,
             "created_at": _as_iso(item.created_at),
             "updated_at": _as_iso(item.updated_at),
@@ -319,10 +909,13 @@ def _content_payload(item, content_type: str) -> dict:
         "content": item.content,
         "author": item.author.username if item.author else None,
         "author_id": item.author_id,
+        "author_url": author_public_url(item.author) if item.author else None,
+        "target_url": _forum_thread_url(item.thread, f"reply-{item.id}"),
         "status": item.moderation_status,
         "reason": item.moderation_reason,
         "toxicity_score": item.toxicity_score,
         "thread_id": item.thread_id,
+        "thread_slug": item.thread.slug if item.thread else None,
         "created_at": _as_iso(item.created_at),
         "updated_at": _as_iso(item.updated_at),
     }
@@ -334,7 +927,7 @@ def _content_object(db: Session, content_type: str, content_id: int):
     if content_type == "comment":
         return db.query(models.Comment).options(
             joinedload(models.Comment.commenter),
-            joinedload(models.Comment.post),
+            joinedload(models.Comment.post).joinedload(models.Post.owner),
         ).filter(models.Comment.id == content_id).first()
     if content_type == "audio":
         return db.query(models.PostAudio).options(
@@ -359,6 +952,20 @@ def _content_object(db: Session, content_type: str, content_id: int):
             joinedload(models.StafetaSegment.author),
             joinedload(models.StafetaSegment.work),
         ).filter(models.StafetaSegment.id == content_id).first()
+    return None
+
+
+def _admin_target_url(db: Optional[Session], target_type: Optional[str], target_id: Optional[int]) -> Optional[str]:
+    if not db or not target_type or not target_id:
+        return None
+    if target_type == "user":
+        user = crud.get_user_by_id(db, target_id)
+        return author_public_url(user) if user else None
+    if target_type in CONTENT_TYPES:
+        item = _content_object(db, target_type, target_id)
+        if not item:
+            return None
+        return _content_payload(item, target_type).get("target_url")
     return None
 
 
@@ -387,6 +994,7 @@ def _apply_admin_user_filters(
     max_posts: Optional[int] = None,
     selected_user_ids: Optional[list[int]] = None,
 ):
+    query = query.filter(models.User.is_system == False)
     if selected_user_ids:
         return query.filter(models.User.id.in_(selected_user_ids))
 
@@ -806,6 +1414,42 @@ def process_admin_email_outbox(
     }
 
 
+@router.post("/email/test-notification")
+def send_admin_notification_test_email(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    row = email_service.queue_test_notification_email(db, actor=current_user)
+    if not row:
+        raise HTTPException(status_code=500, detail="Nu am putut crea emailul de test.")
+    sent = email_service.send_queued_email_now(db, row, worker=f"admin-test-notification:{current_user.id}")
+    db.refresh(row)
+    _audit(
+        db,
+        request,
+        current_user,
+        action="admin_email_test_notification",
+        target_type="email_outbox",
+        target_id=row.id,
+        metadata={
+            "recipient_email": row.recipient_email,
+            "subject": row.subject,
+            "status": row.status,
+            "sent": sent,
+            "emails_enabled": email_service.emails_enabled(),
+        },
+    )
+    return {
+        "id": row.id,
+        "recipient_email": row.recipient_email,
+        "subject": row.subject,
+        "status": row.status,
+        "sent": sent,
+        "emails_enabled": email_service.emails_enabled(),
+    }
+
+
 @router.get("/users/{user_id}")
 def get_admin_user_detail(
     user_id: int,
@@ -834,7 +1478,7 @@ def get_admin_user_detail(
             }
             for tx in transactions
         ],
-        "audit": [_audit_payload(log) for log in audits],
+        "audit": [_audit_payload(log, db) for log in audits],
     }
 
 
@@ -980,10 +1624,203 @@ def delete_admin_user(
     _ensure_not_self(current_user, user, "ștergere")
     _ensure_can_remove_admin(db, user)
     metadata = {"username": user.username, "email": user.email}
-    db.delete(user)
-    db.commit()
-    _audit(db, request, current_user, action="user_delete", target_type="user", target_id=user_id, reason=data.reason, metadata=metadata)
+    db.expunge(user)
+    try:
+        deleted_content = _delete_user_owned_content(db, user_id)
+        deleted_count = (
+            db.query(models.User)
+            .filter(models.User.id == user_id)
+            .delete(synchronize_session=False)
+        )
+        if not deleted_count:
+            db.rollback()
+            raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit")
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Could not delete admin user %s", user_id)
+        raise HTTPException(status_code=500, detail="Nu am putut șterge utilizatorul.") from exc
+    _audit(db, request, current_user, action="user_delete", target_type="user", target_id=user_id, reason=data.reason, metadata={**metadata, "deleted_content": deleted_content})
     return {"success": True}
+
+
+@router.get("/storage/objects")
+def list_admin_storage_objects(
+    prefix: str = "",
+    q: str = "",
+    status_filter: str = Query("all", alias="status"),
+    limit: int = Query(50, ge=1, le=100),
+    cursor: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    if status_filter not in STORAGE_STATUS_FILTERS:
+        raise HTTPException(status_code=400, detail="Filtru de stocare invalid")
+    prefix = prefix.strip()
+    term = q.strip().lower()
+    references = _storage_reference_map(db)
+    try:
+        page = object_storage.list_objects(prefix=prefix, continuation_token=cursor, max_keys=limit)
+    except RuntimeError as exc:
+        raise _storage_error("Stocarea de obiecte nu este configurată.", exc)
+    except Exception as exc:
+        raise _storage_error("Nu am putut citi obiectele din bucket.", exc)
+
+    objects = []
+    for raw in page["objects"]:
+        payload = _storage_object_payload(raw, references)
+        if term and term not in payload["key"].lower():
+            continue
+        if not _matches_storage_status(payload, status_filter):
+            continue
+        objects.append(payload)
+
+    return {
+        "objects": objects,
+        "next_cursor": page.get("next_cursor"),
+        "is_truncated": page.get("is_truncated", False),
+        "summary": {
+            "raw_count": len(page["objects"]),
+            "listed_count": len(objects),
+            "referenced_count": sum(1 for item in objects if item["references"]),
+            "deletable_count": sum(1 for item in objects if item["can_delete"]),
+        },
+    }
+
+
+@router.post("/storage/objects/presign")
+def presign_admin_storage_object(
+    data: schemas.AdminStorageObjectRequest,
+    current_user: models.User = Depends(admin.require_admin),
+):
+    try:
+        return {
+            "key": data.key,
+            "url": object_storage.presigned_get_url(data.key),
+            "expires_in": object_storage.signed_url_ttl_seconds(),
+        }
+    except RuntimeError as exc:
+        raise _storage_error("Stocarea de obiecte nu este configurată.", exc)
+    except Exception as exc:
+        raise _storage_error("Nu am putut genera linkul obiectului.", exc)
+
+
+@router.delete("/storage/objects")
+def delete_admin_storage_object(
+    data: schemas.AdminStorageObjectDelete,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    key = data.key
+    references = _storage_reference_map(db).get(key, [])
+    prefix_type = _storage_prefix_type(key)
+    if references:
+        raise HTTPException(status_code=409, detail="Obiectul este încă folosit în baza de date.")
+    if prefix_type == "outside":
+        raise HTTPException(status_code=400, detail="Obiectele din afara prefixelor Călimara sunt doar vizibile.")
+
+    object_metadata = {}
+    try:
+        object_metadata = object_storage.head_object_metadata(key)
+    except Exception:
+        logger.info("Could not read object metadata before delete: %s", key, exc_info=True)
+
+    try:
+        object_storage.delete_object(key)
+    except RuntimeError as exc:
+        raise _storage_error("Stocarea de obiecte nu este configurată.", exc)
+    except Exception as exc:
+        raise _storage_error("Nu am putut șterge obiectul din bucket.", exc)
+
+    _audit(
+        db,
+        request,
+        current_user,
+        action="storage_object_delete",
+        target_type="storage_object",
+        reason=data.reason,
+        metadata={
+            "key": key,
+            "prefix_type": prefix_type,
+            "size": object_metadata.get("ContentLength"),
+            "content_type": object_metadata.get("ContentType"),
+            "etag": str(object_metadata.get("ETag") or "").strip('"'),
+            "last_modified": _serialize_storage_time(object_metadata.get("LastModified")),
+        },
+    )
+    return {"success": True, "key": key}
+
+
+@router.post("/storage/objects/cleanup")
+def cleanup_admin_storage_object(
+    data: schemas.AdminStorageObjectCleanup,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    key = data.key
+    prefix_type = _storage_prefix_type(key)
+    references = _storage_reference_map(db).get(key, [])
+    object_metadata = {}
+    try:
+        object_metadata = object_storage.head_object_metadata(key)
+    except Exception:
+        logger.info("Could not read object metadata before cleanup: %s", key, exc_info=True)
+
+    cleanup = _cleanup_storage_references(db, key, data.reason)
+    try:
+        db.flush()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("Could not clear object references before cleanup: %s", key, exc_info=True)
+        raise HTTPException(status_code=500, detail="Nu am putut curăța referințele obiectului.") from exc
+
+    try:
+        object_storage.delete_object(key)
+    except RuntimeError as exc:
+        db.rollback()
+        raise _storage_error("Stocarea de obiecte nu este configurată.", exc)
+    except Exception as exc:
+        db.rollback()
+        raise _storage_error("Nu am putut șterge obiectul din bucket.", exc)
+
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Object was deleted but reference cleanup could not be committed: %s", key)
+        raise HTTPException(
+            status_code=500,
+            detail="Obiectul a fost șters din bucket, dar nu am putut salva curățarea referințelor.",
+        ) from exc
+
+    metadata = {
+        "key": key,
+        "prefix_type": prefix_type,
+        **_storage_metadata_payload(object_metadata),
+        "references": references,
+        "cleanup": cleanup,
+    }
+    _audit(
+        db,
+        request,
+        current_user,
+        action="storage_object_cleanup",
+        target_type="storage_object",
+        reason=data.reason,
+        metadata=metadata,
+    )
+    return {
+        "success": True,
+        "key": key,
+        "references_removed": cleanup["total"],
+        "references": references,
+        "cleanup": cleanup,
+        "object": _storage_metadata_payload(object_metadata),
+    }
 
 
 @router.get("/content")
@@ -1015,7 +1852,10 @@ def list_admin_content(
             query = query.filter(or_(models.Post.title.ilike(like), models.Post.content.ilike(like)))
         add_rows(query.order_by(models.Post.created_at.desc()).limit(limit).offset(offset if content_type == "post" else 0).all(), "post")
     if content_type in {"all", "comment"}:
-        query = db.query(models.Comment).options(joinedload(models.Comment.commenter), joinedload(models.Comment.post))
+        query = db.query(models.Comment).options(
+            joinedload(models.Comment.commenter),
+            joinedload(models.Comment.post).joinedload(models.Post.owner),
+        )
         if status_filter != "all":
             query = query.filter(models.Comment.moderation_status == status_filter)
         if term:
@@ -1174,7 +2014,7 @@ def list_admin_jobs(
         query = query.filter(models.AIJob.job_type == job_type)
     total = query.count()
     jobs = query.order_by(models.AIJob.created_at.desc(), models.AIJob.id.desc()).offset(offset).limit(limit).all()
-    return {"jobs": [_job_payload(job) for job in jobs], "total": total}
+    return {"jobs": [_job_payload(job, db) for job in jobs], "total": total}
 
 
 @router.post("/jobs/{job_id}/retry")
@@ -1197,7 +2037,7 @@ def retry_admin_job(
     db.commit()
     db.refresh(job)
     _audit(db, request, current_user, action="ai_job_retry", target_type="ai_job", target_id=job.id, reason=data.reason)
-    return _job_payload(job)
+    return _job_payload(job, db)
 
 
 @router.post("/jobs/{job_id}/cancel")
@@ -1218,7 +2058,7 @@ def cancel_admin_job(
     db.commit()
     db.refresh(job)
     _audit(db, request, current_user, action="ai_job_cancel", target_type="ai_job", target_id=job.id, reason=data.reason)
-    return _job_payload(job)
+    return _job_payload(job, db)
 
 
 @router.get("/platform-access")
@@ -1273,6 +2113,149 @@ def add_platform_allowed_email(
     return _platform_access_payload(db)
 
 
+@router.get("/invitatii")
+def list_platform_invitations(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    return {"invitations": [_platform_invitation_payload(item) for item in invitations.list_invitations(db)]}
+
+
+@router.post("/invitatii")
+def create_platform_invitations(
+    data: schemas.AdminInvitationCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    results = []
+    invited_ids = []
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    seen_emails = set()
+    for raw_email in data.emails:
+        email = invitations.normalize_invitation_email(str(raw_email))
+        if not email or email in seen_emails:
+            continue
+        seen_emails.add(email)
+        existing_user = crud.get_user_by_email(db, email)
+        if existing_user:
+            skipped_count += 1
+            results.append({"email": email, "status": "skipped", "reason": "existing_user"})
+            continue
+        try:
+            invitation, token, temporary_password, action = invitations.upsert_invitation(
+                db,
+                email=email,
+                premium_tier=data.premium_tier,
+                premium_days=data.premium_days,
+                note=data.note,
+                actor=current_user,
+            )
+        except ValueError as exc:
+            skipped_count += 1
+            results.append({"email": email, "status": "skipped", "reason": str(exc)})
+            continue
+        _queue_platform_invitation(
+            db,
+            invitation=invitation,
+            token=token,
+            temporary_password=temporary_password,
+            actor=current_user,
+        )
+        invited_ids.append(invitation.id)
+        if action == "created":
+            created_count += 1
+        else:
+            updated_count += 1
+        results.append({"email": email, "status": action, "invitation_id": invitation.id})
+
+    if not results:
+        raise HTTPException(status_code=400, detail="Nu există invitații noi de trimis.")
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_invitations_create",
+        target_type="platform_invitation",
+        metadata={
+            "invitation_ids": invited_ids,
+            "created_count": created_count,
+            "updated_count": updated_count,
+            "skipped_count": skipped_count,
+            "premium_tier": data.premium_tier,
+            "premium_days": data.premium_days,
+        },
+    )
+    return {
+        **_platform_access_payload(db),
+        "results": results,
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "skipped_count": skipped_count,
+    }
+
+
+@router.post("/invitatii/{invitation_id}/retrimite")
+def resend_platform_invitation(
+    invitation_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    invitation = invitations.get_invitation(db, invitation_id)
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitația nu a fost găsită.")
+    try:
+        invitation, token, temporary_password = invitations.rotate_invitation(db, invitation)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _queue_platform_invitation(
+        db,
+        invitation=invitation,
+        token=token,
+        temporary_password=temporary_password,
+        actor=current_user,
+    )
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_invitation_resend",
+        target_type="platform_invitation",
+        target_id=invitation.id,
+        metadata={"email": invitation.email},
+    )
+    return _platform_access_payload(db)
+
+
+@router.post("/invitatii/{invitation_id}/revoca")
+def revoke_platform_invitation(
+    invitation_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    invitation = invitations.get_invitation(db, invitation_id)
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitația nu a fost găsită.")
+    try:
+        invitations.revoke_invitation(db, invitation)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _audit(
+        db,
+        request,
+        current_user,
+        action="platform_invitation_revoke",
+        target_type="platform_invitation",
+        target_id=invitation.id,
+        metadata={"email": invitation.email},
+    )
+    return _platform_access_payload(db)
+
+
 @router.delete("/platform-access/emails/{email_id}")
 def delete_platform_allowed_email(
     email_id: int,
@@ -1307,7 +2290,12 @@ def list_site_feedback(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(admin.require_admin),
 ):
-    query = db.query(models.SiteFeedback).options(joinedload(models.SiteFeedback.resolver))
+    qa_report_filter = _qa_report_feedback_filter()
+    query = (
+        db.query(models.SiteFeedback)
+        .options(joinedload(models.SiteFeedback.resolver))
+        .filter(~qa_report_filter)
+    )
     if kind != "all":
         if kind not in {"feedback", "bug"}:
             raise HTTPException(status_code=400, detail="Tip de sesizare invalid.")
@@ -1315,19 +2303,137 @@ def list_site_feedback(
     if status_filter != "all":
         if status_filter not in {"open", "closed"}:
             raise HTTPException(status_code=400, detail="Status de sesizare invalid.")
+        if status_filter == "open":
+            unread_reply_ids = _admin_site_feedback_unread_reply_ids(db)
+            query = query.filter(
+                or_(
+                    models.SiteFeedback.status == "open",
+                    models.SiteFeedback.id.in_(unread_reply_ids),
+                )
+            )
+        else:
+            query = query.filter(models.SiteFeedback.status == status_filter)
+    total = query.count()
+    unread_reply_ids = _admin_site_feedback_unread_reply_ids(db)
+    submissions = (
+        query.order_by(
+            case((models.SiteFeedback.id.in_(unread_reply_ids), 0), else_=1),
+            models.SiteFeedback.created_at.desc(),
+            models.SiteFeedback.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return {
+        "submissions": [_site_feedback_payload(item, db) for item in submissions],
+        "total": total,
+        "open_count": db.query(models.SiteFeedback).filter(~qa_report_filter, models.SiteFeedback.status == "open").count(),
+        "closed_count": db.query(models.SiteFeedback).filter(~qa_report_filter, models.SiteFeedback.status == "closed").count(),
+        "unread_reply_count": _admin_site_feedback_unread_reply_count(db),
+    }
+
+
+@router.get("/site-feedback/{feedback_id}/thread")
+def get_site_feedback_thread(
+    feedback_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    item = (
+        db.query(models.SiteFeedback)
+        .options(joinedload(models.SiteFeedback.resolver))
+        .filter(models.SiteFeedback.id == feedback_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Sesizarea nu a fost găsită.")
+    if _mark_site_feedback_replies_as_read(db, item):
+        db.commit()
+        db.refresh(item)
+    return _site_feedback_thread_payload(db, item)
+
+
+@router.post("/site-feedback/{feedback_id}/reply")
+def reply_to_site_feedback(
+    feedback_id: int,
+    data: schemas.SiteFeedbackReplyCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    item = (
+        db.query(models.SiteFeedback)
+        .options(joinedload(models.SiteFeedback.resolver))
+        .filter(models.SiteFeedback.id == feedback_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Sesizarea nu a fost găsită.")
+
+    try:
+        _mark_site_feedback_replies_as_read(db, item)
+        message = crud.reply_to_site_feedback(db, item, admin_user=current_user, content=data.content)
+        db.commit()
+        db.refresh(item)
+        db.refresh(message)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Could not send support reply for site feedback %s", feedback_id)
+        raise HTTPException(status_code=500, detail="Nu am putut trimite răspunsul.")
+
+    _audit(
+        db,
+        request,
+        current_user,
+        action="site_feedback_reply",
+        target_type="site_feedback",
+        target_id=item.id,
+        reason="Răspuns trimis prin mesaj direct",
+        metadata={
+            "conversation_id": item.support_conversation_id,
+            "message_id": message.id,
+            "recipient_user_id": item.user_id,
+        },
+    )
+    db.refresh(item)
+    return _site_feedback_thread_payload(db, item)
+
+
+@router.get("/referinta/raport-qa")
+def list_admin_reference_qa_report(
+    status_filter: str = Query("all", alias="status"),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    if status_filter != "all":
+        if status_filter not in {"open", "closed"}:
+            raise HTTPException(status_code=400, detail="Status de raport invalid.")
+    qa_report_filter = _qa_report_feedback_filter()
+    query = (
+        db.query(models.SiteFeedback)
+        .options(joinedload(models.SiteFeedback.resolver))
+        .filter(qa_report_filter)
+    )
+    if status_filter != "all":
         query = query.filter(models.SiteFeedback.status == status_filter)
     total = query.count()
-    submissions = (
+    entries = (
         query.order_by(models.SiteFeedback.created_at.desc(), models.SiteFeedback.id.desc())
         .offset(offset)
         .limit(limit)
         .all()
     )
     return {
-        "submissions": [_site_feedback_payload(item) for item in submissions],
+        "entries": [_qa_report_feedback_payload(item) for item in entries],
         "total": total,
-        "open_count": db.query(models.SiteFeedback).filter(models.SiteFeedback.status == "open").count(),
-        "closed_count": db.query(models.SiteFeedback).filter(models.SiteFeedback.status == "closed").count(),
+        "open_count": db.query(models.SiteFeedback).filter(qa_report_filter, models.SiteFeedback.status == "open").count(),
+        "closed_count": db.query(models.SiteFeedback).filter(qa_report_filter, models.SiteFeedback.status == "closed").count(),
     }
 
 
@@ -1372,7 +2478,7 @@ def update_site_feedback(
         metadata={"before": before, "after": {"status": item.status, "admin_note": item.admin_note}},
     )
     db.refresh(item)
-    return _site_feedback_payload(item)
+    return _site_feedback_payload(item, db)
 
 
 @router.get("/audit-log")
@@ -1396,4 +2502,4 @@ def list_admin_audit_log(
         query = query.filter(models.AdminAuditLog.target_type == target_type)
     total = query.count()
     logs = query.order_by(models.AdminAuditLog.created_at.desc(), models.AdminAuditLog.id.desc()).offset(offset).limit(limit).all()
-    return {"logs": [_audit_payload(log) for log in logs], "total": total}
+    return {"logs": [_audit_payload(log, db) for log in logs], "total": total}

@@ -3,7 +3,7 @@ import re
 import unicodedata
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -48,6 +48,17 @@ def _audio_download_filename(audio: models.PostAudio) -> str:
     slug = audio.post.slug if audio.post else f"audio-{audio.id}"
     ext = audio_storage.extension_for_content_type(audio.content_type)
     return f"{_safe_filename_part(author)}-{_safe_filename_part(slug)}-audio.{ext}"
+
+
+def _get_owned_playlist_or_404(
+    db: Session,
+    playlist_id: int,
+    current_user: models.User,
+) -> models.AudioPlaylist:
+    playlist = crud.get_audio_playlist_for_owner(db, playlist_id, current_user.id)
+    if not playlist:
+        raise HTTPException(status_code=404, detail="Playlistul nu a fost găsit")
+    return playlist
 
 
 @router.get("/api/audio/postari/{post_id}", response_model=schemas.PostAudioStatus)
@@ -162,14 +173,141 @@ def get_random_listen_audio(
         raise HTTPException(status_code=400, detail=str(exc))
     except audio_service.AudioListenNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    return audio_service.audio_track_payload(audio)
+    return audio_service.audio_track_payload(audio, current_user=current_user, db=db)
+
+
+@router.get("/api/audio/autori/{username}/aleatoriu", response_model=schemas.AudioTrack)
+def get_random_author_listen_audio(
+    username: str,
+    mode: str = "toate",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_audio_user),
+):
+    try:
+        audio = audio_service.random_author_listen_audio_track(db, current_user, username, mode)
+    except audio_service.AudioListenForbidden as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except audio_service.AudioListenInvalid as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except audio_service.AudioListenNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return audio_service.audio_track_payload(audio, current_user=current_user, db=db)
+
+
+@router.get("/api/audio/playlisturi", response_model=schemas.AudioPlaylistList)
+def list_audio_playlists(
+    post_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlists = crud.list_audio_playlists(db, current_user.id, post_id=post_id)
+    return {
+        "playlists": [
+            audio_service.audio_playlist_summary_payload(db, playlist)
+            for playlist in playlists
+        ]
+    }
+
+
+@router.post("/api/audio/playlisturi", response_model=schemas.AudioPlaylistDetail, status_code=status.HTTP_201_CREATED)
+def create_audio_playlist(
+    body: schemas.AudioPlaylistCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = crud.create_audio_playlist(db, current_user.id, body.title)
+    return audio_service.audio_playlist_detail_payload(db, playlist)
+
+
+@router.get("/api/audio/playlisturi/{playlist_id}", response_model=schemas.AudioPlaylistDetail)
+def get_audio_playlist(
+    playlist_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    return audio_service.audio_playlist_detail_payload(db, playlist)
+
+
+@router.put("/api/audio/playlisturi/{playlist_id}", response_model=schemas.AudioPlaylistDetail)
+def update_audio_playlist(
+    playlist_id: int,
+    body: schemas.AudioPlaylistUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    updated = crud.update_audio_playlist(db, playlist, title=body.title)
+    return audio_service.audio_playlist_detail_payload(db, updated)
+
+
+@router.delete("/api/audio/playlisturi/{playlist_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_audio_playlist(
+    playlist_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    crud.delete_audio_playlist(db, playlist)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/api/audio/playlisturi/{playlist_id}/postari", response_model=schemas.AudioPlaylistItem)
+def add_post_to_audio_playlist(
+    playlist_id: int,
+    body: schemas.AudioPlaylistAddPostRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    post = (
+        db.query(models.Post)
+        .options(joinedload(models.Post.owner))
+        .filter(models.Post.id == body.post_id)
+        .first()
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
+    item, error = crud.add_post_to_audio_playlist(db, playlist, post)
+    if error == "already_added":
+        raise HTTPException(status_code=409, detail="Postarea este deja în playlist")
+    if error == "audio_missing":
+        raise HTTPException(status_code=400, detail="Postarea nu are audio disponibil")
+    if error == "post_unavailable":
+        raise HTTPException(status_code=404, detail="Postarea nu este disponibilă")
+    if not item:
+        raise HTTPException(status_code=400, detail="Acțiune invalidă")
+    return audio_service.audio_playlist_item_payload(db, item)
+
+
+@router.delete("/api/audio/playlisturi/{playlist_id}/postari/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_post_from_audio_playlist(
+    playlist_id: int,
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    if not crud.remove_post_from_audio_playlist(db, playlist, post_id):
+        raise HTTPException(status_code=404, detail="Postarea nu este în acest playlist")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/api/audio/playlisturi/{playlist_id}/lista-redare", response_model=schemas.AudioPlaylistPlayback)
+def get_audio_playlist_playback(
+    playlist_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_rapsod_user),
+):
+    playlist = _get_owned_playlist_or_404(db, playlist_id, current_user)
+    return audio_service.audio_playlist_playback_payload(db, playlist, current_user=current_user)
 
 
 @router.post("/api/audio/asculta/secunde", response_model=schemas.AudioListenSecondsResponse)
 def record_listen_seconds(
     body: schemas.AudioListenSecondsRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     try:
         return audio_service.record_listen_seconds(
@@ -232,5 +370,11 @@ async def upload_author_recording(
     if not content:
         raise HTTPException(status_code=400, detail="Fișierul audio este gol")
 
-    audio = audio_service.create_author_recording(db, post, content, content_type)
+    audio = audio_service.create_author_recording(
+        db,
+        post,
+        content,
+        content_type,
+        requester_user_id=current_user.id,
+    )
     return audio_service.post_audio_status_payload(db, post_id, current_user)

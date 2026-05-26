@@ -57,6 +57,30 @@ def mark_read(
     return {"message": "Notificare marcată ca citită"}
 
 
+@router.put("/api/notificari/{notification_id}/necitita")
+def mark_unread(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    notification = crud.mark_notification_unread(db, notification_id, current_user.id)
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notificarea nu a fost găsită")
+    return {"message": "Notificare marcată ca necitită"}
+
+
+@router.delete("/api/notificari/{notification_id}")
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user)
+):
+    deleted = crud.delete_notification(db, notification_id, current_user.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Notificarea nu a fost găsită")
+    return {"message": "Notificare ștearsă"}
+
+
 @router.put("/api/notificari/citeste-toate")
 def mark_all_read(
     db: Session = Depends(get_db),

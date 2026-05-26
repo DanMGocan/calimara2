@@ -5,7 +5,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, fie
 
 from .common import *
 
-PremiumTierKey = Literal["trubadur", "cronicar", "rapsod"]
+PaidPremiumTierKey = Literal["trubadur", "cronicar", "rapsod"]
+PremiumTierKey = Literal["free", "trubadur", "cronicar", "rapsod"]
 
 
 class PremiumPlan(BaseModel):
@@ -25,7 +26,7 @@ class PremiumCheckoutResponse(BaseModel):
 
 
 class PremiumCheckoutRequest(BaseModel):
-    tier: PremiumTierKey = "trubadur"
+    tier: PaidPremiumTierKey = "trubadur"
 
 
 

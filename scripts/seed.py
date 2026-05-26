@@ -3,9 +3,10 @@
 Populate the database with sample Romanian content for local development.
 
 Runs after `run.py`'s `init_database()` has produced an empty schema. Creates
-three accounts and sixteen public-domain-attributed posts: eight Ion Creangă
-prose entries on the tier-3 premium gocandan account, eight Mihai Eminescu
-poetry entries on the dangocan account, and one local admin account.
+three accounts, sixteen public-domain seed posts, and the saved audio links for
+those posts: eight Ion Creangă prose entries on the tier-3 premium gocandan
+account, eight Mihai Eminescu poetry entries on the dangocan account, and one
+local admin account.
 
 Invocation:
     python scripts/seed.py
@@ -69,6 +70,12 @@ def _seed_password_hash(password: str) -> str:
 
 def _seed_content_html(row: dict[str, str]) -> str:
     return _plain_text_to_html(row["content"])
+
+
+def _seed_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
 
 
 AUTHORS = [
@@ -601,6 +608,332 @@ POSTS = [
 ]
 
 
+POST_AUDIO = [
+    {
+        "post_slug": "punguta-cu-doi-bani",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/1/audio/tts-9ce9a71779cb4aa2849e3e8822520ef5.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 159168,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-13 12:15:59.875000",
+        "updated_at": "2026-05-13 12:15:59.875000",
+    },
+    {
+        "post_slug": "punguta-cu-doi-bani",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/1/audio/tts-e9d3d3a3714c4b1aa8e40a3e439198fb.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 398400,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:30:30.705000",
+        "updated_at": "2026-05-18 15:30:30.705000",
+    },
+    {
+        "post_slug": "ce-te-legeni",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/10/audio/tts-af1d75d21ded47f29ab773a4bd2e8344.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 271488,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:32:28.462000",
+        "updated_at": "2026-05-18 15:32:28.462000",
+    },
+    {
+        "post_slug": "fata-babei-si-fata-mosneagului",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/11/audio/tts-08154fbd02db4a3d88106707a708d6d6.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 432288,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:27:12.824000",
+        "updated_at": "2026-05-18 15:27:12.824000",
+    },
+    {
+        "post_slug": "soacra-cu-trei-nurori",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/12/audio/tts-51710fb8f3344c93b414ea6489355532.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 413280,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:26:39.373000",
+        "updated_at": "2026-05-18 15:26:39.373000",
+    },
+    {
+        "post_slug": "ivan-turbinca",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/13/audio/tts-9beab5d0b7ad42eca94c4ce605fdcaa4.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 433536,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:25:52.874000",
+        "updated_at": "2026-05-18 15:25:52.874000",
+    },
+    {
+        "post_slug": "scrisoarea-i-fragment-de-seed",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/14/audio/tts-7d25ee6cb1c247919ed3badc76dc4d61.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 270720,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-06 09:14:05.784000",
+        "updated_at": "2026-05-06 09:14:05.784000",
+    },
+    {
+        "post_slug": "scrisoarea-i-fragment-de-seed",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/14/audio/tts-bb21e88a80f4485998dc1720171490f0.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 276960,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:33:23.453000",
+        "updated_at": "2026-05-18 15:33:23.453000",
+    },
+    {
+        "post_slug": "luceafarul-fragment-de-seed",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/15/audio/tts-2ac645b4259e4619aac229df9b9b7e94.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 302496,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:32:56.418000",
+        "updated_at": "2026-05-18 15:32:56.418000",
+    },
+    {
+        "post_slug": "glossa-adaptare-de-seed",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/16/audio/tts-1788a3afe53e4f61ab04680d0e8bf526.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 408096,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-01 13:46:32.920000",
+        "updated_at": "2026-05-01 13:46:32.920000",
+    },
+    {
+        "post_slug": "glossa-adaptare-de-seed",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/16/audio/tts-b8403647ea4647c0a0dc0c1e3a4398c7.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 315840,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:33:57.491000",
+        "updated_at": "2026-05-18 15:33:57.491000",
+    },
+    {
+        "post_slug": "ursul-pacalit-de-vulpe",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/2/audio/tts-64caedd63da545d7bbda217cc3a20c0c.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 371808,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:29:50.209000",
+        "updated_at": "2026-05-18 15:29:50.209000",
+    },
+    {
+        "post_slug": "ursul-pacalit-de-vulpe",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/2/audio/tts-f44cc3a52db444c0ba30b100c1df397a.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 169536,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-13 12:16:15.118000",
+        "updated_at": "2026-05-13 12:16:15.118000",
+    },
+    {
+        "post_slug": "capra-cu-trei-iezi",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/3/audio/tts-1940548a1eb140f497c9eab305a488fd.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 169920,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-13 12:16:36.235000",
+        "updated_at": "2026-05-13 12:16:36.235000",
+    },
+    {
+        "post_slug": "capra-cu-trei-iezi",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/3/audio/tts-7c6def34245d4a4a9f255230e66f6eed.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 358368,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:29:13.184000",
+        "updated_at": "2026-05-18 15:29:13.184000",
+    },
+    {
+        "post_slug": "povestea-unui-om-lenes",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/4/audio/tts-b274a1e944534724b001582196ae4a06.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 168288,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-13 12:16:54.166000",
+        "updated_at": "2026-05-13 12:16:54.166000",
+    },
+    {
+        "post_slug": "povestea-unui-om-lenes",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/4/audio/tts-b78f42ce9fc6464fae2909ada130ff5a.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 423648,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:28:40.505000",
+        "updated_at": "2026-05-18 15:28:40.505000",
+    },
+    {
+        "post_slug": "danila-prepeleac",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/5/audio/tts-695c2691daae416aa0a5da3bb579dd86.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 140448,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-13 12:17:10.485000",
+        "updated_at": "2026-05-13 12:17:10.485000",
+    },
+    {
+        "post_slug": "danila-prepeleac",
+        "requester": "gocandan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/5/audio/tts-72be8cafed1b47e1a61a157f14a035d9.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 368736,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:27:48.890000",
+        "updated_at": "2026-05-18 15:27:48.890000",
+    },
+    {
+        "post_slug": "somnoroase-pasarele",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/6/audio/tts-8eb0b0cf172749369d553c8b78e91f02.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 182880,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:30:51.301000",
+        "updated_at": "2026-05-18 15:30:51.301000",
+    },
+    {
+        "post_slug": "la-steaua",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/7/audio/tts-9ddd34bfce8f481cac4422a30cafb5ca.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 176928,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:31:11.752000",
+        "updated_at": "2026-05-18 15:31:11.752000",
+    },
+    {
+        "post_slug": "lacul",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/8/audio/tts-385526d7a37648fa910729bf6e0474f8.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 201696,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:31:35.862000",
+        "updated_at": "2026-05-18 15:31:35.862000",
+    },
+    {
+        "post_slug": "dorinta",
+        "requester": "dangocan",
+        "source": "tts",
+        "status": "ready",
+        "storage_backend": "s3",
+        "storage_key": "posts/9/audio/tts-4677a5f42d08484b8e65a96640c3ec55.mp3",
+        "content_type": "audio/mpeg",
+        "byte_size": 249408,
+        "language_code": "ro-RO",
+        "moderation_status": "approved",
+        "created_at": "2026-05-18 15:32:02.101000",
+        "updated_at": "2026-05-18 15:32:02.101000",
+    },
+]
+
+
 COMMENTS = []
 
 
@@ -695,7 +1028,6 @@ def seed(session: Session, *, quiet: bool = False) -> None:
             category=row["category"],
             view_count=10 + (row["days_ago"] * 7) % 137,
             moderation_status="approved",
-            theme_analysis_status="completed",
             created_at=created,
             updated_at=created,
         )
@@ -704,6 +1036,29 @@ def seed(session: Session, *, quiet: bool = False) -> None:
     session.flush()
 
     log(f"  Seed: {len(posts_by_slug)} posts")
+
+    # ── Post audio links ───────────────────────────────────
+    for row in POST_AUDIO:
+        post = posts_by_slug[row["post_slug"]]
+        requester = users_by_username.get(row["requester"]) if row.get("requester") else None
+        session.add(
+            models.PostAudio(
+                post_id=post.id,
+                requester_user_id=requester.id if requester else None,
+                source=row.get("source", "tts"),
+                status=row.get("status", "ready"),
+                tts_character_count=row.get("tts_character_count", 0),
+                storage_backend=row["storage_backend"],
+                storage_key=row["storage_key"],
+                content_type=row.get("content_type"),
+                byte_size=row.get("byte_size"),
+                language_code=row.get("language_code"),
+                moderation_status=row.get("moderation_status"),
+                created_at=_seed_datetime(row.get("created_at")),
+                updated_at=_seed_datetime(row.get("updated_at")),
+            )
+        )
+    log(f"  Seed: {len(POST_AUDIO)} post audio links")
 
     # ── Comments ───────────────────────────────────────────
     for row in COMMENTS:

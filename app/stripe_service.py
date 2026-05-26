@@ -30,16 +30,31 @@ else:
     WEBHOOK_SECRET = PRICE_ID_TRUBADUR = PRICE_ID_CRONICAR = PRICE_ID_RAPSOD = SUCCESS_URL = CANCEL_URL = PORTAL_RETURN_URL = ""
 
 
-PREMIUM_TIER_ORDER = ("trubadur", "cronicar", "rapsod")
+PREMIUM_PAID_TIER_ORDER = ("trubadur", "cronicar", "rapsod")
+PREMIUM_TIER_ORDER = ("free", *PREMIUM_PAID_TIER_ORDER)
 
 PREMIUM_TIER_DETAILS = {
+    "free": {
+        "name": "Gratuit",
+        "eyebrow": "Start",
+        "summary": "Pentru cititori și autori care vor să publice, să citească și să folosească instrumentele de bază.",
+        "benefits": [
+            "1 super-apreciere pe lună",
+            "15.000 caractere pentru Diacritice pe lună",
+            "1.000 caractere pentru generare audio pe lună",
+            "Publicare poezie și proză scurtă cu moderare",
+            "Comentarii, aprecieri, urmăriri și prieteni",
+            "Recomandări cu recompense Trubadur",
+        ],
+    },
     "trubadur": {
         "name": "Trubadur",
         "eyebrow": "Bronz",
         "summary": "Super-aprecieri și funcțiile premium de bază. Ascultarea audio este publică.",
         "benefits": [
-            "3 super-aprecieri pe săptămână",
-            "Conversie automată la diacritice",
+            "3 super-aprecieri pe lună",
+            "60.000 caractere pentru Diacritice pe lună",
+            "50.000 caractere pentru generare audio pe lună",
             "Experiență fără reclame când ești conectat",
             "Imagine de profil și copertă premium",
         ],
@@ -50,6 +65,8 @@ PREMIUM_TIER_DETAILS = {
         "summary": "Generează audio pentru textele tale: 100.000 caractere per ciclu de facturare.",
         "benefits": [
             "Tot ce include Trubadur",
+            "4 super-aprecieri pe lună",
+            "120.000 caractere pentru Diacritice pe lună",
             "100.000 caractere pentru generare audio",
             "Conversie text în fișier audio pentru textele tale",
             "Administrare audio din dashboard",
@@ -59,10 +76,12 @@ PREMIUM_TIER_DETAILS = {
     "rapsod": {
         "name": "Rapsod",
         "eyebrow": "Aur",
-        "summary": "Generează 250.000 caractere per ciclu și poți încărca înregistrări audio de autor.",
+        "summary": "Generează 200.000 caractere per ciclu și poți încărca înregistrări audio de autor.",
         "benefits": [
             "Tot ce include Cronicar",
-            "250.000 caractere pentru generare audio",
+            "5 super-aprecieri pe lună",
+            "180.000 caractere pentru Diacritice pe lună",
+            "200.000 caractere pentru generare audio",
             "Încărcare înregistrări audio de autor",
             "Moderare și publicare audio pentru postări aprobate",
         ],
@@ -119,6 +138,8 @@ def create_or_get_customer(email: str, user_id: int, existing_customer_id: Optio
 
 def configured_price_id_for_tier(tier: str) -> str:
     _refresh_config_from_env_if_enabled()
+    if tier == "free":
+        return ""
     if tier == "rapsod":
         return PRICE_ID_RAPSOD
     if tier == "cronicar":
@@ -127,6 +148,8 @@ def configured_price_id_for_tier(tier: str) -> str:
 
 
 def price_id_for_tier(tier: str) -> str:
+    if tier not in PREMIUM_PAID_TIER_ORDER:
+        raise RuntimeError("Tier premium invalid pentru checkout.")
     price_id = configured_price_id_for_tier(tier)
     if price_id:
         return price_id
@@ -171,6 +194,8 @@ def _stripe_price_cadence(price) -> str:
 
 
 def _stripe_price_payload_for_tier(tier: str) -> dict:
+    if tier == "free":
+        return {"price": "0 €", "cadence": "/ lună", "available": True}
     _refresh_config_from_env_if_enabled()
     if not STRIPE_ENABLED:
         return {"price": PRICE_UNAVAILABLE_LABEL, "cadence": "", "available": False}

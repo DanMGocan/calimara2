@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -13,6 +13,9 @@ from .base import Base
 
 class PostDraft(Base):
     __tablename__ = "post_drafts"
+    __table_args__ = (
+        CheckConstraint("category IN ('poezie', 'proza_scurta')", name="ck_post_drafts_category"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -30,6 +33,12 @@ class PostDraft(Base):
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (
+        CheckConstraint(
+            "moderation_status IN ('approved', 'pending', 'rejected', 'flagged')",
+            name="ck_posts_moderation_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -47,13 +56,8 @@ class Post(Base):
     moderation_status: Mapped[str] = mapped_column(String(20), default="approved", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
-    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-
-    # Theme analysis fields
-    themes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
-    feelings: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
-    theme_analysis_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -69,6 +73,9 @@ class Post(Base):
     )
     audio_versions: Mapped[List["PostAudio"]] = relationship(
         "PostAudio", back_populates="post", cascade="all, delete-orphan"
+    )
+    audio_playlist_items: Mapped[List["AudioPlaylistItem"]] = relationship(
+        "AudioPlaylistItem", back_populates="post", cascade="all, delete-orphan"
     )
     reports: Mapped[List["PostReport"]] = relationship("PostReport", back_populates="post")
 
@@ -110,6 +117,13 @@ class Post(Base):
 
 class PostAudio(Base):
     __tablename__ = "post_audio"
+    __table_args__ = (
+        CheckConstraint("source IN ('tts', 'author')", name="ck_post_audio_source"),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'ready', 'flagged', 'rejected', 'failed', 'cancelled')",
+            name="ck_post_audio_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -137,6 +151,40 @@ class PostAudio(Base):
 
     post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="audio_versions")
     requester: Mapped[Optional["User"]] = relationship("User", foreign_keys=[requester_user_id])
+
+
+class AudioPlaylist(Base):
+    __tablename__ = "audio_playlists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    owner_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id], back_populates="audio_playlists")
+    items: Mapped[List["AudioPlaylistItem"]] = relationship(
+        "AudioPlaylistItem",
+        back_populates="playlist",
+        cascade="all, delete-orphan",
+    )
+
+
+class AudioPlaylistItem(Base):
+    __tablename__ = "audio_playlist_items"
+    __table_args__ = (
+        UniqueConstraint("playlist_id", "post_id", name="uq_audio_playlist_item_post"),
+        UniqueConstraint("playlist_id", "position", name="uq_audio_playlist_item_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    playlist_id: Mapped[int] = mapped_column(Integer, ForeignKey("audio_playlists.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    playlist: Mapped["AudioPlaylist"] = relationship("AudioPlaylist", foreign_keys=[playlist_id], back_populates="items")
+    post: Mapped["Post"] = relationship("Post", foreign_keys=[post_id], back_populates="audio_playlist_items")
 
 
 class PostReport(Base):
@@ -171,6 +219,12 @@ class PostReport(Base):
 
 class Comment(Base):
     __tablename__ = "comments"
+    __table_args__ = (
+        CheckConstraint(
+            "moderation_status IN ('approved', 'pending', 'rejected', 'flagged')",
+            name="ck_comments_moderation_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -185,7 +239,7 @@ class Comment(Base):
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     toxicity_score: Mapped[Optional[float]] = mapped_column(nullable=True)
-    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    moderated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     moderated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -193,11 +247,38 @@ class Comment(Base):
     post: Mapped["Post"] = relationship("Post", back_populates="comments")
     commenter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id], back_populates="comments")
     comment_moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
+    reactions: Mapped[List["CommentReaction"]] = relationship("CommentReaction", back_populates="comment", cascade="all, delete-orphan")
+
+
+
+class CommentReaction(Base):
+    __tablename__ = "comment_reactions"
+    __table_args__ = (
+        CheckConstraint(
+            "reaction_type IN ('helpful', 'funny', 'insightful')",
+            name="ck_comment_reactions_reaction_type",
+        ),
+        UniqueConstraint("comment_id", "user_id", name="uq_comment_reactions_comment_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    comment_id: Mapped[int] = mapped_column(Integer, ForeignKey("comments.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reaction_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    comment: Mapped["Comment"] = relationship("Comment", back_populates="reactions")
+    user: Mapped["User"] = relationship("User", back_populates="comment_reactions")
 
 
 
 class Like(Base):
     __tablename__ = "likes"
+    __table_args__ = (
+        UniqueConstraint("post_id", "user_id", name="unique_user_like"),
+        UniqueConstraint("post_id", "ip_address", name="unique_ip_like"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     post_id: Mapped[int] = mapped_column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)

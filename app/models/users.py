@@ -18,6 +18,10 @@ class User(Base):
             "premium_tier IN ('free', 'trubadur', 'cronicar', 'rapsod')",
             name="ck_users_premium_tier",
         ),
+        CheckConstraint(
+            "referred_by_user_id IS NULL OR referred_by_user_id <> id",
+            name="ck_users_referral_not_self",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -45,6 +49,7 @@ class User(Base):
     # Admin and moderation privileges
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_moderator: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Social media links
     facebook_url: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
@@ -62,7 +67,7 @@ class User(Base):
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suspension_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     suspended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    suspended_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     # Stripe / Premium subscription
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
@@ -71,6 +76,11 @@ class User(Base):
     premium_period_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     gologani_balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    referral_code: Mapped[Optional[str]] = mapped_column(String(24), unique=True, index=True, nullable=True)
+    referred_by_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    referral_rewarded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    referral_reward_premium_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    referral_reward_qualified_gologani: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     seconds_listened: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     email_comment_notifications: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -84,6 +94,7 @@ class User(Base):
     posts: Mapped[List["Post"]] = relationship("Post", foreign_keys="Post.user_id", back_populates="owner")
     post_drafts: Mapped[List["PostDraft"]] = relationship("PostDraft", foreign_keys="PostDraft.user_id", back_populates="owner", cascade="all, delete-orphan")
     comments: Mapped[List["Comment"]] = relationship("Comment", foreign_keys="Comment.user_id", back_populates="commenter")
+    comment_reactions: Mapped[List["CommentReaction"]] = relationship("CommentReaction", back_populates="user", cascade="all, delete-orphan")
     likes: Mapped[List["Like"]] = relationship("Like", back_populates="liker")
     super_likes_given: Mapped[List["SuperLike"]] = relationship("SuperLike", back_populates="user", cascade="all, delete-orphan")
     
@@ -128,6 +139,12 @@ class User(Base):
     owned_series: Mapped[List["Series"]] = relationship(
         "Series",
         foreign_keys="Series.owner_id",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+    audio_playlists: Mapped[List["AudioPlaylist"]] = relationship(
+        "AudioPlaylist",
+        foreign_keys="AudioPlaylist.owner_id",
         back_populates="owner",
         cascade="all, delete-orphan",
     )
@@ -240,6 +257,17 @@ class User(Base):
         "UserEquippedItem",
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+    referred_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        remote_side="User.id",
+        foreign_keys=[referred_by_user_id],
+        back_populates="referred_users",
+    )
+    referred_users: Mapped[List["User"]] = relationship(
+        "User",
+        foreign_keys=[referred_by_user_id],
+        back_populates="referred_by",
     )
 
     @property

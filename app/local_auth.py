@@ -103,6 +103,10 @@ def generate_email_code() -> str:
     return f"{secrets.randbelow(100_000_000):08d}"
 
 
+def generate_temporary_password() -> str:
+    return secrets.token_urlsafe(18)
+
+
 def hash_email_code(code: str, salt: Optional[str] = None) -> str:
     normalized = "".join(ch for ch in str(code or "") if ch.isdigit())
     salt = salt or secrets.token_urlsafe(18)

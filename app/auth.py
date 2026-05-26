@@ -91,3 +91,12 @@ def require_author_audio_user(current_user: models.User = Depends(get_required_u
             detail="Necesită abonament Rapsod.",
         )
     return current_user
+
+
+def require_rapsod_user(current_user: models.User = Depends(get_required_user)):
+    if not current_user.is_premium or current_user.premium_tier != "rapsod":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Necesită abonament Rapsod.",
+        )
+    return current_user

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPost, createPostDraft, fetchOwnedPostForEdit, fetchPostDraft, fetchPostDrafts, updatePost, updatePostDraft } from "../api/posts.js";
-import { addDiacritics } from "../api/writing.js";
+import { addDiacritics, formatPostWithAi } from "../api/writing.js";
 import { EXPLANATORY_NOTE_CHARACTER_LIMIT, POST_CATEGORIES, POST_CONTENT_LIMITS, POST_DRAFT_AUTOSAVE_MS, SHORT_STORY_CHARACTER_LIMIT, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
-import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress, useDiacriticsQuota } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
 import { categoryLabel, draftFingerprint, draftHasContent, formatDateTime, formatNumber, htmlToText } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
@@ -27,7 +27,8 @@ function CreatePostView({ user }) {
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [directPublishing, setDirectPublishing] = useState(false);
-  const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [formattingWithAi, setFormattingWithAi] = useState(false);
+  const [autoDiacritics, setAutoDiacritics] = useState(false);
   const [diacriticsReview, setDiacriticsReview] = useState(null);
   const [draftId, setDraftId] = useState(null);
   const [draftStatus, setDraftStatus] = useState("");
@@ -50,6 +51,12 @@ function CreatePostView({ user }) {
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
   const draftListState = useAsync(
     () => (user && !postParam ? fetchPostDrafts() : Promise.resolve({ drafts: [] })),
     [user?.id, postParam, draftsRefreshKey]
@@ -76,7 +83,7 @@ function CreatePostView({ user }) {
   }, [draftId]);
 
   useEffect(() => {
-    setAutoDiacritics(Boolean(user?.is_premium));
+    setAutoDiacritics(false);
     setDiacriticsReview(null);
     setDraftStatus("");
     setDraftError("");
@@ -84,7 +91,7 @@ function CreatePostView({ user }) {
       setDraftId(null);
       lastSavedFingerprintRef.current = "";
     }
-  }, [user?.id, user?.is_premium, draftParam, postParam]);
+  }, [user?.id, draftParam, postParam]);
 
   useEffect(() => {
     if (!user || !postParam) return undefined;
@@ -246,7 +253,7 @@ function CreatePostView({ user }) {
 
   const otherDrafts = postParam ? [] : (draftListState.data?.drafts ?? []).filter((draft) => draft.id !== draftId);
   const canSaveDraft = !postParam && draftHasContent(title, content);
-  const canPublishDirectly = Boolean(user?.is_premium && autoDiacritics && !diacriticsReview);
+  const canPublishDirectly = Boolean(user && autoDiacritics && !diacriticsReview);
 
   const submitPost = async ({ skipDiacritics = false } = {}) => {
     if (submitting) return;
@@ -281,10 +288,11 @@ function CreatePostView({ user }) {
       return;
     }
     try {
-      if (!skipDiacritics && user.is_premium && autoDiacritics && !diacriticsReview) {
+      if (!skipDiacritics && user && autoDiacritics && !diacriticsReview) {
         startDiacriticsProgress({ title, content });
         const converted = await addDiacritics({ kind: "post", title, content, category });
         finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
         setTitle(converted.title ?? title);
         setContent(converted.content);
         setDiacriticsReview({
@@ -314,6 +322,32 @@ function CreatePostView({ user }) {
     await submitPost();
   };
 
+  const formatContentWithAi = async () => {
+    if (formattingWithAi || submitting) return;
+    const visibleContent = htmlToText(content);
+    if (!visibleContent) {
+      setStatus("Scrie sau lipește un text înainte să cureți formatarea cu AI.");
+      return;
+    }
+
+    setFormattingWithAi(true);
+    setStatus("");
+    setDraftError("");
+    try {
+      const result = await formatPostWithAi({ category, content });
+      if (result.category === "poezie" || result.category === "proza_scurta") {
+        setCategory(result.category);
+      }
+      setContent(result.content);
+      setDiacriticsReview(null);
+      setDraftStatus("Formatarea AI a fost aplicată. Verifică textul înainte să publici.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut curăța formatarea cu AI.");
+    } finally {
+      setFormattingWithAi(false);
+    }
+  };
+
   return (
     <PageShell
       kicker="scrie"
@@ -341,7 +375,20 @@ function CreatePostView({ user }) {
           ))}
         </select>
         <label className="auth-field" htmlFor="post-content">Text</label>
-        <RichTextEditor id="post-content" className="tall" value={content} onChange={setContent} maxLength={contentLimit} enterMode="soft-break" />
+        <RichTextEditor
+          id="post-content"
+          className="tall"
+          value={content}
+          onChange={setContent}
+          maxLength={contentLimit}
+          enterMode="soft-break"
+          pasteCleanup="post"
+          cleanupCategory={category}
+          showFormatCleanup
+          formatCleanupLabel="Curăță formatarea cu AI"
+          formatCleanupBusy={formattingWithAi}
+          onFormatCleanup={formatContentWithAi}
+        />
         <label className="auth-field" htmlFor="post-explanatory-note">Notă explicativă (opțional)</label>
         <textarea
           id="post-explanatory-note"
@@ -382,6 +429,9 @@ function CreatePostView({ user }) {
           user={user}
           enabled={autoDiacritics}
           disabled={Boolean(diacriticsReview)}
+          quota={diacriticsQuota}
+          quotaLoading={diacriticsQuotaLoading}
+          quotaError={diacriticsQuotaError}
           onChange={(checked) => {
             setAutoDiacritics(checked);
             setDiacriticsReview(null);
@@ -402,13 +452,13 @@ function CreatePostView({ user }) {
             {diacriticsSubmitLabel({
               submitting,
               reviewing: Boolean(diacriticsReview),
-              enabled: Boolean(user.is_premium && autoDiacritics && !directPublishing),
+              enabled: Boolean(user && autoDiacritics && !directPublishing),
               submitLabel: postParam ? "Salvează" : "Publică"
             })}
           </button>
           {canPublishDirectly ? (
             <button className="cal-btn" type="button" onClick={() => submitPost({ skipDiacritics: true })} disabled={submitting}>
-              {directPublishing ? (postParam ? "Se salvează..." : "Se publică...") : (postParam ? "Salvează direct" : "Publică direct")}
+              {directPublishing ? (postParam ? "Se salvează..." : "Se publică...") : (postParam ? "Salvează fără Diacritice" : "Publică fără Diacritice")}
             </button>
           ) : null}
         </div>

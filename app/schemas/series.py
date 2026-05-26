@@ -18,11 +18,31 @@ class SeriesCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=2000)
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, 120, "Titlul")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 2000, "Descrierea")
+
 
 
 class SeriesUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=2000)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 120, "Titlul")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 2000, "Descrierea")
 
 
 
@@ -95,5 +115,4 @@ class SeriesMembershipRef(BaseModel):
 # Allowed values mirror Post.category so featured-post enforcement is symmetric.
 ClubSpeciality = str  # "poezie" | "proza_scurta"
 ClubMemberRole = str  # "owner" | "admin" | "member"
-
 

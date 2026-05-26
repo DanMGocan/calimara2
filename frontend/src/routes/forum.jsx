@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
-import { createForumReply, createForumThread, fetchForumThread, fetchForumThreads } from "../api/forum.js";
+import { FaFlag } from "react-icons/fa";
+import { createForumReply, createForumThread, fetchForumThread, fetchForumThreads, reportForumReply, reportForumThread } from "../api/forum.js";
 import { searchUsers } from "../api/users.js";
 import { addDiacritics } from "../api/writing.js";
 import { useAuthModal } from "../app/auth-modal.jsx";
-import { FORUM_MODERATION_MESSAGE, FORUM_SECTIONS, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
-import { AuthorLink, RichTextContent } from "../app/content.jsx";
-import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
+import { FORUM_SECTIONS, MODERATING_STATUSES, TEXT_MODERATION_MESSAGE, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
+import { AuthorLink, ModerationOverlay, RichTextContent } from "../app/content.jsx";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress, useDiacriticsQuota } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
 import { formatDateTime, formatGologani, formatNumber, forumSectionLabel, htmlToText } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { ActionRow, AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
 import { mainPath, profileAvatarUrl } from "../app/paths.js";
+import { ReportModal } from "../app/post-actions.jsx";
+import { forumThreadSeo, usePageSeo } from "../app/seo.js";
 
 function ForumAuthorPanel({ author }) {
   if (!author?.username) {
@@ -43,19 +46,45 @@ function ForumAuthorPanel({ author }) {
   );
 }
 
-function ForumMessage({ item, isThread = false }) {
+function ForumMessage({ item, isThread = false, user, authLoaded = true, onReport, reportBusy = false }) {
+  const isModerating = MODERATING_STATUSES.has(item.moderation_status);
+  const canReport = item.moderation_status === "approved";
   return (
-    <article className={isThread ? "forum-post" : "forum-reply"} id={isThread ? undefined : `reply-${item.id}`}>
+    <article className={`${isThread ? "forum-post" : "forum-reply"} ${isModerating ? "has-moderation-overlay" : ""}`.trim()} id={isThread ? undefined : `reply-${item.id}`}>
       <ForumAuthorPanel author={item.author} />
-      <div className="forum-message-content">
+      <div className={`forum-message-content ${canReport ? "has-report-action" : ""}`.trim()}>
         <div className="piece-card-meta">
           <span>{formatDateTime(item.created_at)}</span>
-          {item.moderation_status !== "approved" ? <span>{item.moderation_status}</span> : null}
         </div>
-        <RichTextContent html={item.content} className="forum-body" />
+        <div className={`forum-body-wrap ${isModerating ? "has-moderation-overlay" : ""}`.trim()}>
+          <RichTextContent html={item.content} className="forum-body" />
+          {isModerating ? (
+            <ModerationOverlay className="forum-moderation-overlay">{TEXT_MODERATION_MESSAGE}</ModerationOverlay>
+          ) : null}
+        </div>
+        {canReport ? (
+          <button className="forum-report-btn" type="button" disabled={!authLoaded || Boolean(reportBusy)} onClick={() => onReport?.({ type: isThread ? "forum_thread" : "forum_reply", item })} title={user ? "Raportează" : "Autentifică-te pentru raportare"} aria-label={user ? "Raportează" : "Autentifică-te pentru raportare"}>
+            <FaFlag aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </article>
   );
+}
+
+function isForumSectionKey(value) {
+  return FORUM_SECTIONS.some((item) => item.key === value);
+}
+
+function forumCreateHref(section) {
+  const query = isForumSectionKey(section) ? `?section=${encodeURIComponent(section)}` : "";
+  return mainPath(`/discutii/nou${query}`);
+}
+
+function initialForumSection() {
+  if (typeof window === "undefined") return "general";
+  const requestedSection = new URLSearchParams(window.location.search).get("section");
+  return isForumSectionKey(requestedSection) ? requestedSection : "general";
 }
 
 function ForumListView({ user, authLoaded }) {
@@ -66,7 +95,7 @@ function ForumListView({ user, authLoaded }) {
     [section]
   );
 
-  const createHref = mainPath("/discutii/nou");
+  const createHref = forumCreateHref(section);
   const newThreadAction = user ? (
     <a className="cal-btn primary" href={createHref}>Discuție nouă</a>
   ) : (
@@ -109,31 +138,39 @@ function ForumListView({ user, authLoaded }) {
       {error ? <StatusPanel title="Nu am putut încărca forumul">{error}</StatusPanel> : null}
       {data?.threads?.length ? (
         <div className="list-grid">
-          {data.threads.map((thread) => (
-            <article className="piece-card" key={thread.id}>
-              <div className="piece-card-kicker">{forumSectionLabel(thread.section)}</div>
-              <h2 className="piece-card-title">
-                <a className="post-title-link" href={mainPath(`/discutii/${thread.slug}`)}>{thread.title}</a>
-              </h2>
-              <div className="piece-card-meta">
-                {thread.author?.username ? <AuthorLink user={thread.author} /> : null}
-                <span>{thread.reply_count} răspunsuri</span>
-                {thread.last_activity_at ? <span>{formatDateTime(thread.last_activity_at)}</span> : null}
-              </div>
-            </article>
-          ))}
+          {data.threads.filter((thread) => thread.moderation_status !== "rejected").map((thread) => {
+            const isModerating = MODERATING_STATUSES.has(thread.moderation_status);
+            return (
+              <article className={`piece-card forum-thread-card ${isModerating ? "has-moderation-overlay" : ""}`.trim()} key={thread.id}>
+                <div className="forum-thread-card-content">
+                  <div className="piece-card-kicker">{forumSectionLabel(thread.section)}</div>
+                  <h2 className="piece-card-title">
+                    <a className="post-title-link" href={mainPath(`/discutii/${thread.slug}`)}>{thread.title}</a>
+                  </h2>
+                  <div className="piece-card-meta">
+                    {thread.author?.username ? <AuthorLink user={thread.author} /> : null}
+                    <span>{thread.reply_count} răspunsuri</span>
+                    {thread.last_activity_at ? <span>{formatDateTime(thread.last_activity_at)}</span> : null}
+                  </div>
+                </div>
+                {isModerating ? (
+                  <ModerationOverlay className="forum-card-moderation-overlay">{TEXT_MODERATION_MESSAGE}</ModerationOverlay>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : !loading && !error ? <StatusPanel title="Nu există thread-uri aici" /> : null}
     </PageShell>
   );
 }
 function ForumThreadCreateView({ user }) {
-  const [section, setSection] = useState("general");
+  const [section, setSection] = useState(initialForumSection);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [autoDiacritics, setAutoDiacritics] = useState(false);
   const [diacriticsReview, setDiacriticsReview] = useState(null);
   const {
     diacriticsProgress,
@@ -141,16 +178,22 @@ function ForumThreadCreateView({ user }) {
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
 
   useEffect(() => {
-    setAutoDiacritics(Boolean(user?.is_premium));
+    setAutoDiacritics(false);
     setDiacriticsReview(null);
-  }, [user?.id, user?.is_premium]);
+  }, [user?.id]);
 
   if (!user) return <AuthRequired className="forum-page" />;
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const submit = async (event, { skipDiacritics = false } = {}) => {
+    event?.preventDefault();
     setSubmitting(true);
     setStatus("");
     if (!title.trim() || !htmlToText(content)) {
@@ -159,10 +202,11 @@ function ForumThreadCreateView({ user }) {
       return;
     }
     try {
-      if (user.is_premium && autoDiacritics && !diacriticsReview) {
+      if (!skipDiacritics && user && autoDiacritics && !diacriticsReview) {
         startDiacriticsProgress({ title, content });
         const converted = await addDiacritics({ kind: "forum_thread", title, content });
         finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
         setTitle(converted.title ?? title);
         setContent(converted.content);
         setDiacriticsReview({
@@ -198,6 +242,9 @@ function ForumThreadCreateView({ user }) {
           user={user}
           enabled={autoDiacritics}
           disabled={Boolean(diacriticsReview)}
+          quota={diacriticsQuota}
+          quotaLoading={diacriticsQuotaLoading}
+          quotaError={diacriticsQuotaError}
           onChange={(checked) => {
             setAutoDiacritics(checked);
             setDiacriticsReview(null);
@@ -217,10 +264,15 @@ function ForumThreadCreateView({ user }) {
           {diacriticsSubmitLabel({
             submitting,
             reviewing: Boolean(diacriticsReview),
-            enabled: Boolean(user.is_premium && autoDiacritics),
+            enabled: Boolean(user && autoDiacritics),
             submitLabel: "Publică thread"
           })}
         </button>
+        {user && autoDiacritics && !diacriticsReview ? (
+          <button className="cal-btn" type="button" onClick={() => submit(null, { skipDiacritics: true })} disabled={submitting}>
+            Publică fără Diacritice
+          </button>
+        ) : null}
       </form>
     </PageShell>
   );
@@ -230,37 +282,107 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
   const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [replyAutoDiacritics, setReplyAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [replyAutoDiacritics, setReplyAutoDiacritics] = useState(false);
   const [replyReview, setReplyReview] = useState(null);
+  const [reportModal, setReportModal] = useState(null);
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportEvidenceUrl, setReportEvidenceUrl] = useState("");
+  const [reportBusy, setReportBusy] = useState("");
+  const [reportStatus, setReportStatus] = useState("");
   const {
     diacriticsProgress,
     startDiacriticsProgress,
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
   const { openAuthModal } = useAuthModal();
   const { data, error, loading } = useAsync(
     () => fetchForumThread(slug),
     [slug, refreshKey]
   );
+  usePageSeo(data ? forumThreadSeo(data) : null, [data?.id, data?.updated_at, data?.reply_count]);
 
   useEffect(() => {
-    setReplyAutoDiacritics(Boolean(user?.is_premium));
+    setReplyAutoDiacritics(false);
     setReplyReview(null);
-  }, [user?.id, user?.is_premium, slug]);
+    setReportModal(null);
+    setReportDetails("");
+    setReportEvidenceUrl("");
+    setReportBusy("");
+    setReportStatus("");
+  }, [user?.id, slug]);
 
-  const submitReply = async (event) => {
+  const openReportModal = (target) => {
+    if (!user) {
+      openAuthModal?.({ returnTo: window.location.href });
+      return;
+    }
+    setReportStatus("");
+    setReportDetails("");
+    setReportEvidenceUrl("");
+    setReportModal({ target, reasonType: "offensive" });
+  };
+
+  const selectReportReason = (reasonType) => {
+    setReportModal((current) => current ? { ...current, reasonType } : current);
+    setReportDetails("");
+    setReportEvidenceUrl("");
+  };
+
+  const closeReportModal = () => {
+    if (reportBusy) return;
+    setReportModal(null);
+    setReportDetails("");
+    setReportEvidenceUrl("");
+  };
+
+  const submitReport = async (event) => {
     event.preventDefault();
+    if (!reportModal?.target?.item?.id || !reportModal.reasonType || reportBusy) return;
+    const target = reportModal.target;
+    setReportBusy("report");
+    setReportStatus("");
+    try {
+      const payload = {
+        reason_type: reportModal.reasonType,
+        details: reportDetails,
+        evidence_url: reportModal.reasonType === "plagiarism" ? reportEvidenceUrl : ""
+      };
+      if (target.type === "forum_thread") {
+        await reportForumThread(target.item.id, payload);
+      } else {
+        await reportForumReply(target.item.id, payload);
+      }
+      setReportStatus("Raportarea a fost trimisă către moderatori.");
+      setReportModal(null);
+      setReportDetails("");
+      setReportEvidenceUrl("");
+    } catch (requestError) {
+      setReportStatus(requestError.message || "Nu am putut trimite raportarea.");
+    } finally {
+      setReportBusy("");
+    }
+  };
+
+  const submitReply = async (event, { skipDiacritics = false } = {}) => {
+    event?.preventDefault();
     if (!data) return;
     const content = reply.trim();
     if (!htmlToText(content)) return;
     setSubmitting(true);
     setStatus("");
     try {
-      if (user.is_premium && replyAutoDiacritics && !replyReview) {
+      if (!skipDiacritics && user && replyAutoDiacritics && !replyReview) {
         startDiacriticsProgress({ content });
         const converted = await addDiacritics({ kind: "forum_reply", content });
         finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
         setReply(converted.content);
         setReplyReview({ originalContent: reply, changed: converted.changed });
         setSubmitting(false);
@@ -269,7 +391,7 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
       const created = await createForumReply(data.id, { content });
       setReply("");
       setReplyReview(null);
-      setStatus(created.moderation_status === "approved" ? "" : FORUM_MODERATION_MESSAGE);
+      setStatus("");
       setRefreshKey((key) => key + 1);
     } catch (requestError) {
       failDiacriticsProgress();
@@ -291,23 +413,21 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
       {error ? <StatusPanel title="Nu am putut încărca discuția">{error}</StatusPanel> : null}
       {data ? (
         <div className="detail-stack">
-          {data.moderation_status !== "approved" ? (
-            <StatusPanel title="Mesaj în curs de moderare">{FORUM_MODERATION_MESSAGE}</StatusPanel>
-          ) : null}
-          <ForumMessage item={data} isThread />
+          {reportStatus ? <div className="inline-status">{reportStatus}</div> : null}
+          <ForumMessage item={data} isThread user={user} authLoaded={authLoaded} onReport={openReportModal} reportBusy={Boolean(reportBusy)} />
           <section className="forum-replies" aria-label="Răspunsuri">
             <div className="piece-card-kicker">răspunsuri</div>
             {data.replies?.length ? (
               <div className="reply-list">
-                {data.replies.map((item) => (
-                  <ForumMessage item={item} key={item.id} />
+                {data.replies.filter((item) => item.moderation_status !== "rejected").map((item) => (
+                  <ForumMessage item={item} key={item.id} user={user} authLoaded={authLoaded} onReport={openReportModal} reportBusy={Boolean(reportBusy)} />
                 ))}
               </div>
             ) : <p className="auth-sub">Nu există răspunsuri încă.</p>}
           </section>
           {data.is_locked ? (
             <StatusPanel title="Discuție închisă">Nu mai pot fi adăugate răspunsuri.</StatusPanel>
-          ) : user ? (
+          ) : data.moderation_status !== "approved" ? null : user ? (
             <form className="form-stack" onSubmit={submitReply}>
               <label className="auth-field" htmlFor="forum-reply">Răspuns</label>
               <RichTextEditor id="forum-reply" value={reply} onChange={setReply} maxLength={4000} mentionSearch={searchUsers} />
@@ -315,6 +435,9 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                 user={user}
                 enabled={replyAutoDiacritics}
                 disabled={Boolean(replyReview)}
+                quota={diacriticsQuota}
+                quotaLoading={diacriticsQuotaLoading}
+                quotaError={diacriticsQuotaError}
                 onChange={(checked) => {
                   setReplyAutoDiacritics(checked);
                   setReplyReview(null);
@@ -333,10 +456,15 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                 {diacriticsSubmitLabel({
                   submitting,
                   reviewing: Boolean(replyReview),
-                  enabled: Boolean(user.is_premium && replyAutoDiacritics),
+                  enabled: Boolean(user && replyAutoDiacritics),
                   submitLabel: "Răspunde"
                 })}
               </button>
+              {user && replyAutoDiacritics && !replyReview ? (
+                <button className="cal-btn" type="button" onClick={() => submitReply(null, { skipDiacritics: true })} disabled={submitting}>
+                  Răspunde fără Diacritice
+                </button>
+              ) : null}
             </form>
           ) : authLoaded ? (
             <StatusPanel
@@ -348,6 +476,18 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
           ) : (
             <StatusPanel title="Se verifică sesiunea" />
           )}
+          <ReportModal
+            modal={reportModal}
+            busy={reportBusy}
+            details={reportDetails}
+            evidenceUrl={reportEvidenceUrl}
+            allowPlagiarism={false}
+            onDetailsChange={setReportDetails}
+            onEvidenceUrlChange={setReportEvidenceUrl}
+            onSelectReason={selectReportReason}
+            onClose={closeReportModal}
+            onSubmit={submitReport}
+          />
         </div>
       ) : null}
     </PageShell>

@@ -1,13 +1,14 @@
 import logging
 
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import models, schemas, crud, auth
+from .. import models, schemas, crud, auth, profile_media, rich_text
 from ..database import get_db
+from ..utils import get_avatar_url
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +17,19 @@ router = APIRouter(tags=["messages"])
 
 
 def _user_payload(user: models.User) -> dict:
+    profile_photo_url = None
+    if getattr(user, "is_premium", False) and getattr(user, "profile_photo_storage_key", None):
+        profile_photo_url = profile_media.public_media_url(user.username, "profil")
     return {
         "id": user.id,
         "username": user.username,
-        "subtitle": user.subtitle,
-        "avatar_seed": user.avatar_seed,
+        "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
+        "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+        "avatar_url": profile_photo_url or get_avatar_url(user, size=96),
+        "profile_photo_url": profile_photo_url,
         "is_premium": getattr(user, "is_premium", False),
         "premium_tier": getattr(user, "premium_tier", "free") or "free",
+        "is_system": getattr(user, "is_system", False),
     }
 
 
@@ -194,6 +201,46 @@ def get_unread_count_api(
     except Exception as e:
         logger.error(f"Eroare la obținerea numărului de mesaje necitite pentru {current_user.username}: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut încărca numărul de mesaje necitite")
+
+
+@router.post("/api/mesaje/{message_id}/raportari", response_model=schemas.PostReport, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+def report_private_message_api(
+    message_id: int,
+    report: schemas.PostReportCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    message = db.query(models.Message).filter(models.Message.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Mesajul nu a fost găsit")
+    conversation = crud.get_conversation_by_id(db, message.conversation_id, current_user.id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Mesajul nu a fost găsit")
+    if message.sender_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Nu poți raporta propriul mesaj")
+    sender = message.sender or db.query(models.User).filter(models.User.id == message.sender_id).first()
+    if sender and getattr(sender, "is_system", False):
+        raise HTTPException(status_code=400, detail="Mesajele de sistem nu pot fi raportate aici")
+    excerpt = rich_text.rich_text_to_plain_text(message.content or "").strip()[:120]
+    title = f"Mesaj privat de la @{sender.username if sender else 'utilizator'}"
+    if excerpt:
+        title = f"{title}: {excerpt}"
+    db_report = crud.create_content_report(
+        db,
+        content_type="message",
+        content_id=message.id,
+        title=title,
+        author_username=sender.username if sender else None,
+        reporter_user_id=current_user.id,
+        report=report,
+        reported_content=message.content,
+        target_url=f"/mesaje?conversatie={message.conversation_id}&mesaj={message.id}",
+    )
+    if not db_report:
+        raise HTTPException(status_code=409, detail="Ai raportat deja acest mesaj pentru acest motiv")
+    return crud.post_report_payload(db_report)
 
 
 @router.delete("/api/mesaje/conversatii/{conversation_id}")

@@ -20,6 +20,10 @@ export function updateEmailPreferences(data) {
   return api.put("/api/utilizator/email-preferinte", data);
 }
 
+export function updatePassword(data) {
+  return api.put("/api/utilizator/parola", data);
+}
+
 export function updateSocialLinks(data) {
   return api.put("/api/utilizator/linkuri-sociale", data);
 }
@@ -32,10 +36,6 @@ export function uploadProfileMedia(kind, file) {
 
 export function deleteProfileMedia(kind) {
   return api.delete(`/api/utilizator/media/${encodeURIComponent(kind)}`);
-}
-
-export function updateBestFriends(friends) {
-  return api.put("/api/utilizator/prieteni-apropiati", { friends });
 }
 
 export function searchUsers(query) {

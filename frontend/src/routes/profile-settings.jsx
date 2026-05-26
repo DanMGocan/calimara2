@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { FiAlertTriangle, FiBookOpen, FiExternalLink, FiHeart, FiImage, FiMail, FiMapPin, FiSearch, FiStar, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
+import { FiAlertTriangle, FiBookOpen, FiDownload, FiExternalLink, FiHeart, FiImage, FiKey, FiMail, FiMapPin, FiSearch, FiStar, FiTrash2, FiUpload, FiUsers } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
+import { fetchDataExport, importDataExport } from "../api/data-portability.js";
 import { updateStafetaParticipation } from "../api/stafeta.js";
-import { deleteProfileMedia, fetchPromotions, promoteAuthor, promotePost, searchPromotions, unpromoteAuthor, unpromotePost, updateEmailPreferences, updateProfileSettings, uploadProfileMedia } from "../api/users.js";
+import { deleteProfileMedia, fetchMe, fetchPromotions, promoteAuthor, promotePost, searchPromotions, unpromoteAuthor, unpromotePost, updateEmailPreferences, updatePassword, updateProfileSettings, uploadProfileMedia } from "../api/users.js";
+import { addDiacritics } from "../api/writing.js";
 import { AUTH_COVER_OPTIONS, PROFILE_DESCRIPTION_CHARACTER_LIMIT } from "../app/constants.js";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, useDiacriticsProgress, useDiacriticsQuota } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
 import { formatNumber, htmlToText, usernameHandle } from "../app/format.js";
 import { AuthRequired, PageShell } from "../app/layout.jsx";
@@ -51,6 +54,20 @@ function emailPrefsFromUser(user) {
     email_analytics_digest: user?.email_analytics_digest ?? true,
     email_admin_announcements: user?.email_admin_announcements ?? true
   };
+}
+
+function downloadJsonFile(payload, user) {
+  const date = new Date().toISOString().slice(0, 10);
+  const username = user?.username || "calimara";
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `calimara-export-${username}-${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function CoverChoiceField({ username, selectedSeed, onChange }) {
@@ -211,7 +228,7 @@ function PromotionGroup({ title, Icon, items, kind, empty, busyKey, promotedIds,
 function PromotionSettingsPanel() {
   const [promotions, setPromotions] = useState(null);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState({ own_posts: [], authors: [], other_posts: [] });
+  const [results, setResults] = useState({ authors: [], other_posts: [] });
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [busyKey, setBusyKey] = useState("");
@@ -241,7 +258,7 @@ function PromotionSettingsPanel() {
   useEffect(() => {
     const term = query.trim();
     if (term.length < 2) {
-      setResults({ own_posts: [], authors: [], other_posts: [] });
+      setResults({ authors: [], other_posts: [] });
       setSearching(false);
       return undefined;
     }
@@ -250,7 +267,12 @@ function PromotionSettingsPanel() {
     const timer = window.setTimeout(() => {
       searchPromotions(term)
         .then((data) => {
-          if (!cancelled) setResults(data);
+          if (!cancelled) {
+            setResults({
+              authors: data.authors || [],
+              other_posts: data.other_posts || []
+            });
+          }
         })
         .catch((requestError) => {
           if (!cancelled) setStatus(requestError.message || "Nu am putut căuta promovări.");
@@ -266,10 +288,8 @@ function PromotionSettingsPanel() {
   }, [query]);
 
   const limits = promotions?.limits || { own_posts: 2, authors: 3, other_posts: 3 };
-  const ownPostIds = new Set((promotions?.own_posts || []).map((item) => item.id));
   const authorIds = new Set((promotions?.authors || []).map((item) => item.id));
   const otherPostIds = new Set((promotions?.other_posts || []).map((item) => item.id));
-  const allPostIds = new Set([...ownPostIds, ...otherPostIds]);
 
   const toggle = async (kind, item, promoted) => {
     const key = `${kind}-${item.id}`;
@@ -295,9 +315,11 @@ function PromotionSettingsPanel() {
         <div className="piece-card-kicker">promovări</div>
       </div>
       {loading ? <p className="auth-sub">Se încarcă promovările.</p> : null}
+      <p className="auth-sub promotion-editor-note">
+        Îți poți promova până la {formatNumber(limits.own_posts)} texte proprii din <a href={mainPath("/panou")}>„Panou”</a>, direct de pe fiecare text aprobat. Aici gestionezi autorii și textele altor autori.
+      </p>
       {promotions ? (
         <div className="promotion-current-grid">
-          <PromotionGroup title={`Textele tale (${promotions.own_posts.length}/${limits.own_posts})`} Icon={FiBookOpen} items={promotions.own_posts} kind="own-post" empty="Nu ai texte proprii promovate." busyKey={busyKey} promotedIds={ownPostIds} limitReached={false} onToggle={toggle} />
           <PromotionGroup title={`Autori (${promotions.authors.length}/${limits.authors})`} Icon={FiUsers} items={promotions.authors} kind="author" empty="Nu ai autori promovați." busyKey={busyKey} promotedIds={authorIds} limitReached={false} onToggle={toggle} />
           <PromotionGroup title={`Texte de la alți autori (${promotions.other_posts.length}/${limits.other_posts})`} Icon={FiBookOpen} items={promotions.other_posts} kind="other-post" empty="Nu ai texte externe promovate." busyKey={busyKey} promotedIds={otherPostIds} limitReached={false} onToggle={toggle} />
         </div>
@@ -305,9 +327,8 @@ function PromotionSettingsPanel() {
       <label className="auth-field profile-inline-label" htmlFor="promotion-search"><FiSearch aria-hidden="true" />Caută promovări</label>
       <input id="promotion-search" className="cal-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="titlu sau autor" />
       <div className="promotion-search-results">
-        <PromotionGroup title="Textele tale" Icon={FiBookOpen} items={results.own_posts || []} kind="own-post" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."} busyKey={busyKey} promotedIds={allPostIds} limitReached={(promotions?.own_posts?.length || 0) >= limits.own_posts} onToggle={toggle} />
         <PromotionGroup title="Autori" Icon={FiUsers} items={results.authors || []} kind="author" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun autor găsit."} busyKey={busyKey} promotedIds={authorIds} limitReached={(promotions?.authors?.length || 0) >= limits.authors} onToggle={toggle} />
-        <PromotionGroup title="Texte de la alți autori" Icon={FiBookOpen} items={results.other_posts || []} kind="other-post" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."} busyKey={busyKey} promotedIds={allPostIds} limitReached={(promotions?.other_posts?.length || 0) >= limits.other_posts} onToggle={toggle} />
+        <PromotionGroup title="Texte de la alți autori" Icon={FiBookOpen} items={results.other_posts || []} kind="other-post" empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."} busyKey={busyKey} promotedIds={otherPostIds} limitReached={(promotions?.other_posts?.length || 0) >= limits.other_posts} onToggle={toggle} />
       </div>
       {status ? <div className={status.includes("Nu am putut") || status.includes("Poți") ? "inline-error" : "inline-status"}>{status}</div> : null}
     </section>
@@ -322,12 +343,35 @@ function ProfileSettingsView({ user, onUserUpdate }) {
   const [status, setStatus] = useState("");
   const [emailStatus, setEmailStatus] = useState("");
   const [stafetaStatus, setStafetaStatus] = useState("");
+  const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "" });
+  const [passwordStatus, setPasswordStatus] = useState("");
   const [savingEmailPrefs, setSavingEmailPrefs] = useState(false);
   const [savingStafeta, setSavingStafeta] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [directSaving, setDirectSaving] = useState(false);
+  const [autoDiacritics, setAutoDiacritics] = useState(false);
+  const [diacriticsReview, setDiacriticsReview] = useState(null);
+  const [portabilityBusy, setPortabilityBusy] = useState("");
+  const [portabilityStatus, setPortabilityStatus] = useState("");
+  const importInputRef = useRef(null);
+  const {
+    diacriticsProgress,
+    startDiacriticsProgress,
+    finishDiacriticsProgress,
+    failDiacriticsProgress
+  } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
 
   useEffect(() => {
     setForm(profileFormFromUser(user));
+    setAutoDiacritics(false);
+    setDiacriticsReview(null);
     setEmailPrefs(emailPrefsFromUser(user));
     setStafetaParticipates(Boolean(user?.stafeta_participates));
     setStafetaSlots(Number(user?.stafeta_desired_slots || user?.stafeta_max_slots || 3));
@@ -336,12 +380,35 @@ function ProfileSettingsView({ user, onUserUpdate }) {
   if (!user) return <AuthRequired />;
 
   const supportLinksLocked = !(user.is_premium && SUPPORT_LINK_PREMIUM_TIERS.has(user.premium_tier || "free"));
+  const profileDescriptionText = htmlToText(form.subtitle);
+  const canReviewProfileDescription = Boolean(user && autoDiacritics && profileDescriptionText && !diacriticsReview);
 
   const setField = (field, value) => {
+    if (field === "subtitle" && diacriticsReview) {
+      setDiacriticsReview(null);
+    }
     setForm((current) => ({ ...current, [field]: value }));
   };
   const setEmailField = (field, value) => {
     setEmailPrefs((current) => ({ ...current, [field]: value }));
+  };
+  const setPasswordField = (field, value) => {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const savePassword = async () => {
+    if (savingPassword || !passwordForm.current_password || !passwordForm.new_password) return;
+    setSavingPassword(true);
+    setPasswordStatus("");
+    try {
+      const response = await updatePassword(passwordForm);
+      setPasswordForm({ current_password: "", new_password: "" });
+      setPasswordStatus(response.message || "Parola a fost actualizată.");
+    } catch (requestError) {
+      setPasswordStatus(requestError.message || "Nu am putut actualiza parola.");
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
   const saveEmailPreferences = async () => {
@@ -391,15 +458,36 @@ function ProfileSettingsView({ user, onUserUpdate }) {
     }
   };
 
-  const submit = async (event) => {
-    event.preventDefault();
+  const profileSubmitLabel = () => {
+    if (saving) return canReviewProfileDescription && !directSaving ? "Se adaugă diacritice..." : "Se salvează...";
+    if (canReviewProfileDescription) return "Verifică diacriticele";
+    return "Salvează profilul";
+  };
+
+  const saveProfile = async ({ skipDiacritics = false } = {}) => {
+    if (saving) return;
     setStatus("");
-    if (htmlToText(form.subtitle).length > PROFILE_DESCRIPTION_CHARACTER_LIMIT) {
+    if (profileDescriptionText.length > PROFILE_DESCRIPTION_CHARACTER_LIMIT) {
       setStatus(`Descrierea poate avea cel mult ${formatNumber(PROFILE_DESCRIPTION_CHARACTER_LIMIT)} de caractere.`);
       return;
     }
     setSaving(true);
+    setDirectSaving(skipDiacritics);
     try {
+      if (!skipDiacritics && canReviewProfileDescription) {
+        startDiacriticsProgress({ content: form.subtitle });
+        const converted = await addDiacritics({ kind: "profile_description", content: form.subtitle });
+        finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
+        setForm((current) => ({ ...current, subtitle: converted.content ?? form.subtitle }));
+        setDiacriticsReview({
+          originalSubtitle: form.subtitle,
+          changed: converted.changed
+        });
+        setStatus("Am pregătit descrierea cu diacritice. Verifică și salvează profilul.");
+        setSaving(false);
+        return;
+      }
       const nextForm = supportLinksLocked
         ? {
             ...form,
@@ -409,16 +497,67 @@ function ProfileSettingsView({ user, onUserUpdate }) {
       const nextUser = await updateProfileSettings(nextForm);
       onUserUpdate(nextUser);
       setForm(profileFormFromUser(nextUser));
+      setDiacriticsReview(null);
       setStatus("Profilul a fost salvat.");
     } catch (requestError) {
+      failDiacriticsProgress();
       setStatus(requestError.message || "Nu am putut salva profilul.");
     } finally {
       setSaving(false);
+      setDirectSaving(false);
+    }
+  };
+
+  const submit = async (event) => {
+    event.preventDefault();
+    await saveProfile();
+  };
+
+  const exportBackup = async () => {
+    if (portabilityBusy) return;
+    setPortabilityBusy("export");
+    setPortabilityStatus("");
+    try {
+      const payload = await fetchDataExport();
+      downloadJsonFile(payload, user);
+      setPortabilityStatus("Exportul a fost pregătit.");
+    } catch (requestError) {
+      setPortabilityStatus(requestError.message || "Nu am putut exporta datele.");
+    } finally {
+      setPortabilityBusy("");
+    }
+  };
+
+  const importBackup = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || portabilityBusy) return;
+    setPortabilityBusy("import");
+    setPortabilityStatus("");
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const report = await importDataExport(payload);
+      const current = await fetchMe();
+      if (current?.user) {
+        onUserUpdate?.(current.user);
+        setForm(profileFormFromUser(current.user));
+        setDiacriticsReview(null);
+      }
+      setPortabilityStatus(report.message || "Importul a fost finalizat.");
+    } catch (requestError) {
+      const message = requestError instanceof SyntaxError
+        ? "Fișierul ales nu este JSON valid."
+        : requestError.message || "Nu am putut importa datele.";
+      setPortabilityStatus(message);
+    } finally {
+      setPortabilityBusy("");
     }
   };
 
   return (
     <PageShell kicker="profil" title="Profilul tău" sub="Actualizează prezentarea publică, linkurile și imaginile profilului.">
+      <DiacriticsProgressOverlay {...diacriticsProgress} />
       <form className="profile-settings-form" onSubmit={submit}>
         <section className="profile-settings-section">
           <div className="profile-panel-heading">
@@ -427,6 +566,30 @@ function ProfileSettingsView({ user, onUserUpdate }) {
           </div>
           <label className="auth-field" htmlFor="profile-subtitle">Descriere</label>
           <RichTextEditor id="profile-subtitle" className="compact" value={form.subtitle} onChange={(value) => setField("subtitle", value)} maxLength={PROFILE_DESCRIPTION_CHARACTER_LIMIT} />
+          <div className="field-counter" aria-live="polite">
+            {formatNumber(profileDescriptionText.length)} / {formatNumber(PROFILE_DESCRIPTION_CHARACTER_LIMIT)} caractere
+          </div>
+          <DiacriticsControl
+            user={user}
+            enabled={autoDiacritics}
+            disabled={Boolean(diacriticsReview)}
+            label="Adaugă automat diacritice în descriere?"
+            quota={diacriticsQuota}
+            quotaLoading={diacriticsQuotaLoading}
+            quotaError={diacriticsQuotaError}
+            onChange={(checked) => {
+              setAutoDiacritics(checked);
+              setDiacriticsReview(null);
+            }}
+          />
+          <DiacriticsReviewPanel
+            active={Boolean(diacriticsReview)}
+            changed={Boolean(diacriticsReview?.changed)}
+            onReset={diacriticsReview ? () => {
+              setForm((current) => ({ ...current, subtitle: diacriticsReview.originalSubtitle }));
+              setDiacriticsReview(null);
+            } : null}
+          />
           <label className="auth-field profile-inline-label" htmlFor="profile-location"><FiMapPin aria-hidden="true" />Locație</label>
           <input id="profile-location" className="cal-input" value={form.location} onChange={(event) => setField("location", event.target.value)} maxLength="120" />
           <label className="auth-field profile-inline-label" htmlFor="profile-youtube"><SiYoutube aria-hidden="true" />Playlist YouTube</label>
@@ -474,12 +637,57 @@ function ProfileSettingsView({ user, onUserUpdate }) {
           </div>
         </section>
         <div className="button-row">
-          <button className="cal-btn primary" type="submit" disabled={saving}>{saving ? "Se salvează..." : "Salvează profilul"}</button>
+          <button className="cal-btn primary" type="submit" disabled={saving}>{profileSubmitLabel()}</button>
+          {canReviewProfileDescription ? (
+            <button className="cal-btn" type="button" disabled={saving} onClick={() => saveProfile({ skipDiacritics: true })}>
+              {directSaving ? "Se salvează..." : "Salvează fără Diacritice"}
+            </button>
+          ) : null}
           <a className="cal-btn" href={blogUrl(user.username)}>Vezi profilul public</a>
         </div>
         {status ? <div className={status.includes("Nu am putut") || status.includes("cel mult") ? "inline-error" : "inline-status"}>{status}</div> : null}
       </form>
+      <section className="profile-settings-section">
+        <div className="profile-panel-heading">
+          <FiDownload aria-hidden="true" />
+          <div className="piece-card-kicker">backup date</div>
+        </div>
+        <div className="button-row">
+          <button className="cal-btn" type="button" disabled={Boolean(portabilityBusy)} onClick={exportBackup}>
+            <FiDownload aria-hidden="true" />
+            {portabilityBusy === "export" ? "Se exportă..." : "Exportă JSON"}
+          </button>
+          <button className="cal-btn" type="button" disabled={Boolean(portabilityBusy)} onClick={() => importInputRef.current?.click()}>
+            <FiUpload aria-hidden="true" />
+            {portabilityBusy === "import" ? "Se importă..." : "Importă JSON"}
+          </button>
+          <input ref={importInputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={importBackup} />
+        </div>
+        {portabilityStatus ? <div className={portabilityStatus.includes("Nu am putut") || portabilityStatus.includes("nu este JSON") ? "inline-error" : "inline-status"}>{portabilityStatus}</div> : null}
+      </section>
       <PromotionSettingsPanel />
+      <section className="profile-settings-section">
+        <div className="profile-panel-heading">
+          <FiKey aria-hidden="true" />
+          <div className="piece-card-kicker">parolă</div>
+        </div>
+        <div className="profile-field-grid">
+          <label className="profile-field">
+            <span className="profile-field-label">Parola curentă</span>
+            <input className="cal-input" type="password" value={passwordForm.current_password} onChange={(event) => setPasswordField("current_password", event.target.value)} autoComplete="current-password" />
+          </label>
+          <label className="profile-field">
+            <span className="profile-field-label">Parola nouă</span>
+            <input className="cal-input" type="password" value={passwordForm.new_password} onChange={(event) => setPasswordField("new_password", event.target.value)} autoComplete="new-password" minLength="10" />
+          </label>
+        </div>
+        <div className="button-row">
+          <button className="cal-btn" type="button" disabled={savingPassword || !passwordForm.current_password || !passwordForm.new_password} onClick={savePassword}>
+            {savingPassword ? "Se actualizează..." : "Schimbă parola"}
+          </button>
+        </div>
+        {passwordStatus ? <div className={passwordStatus.includes("Nu am putut") || passwordStatus.includes("nu este corectă") ? "inline-error" : "inline-status"}>{passwordStatus}</div> : null}
+      </section>
       <section className="profile-settings-section email-preferences-section">
         <div className="profile-panel-heading">
           <FiUsers aria-hidden="true" />

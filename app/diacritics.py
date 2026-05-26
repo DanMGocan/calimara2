@@ -1,11 +1,13 @@
 import json
 import logging
 import os
+import time
 from typing import Optional
 
 from dotenv import load_dotenv
 
 from . import rich_text
+from .mistral_context import validate_chat_context
 
 load_dotenv()
 
@@ -14,7 +16,10 @@ logger = logging.getLogger(__name__)
 DIACRITICS_ENABLED = os.getenv("DIACRITICS_ENABLED", "True").lower() == "true"
 DIACRITICS_MODEL = os.getenv("DIACRITICS_MODEL", "mistral-small-latest")
 DIACRITICS_MAX_TOKENS = int(os.getenv("DIACRITICS_MAX_TOKENS", "4000"))
+DIACRITICS_PROVIDER_COOLDOWN_SECONDS = int(os.getenv("DIACRITICS_PROVIDER_COOLDOWN_SECONDS", "120"))
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+_provider_unavailable_until = 0.0
+_provider_unavailable_reason = ""
 
 client = None
 if DIACRITICS_ENABLED and MISTRAL_API_KEY:
@@ -71,20 +76,165 @@ Returnează DOAR JSON valid:
 
 
 def _load_json_response(text: str) -> dict:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.") from exc
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(cleaned[start:end + 1])
+            except json.JSONDecodeError:
+                raise RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.") from exc
+        else:
+            raise RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("Răspunsul AI pentru diacritice a avut format invalid.")
     return parsed
 
 
-def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
+def _provider_cooldown_remaining_seconds() -> int:
+    return max(0, int(_provider_unavailable_until - time.monotonic()))
+
+
+def diacritics_service_status() -> dict:
     if not DIACRITICS_ENABLED:
-        raise RuntimeError("Conversia automată la diacritice este dezactivată.")
+        return {
+            "service_available": False,
+            "service_unavailable_reason": "Conversia automată la diacritice este dezactivată.",
+            "service_retry_after_seconds": None,
+        }
     if not client:
-        raise RuntimeError("Serviciul AI pentru diacritice nu este configurat.")
+        return {
+            "service_available": False,
+            "service_unavailable_reason": "Serviciul AI pentru diacritice nu este configurat.",
+            "service_retry_after_seconds": None,
+        }
+    remaining = _provider_cooldown_remaining_seconds()
+    if remaining > 0:
+        return {
+            "service_available": False,
+            "service_unavailable_reason": _provider_unavailable_reason or "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou.",
+            "service_retry_after_seconds": remaining,
+        }
+    return {
+        "service_available": True,
+        "service_unavailable_reason": None,
+        "service_retry_after_seconds": None,
+    }
+
+
+def ensure_diacritics_service_available() -> None:
+    status = diacritics_service_status()
+    if not status["service_available"]:
+        raise RuntimeError(status["service_unavailable_reason"] or "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou.")
+
+
+def _open_provider_cooldown(reason: str) -> None:
+    global _provider_unavailable_until, _provider_unavailable_reason
+    if DIACRITICS_PROVIDER_COOLDOWN_SECONDS <= 0:
+        return
+    _provider_unavailable_until = time.monotonic() + DIACRITICS_PROVIDER_COOLDOWN_SECONDS
+    _provider_unavailable_reason = reason
+
+
+def _complete_chat(messages: list[dict]) -> object:
+    ensure_diacritics_service_available()
+    validate_chat_context(
+        model=DIACRITICS_MODEL,
+        messages=messages,
+        max_output_tokens=DIACRITICS_MAX_TOKENS,
+        purpose="Diacritice Mistral",
+    )
+    try:
+        return client.chat.complete(
+            model=DIACRITICS_MODEL,
+            max_tokens=DIACRITICS_MAX_TOKENS,
+            messages=messages,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:
+        logger.warning("AI diacritics request failed: %s", exc)
+        message = "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou."
+        _open_provider_cooldown(message)
+        raise RuntimeError(message) from exc
+
+
+def _complete_json(messages: list[dict]) -> dict:
+    last_error: RuntimeError | None = None
+    for attempt in range(2):
+        response = _complete_chat(messages)
+        try:
+            return _load_json_response((response.choices[0].message.content or "").strip())
+        except RuntimeError as exc:
+            last_error = exc
+            if attempt == 0:
+                logger.warning("AI diacritics returned invalid JSON; retrying once: %s", exc)
+                continue
+            raise
+    raise last_error or RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.")
+
+
+def validate_diacritics_request_context(*, title: Optional[str], content: str, kind: str) -> None:
+    original_title = title if title is not None else None
+    original_content = rich_text.sanitize_rich_text(content)
+    user_message = {
+        "kind": kind,
+        "title": original_title,
+        "content": original_content,
+    }
+    validate_chat_context(
+        model=DIACRITICS_MODEL,
+        messages=[
+            {"role": "system", "content": DIACRITICS_PROMPT},
+            {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
+        ],
+        max_output_tokens=DIACRITICS_MAX_TOKENS,
+        purpose="Diacritice Mistral",
+    )
+
+
+def validate_theatre_play_diacritics_context(
+    *,
+    title: Optional[str],
+    description: Optional[str],
+    characters: list[dict],
+) -> None:
+    original_characters = [
+        {
+            "index": int(item.get("index", index)),
+            "description": str(item.get("description") or ""),
+        }
+        for index, item in enumerate(characters or [])
+    ]
+    user_message = {
+        "kind": "theatre_play",
+        "title": title if title is not None else None,
+        "description": description if description is not None else None,
+        "characters": original_characters,
+    }
+    validate_chat_context(
+        model=DIACRITICS_MODEL,
+        messages=[
+            {"role": "system", "content": THEATRE_DIACRITICS_PROMPT},
+            {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
+        ],
+        max_output_tokens=DIACRITICS_MAX_TOKENS,
+        purpose="Diacritice teatru Mistral",
+    )
+
+
+def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
+    ensure_diacritics_service_available()
 
     original_title = title if title is not None else None
     original_content = rich_text.sanitize_rich_text(content)
@@ -93,19 +243,14 @@ def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
         "title": original_title,
         "content": original_content,
     }
+    validate_diacritics_request_context(title=title, content=content, kind=kind)
 
-    response = client.chat.complete(
-        model=DIACRITICS_MODEL,
-        max_tokens=DIACRITICS_MAX_TOKENS,
-        messages=[
+    parsed = _complete_json(
+        [
             {"role": "system", "content": DIACRITICS_PROMPT},
             {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
         ],
-        temperature=0.0,
-        response_format={"type": "json_object"},
     )
-
-    parsed = _load_json_response((response.choices[0].message.content or "").strip())
     converted_title = parsed.get("title", original_title)
     converted_content = parsed.get("content")
 
@@ -133,10 +278,7 @@ def add_theatre_play_diacritics(
     description: Optional[str],
     characters: list[dict],
 ) -> dict:
-    if not DIACRITICS_ENABLED:
-        raise RuntimeError("Conversia automată la diacritice este dezactivată.")
-    if not client:
-        raise RuntimeError("Serviciul AI pentru diacritice nu este configurat.")
+    ensure_diacritics_service_available()
 
     original_title = title if title is not None else None
     original_description = description if description is not None else None
@@ -153,19 +295,18 @@ def add_theatre_play_diacritics(
         "description": original_description,
         "characters": original_characters,
     }
+    validate_theatre_play_diacritics_context(
+        title=title,
+        description=description,
+        characters=characters,
+    )
 
-    response = client.chat.complete(
-        model=DIACRITICS_MODEL,
-        max_tokens=DIACRITICS_MAX_TOKENS,
-        messages=[
+    parsed = _complete_json(
+        [
             {"role": "system", "content": THEATRE_DIACRITICS_PROMPT},
             {"role": "user", "content": json.dumps(user_message, ensure_ascii=False)},
         ],
-        temperature=0.0,
-        response_format={"type": "json_object"},
     )
-
-    parsed = _load_json_response((response.choices[0].message.content or "").strip())
     converted_title = parsed.get("title", original_title)
     converted_description = parsed.get("description", original_description)
     converted_items = parsed.get("characters", [])

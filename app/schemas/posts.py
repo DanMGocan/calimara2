@@ -10,6 +10,11 @@ class PostBase(BaseModel):
     content: str
     explanatory_note: Optional[str] = None
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, TITLE_CHARACTER_LIMIT, "Titlul")
+
     @field_validator("content")
     @classmethod
     def sanitize_content(cls, value: str) -> str:
@@ -53,6 +58,7 @@ class Post(PostBase):
     toxicity_score: Optional[float] = None
     super_likes_count: int = 0
     viewer_super_liked: bool = False
+    viewer_liked: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -94,18 +100,26 @@ class PostReportReview(BaseModel):
 class PostReport(BaseModel):
     id: int
     post_id: Optional[int] = None
+    target_type: Optional[str] = None
+    target_id: Optional[int] = None
+    target_label: Optional[str] = None
+    target_url: Optional[str] = None
     reporter_user_id: int
     reason_type: PostReportReason
     details: Optional[str] = None
     evidence_url: Optional[str] = None
     post_title: Optional[str] = None
     post_slug: Optional[str] = None
+    post_url: Optional[str] = None
     post_author: Optional[str] = None
     post_author_id: Optional[int] = None
+    post_author_url: Optional[str] = None
     reporter_username: Optional[str] = None
+    reporter_url: Optional[str] = None
     status: PostReportStatus
     reviewed_by: Optional[int] = None
     reviewer_username: Optional[str] = None
+    reviewer_url: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     review_note: Optional[str] = None
     created_at: datetime
@@ -161,6 +175,9 @@ class PostDraftList(BaseModel):
 
 
 
+CommentReactionType = Literal["helpful", "funny", "insightful"]
+
+
 class CommentBase(BaseModel):
     content: str
     author_name: Optional[str] = None
@@ -187,11 +204,36 @@ class Comment(CommentBase):
     moderation_status: Optional[str] = None
     moderation_reason: Optional[str] = None
     toxicity_score: Optional[float] = None
+    reaction_counts: dict[str, int] = Field(default_factory=dict)
+    reaction_total: int = 0
+    viewer_reaction: Optional[CommentReactionType] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 DiacriticsKind = Literal["post", "forum_thread", "forum_reply", "comment"]
+
+
+class CommentReactionRequest(BaseModel):
+    reaction_type: CommentReactionType
+
+
+class CommentReactionSummary(BaseModel):
+    comment_id: int
+    counts: dict[str, int]
+    total: int
+    viewer_reaction: Optional[CommentReactionType] = None
+
+
+class CommentReaction(BaseModel):
+    id: int
+    comment_id: int
+    user_id: int
+    reaction_type: CommentReactionType
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 

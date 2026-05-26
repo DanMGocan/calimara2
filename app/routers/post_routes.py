@@ -8,7 +8,7 @@ from slowapi.util import get_remote_address
 
 from .. import ai_queue, audio_service, models, schemas, crud, auth
 from ..database import get_db
-from ..utils import get_client_ip, SUBDOMAIN_SUFFIX
+from ..utils import get_client_ip, post_public_url
 from ..categories import CATEGORIES
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,12 @@ def get_posts_archive(
 
         # Format posts for frontend
         formatted_posts = []
+        audio_period_start, audio_period_end = crud.audio_tts_quota_period_for_user(current_user)
+        has_audio_conversion_quota = bool(
+            crud.audio_tts_quota_limit_for_user(current_user) > 0
+            and audio_period_start
+            and audio_period_end
+        )
         for post in posts:
             audio_summary = audio_service.post_audio_summary(db, post)
             active_tts = crud.get_active_or_ready_tts_for_post(db, post.id)
@@ -67,9 +73,14 @@ def get_posts_archive(
             ):
                 active_tts = None
             audio_can_request = bool(
-                current_user.has_audio_access
+                has_audio_conversion_quota
                 and post.moderation_status == "approved"
                 and not active_tts
+            )
+            author_audio_can_upload = bool(
+                current_user.has_author_audio_access
+                and post.user_id == current_user.id
+                and post.moderation_status == "approved"
             )
             formatted_posts.append({
                 "id": post.id,
@@ -83,8 +94,9 @@ def get_posts_archive(
                 "moderation_status": post.moderation_status,
                 "moderation_reason": post.moderation_reason,
                 "created_at": post.created_at.strftime('%d %B %Y'),
-                "url": f"//{current_user.username}{SUBDOMAIN_SUFFIX}/{post.slug}",
+                "url": post_public_url(current_user, post.slug),
                 "audio_can_request": audio_can_request,
+                "author_audio_can_upload": author_audio_can_upload,
                 **audio_summary,
             })
 
@@ -327,7 +339,73 @@ def delete_comment_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post("/api/comentarii/{comment_id}/reactii", response_model=schemas.CommentReactionSummary)
+def react_to_comment_api(
+    comment_id: int,
+    payload: schemas.CommentReactionRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    try:
+        summary = crud.upsert_comment_reaction(
+            db,
+            comment_id=comment_id,
+            user_id=current_user.id,
+            reaction_type=payload.reaction_type,
+        )
+    except crud.CommentReactionSelfError:
+        raise HTTPException(status_code=403, detail="Nu poți reacționa la propriul comentariu")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Tipul reacției nu este valid")
+    if not summary:
+        raise HTTPException(status_code=404, detail="Comentariul nu a fost găsit sau nu este aprobat")
+    return summary
+
+
+@router.delete("/api/comentarii/{comment_id}/reactii", response_model=schemas.CommentReactionSummary)
+def remove_comment_reaction_api(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    summary = crud.delete_comment_reaction(db, comment_id=comment_id, user_id=current_user.id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Nicio reacție de retras")
+    return summary
+
+
 # --- Likes ---
+
+LIKE_SESSION_KEY = "liked_post_ids"
+
+
+def _session_liked_post_ids(request: Request) -> set[int]:
+    values = request.session.get(LIKE_SESSION_KEY, [])
+    if not isinstance(values, list):
+        return set()
+    liked_ids = set()
+    for value in values:
+        try:
+            liked_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return liked_ids
+
+
+def _remember_session_like(request: Request, post_id: int) -> None:
+    liked_ids = _session_liked_post_ids(request)
+    liked_ids.add(int(post_id))
+    request.session[LIKE_SESSION_KEY] = sorted(liked_ids)[-500:]
+
+
+def _forget_session_like(request: Request, post_id: int) -> None:
+    liked_ids = _session_liked_post_ids(request)
+    liked_ids.discard(int(post_id))
+    if liked_ids:
+        request.session[LIKE_SESSION_KEY] = sorted(liked_ids)[-500:]
+    else:
+        request.session.pop(LIKE_SESSION_KEY, None)
+
 
 @router.post("/api/postari/{post_id}/aprecieri", response_model=schemas.Like)
 def add_like_to_post(
@@ -341,12 +419,41 @@ def add_like_to_post(
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
     user_id = current_user.id if current_user else None
-    ip_address = get_client_ip(request) if not user_id else None
-
-    db_like = crud.create_like(db=db, post_id=post_id, user_id=user_id, ip_address=ip_address)
-    if not db_like:
+    ip_address = get_client_ip(request)
+    if user_id and db_post.user_id == user_id:
+        raise HTTPException(status_code=403, detail="Nu îți poți aprecia propria postare.")
+    if post_id in _session_liked_post_ids(request):
         raise HTTPException(status_code=409, detail="Ați apreciat deja această postare")
+
+    try:
+        db_like = crud.create_like(db=db, post_id=post_id, user_id=user_id, ip_address=ip_address)
+    except crud.LikeSelfError:
+        raise HTTPException(status_code=403, detail="Nu îți poți aprecia propria postare.")
+    if not db_like:
+        _remember_session_like(request, post_id)
+        raise HTTPException(status_code=409, detail="Ați apreciat deja această postare")
+    _remember_session_like(request, post_id)
     return db_like
+
+
+@router.delete("/api/postari/{post_id}/aprecieri", status_code=status.HTTP_204_NO_CONTENT)
+def remove_like_from_post(
+    post_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user)
+):
+    db_post = crud.get_post(db, post_id=post_id)
+    if not db_post:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
+
+    user_id = current_user.id if current_user else None
+    ip_address = get_client_ip(request)
+    removed = crud.delete_like(db=db, post_id=post_id, user_id=user_id, ip_address=ip_address)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Nicio apreciere de retras")
+    _forget_session_like(request, post_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/postari/{post_id}/aprecieri/numar")

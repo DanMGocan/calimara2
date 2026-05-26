@@ -34,8 +34,20 @@ export function confirmPasswordReset(data) {
   return api.post("/api/autentificare/parola/resetare/confirma", data);
 }
 
+export function fetchInvitation(token) {
+  return api.get(`/api/invitatii/${encodeURIComponent(token)}`);
+}
+
+export function loginWithInvitationPassword(data) {
+  return api.post("/api/autentificare/invitatie/parola", data);
+}
+
 export function completeAuthSetup(data) {
   return api.post("/api/autentificare/finalizeaza-configurarea", data);
+}
+
+export function addSetupDiacritics(data) {
+  return api.post("/api/autentificare/configurare/diacritice", data);
 }
 
 export function logout() {

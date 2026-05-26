@@ -21,6 +21,14 @@ export function createForumReply(threadId, data) {
   return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/raspunsuri`, data);
 }
 
+export function reportForumThread(threadId, data) {
+  return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/raportari`, data);
+}
+
+export function reportForumReply(replyId, data) {
+  return api.post(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}/raportari`, data);
+}
+
 export function deleteForumThread(threadId) {
   return api.delete(`/api/forum/discutii/${encodeURIComponent(threadId)}`);
 }
@@ -32,4 +40,3 @@ export function deleteForumReply(replyId) {
 export function updateForumThreadState(threadId, action) {
   return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/stare`, { action });
 }
-

@@ -36,6 +36,11 @@ class ClubCreate(BaseModel):
     theme: Optional[str] = Field(None, max_length=200)
     avatar_seed: Optional[str] = Field(None, max_length=100)
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, 120, "Titlul")
+
 
 
 class ClubUpdate(BaseModel):
@@ -46,6 +51,11 @@ class ClubUpdate(BaseModel):
     motto: Optional[str] = Field(None, max_length=200)
     theme: Optional[str] = Field(None, max_length=200)
     avatar_seed: Optional[str] = Field(None, max_length=100)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 120, "Titlul")
 
 
 
@@ -62,6 +72,16 @@ class ClubBoardMessageCreate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=160)
     content: str = Field(..., min_length=1, max_length=4000)
     parent_id: Optional[int] = None
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 160, "Titlul")
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        return _trim_required_string(value, 4000, "Mesajul")
 
 
 
@@ -145,6 +165,11 @@ class ClubDetail(ClubSummary):
 
 class ClubInviteRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        return _trim_required_string(value, 255, "Utilizatorul")
 
 
 

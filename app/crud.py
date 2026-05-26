@@ -6,11 +6,13 @@ repository package. Existing routers and tests can keep using `app.crud`.
 
 from .repositories.users import *
 from .repositories.posts import *
+from .repositories.writing import *
 from .repositories.audio import *
 from .repositories.jobs import *
 from .repositories.comments import *
 from .repositories.mentions import *
 from .repositories.profile import *
+from .repositories.referrals import *
 from .repositories.economy import *
 from .repositories.forum import *
 from .repositories.messages import *

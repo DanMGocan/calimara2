@@ -131,9 +131,6 @@ def make_post(
         category=category,
         moderation_status=moderation_status,
         moderated_at=utcnow_naive() if moderation_status == "approved" else None,
-        theme_analysis_status="completed",
-        themes=["test"],
-        feelings=["claritate"],
         view_count=3,
     )
     db.add(post)

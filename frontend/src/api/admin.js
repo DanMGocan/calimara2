@@ -72,12 +72,40 @@ export function fetchAdminAuditLog(params = {}) {
   return api.get(`/api/admin/audit-log${buildQuery(params)}`);
 }
 
+export function fetchAdminStorageObjects(params = {}) {
+  return api.get(`/api/admin/storage/objects${buildQuery(params)}`);
+}
+
+export function presignAdminStorageObject(key) {
+  return api.post("/api/admin/storage/objects/presign", { key });
+}
+
+export function deleteAdminStorageObject(key, reason) {
+  return api.delete("/api/admin/storage/objects", { key, reason });
+}
+
+export function cleanupAdminStorageObject(key, reason) {
+  return api.post("/api/admin/storage/objects/cleanup", { key, reason });
+}
+
 export function fetchAdminSiteFeedback(params = {}) {
   return api.get(`/api/admin/site-feedback${buildQuery(params)}`);
 }
 
+export function fetchAdminQaReport(params = {}) {
+  return api.get(`/api/admin/referinta/raport-qa${buildQuery(params)}`);
+}
+
 export function updateAdminSiteFeedback(feedbackId, data) {
   return api.put(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}`, data);
+}
+
+export function fetchAdminSiteFeedbackThread(feedbackId) {
+  return api.get(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}/thread`);
+}
+
+export function replyAdminSiteFeedback(feedbackId, data) {
+  return api.post(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}/reply`, data);
 }
 
 export function fetchAdminPlatformAccess() {
@@ -96,6 +124,22 @@ export function deleteAdminPlatformAllowedEmail(emailId) {
   return api.delete(`/api/admin/platform-access/emails/${encodeURIComponent(emailId)}`);
 }
 
+export function fetchAdminInvitations() {
+  return api.get("/api/admin/invitatii");
+}
+
+export function createAdminInvitations(data) {
+  return api.post("/api/admin/invitatii", data);
+}
+
+export function resendAdminInvitation(invitationId) {
+  return api.post(`/api/admin/invitatii/${encodeURIComponent(invitationId)}/retrimite`, {});
+}
+
+export function revokeAdminInvitation(invitationId) {
+  return api.post(`/api/admin/invitatii/${encodeURIComponent(invitationId)}/revoca`, {});
+}
+
 export function previewAdminEmail(data) {
   return api.post("/api/admin/email/preview", data);
 }
@@ -106,6 +150,10 @@ export function createAdminEmailCampaign(data) {
 
 export function processAdminEmailOutbox(params = {}) {
   return api.post(`/api/admin/email/outbox/process${buildQuery(params)}`, {});
+}
+
+export function sendAdminNotificationTestEmail() {
+  return api.post("/api/admin/email/test-notification", {});
 }
 
 export function fetchAdminEmailCampaigns(params = {}) {

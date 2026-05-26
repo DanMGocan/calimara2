@@ -10,18 +10,55 @@ AdminPremiumTier = Literal["free", "trubadur", "cronicar", "rapsod"]
 AdminContentType = Literal["post", "comment", "audio", "forum_thread", "forum_reply", "theatre_entry", "stafeta_segment"]
 AdminModerationStatus = Literal["approved", "pending", "flagged", "rejected"]
 
+
+def _normalize_admin_reason(value: str) -> str:
+    return _trim_required_string(value, 1000, "Motivul")
+
+
 class ModerationActionRequest(BaseModel):
     action: str
     reason: str = ""
 
 
 class SuspendUserRequest(BaseModel):
-    reason: str
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
 
 
 
 class AdminReasonRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
+
+
+class AdminStorageObjectRequest(BaseModel):
+    key: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("key", mode="before")
+    @classmethod
+    def key_must_not_be_blank(cls, value: str) -> str:
+        return _trim_required_string(value, 1000, "Cheia obiectului")
+
+
+class AdminStorageObjectDelete(AdminStorageObjectRequest):
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
+
+
+class AdminStorageObjectCleanup(AdminStorageObjectDelete):
+    pass
 
 
 
@@ -29,6 +66,11 @@ class AdminRoleUpdate(BaseModel):
     is_admin: bool
     is_moderator: bool
     reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
 
 
 AdminPremiumTier = Literal["free", "trubadur", "cronicar", "rapsod"]
@@ -42,11 +84,21 @@ class AdminPremiumUpdate(BaseModel):
     stripe_subscription_id: Optional[str] = Field(None, max_length=100)
     reason: str = Field(..., min_length=1, max_length=1000)
 
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
+
 
 
 class AdminGologaniAdjustment(BaseModel):
     amount: int = Field(..., ge=-1000000, le=1000000)
     reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
 
     @field_validator("amount")
     @classmethod
@@ -62,6 +114,13 @@ class AdminPlatformAccessUpdate(BaseModel):
 
 class AdminPlatformAllowedEmailCreate(BaseModel):
     email: EmailStr
+    note: Optional[str] = Field(None, max_length=500)
+
+
+class AdminInvitationCreate(BaseModel):
+    emails: List[EmailStr] = Field(..., min_length=1, max_length=200)
+    premium_tier: AdminPremiumTier = "free"
+    premium_days: Optional[int] = Field(None, ge=1, le=3650)
     note: Optional[str] = Field(None, max_length=500)
 
 
@@ -94,6 +153,11 @@ class AdminEmailCampaignCreate(BaseModel):
     subject: str = Field(..., min_length=1, max_length=255)
     html_content: str = Field(..., min_length=1, max_length=200000)
 
+    @field_validator("subject", mode="before")
+    @classmethod
+    def normalize_subject(cls, value: str) -> str:
+        return _trim_required_string(value, 255, "Subiectul")
+
     @field_validator("html_content")
     @classmethod
     def html_must_have_text(cls, value: str) -> str:
@@ -114,6 +178,11 @@ class AdminContentUpdate(BaseModel):
     section: Optional[Literal["anunturi", "general", "poezie", "proza_scurta"]] = None
     moderation_status: Optional[AdminModerationStatus] = None
     reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return _normalize_admin_reason(value)
 
     @field_validator("content")
     @classmethod

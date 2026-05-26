@@ -1,4 +1,5 @@
 import html
+import hashlib
 import logging
 import os
 import re
@@ -23,6 +24,8 @@ EMAIL_TYPE_MENTION = "mention"
 EMAIL_TYPE_ANALYTICS = "analytics"
 EMAIL_TYPE_ADMIN = "admin"
 EMAIL_TYPE_AUTH = "auth"
+EMAIL_TYPE_INVITATION = "invitation"
+EMAIL_TYPE_SYSTEM_ALERT = "system_alert"
 EMAIL_STATUSES_TO_CLAIM = ("queued",)
 EMAIL_STALE_LOCK_MINUTES = 15
 UNSUBSCRIBE_PREFS = {
@@ -35,6 +38,17 @@ UNSUBSCRIBE_PREFS = {
 
 def emails_enabled() -> bool:
     return os.getenv("EMAILS_ENABLED", "False").lower() in {"true", "1", "yes", "on"}
+
+
+def system_alert_email() -> str:
+    return os.getenv("SYSTEM_ALERT_EMAIL", "contact@calimara.ro").strip()
+
+
+def system_alert_cooldown_minutes() -> int:
+    try:
+        return max(1, int(os.getenv("SYSTEM_ALERT_COOLDOWN_MINUTES", "30")))
+    except (TypeError, ValueError):
+        return 30
 
 
 def sender_email() -> str:
@@ -143,6 +157,24 @@ def _button(label: str, href: str) -> str:
     )
 
 
+def _email_action_block(label: str, href: str) -> str:
+    escaped_href = html.escape(href, quote=True)
+    escaped_label = html.escape(label)
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+        'style="border-collapse:collapse;margin:20px 0 12px;">'
+        "<tr>"
+        '<td bgcolor="#1f1d1b" style="background:#1f1d1b;">'
+        f'<a href="{escaped_href}" target="_blank" '
+        'style="display:block;padding:13px 18px;color:#ffffff;text-decoration:none;'
+        'font-family:Arial,sans-serif;font-size:15px;line-height:20px;font-weight:700;'
+        f'white-space:nowrap;">{escaped_label}</a>'
+        "</td>"
+        "</tr>"
+        "</table>"
+    )
+
+
 def _footer(user: models.User, email_type: str) -> str:
     if email_type not in UNSUBSCRIBE_PREFS:
         return ""
@@ -158,6 +190,39 @@ def _footer(user: models.User, email_type: str) -> str:
 
 def _with_footer(user: models.User, email_type: str, body: str) -> str:
     return f"{body}{_footer(user, email_type)}"
+
+
+def _absolute_email_link(link: Optional[str]) -> str:
+    absolute_link = link or main_url("/")
+    if absolute_link.startswith("//"):
+        return f"{public_scheme()}:{absolute_link}"
+    if absolute_link.startswith("/"):
+        return main_url(absolute_link)
+    return absolute_link
+
+
+def _render_mention_email(
+    *,
+    target: models.User,
+    actor: models.User,
+    source_title: Optional[str],
+    link: Optional[str],
+) -> tuple[str, str, str]:
+    absolute_link = _absolute_email_link(link)
+    title = f"{actor.username} te-a menționat"
+    source_text = source_title or "Ai fost menționat într-o conversație."
+    body = (
+        f"<p>{html.escape(actor.username)} te-a menționat pe călimara.ro.</p>"
+        f"<p>{html.escape(source_text)}</p>"
+        f"{_button('Vezi mențiunea', absolute_link)}"
+    )
+    html_content = _email_page(title, _with_footer(target, EMAIL_TYPE_MENTION, body))
+    text = (
+        f"{actor.username} te-a menționat pe călimara.ro.\n"
+        f"{source_text}\n\n{absolute_link}\n\n"
+        f"Dezabonare: {unsubscribe_url(target.id, EMAIL_TYPE_MENTION)}"
+    )
+    return title, html_content, text
 
 
 def queue_email(
@@ -205,6 +270,90 @@ def queue_email(
     return row
 
 
+def queue_system_alert_email(
+    db: Session,
+    *,
+    service: str,
+    summary: str,
+    error_message: str,
+    context: Optional[dict] = None,
+) -> Optional[models.EmailOutbox]:
+    recipient = system_alert_email()
+    if not recipient:
+        return None
+
+    service_label = (service or "service").strip()[:120]
+    summary_text = (summary or "Serviciu indisponibil").strip()[:500]
+    error_text = (error_message or "Eroare necunoscută").strip()[:2000]
+    context_payload = context or {}
+    fingerprint_source = "|".join([service_label, summary_text, error_text[:500]])
+    fingerprint = hashlib.sha256(fingerprint_source.encode("utf-8")).hexdigest()[:16]
+    window_seconds = system_alert_cooldown_minutes() * 60
+    bucket = int(utcnow_naive().timestamp()) // max(60, window_seconds)
+    service_slug = re.sub(r"[^a-z0-9]+", "-", service_label.lower()).strip("-") or "service"
+    dedupe_key = f"system-alert:{service_slug}:{fingerprint}:{bucket}"
+
+    escaped_service = html.escape(service_label)
+    escaped_summary = html.escape(summary_text)
+    escaped_error = html.escape(error_text)
+    context_rows = "".join(
+        f"<tr><td style=\"padding:4px 10px 4px 0;color:#7a7168;\">{html.escape(str(key))}</td>"
+        f"<td style=\"padding:4px 0;\"><code>{html.escape(str(value))}</code></td></tr>"
+        for key, value in sorted(context_payload.items())
+        if value is not None
+    )
+    context_html = (
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" '
+        'style="border-collapse:collapse;margin:14px 0;font-family:Arial,sans-serif;font-size:13px;">'
+        f"{context_rows}</table>"
+        if context_rows
+        else ""
+    )
+    title = f"Alertă serviciu AI: {service_label}"
+    body = (
+        f"<p><strong>{escaped_service}</strong> a raportat o problemă.</p>"
+        f"<p>{escaped_summary}</p>"
+        f'<pre style="white-space:pre-wrap;background:#fff;border:1px solid rgba(31,29,27,.18);'
+        f'padding:12px;font-family:Arial,sans-serif;font-size:13px;line-height:1.45;">{escaped_error}</pre>'
+        f"{context_html}"
+    )
+    text_lines = [
+        title,
+        "",
+        summary_text,
+        "",
+        error_text,
+    ]
+    if context_payload:
+        text_lines.extend(["", "Context:"])
+        text_lines.extend(f"{key}: {value}" for key, value in sorted(context_payload.items()) if value is not None)
+
+    try:
+        return queue_email(
+            db,
+            recipient_email=recipient,
+            recipient_name="Călimara operations",
+            subject=title,
+            html_content=_email_page(title, body),
+            text_content="\n".join(text_lines),
+            email_type=EMAIL_TYPE_SYSTEM_ALERT,
+            extra_data={
+                "service": service_label,
+                "summary": summary_text,
+                "fingerprint": fingerprint,
+                "context": context_payload,
+            },
+            dedupe_key=dedupe_key,
+        )
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Rollback failed after system alert queue error")
+        logger.exception("Could not queue system alert for %s", service_label)
+        return None
+
+
 def queue_auth_code_email(
     db: Session,
     *,
@@ -243,6 +392,86 @@ def queue_auth_code_email(
         html_content=html_content,
         text_content=text_content,
         email_type=EMAIL_TYPE_AUTH,
+    )
+
+
+def queue_platform_invitation_email(
+    db: Session,
+    *,
+    recipient_email: str,
+    invitation_url: str,
+    temporary_password: str,
+    premium_tier: str = "free",
+    premium_days: Optional[int] = None,
+    actor: Optional[models.User] = None,
+    invitation_id: Optional[int] = None,
+) -> Optional[models.EmailOutbox]:
+    tier_labels = {
+        "free": "Gratuit",
+        "trubadur": "Trubadur",
+        "cronicar": "Cronicar",
+        "rapsod": "Rapsod",
+    }
+    tier_label = tier_labels.get(premium_tier or "free", premium_tier or "Gratuit")
+    premium_line = ""
+    if premium_tier and premium_tier != "free":
+        premium_line = (
+            f"<p>Invitația include acces <strong>{html.escape(tier_label)}</strong>"
+            f" pentru {int(premium_days or 30)} zile după ce îți creezi Călimara.</p>"
+        )
+    escaped_password = html.escape(temporary_password)
+    escaped_url = html.escape(invitation_url)
+    escaped_href = html.escape(invitation_url, quote=True)
+    body = (
+        "<p>Ai primit o invitație pentru Călimara.</p>"
+        f"{premium_line}"
+        "<p>Deschide linkul de mai jos ca să îți creezi contul și blogul. Pe pagina invitației poți intra cu Google, Facebook sau cu parola temporară din acest email.</p>"
+        f"{_email_action_block('Acceptă invitația', invitation_url)}"
+        '<p style="font-family:Arial,sans-serif;font-size:13px;line-height:1.5;color:#5f564e;margin:0 0 18px;">'
+        "Dacă butonul nu se afișează corect, copiază acest link în browser:<br>"
+        f'<a href="{escaped_href}" style="color:#1f1d1b;word-break:break-all;">{escaped_url}</a>'
+        "</p>"
+        '<p style="margin:18px 0 6px;">Parola temporară pentru autentificare cu email:</p>'
+        '<p style="font-family:Arial,sans-serif;font-size:20px;line-height:1.35;'
+        'font-weight:700;margin:0 0 12px;color:#1f1d1b;word-break:break-all;">'
+        f"{escaped_password}</p>"
+        "<p>După autentificare o poți schimba oricând din setările contului, dacă vrei.</p>"
+    )
+    title = "Invitație Călimara"
+    text_lines = [
+        "Ai primit o invitație pentru Călimara.",
+        "",
+    ]
+    if premium_tier and premium_tier != "free":
+        text_lines.append(f"Invitația include acces {tier_label} pentru {int(premium_days or 30)} zile după ce îți creezi Călimara.")
+        text_lines.append("")
+    text_lines.extend(
+        [
+            "Deschide linkul de mai jos ca să îți creezi contul și blogul.",
+            "Pe pagina invitației poți intra cu Google, Facebook sau cu parola temporară din acest email.",
+            "",
+            "Acceptă invitația:",
+            invitation_url,
+            "",
+            f"Parolă temporară: {temporary_password}",
+            "După autentificare o poți schimba oricând din setările contului, dacă vrei.",
+        ]
+    )
+    return queue_email(
+        db,
+        recipient_email=recipient_email,
+        recipient_name=None,
+        subject=title,
+        html_content=_email_page(title, body),
+        text_content="\n".join(text_lines),
+        email_type=EMAIL_TYPE_INVITATION,
+        extra_data={
+            "invitation_id": invitation_id,
+            "premium_tier": premium_tier,
+            "premium_days": premium_days,
+            "actor_id": actor.id if actor else None,
+        },
+        dedupe_key=None,
     )
 
 
@@ -458,22 +687,11 @@ def queue_mention_email(
 ) -> Optional[models.EmailOutbox]:
     if not target.email_mention_notifications or target.is_suspended:
         return None
-    absolute_link = link or main_url("/")
-    if absolute_link.startswith("//"):
-        absolute_link = f"{public_scheme()}:{absolute_link}"
-    elif absolute_link.startswith("/"):
-        absolute_link = main_url(absolute_link)
-    title = f"{actor.username} te-a menționat"
-    body = (
-        f"<p>{html.escape(actor.username)} te-a menționat pe călimara.ro.</p>"
-        f"<p>{html.escape(source_title or 'Ai fost menționat într-o conversație.')}</p>"
-        f"{_button('Vezi mențiunea', absolute_link)}"
-    )
-    html_content = _email_page(title, _with_footer(target, EMAIL_TYPE_MENTION, body))
-    text = (
-        f"{actor.username} te-a menționat pe călimara.ro.\n"
-        f"{source_title or 'Ai fost menționat într-o conversație.'}\n\n{absolute_link}\n\n"
-        f"Dezabonare: {unsubscribe_url(target.id, EMAIL_TYPE_MENTION)}"
+    title, html_content, text = _render_mention_email(
+        target=target,
+        actor=actor,
+        source_title=source_title,
+        link=link,
     )
     return queue_email(
         db,
@@ -486,6 +704,31 @@ def queue_mention_email(
         email_type=EMAIL_TYPE_MENTION,
         extra_data={"source_type": source_type, "source_id": source_id, "actor_id": actor.id},
         dedupe_key=f"mention:{source_type}:{source_id}:{target.id}",
+    )
+
+
+def queue_test_notification_email(
+    db: Session,
+    *,
+    actor: models.User,
+    recipient_email: str = "contact@calimara.ro",
+) -> Optional[models.EmailOutbox]:
+    title, html_content, text = _render_mention_email(
+        target=actor,
+        actor=actor,
+        source_title="Ai fost menționat într-o conversație.",
+        link="/discutii",
+    )
+    return queue_email(
+        db,
+        recipient_user_id=actor.id,
+        recipient_email=recipient_email,
+        recipient_name=actor.username,
+        subject=title,
+        html_content=html_content,
+        text_content=text,
+        email_type=EMAIL_TYPE_MENTION,
+        extra_data={"test": True, "source_type": "admin_notification_test", "actor_id": actor.id},
     )
 
 

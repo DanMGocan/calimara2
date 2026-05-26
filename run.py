@@ -43,6 +43,7 @@ DEV_ADMIN_PASSWORD_USER_EMAIL = "sad@sad.com"
 REQUIRED_SEED_TABLES = {
     "users": 3,
     "posts": 16,
+    "post_audio": 23,
     "shop_items": 1,
 }
 # Track child processes for cleanup
@@ -148,9 +149,9 @@ def python_for_service() -> Path:
 def build_systemd_unit() -> str:
     user, group = service_user_and_group()
     python_bin = python_for_service()
-    path_env = os.environ.get(
-        "PATH",
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    path_env = (
+        f"{PROJECT_ROOT / '.venv' / 'bin'}:"
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
     )
     service_name = service_unit_name()
     return f"""[Unit]
@@ -165,6 +166,7 @@ Group={group}
 WorkingDirectory={PROJECT_ROOT}
 Environment="PYTHONUNBUFFERED=1"
 Environment="PATH={systemd_escape(path_env)}"
+Environment="CALIMARA_RESET_DATABASE=false"
 ExecStart={python_bin} {PROJECT_ROOT / "run.py"} --serve
 Restart=always
 RestartSec=5
@@ -245,8 +247,8 @@ def manage_systemd_service_if_needed():
     print(f"    sudo systemctl stop {service_unit_name()}")
     print()
     print("  Note: run.py does not run database migrations.")
-    print("  Existing database data is reset from schema.sql by default.")
-    print("  Set CALIMARA_RESET_DATABASE=false to preserve the existing database.")
+    print("  Persistent service starts preserve existing data.")
+    print("  Set CALIMARA_RESET_DATABASE=true only when intentionally rebuilding from schema.sql.")
     sys.exit(0)
 
 
@@ -699,6 +701,29 @@ def start_ai_worker():
     return proc
 
 
+def start_email_worker():
+    """Start the background EmailOutbox worker for transactional emails."""
+    if os.getenv("EMAIL_WORKER_ENABLED", "true").lower() != "true":
+        print("  Email worker disabled by EMAIL_WORKER_ENABLED=false")
+        return None
+
+    worker_script = PROJECT_ROOT / "scripts" / "process_email_outbox.py"
+    if not worker_script.exists():
+        print(f"  Email worker script missing: {worker_script}")
+        return None
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.Popen(
+        [sys.executable, str(worker_script), "--loop"],
+        cwd=str(PROJECT_ROOT),
+        env=env,
+    )
+    child_processes.append(proc)
+    print(f"  Email outbox worker started (pid {proc.pid})")
+    return proc
+
+
 def main():
     print()
     print("  ╔═══════════════════════════════════════╗")
@@ -732,6 +757,7 @@ def main():
         build_frontend(npm)
 
     start_ai_worker()
+    start_email_worker()
 
     public_url = public_base_url()
     forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")

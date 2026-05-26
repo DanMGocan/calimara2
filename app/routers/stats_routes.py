@@ -22,6 +22,12 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
         raise HTTPException(status_code=400, detail=f"Format dată invalid: {value}. Folosiți YYYY-MM-DD.")
 
 
+@router.get("/api/statistici/platforma")
+def platform_stats(db: Session = Depends(get_db)):
+    """Public platform totals used by shared chrome."""
+    return crud.get_platform_stats(db)
+
+
 @router.get("/api/statistici/postare/{post_id}")
 def post_stats(
     post_id: int,

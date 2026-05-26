@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -29,10 +29,29 @@ class GologaniTransaction(Base):
     user: Mapped["User"] = relationship("User", back_populates="gologani_transactions")
 
 
+class GologaniRewardSetting(Base):
+    __tablename__ = "gologani_reward_settings"
+    __table_args__ = (
+        CheckConstraint("amount >= 0", name="ck_gologani_reward_settings_amount_nonnegative"),
+    )
+
+    event_type: Mapped[str] = mapped_column(String(50), primary_key=True)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    amount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
 
 
 class ShopItem(Base):
     __tablename__ = "shop_items"
+    __table_args__ = (
+        CheckConstraint("price >= 0", name="ck_shop_items_price_nonnegative"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     slug: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
@@ -93,5 +112,3 @@ class UserEquippedItem(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "slot", name="uq_user_equipped_slot"),
     )
-
-

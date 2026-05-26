@@ -7,7 +7,8 @@ from uuid import uuid4
 from sqlalchemy.orm import Session, joinedload
 
 from .achievements import emit_post_approved
-from . import ai_critic, audio_service, category_classifier, crud, email_service, models, moderation, theme_analysis
+from . import ai_critic, audio_service, crud, email_service, models, moderation
+from .utils import post_public_url
 from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,6 @@ JOB_STAFETA_SEGMENT_MODERATION = "stafeta_segment_moderation"
 JOB_STAFETA_TURN_TIMEOUT = "stafeta_turn_timeout"
 JOB_TTS_AUDIO = "tts_audio_generation"
 JOB_AUTHOR_AUDIO = "author_audio_moderation"
-JOB_THEME_ANALYSIS = "post_theme_analysis"
 JOB_AI_CRITIC = "post_ai_critic"
 
 
@@ -140,14 +140,6 @@ def enqueue_author_audio_moderation_job(db: Session, audio: models.PostAudio) ->
 def enqueue_post_approval_jobs(db: Session, post: models.Post) -> None:
     if post.moderation_status != "approved":
         return
-    crud.enqueue_ai_job(
-        db,
-        job_type=JOB_THEME_ANALYSIS,
-        target_type="post",
-        target_id=post.id,
-        payload={"content_hash": _post_hash(post)},
-        max_attempts=2,
-    )
     if post.ai_critic_requested:
         crud.enqueue_ai_job(
             db,
@@ -190,18 +182,42 @@ def process_claimed_job(db: Session, job: models.AIJob) -> None:
         if not job:
             return
         if final_attempt:
+            _queue_ai_job_alert(db, job, exc)
             _finalize_moderation_failure(db, job, exc)
             crud.fail_ai_job(db, job, str(exc), retry=False)
         else:
             crud.fail_ai_job(db, job, str(exc), retry=True)
 
 
-def _classify_post(post: models.Post) -> str:
-    try:
-        return category_classifier.classify_post(post.title, post.content)
-    except Exception as exc:
-        logger.error("Category classification failed for post %s: %s", post.id, exc)
-        return post.category or "proza_scurta"
+def _ai_job_service_label(job_type: str) -> str:
+    return {
+        JOB_POST_PUBLISH: "AI moderation",
+        JOB_COMMENT_MODERATION: "AI moderation",
+        JOB_FORUM_THREAD_MODERATION: "AI moderation",
+        JOB_FORUM_REPLY_MODERATION: "AI moderation",
+        JOB_THEATRE_ENTRY_MODERATION: "AI moderation",
+        JOB_STAFETA_SEGMENT_MODERATION: "AI moderation",
+        JOB_TTS_AUDIO: "TTS audio",
+        JOB_AUTHOR_AUDIO: "Author audio moderation",
+        JOB_AI_CRITIC: "AI critic",
+    }.get(job_type, "AI worker")
+
+
+def _queue_ai_job_alert(db: Session, job: models.AIJob, exc: Exception) -> None:
+    email_service.queue_system_alert_email(
+        db,
+        service=_ai_job_service_label(job.job_type),
+        summary=f"AI job {job.job_type} failed after queued retries.",
+        error_message=str(exc),
+        context={
+            "job_id": job.id,
+            "job_type": job.job_type,
+            "target_type": job.target_type,
+            "target_id": job.target_id,
+            "attempts": job.attempts,
+            "max_attempts": job.max_attempts,
+        },
+    )
 
 
 def _handle_post_publish(db: Session, job: models.AIJob) -> None:
@@ -213,8 +229,6 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
             enqueue_post_approval_jobs(db, post)
         return
 
-    if post.category not in {"poezie", "proza_scurta"}:
-        post.category = _classify_post(post)
     result = moderation.moderate_post_with_logging(
         post.title, post.content, post.id, post.user_id, db
     )
@@ -238,13 +252,18 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
     elif post.moderation_status == "approved":
         crud.award_content_approved(db, "post", post)
         emit_post_approved(db, post)
+        try:
+            crud.notify_followers_of_new_post(db, post)
+        except Exception:
+            db.rollback()
+            logger.exception("Could not notify followers for approved post %s", post.id)
         enqueue_post_approval_jobs(db, post)
 
 
 def _handle_comment_moderation(db: Session, job: models.AIJob) -> None:
     comment = (
         db.query(models.Comment)
-        .options(joinedload(models.Comment.post))
+        .options(joinedload(models.Comment.post).joinedload(models.Post.owner))
         .filter(models.Comment.id == job.target_id)
         .first()
     )
@@ -267,7 +286,7 @@ def _handle_comment_moderation(db: Session, job: models.AIJob) -> None:
             notif_type="moderation_queue",
             title="Comentariu în curs de moderare",
             message=f"Comentariul tău la postarea '{comment.post.title if comment.post else ''}' a fost trimis pentru revizuire manuală.",
-            link=f"/{comment.post.slug}" if comment.post else None,
+            link=post_public_url(comment.post.owner, comment.post.slug) if comment.post and comment.post.owner else None,
         )
     elif comment.moderation_status == "approved":
         crud.award_content_approved(db, "comment", comment)
@@ -394,32 +413,18 @@ def _handle_tts_audio(db: Session, job: models.AIJob) -> None:
     audio = db.query(models.PostAudio).filter(models.PostAudio.id == job.target_id).first()
     if not audio or audio.status in ("ready", "flagged", "rejected", "cancelled"):
         return
+    final_attempt = int(job.attempts or 0) >= int(job.max_attempts or 1)
     if audio.requester_user_id is None:
-        audio_service.generate_tts_audio(db, audio)
+        audio_service.generate_tts_audio(db, audio, mark_failed_on_error=final_attempt)
         return
-    audio_service.generate_tts_audio(db, audio)
+    audio_service.generate_tts_audio(db, audio, mark_failed_on_error=final_attempt)
 
 
 def _handle_author_audio(db: Session, job: models.AIJob) -> None:
     audio = db.query(models.PostAudio).filter(models.PostAudio.id == job.target_id).first()
-    if not audio or audio.status in ("ready", "flagged", "rejected"):
+    if not audio or audio.status in ("ready", "flagged", "rejected", "cancelled"):
         return
     audio_service.process_author_recording(db, audio)
-
-
-def _handle_theme_analysis(db: Session, job: models.AIJob) -> None:
-    post = crud.get_post(db, job.target_id)
-    if not post or post.moderation_status != "approved" or not _post_matches_job(post, job):
-        return
-    try:
-        analysis = theme_analysis.analyze_post_themes(post.title, post.content, db)
-        if analysis.success:
-            crud.update_post_theme_analysis(db, post.id, analysis.themes, analysis.feelings, "completed")
-        else:
-            crud.update_post_theme_analysis(db, post.id, [], [], "failed")
-    except Exception as exc:
-        logger.error("Theme analysis failed for post %s: %s", post.id, exc)
-        crud.update_post_theme_analysis(db, post.id, [], [], "failed")
 
 
 def _handle_ai_critic(db: Session, job: models.AIJob) -> None:
@@ -444,7 +449,10 @@ def _handle_ai_critic(db: Session, job: models.AIJob) -> None:
     if existing:
         return
     critique = ai_critic.generate_critique(
-        post.title, post.content, bool(post.owner and post.owner.is_premium)
+        post.title,
+        post.content,
+        bool(post.owner and post.owner.is_premium),
+        raise_on_failure=True,
     )
     if critique:
         crud.create_robot_comment(db, post_id=post.id, content=critique)
@@ -508,6 +516,5 @@ _HANDLERS = {
     JOB_STAFETA_TURN_TIMEOUT: _handle_stafeta_turn_timeout,
     JOB_TTS_AUDIO: _handle_tts_audio,
     JOB_AUTHOR_AUDIO: _handle_author_audio,
-    JOB_THEME_ANALYSIS: _handle_theme_analysis,
     JOB_AI_CRITIC: _handle_ai_critic,
 }

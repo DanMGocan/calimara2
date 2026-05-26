@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchDiacriticsQuota } from "../api/writing.js";
+import { formatDateTime, formatNumber } from "./format.js";
 import { mainPath } from "./paths.js";
 
 const PROGRESS_COMPLETE_HIDE_MS = 520;
@@ -120,24 +122,101 @@ export function DiacriticsProgressOverlay({ active, progress, phase }) {
   );
 }
 
-export function DiacriticsControl({ user, enabled, onChange, disabled = false, label = "Adaugă automat diacritice (ăîâțș)?" }) {
-  if (!user?.is_premium) {
+export function useDiacriticsQuota(user) {
+  const [quota, setQuota] = useState(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+  const [quotaError, setQuotaError] = useState("");
+
+  const refreshDiacriticsQuota = useCallback(async () => {
+    if (!user) {
+      setQuota(null);
+      setQuotaError("");
+      setQuotaLoading(false);
+      return null;
+    }
+    setQuotaLoading(true);
+    try {
+      const nextQuota = await fetchDiacriticsQuota();
+      setQuota(nextQuota);
+      setQuotaError("");
+      return nextQuota;
+    } catch (error) {
+      setQuotaError(error.message || "Nu am putut încărca limita pentru Diacritice.");
+      return null;
+    } finally {
+      setQuotaLoading(false);
+    }
+  }, [user?.id, user?.premium_tier, user?.premium_until]);
+
+  useEffect(() => {
+    refreshDiacriticsQuota();
+  }, [refreshDiacriticsQuota]);
+
+  const applyDiacriticsQuota = useCallback((nextQuota) => {
+    if (nextQuota) setQuota(nextQuota);
+  }, []);
+
+  return {
+    diacriticsQuota: quota,
+    diacriticsQuotaLoading: quotaLoading,
+    diacriticsQuotaError: quotaError,
+    refreshDiacriticsQuota,
+    applyDiacriticsQuota
+  };
+}
+
+export function DiacriticsControl({
+  user,
+  enabled,
+  onChange,
+  disabled = false,
+  label = "Adaugă automat diacritice (ăîâțș)?",
+  quota = null,
+  quotaLoading = false,
+  quotaError = ""
+}) {
+  if (!user) {
     return (
       <p className="diacritics-note">
-        Conversia automată la diacritice este disponibilă pentru abonații Premium. <a href={mainPath("/premium")}>Vezi Premium</a>
+        Conversia automată la diacritice este disponibilă după autentificare. <a href={mainPath("/premium")}>Vezi Premium</a>
       </p>
     );
   }
+  const hasQuota = Boolean(quota);
+  const used = Number(quota?.used ?? 0);
+  const limit = Number(quota?.limit ?? 0);
+  const remaining = Number(quota?.remaining ?? 0);
+  const exhausted = hasQuota && remaining <= 0;
+  const serviceUnavailable = hasQuota && quota.service_available === false;
+  const unavailable = hasQuota && quota.can_request === false;
+  const controlDisabled = disabled || quotaLoading || unavailable;
+
   return (
-    <label className="diacritics-control">
-      <input
-        type="checkbox"
-        checked={enabled}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span>{label}</span>
-    </label>
+    <>
+      <label className="diacritics-control">
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={controlDisabled}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+      <p className={`diacritics-note ${exhausted ? "danger" : ""}`}>
+        {quotaLoading && !hasQuota ? "Se încarcă limita pentru Diacritice..." : hasQuota ? (
+          <>
+            {serviceUnavailable ? (quota.service_unavailable_reason || "Diacriticele sunt indisponibile momentan.") : unavailable && !exhausted ? "Diacriticele sunt indisponibile momentan." : (
+              <>
+                Diacritice: {formatNumber(used)} / {formatNumber(limit)} caractere folosite.
+                {" "}Disponibil: {formatNumber(remaining)} caractere
+                {quota.period_end ? ` până la ${formatDateTime(quota.period_end)}` : ""}.
+              </>
+            )}
+          </>
+        ) : "Limita pentru Diacritice se verifică la trimitere."}
+      </p>
+      {quotaError ? <p className="diacritics-note danger">{quotaError}</p> : null}
+    </>
   );
 }
 export function DiacriticsReviewPanel({ active, changed, onReset }) {

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException, Response
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -15,17 +16,18 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-secret")
 
-from app import auth, crud, local_auth, models, moderation, platform_access, schemas, statistics
-from app.routers import admin_routes, api_pages, auth_routes, follow_routes, forum_routes, friend_routes, moderation_routes, post_routes, series_routes, user_routes
+from app import auth, crud, local_auth, main as app_main, models, moderation, platform_access, schemas, statistics, utils
+from app.routers import admin_routes, api_pages, auth_routes, follow_routes, forum_routes, friend_routes, message_routes, moderation_routes, notification_routes, post_routes, series_routes, user_routes
 
 
 class DummyRequest:
-    def __init__(self, session, scheme="http", headers=None, cookies=None, client_host="127.0.0.1"):
+    def __init__(self, session, scheme="http", headers=None, cookies=None, client_host="127.0.0.1", state=None):
         self.session = session
         self.url = SimpleNamespace(scheme=scheme)
         self.headers = headers or {}
         self.cookies = cookies or {}
         self.client = SimpleNamespace(host=client_host)
+        self.state = state or SimpleNamespace()
 
 
 class BackendStabilizationTests(unittest.TestCase):
@@ -72,9 +74,6 @@ class BackendStabilizationTests(unittest.TestCase):
         *,
         category: str = "proza_scurta",
         moderation_status: str = "approved",
-        theme_analysis_status: str = "completed",
-        themes=None,
-        feelings=None,
     ) -> models.Post:
         self.slug_counter += 1
         post = models.Post(
@@ -84,9 +83,6 @@ class BackendStabilizationTests(unittest.TestCase):
             content=f"content for {title}",
             category=category,
             moderation_status=moderation_status,
-            theme_analysis_status=theme_analysis_status,
-            themes=themes or [],
-            feelings=feelings or [],
         )
         self.db.add(post)
         self.db.commit()
@@ -101,6 +97,24 @@ class BackendStabilizationTests(unittest.TestCase):
         )
         self.db.refresh(series)
         return series
+
+    def test_session_cookie_domain_stays_host_only_for_local_development(self):
+        self.assertIsNone(app_main.session_cookie_domain(""))
+        self.assertIsNone(app_main.session_cookie_domain(".localhost"))
+        self.assertIsNone(app_main.session_cookie_domain("localhost"))
+        self.assertIsNone(app_main.session_cookie_domain(".127.0.0.1"))
+        self.assertEqual(app_main.session_cookie_domain(".calimara.ro"), ".calimara.ro")
+
+    def test_unknown_author_subdomain_returns_404_before_react_shell(self):
+        self.make_user("knownauthor")
+        known = DummyRequest({}, state=SimpleNamespace(username="knownauthor"))
+        missing = DummyRequest({}, state=SimpleNamespace(username="deletedauthor"))
+
+        self.assertIsNone(app_main._author_subdomain_not_found_response(known, self.db))
+        response = app_main._author_subdomain_not_found_response(missing, self.db)
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"Autorul nu a fost g", response.body)
 
     def test_series_are_owner_only_and_public_pages_hide_unapproved_posts(self):
         owner = self.make_user("seriesowner")
@@ -140,6 +154,41 @@ class BackendStabilizationTests(unittest.TestCase):
 
         managed_payload = series_routes.manage_my_series(series.id, db=self.db, current_user=owner)
         self.assertEqual([entry["post"]["moderation_status"] for entry in managed_payload["posts"]], ["approved", "pending"])
+
+    def test_notification_routes_toggle_read_state_and_delete(self):
+        owner = self.make_user("notifowner")
+        other = self.make_user("notifother")
+        notification = crud.create_notification(
+            self.db,
+            user_id=owner.id,
+            notif_type="test",
+            title="Test notification",
+            message="Message",
+            link="/test",
+        )
+
+        self.assertEqual(crud.get_unread_notification_count(self.db, owner.id), 1)
+
+        read_result = notification_routes.mark_read(notification.id, db=self.db, current_user=owner)
+        self.assertIn("citită", read_result["message"])
+        self.assertEqual(crud.get_unread_notification_count(self.db, owner.id), 0)
+
+        unread_result = notification_routes.mark_unread(notification.id, db=self.db, current_user=owner)
+        self.assertIn("necitită", unread_result["message"])
+        self.assertEqual(crud.get_unread_notification_count(self.db, owner.id), 1)
+
+        with self.assertRaises(HTTPException) as wrong_user:
+            notification_routes.mark_read(notification.id, db=self.db, current_user=other)
+        self.assertEqual(wrong_user.exception.status_code, 404)
+
+        delete_result = notification_routes.delete_notification(notification.id, db=self.db, current_user=owner)
+        self.assertIn("ștearsă", delete_result["message"])
+        self.assertEqual(crud.get_unread_notification_count(self.db, owner.id), 0)
+        self.assertEqual(crud.get_notifications_for_user(self.db, owner.id), [])
+
+        with self.assertRaises(HTTPException) as missing:
+            notification_routes.delete_notification(notification.id, db=self.db, current_user=owner)
+        self.assertEqual(missing.exception.status_code, 404)
 
     def test_series_reorder_and_single_series_per_post(self):
         owner = self.make_user("serieseditor")
@@ -204,6 +253,22 @@ class BackendStabilizationTests(unittest.TestCase):
                 current_user=admin,
             )
         self.assertEqual(unsuspend_error.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as pending_error:
+            moderation_routes.get_pending_content(
+                DummyRequest({}),
+                db=self.db,
+                current_user=user,
+            )
+        self.assertEqual(pending_error.exception.status_code, 403)
+
+        with self.assertRaises(HTTPException) as flagged_error:
+            moderation_routes.get_flagged_content(
+                DummyRequest({}),
+                db=self.db,
+                current_user=user,
+            )
+        self.assertEqual(flagged_error.exception.status_code, 403)
 
     def test_profile_promotions_cover_all_slot_types(self):
         owner = self.make_user("promoter")
@@ -357,6 +422,56 @@ class BackendStabilizationTests(unittest.TestCase):
             follow_routes.follow_user(bob.id, db=self.db, current_user=alice)
         self.assertEqual(follower_error.exception.status_code, 403)
 
+    def test_approved_posts_notify_followers_once(self):
+        author = self.make_user("notifyauthor")
+        follower = self.make_user("notifyfollower")
+        suspended_follower = self.make_user("notifysuspended")
+        non_follower = self.make_user("notifynonfollower")
+        moderator = self.make_user("notifymoderator")
+        suspended_follower.is_suspended = True
+        crud.create_follow(self.db, follower.id, author.id)
+        crud.create_follow(self.db, suspended_follower.id, author.id)
+        post = self.make_post(author, "Follower News", moderation_status="pending")
+        self.db.commit()
+
+        crud.approve_content(self.db, "post", post.id, moderator.id, "ok")
+        crud.approve_content(self.db, "post", post.id, moderator.id, "ok again")
+
+        follower_notifications = self.db.query(models.Notification).filter_by(
+            user_id=follower.id,
+            type="followed_user_new_post",
+        ).all()
+        self.assertEqual(len(follower_notifications), 1)
+        notification = follower_notifications[0]
+        self.assertEqual(notification.title, f"Postare nouă de la {author.username}")
+        self.assertEqual(notification.message, f"{author.username} a publicat „{post.title}”.")
+        self.assertEqual(notification.link, f"//{author.username}.calimara.ro/{post.slug}")
+        self.assertEqual(notification.extra_data["source_type"], "post")
+        self.assertEqual(notification.extra_data["post_id"], post.id)
+        self.assertEqual(notification.extra_data["author_id"], author.id)
+        approval_notifications = self.db.query(models.Notification).filter_by(
+            user_id=author.id,
+            type="moderation_approved",
+        ).all()
+        self.assertTrue(approval_notifications)
+        self.assertTrue(
+            all(item.link == f"//{author.username}.calimara.ro/{post.slug}" for item in approval_notifications)
+        )
+        self.assertEqual(
+            self.db.query(models.Notification).filter_by(
+                user_id=suspended_follower.id,
+                type="followed_user_new_post",
+            ).count(),
+            0,
+        )
+        self.assertEqual(
+            self.db.query(models.Notification).filter_by(
+                user_id=non_follower.id,
+                type="followed_user_new_post",
+            ).count(),
+            0,
+        )
+
     def test_users_directory_filters_metrics_and_sorting(self):
         viewer = self.make_user("dirviewer")
         friend = self.make_user("dirfriend")
@@ -507,6 +622,10 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(created["reason_type"], "plagiarism")
         self.assertEqual(created["status"], "open")
         self.assertEqual(created["reporter_username"], "reportreader")
+        self.assertEqual(created["target_url"], f"//{owner.username}.calimara.ro/{post.slug}")
+        self.assertEqual(created["post_url"], f"//{owner.username}.calimara.ro/{post.slug}")
+        self.assertEqual(created["post_author_url"], f"//{owner.username}.calimara.ro")
+        self.assertEqual(created["reporter_url"], f"//{reporter.username}.calimara.ro")
 
         with self.assertRaises(HTTPException) as duplicate:
             report_post(
@@ -528,6 +647,222 @@ class BackendStabilizationTests(unittest.TestCase):
                 current_user=reporter,
             )
         self.assertEqual(pending_error.exception.status_code, 400)
+
+    def test_forum_and_private_message_reports_use_moderation_report_queue(self):
+        author = self.make_user("forumreportauthor")
+        reporter = self.make_user("forumreportreader")
+        moderator_user = self.make_user("forumreportmod")
+        moderator_user.is_moderator = True
+        self.db.commit()
+        thread = models.ForumThread(
+            author_id=author.id,
+            section="general",
+            title="Discuție raportabilă",
+            slug="discutie-raportabila",
+            content="<p>Conținut forum.</p>",
+            moderation_status="approved",
+        )
+        self.db.add(thread)
+        self.db.commit()
+        self.db.refresh(thread)
+        reply = models.ForumReply(
+            thread_id=thread.id,
+            author_id=author.id,
+            content="<p>Răspuns forum.</p>",
+            moderation_status="approved",
+        )
+        self.db.add(reply)
+        self.db.commit()
+        self.db.refresh(reply)
+        message = crud.send_message_to_user(self.db, author.id, reporter.username, "Mesaj privat de raportat")
+
+        report_thread = forum_routes.report_forum_thread_api.__wrapped__
+        report_reply = forum_routes.report_forum_reply_api.__wrapped__
+        report_message = message_routes.report_private_message_api.__wrapped__
+
+        thread_report = report_thread(
+            thread.id,
+            schemas.PostReportCreate(reason_type="offensive", details="Thread ofensiv"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=reporter,
+        )
+        reply_report = report_reply(
+            reply.id,
+            schemas.PostReportCreate(reason_type="plagiarism", evidence_url="https://example.com/forum"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=reporter,
+        )
+        message_report = report_message(
+            message.id,
+            schemas.PostReportCreate(reason_type="offensive", details="Mesaj ofensiv"),
+            DummyRequest({}),
+            db=self.db,
+            current_user=reporter,
+        )
+
+        self.assertIsNone(thread_report["post_id"])
+        self.assertEqual(thread_report["target_type"], "forum_thread")
+        self.assertEqual(reply_report["target_type"], "forum_reply")
+        self.assertEqual(message_report["target_type"], "message")
+        self.assertIn("Mesaj privat", message_report["post_title"])
+        self.assertEqual(thread_report["target_url"], "/discutii/discutie-raportabila")
+        self.assertEqual(reply_report["target_url"], "/discutii/discutie-raportabila#reply-%s" % reply.id)
+        self.assertEqual(message_report["target_url"], "/mesaje?conversatie=%s&mesaj=%s" % (message.conversation_id, message.id))
+        self.assertIn("Conținut raportat: Conținut forum.", thread_report["details"])
+        self.assertIn("Link conținut: /discutii/discutie-raportabila", thread_report["details"])
+        self.assertIn("Conținut raportat: Răspuns forum.", reply_report["details"])
+        self.assertIn("Conținut raportat: Mesaj privat de raportat", message_report["details"])
+
+        listed = moderation_routes.get_post_reports(
+            status_filter="open",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=moderator_user,
+        )
+        self.assertEqual({item["target_type"] for item in listed["reports"]}, {"forum_thread", "forum_reply", "message"})
+
+        with self.assertRaises(HTTPException) as duplicate:
+            report_message(
+                message.id,
+                schemas.PostReportCreate(reason_type="offensive"),
+                DummyRequest({}),
+                db=self.db,
+                current_user=reporter,
+            )
+        self.assertEqual(duplicate.exception.status_code, 409)
+
+        with self.assertRaises(HTTPException) as own_message:
+            report_message(
+                message.id,
+                schemas.PostReportCreate(reason_type="plagiarism"),
+                DummyRequest({}),
+                db=self.db,
+                current_user=author,
+            )
+        self.assertEqual(own_message.exception.status_code, 400)
+
+    def test_admin_and_moderation_payloads_include_navigation_links(self):
+        author = self.make_user("adminlinkauthor")
+        admin_user = self.make_user("adminlinkadmin")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        self.db.commit()
+        self.db.refresh(admin_user)
+        post = self.make_post(author, "Admin Link Post", moderation_status="pending")
+        comment = models.Comment(
+            post_id=post.id,
+            user_id=author.id,
+            content="<p>Comentariu administrabil.</p>",
+            moderation_status="pending",
+        )
+        thread = models.ForumThread(
+            author_id=author.id,
+            section="general",
+            title="Admin link thread",
+            slug="admin-link-thread",
+            content="<p>Discuție administrabilă.</p>",
+            moderation_status="pending",
+        )
+        self.db.add_all([comment, thread])
+        self.db.commit()
+        self.db.refresh(comment)
+        self.db.refresh(thread)
+        reply = models.ForumReply(
+            thread_id=thread.id,
+            author_id=author.id,
+            content="<p>Răspuns administrabil.</p>",
+            moderation_status="flagged",
+        )
+        self.db.add(reply)
+        self.db.commit()
+        self.db.refresh(reply)
+        log = models.ModerationLog(
+            content_type="forum_reply",
+            content_id=reply.id,
+            user_id=author.id,
+            ai_decision="flagged",
+            human_decision="pending",
+            toxicity_score=0.71,
+            ai_reason="test link",
+        )
+        job = models.AIJob(job_type="moderation", target_type="comment", target_id=comment.id)
+        audit = models.AdminAuditLog(
+            actor_user_id=admin_user.id,
+            actor_username=admin_user.username,
+            action="content_update",
+            target_type="post",
+            target_id=post.id,
+            reason="test link",
+        )
+        self.db.add_all([log, job, audit])
+        self.db.commit()
+        self.db.refresh(log)
+
+        admin_content = admin_routes.list_admin_content(
+            content_type="comment",
+            status_filter="all",
+            q="",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        comment_row = admin_content["content"][0]
+        self.assertEqual(comment_row["author_url"], f"//{author.username}.calimara.ro")
+        self.assertEqual(comment_row["target_url"], f"//{author.username}.calimara.ro/{post.slug}#comment-{comment.id}")
+
+        pending = moderation_routes.get_pending_content(
+            DummyRequest({}),
+            content_type="all",
+            db=self.db,
+            current_user=admin_user,
+        )
+        post_row = next(item for item in pending["content"] if item["type"] == "post")
+        self.assertEqual(post_row["target_url"], f"//{author.username}.calimara.ro/{post.slug}")
+
+        queue = moderation_routes.get_moderation_queue_api(
+            DummyRequest({}),
+            db=self.db,
+            current_user=admin_user,
+        )
+        reply_row = queue["queue"][0]["content"]
+        self.assertEqual(reply_row["target_url"], f"/discutii/{thread.slug}#reply-{reply.id}")
+        self.assertEqual(reply_row["author_url"], f"//{author.username}.calimara.ro")
+
+        logs = moderation_routes.get_moderation_logs_api(
+            DummyRequest({}),
+            limit=100,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(logs["logs"][0]["target_url"], f"/discutii/{thread.slug}#reply-{reply.id}")
+        self.assertEqual(logs["logs"][0]["content_author_url"], f"//{author.username}.calimara.ro")
+
+        jobs = admin_routes.list_admin_jobs(
+            status_filter="all",
+            job_type="all",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(jobs["jobs"][0]["target_url"], f"//{author.username}.calimara.ro/{post.slug}#comment-{comment.id}")
+
+        audit_log = admin_routes.list_admin_audit_log(
+            actor="",
+            action="",
+            target_type="",
+            limit=100,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(audit_log["logs"][0]["actor_url"], f"//{admin_user.username}.calimara.ro")
+        self.assertEqual(audit_log["logs"][0]["target_url"], f"//{author.username}.calimara.ro/{post.slug}")
 
     def test_moderators_can_review_post_reports(self):
         owner = self.make_user("reportedowner")
@@ -655,6 +990,14 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertFalse(any("DROP DATABASE" in sql for sql in executed_sql))
         self.assertFalse(any("CREATE DATABASE" in sql for sql in executed_sql))
 
+    def test_generated_systemd_unit_preserves_database_by_default(self):
+        import run
+
+        unit = run.build_systemd_unit()
+
+        self.assertIn('Environment="CALIMARA_RESET_DATABASE=false"', unit)
+        self.assertIn("--serve", unit)
+
     def test_run_init_database_resets_existing_schema_by_default(self):
         import run
 
@@ -761,6 +1104,82 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertFalse(rollup["persisted"])
         self.assertEqual(rollup["date"], (datetime.now().date() - timedelta(days=1)).isoformat())
 
+    def test_admin_delete_user_with_posts_uses_database_cascade(self):
+        admin_user = self.make_user("deleteadmin")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        target = self.make_user("deletepoet")
+        self.db.commit()
+        self.db.refresh(admin_user)
+        admin_post = self.make_post(admin_user, "Admin Anchor Post")
+        post = self.make_post(target, "Delete Poet Post")
+        target_comment = models.Comment(
+            post_id=admin_post.id,
+            user_id=target.id,
+            content="Target comment",
+            approved=True,
+            moderation_status="approved",
+        )
+        post_comment = models.Comment(
+            post_id=post.id,
+            user_id=admin_user.id,
+            content="Approved comment",
+            approved=True,
+            moderation_status="approved",
+        )
+        target_like = models.Like(post_id=admin_post.id, user_id=target.id)
+        play = models.TheatrePlay(
+            creator_id=admin_user.id,
+            title="Admin Play",
+            slug="admin-play",
+            status="active",
+        )
+        self.db.add_all([target_comment, post_comment, target_like, play])
+        self.db.commit()
+        self.db.refresh(play)
+        scene = models.TheatreScene(
+            play_id=play.id,
+            scene_number=1,
+            title="Scene opened by target",
+            status="ended",
+            opened_by=target.id,
+            ended_by=target.id,
+        )
+        self.db.add(scene)
+        self.db.commit()
+        target_id = target.id
+        post_id = post.id
+        admin_post_id = admin_post.id
+        target_comment_id = target_comment.id
+        target_like_id = target_like.id
+        scene_id = scene.id
+
+        result = admin_routes.delete_admin_user(
+            target_id,
+            schemas.AdminReasonRequest(reason="Curățare test"),
+            DummyRequest({}, headers={"user-agent": "pytest-admin"}),
+            db=self.db,
+            current_user=admin_user,
+        )
+
+        self.assertEqual(result, {"success": True})
+        self.assertIsNone(crud.get_user_by_id(self.db, target_id))
+        self.assertEqual(self.db.query(models.Post).filter_by(user_id=target_id).count(), 0)
+        self.assertEqual(self.db.query(models.Comment).filter_by(post_id=post_id).count(), 0)
+        self.assertEqual(self.db.query(models.Post).filter_by(id=admin_post_id).count(), 1)
+        self.assertEqual(self.db.query(models.Comment).filter_by(id=target_comment_id).count(), 0)
+        self.assertEqual(self.db.query(models.Like).filter_by(id=target_like_id).count(), 0)
+        scene = self.db.get(models.TheatreScene, scene_id)
+        self.assertIsNotNone(scene)
+        self.assertIsNone(scene.opened_by)
+        self.assertIsNone(scene.ended_by)
+        audit = self.db.query(models.AdminAuditLog).filter_by(action="user_delete", target_id=target_id).one()
+        self.assertEqual(audit.extra_data["username"], "deletepoet")
+        self.assertEqual(audit.extra_data["deleted_content"]["posts"], 1)
+        self.assertEqual(audit.extra_data["deleted_content"]["comments"], 1)
+        self.assertEqual(audit.extra_data["deleted_content"]["likes"], 1)
+        self.assertEqual(audit.extra_data["deleted_content"]["theatre_scenes_opened"], 1)
+
     def test_site_feedback_submission_and_admin_status_workflow(self):
         user = self.make_user("feedbackuser")
         admin_user = self.make_user("feedbackadmin")
@@ -786,6 +1205,19 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(created["status"], "open")
         self.assertEqual(created["username_snapshot"], "feedbackuser")
 
+        qa_report = models.SiteFeedback(
+            kind="feedback",
+            user_id=user.id,
+            username_snapshot=user.username,
+            email_snapshot=user.email,
+            message="Raport QA dashboard-final Călimara 0525074744 - partea 1/44\nAcțiune: test complet.",
+            client_context={"report_stamp": "0525074744-dashboard2", "part": "partea 1/44"},
+            status="open",
+        )
+        self.db.add(qa_report)
+        self.db.commit()
+        self.db.refresh(qa_report)
+
         listed = admin_routes.list_site_feedback(
             kind="all",
             status_filter="open",
@@ -797,6 +1229,18 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(listed["total"], 1)
         self.assertEqual(listed["submissions"][0]["id"], created["id"])
 
+        qa_listed = admin_routes.list_admin_reference_qa_report(
+            status_filter="open",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(qa_listed["total"], 1)
+        self.assertEqual(qa_listed["entries"][0]["id"], qa_report.id)
+        self.assertEqual(qa_listed["entries"][0]["report_stamp"], "0525074744-dashboard2")
+        self.assertIn("Acțiune: test complet.", qa_listed["entries"][0]["body"])
+
         updated = admin_routes.update_site_feedback(
             created["id"],
             schemas.SiteFeedbackUpdate(status="closed", admin_note="Rezolvat în test"),
@@ -807,6 +1251,164 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(updated["status"], "closed")
         self.assertEqual(updated["admin_note"], "Rezolvat în test")
         self.assertEqual(updated["resolver_username"], "feedbackadmin")
+
+    def test_site_feedback_admin_reply_creates_system_message_thread(self):
+        user = self.make_user("supportuser")
+        admin_user = self.make_user("supportadmin")
+        second_admin = self.make_user("supportadmin2")
+        admin_user.is_admin = True
+        second_admin.is_admin = True
+        self.db.commit()
+        self.db.refresh(admin_user)
+        self.db.refresh(second_admin)
+
+        item = models.SiteFeedback(
+            kind="feedback",
+            user_id=user.id,
+            username_snapshot=user.username,
+            email_snapshot=user.email,
+            message="Aș vrea un răspuns aici.",
+            page_url="https://calimara.test/suport",
+            client_context={"viewport": "1200x800"},
+            status="open",
+        )
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+
+        empty_thread = admin_routes.get_site_feedback_thread(
+            item.id,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(empty_thread["messages"], [])
+
+        first_thread = admin_routes.reply_to_site_feedback(
+            item.id,
+            schemas.SiteFeedbackReplyCreate(content="Mulțumim, verificăm."),
+            DummyRequest({}, headers={"user-agent": "pytest-admin"}),
+            db=self.db,
+            current_user=admin_user,
+        )
+
+        self.assertEqual(first_thread["feedback"]["status"], "open")
+        self.assertIsNone(first_thread["feedback"]["resolved_by"])
+        self.assertIsNotNone(first_thread["conversation_id"])
+        self.assertEqual(len(first_thread["messages"]), 2)
+        self.assertFalse(first_thread["messages"][0]["sender_is_system"])
+        self.assertIn("Sesizare trimisă către Călimara", first_thread["messages"][0]["content"])
+        self.assertTrue(first_thread["messages"][1]["sender_is_system"])
+        self.assertEqual(first_thread["messages"][1]["sender_label"], "Călimara")
+        self.assertEqual(first_thread["messages"][1]["content"], "Mulțumim, verificăm.")
+
+        system_user = self.db.query(models.User).filter(models.User.is_system == True).one()
+        self.assertEqual(system_user.username, "sistemcalimara")
+        conversation = self.db.get(models.Conversation, first_thread["conversation_id"])
+        self.assertEqual({conversation.user1_id, conversation.user2_id}, {user.id, system_user.id})
+        self.assertIsNone(crud.send_message_to_user(self.db, user.id, system_user.username, "Nu porni direct"))
+        self.assertEqual(user_routes.search_users("sis", db=self.db, current_user=user), [])
+
+        notification = self.db.query(models.Notification).filter_by(user_id=user.id, type="private_message").one()
+        self.assertEqual(notification.message, "Călimara ți-a trimis un mesaj privat.")
+        self.assertEqual(crud.get_unread_message_count(self.db, user.id), 1)
+        audit = self.db.query(models.AdminAuditLog).filter_by(action="site_feedback_reply", target_id=item.id).one()
+        self.assertEqual(audit.actor_username, admin_user.username)
+
+        with self.assertRaises(HTTPException) as system_report:
+            message_routes.report_private_message_api.__wrapped__(
+                first_thread["messages"][1]["id"],
+                schemas.PostReportCreate(reason_type="offensive"),
+                DummyRequest({}),
+                db=self.db,
+                current_user=user,
+            )
+        self.assertEqual(system_report.exception.status_code, 400)
+
+        second_thread = admin_routes.reply_to_site_feedback(
+            item.id,
+            schemas.SiteFeedbackReplyCreate(content="Am revenit cu o completare."),
+            DummyRequest({}, headers={"user-agent": "pytest-admin-2"}),
+            db=self.db,
+            current_user=second_admin,
+        )
+        self.assertEqual(second_thread["conversation_id"], first_thread["conversation_id"])
+        self.assertEqual(len(second_thread["messages"]), 3)
+        self.assertEqual(
+            sum("Sesizare trimisă către Călimara" in message["content"] for message in second_thread["messages"]),
+            1,
+        )
+        self.assertEqual(second_thread["feedback"]["status"], "open")
+
+        other_item = models.SiteFeedback(
+            kind="bug",
+            user_id=user.id,
+            username_snapshot=user.username,
+            email_snapshot=user.email,
+            message="Alt bug în același fir de suport.",
+            page_url="https://calimara.test/alt-bug",
+            status="open",
+        )
+        self.db.add(other_item)
+        self.db.commit()
+        self.db.refresh(other_item)
+        other_thread = admin_routes.reply_to_site_feedback(
+            other_item.id,
+            schemas.SiteFeedbackReplyCreate(content="Răspuns pentru bugul separat."),
+            DummyRequest({}, headers={"user-agent": "pytest-admin-3"}),
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertEqual(other_thread["conversation_id"], first_thread["conversation_id"])
+
+        item.status = "closed"
+        other_item.status = "closed"
+        self.db.commit()
+        self.db.refresh(item)
+        self.db.refresh(other_item)
+
+        user_reply = crud.create_message(self.db, conversation.id, user.id, "Am adăugat detalii pentru suport.")
+        self.assertIsNotNone(user_reply)
+        listed_with_reply = admin_routes.list_site_feedback(
+            kind="all",
+            status_filter="open",
+            limit=50,
+            offset=0,
+            db=self.db,
+            current_user=second_admin,
+        )
+        self.assertEqual(listed_with_reply["unread_reply_count"], 1)
+        self.assertEqual(listed_with_reply["submissions"][0]["id"], other_item.id)
+        self.assertEqual(listed_with_reply["submissions"][0]["status"], "closed")
+        self.assertEqual(listed_with_reply["submissions"][0]["unread_reply_count"], 1)
+        self.assertEqual(
+            listed_with_reply["submissions"][0]["latest_unread_reply_preview"],
+            "Am adăugat detalii pentru suport.",
+        )
+        self.assertIsNotNone(listed_with_reply["submissions"][0]["latest_unread_reply_at"])
+        opened_thread = admin_routes.get_site_feedback_thread(
+            other_item.id,
+            db=self.db,
+            current_user=second_admin,
+        )
+        self.assertEqual(opened_thread["unread_reply_count"], 0)
+        self.assertEqual(opened_thread["feedback"]["unread_reply_count"], 0)
+        self.assertEqual(opened_thread["messages"][-1]["content"], "Am adăugat detalii pentru suport.")
+        self.db.refresh(user_reply)
+        self.assertTrue(user_reply.is_read)
+
+        orphan = models.SiteFeedback(kind="bug", message="Fără user", status="open")
+        self.db.add(orphan)
+        self.db.commit()
+        self.db.refresh(orphan)
+        with self.assertRaises(HTTPException) as orphan_reply:
+            admin_routes.reply_to_site_feedback(
+                orphan.id,
+                schemas.SiteFeedbackReplyCreate(content="Nu se poate trimite."),
+                DummyRequest({}),
+                db=self.db,
+                current_user=admin_user,
+            )
+        self.assertEqual(orphan_reply.exception.status_code, 400)
 
     def test_get_current_user_uses_id_lookup_and_clears_missing_sessions(self):
         user = self.make_user("alice")
@@ -852,6 +1454,19 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(profile_update.cover_seed, "new-cover")
         self.assertIsNone(profile_update.subtitle)
 
+    def test_message_schemas_trim_and_reject_blank_content(self):
+        direct_payload = schemas.MessageCreate.model_validate({"content": "  Salut  "})
+        new_thread_payload = schemas.MessageToUser.model_validate(
+            {"recipient_username": "reader", "content": "  Bună  "}
+        )
+
+        self.assertEqual(direct_payload.content, "Salut")
+        self.assertEqual(new_thread_payload.content, "Bună")
+        with self.assertRaises(ValidationError):
+            schemas.MessageCreate.model_validate({"content": "   "})
+        with self.assertRaises(ValidationError):
+            schemas.MessageToUser.model_validate({"recipient_username": "reader", "content": "\n\t"})
+
     def test_auth_setup_persists_cover_seed(self):
         request = DummyRequest(
             {
@@ -868,6 +1483,7 @@ class BackendStabilizationTests(unittest.TestCase):
                 "subtitle": "setup",
                 "avatar_seed": "coveruser-shapes",
                 "cover_seed": "coveruser-cover-forest",
+                "accept_terms_and_privacy": True,
             }
         )
         self.allow_email("coveruser@example.com")
@@ -878,6 +1494,33 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response["username"], "coveruser")
         self.assertEqual(created.cover_seed, "coveruser-cover-forest")
         self.assertEqual(request.session["user_id"], created.id)
+
+    def test_auth_setup_requires_legal_acceptance(self):
+        request = DummyRequest(
+            {
+                "google_user": {
+                    "google_id": "google-legal-user",
+                    "email": "legaluser@example.com",
+                    "name": "Legal User",
+                }
+            }
+        )
+        payload = schemas.UserSetup.model_validate(
+            {
+                "username": "legaluser",
+                "subtitle": "setup",
+                "avatar_seed": "legaluser-shapes",
+                "cover_seed": "legaluser-cover-forest",
+            }
+        )
+        self.allow_email("legaluser@example.com")
+
+        with self.assertRaises(HTTPException) as error:
+            auth_routes.complete_user_setup(request, payload, self.db)
+
+        self.assertEqual(error.exception.status_code, 400)
+        self.assertIn("Termenii", error.exception.detail)
+        self.assertIsNone(crud.get_user_by_username(self.db, "legaluser"))
 
     def test_password_signup_requires_activation_code_before_setup(self):
         request = DummyRequest({})
@@ -916,6 +1559,7 @@ class BackendStabilizationTests(unittest.TestCase):
                 subtitle="setup",
                 avatar_seed="parolauser-shapes",
                 cover_seed="parolauser-cover-sky",
+                accept_terms_and_privacy=True,
             ),
             self.db,
         )
@@ -1203,15 +1847,153 @@ class BackendStabilizationTests(unittest.TestCase):
         )
         self.db.commit()
 
-        payload = api_pages.blog_all_works_data("allworks", db=self.db, current_user=None)
+        payload = api_pages.blog_all_works_data(DummyRequest({}), "allworks", db=self.db, current_user=None)
 
         self.assertEqual(payload["blog_owner"]["username"], "allworks")
         self.assertEqual([post["title"] for post in payload["posts"]], ["Second public work", "First public work"])
         first_payload = next(post for post in payload["posts"] if post["id"] == first.id)
         second_payload = next(post for post in payload["posts"] if post["id"] == second.id)
-        self.assertEqual(first_payload["comments_count"], 1)
+        self.assertEqual(first_payload["comments_count"], 2)
         self.assertEqual(second_payload["likes_count"], 1)
         self.assertEqual(second_payload["super_likes_count"], 1)
+
+    def test_blog_all_works_marks_anonymous_viewer_liked_posts(self):
+        author = self.make_user("anonallworks")
+        post = self.make_post(author, "Anonymous liked all works", category="poezie")
+        self.db.add(models.Like(post_id=post.id, ip_address="203.0.113.40"))
+        self.db.commit()
+
+        payload = api_pages.blog_all_works_data(
+            DummyRequest({}, client_host="203.0.113.40"),
+            "anonallworks",
+            db=self.db,
+            current_user=None,
+        )
+
+        self.assertTrue(payload["posts"][0]["viewer_liked"])
+
+    def test_client_ip_prefers_cloudflare_connecting_ip(self):
+        request = DummyRequest(
+            {},
+            headers={
+                "cf-connecting-ip": "198.51.100.11",
+                "x-forwarded-for": "198.51.100.12, 172.68.205.196",
+            },
+            client_host="172.68.205.253",
+        )
+
+        self.assertEqual(utils.get_client_ip(request), "198.51.100.11")
+        self.assertEqual(statistics._get_client_ip(request), "198.51.100.11")
+
+    def test_anonymous_like_rejects_duplicate_across_cloudflare_edge_ips(self):
+        author = self.make_user("edgeauthor")
+        post = self.make_post(author, "Edge duplicate")
+        first_request = DummyRequest(
+            {},
+            headers={"cf-connecting-ip": "198.51.100.20"},
+            client_host="172.68.205.196",
+        )
+
+        post_routes.add_like_to_post(
+            post.id,
+            first_request,
+            db=self.db,
+            current_user=None,
+        )
+
+        detail_payload = api_pages.post_detail_data(
+            request=DummyRequest(
+                first_request.session,
+                headers={"cf-connecting-ip": "198.51.100.21"},
+                client_host="172.68.205.253",
+            ),
+            username=author.username,
+            slug=post.slug,
+            db=self.db,
+            current_user=None,
+        )
+
+        with self.assertRaises(HTTPException) as session_duplicate:
+            post_routes.add_like_to_post(
+                post.id,
+                DummyRequest(
+                    first_request.session,
+                    headers={"cf-connecting-ip": "198.51.100.21"},
+                    client_host="172.68.205.253",
+                ),
+                db=self.db,
+                current_user=None,
+            )
+
+        with self.assertRaises(HTTPException) as duplicate:
+            post_routes.add_like_to_post(
+                post.id,
+                DummyRequest(
+                    {},
+                    headers={"cf-connecting-ip": "198.51.100.20"},
+                    client_host="172.68.205.253",
+                ),
+                db=self.db,
+                current_user=None,
+            )
+
+        self.assertEqual(session_duplicate.exception.status_code, 409)
+        self.assertEqual(duplicate.exception.status_code, 409)
+        self.assertTrue(detail_payload["post"]["viewer_liked"])
+        self.assertEqual(crud.get_likes_count_for_post(self.db, post.id), 1)
+
+    def test_logged_in_like_rejects_prior_anonymous_like_from_same_ip(self):
+        author = self.make_user("ipduplicateauthor")
+        reader = self.make_user("ipduplicatereader")
+        post = self.make_post(author, "IP duplicate")
+        self.db.add(models.Like(post_id=post.id, ip_address="203.0.113.41"))
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as duplicate:
+            post_routes.add_like_to_post(
+                post.id,
+                DummyRequest({}, client_host="203.0.113.41"),
+                db=self.db,
+                current_user=reader,
+            )
+
+        self.assertEqual(duplicate.exception.status_code, 409)
+        self.assertEqual(crud.get_likes_count_for_post(self.db, post.id), 1)
+
+    def test_logged_in_like_rejects_own_post(self):
+        author = self.make_user("selflikeauthor")
+        post = self.make_post(author, "Self Like")
+        request = DummyRequest({})
+
+        with self.assertRaises(HTTPException) as own_like:
+            post_routes.add_like_to_post(
+                post.id,
+                request,
+                db=self.db,
+                current_user=author,
+            )
+
+        self.assertEqual(own_like.exception.status_code, 403)
+        self.assertEqual(own_like.exception.detail, "Nu îți poți aprecia propria postare.")
+        self.assertEqual(crud.get_likes_count_for_post(self.db, post.id), 0)
+        self.assertEqual(request.session, {})
+
+    def test_post_detail_marks_logged_in_viewer_liked_by_prior_ip_like(self):
+        author = self.make_user("ipdetailauthor")
+        reader = self.make_user("ipdetailreader")
+        post = self.make_post(author, "IP detail liked")
+        self.db.add(models.Like(post_id=post.id, ip_address="203.0.113.42"))
+        self.db.commit()
+
+        payload = api_pages.post_detail_data(
+            request=DummyRequest({}, client_host="203.0.113.42"),
+            username=author.username,
+            slug=post.slug,
+            db=self.db,
+            current_user=reader,
+        )
+
+        self.assertTrue(payload["post"]["viewer_liked"])
 
     def test_landing_data_returns_requested_approved_post(self):
         user = self.make_user("landingtarget")
@@ -1228,6 +2010,274 @@ class BackendStabilizationTests(unittest.TestCase):
 
         self.assertEqual(payload["random_posts"][0]["id"], second.id)
         self.assertNotEqual(payload["random_posts"][0]["id"], first.id)
+
+    def test_landing_data_marks_viewer_liked_posts(self):
+        author = self.make_user("likedauthor")
+        reader = self.make_user("likedreader")
+        post = self.make_post(author, "Liked Landing")
+        self.db.add(models.Like(post_id=post.id, user_id=reader.id))
+        self.db.commit()
+
+        payload = api_pages.landing_data(
+            DummyRequest({}),
+            category="toate",
+            post_id=post.id,
+            db=self.db,
+            current_user=reader,
+        )
+
+        self.assertTrue(payload["random_posts"][0]["viewer_liked"])
+
+    def test_remove_like_from_post_deletes_viewer_like(self):
+        author = self.make_user("unlikedauthor")
+        reader = self.make_user("unlikedreader")
+        post = self.make_post(author, "Unlike")
+        self.db.add(models.Like(post_id=post.id, user_id=reader.id))
+        self.db.commit()
+
+        response = post_routes.remove_like_from_post(
+            post.id,
+            DummyRequest({}),
+            db=self.db,
+            current_user=reader,
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(crud.get_likes_count_for_post(self.db, post.id), 0)
+
+    def test_comment_reaction_switches_and_toggles_off(self):
+        author = self.make_user("commentreactauthor")
+        reader = self.make_user("commentreactreader")
+        post = self.make_post(author, "Comment Reaction")
+        comment = models.Comment(
+            post_id=post.id,
+            user_id=author.id,
+            content="Approved comment",
+            approved=True,
+            moderation_status="approved",
+        )
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+
+        helpful = post_routes.react_to_comment_api(
+            comment.id,
+            schemas.CommentReactionRequest(reaction_type="helpful"),
+            db=self.db,
+            current_user=reader,
+        )
+        self.assertEqual(helpful["counts"], {"helpful": 1, "funny": 0, "insightful": 0})
+        self.assertEqual(helpful["viewer_reaction"], "helpful")
+
+        funny = post_routes.react_to_comment_api(
+            comment.id,
+            schemas.CommentReactionRequest(reaction_type="funny"),
+            db=self.db,
+            current_user=reader,
+        )
+        self.assertEqual(funny["counts"], {"helpful": 0, "funny": 1, "insightful": 0})
+        self.assertEqual(funny["viewer_reaction"], "funny")
+        self.assertEqual(self.db.query(models.CommentReaction).filter_by(comment_id=comment.id, user_id=reader.id).count(), 1)
+
+        removed = post_routes.remove_comment_reaction_api(comment.id, db=self.db, current_user=reader)
+        self.assertEqual(removed["counts"], {"helpful": 0, "funny": 0, "insightful": 0})
+        self.assertEqual(removed["total"], 0)
+        self.assertIsNone(removed["viewer_reaction"])
+
+    def test_comment_reactions_reject_unapproved_comments(self):
+        author = self.make_user("hiddencommentauthor")
+        reader = self.make_user("hiddencommentreader")
+        post = self.make_post(author, "Hidden Comment Reaction")
+        comment = models.Comment(
+            post_id=post.id,
+            user_id=author.id,
+            content="Pending comment",
+            approved=False,
+            moderation_status="pending",
+        )
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+
+        with self.assertRaises(HTTPException) as hidden:
+            post_routes.react_to_comment_api(
+                comment.id,
+                schemas.CommentReactionRequest(reaction_type="insightful"),
+                db=self.db,
+                current_user=reader,
+            )
+
+        self.assertEqual(hidden.exception.status_code, 404)
+
+    def test_comment_reactions_reject_own_comments(self):
+        author = self.make_user("selfcommentreactor")
+        post = self.make_post(author, "Self Comment Reaction")
+        comment = models.Comment(
+            post_id=post.id,
+            user_id=author.id,
+            content="Own approved comment",
+            approved=True,
+            moderation_status="approved",
+        )
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+
+        with self.assertRaises(HTTPException) as self_reaction:
+            post_routes.react_to_comment_api(
+                comment.id,
+                schemas.CommentReactionRequest(reaction_type="helpful"),
+                db=self.db,
+                current_user=author,
+            )
+
+        self.assertEqual(self_reaction.exception.status_code, 403)
+        self.assertEqual(self.db.query(models.CommentReaction).filter_by(comment_id=comment.id).count(), 0)
+
+    def test_comment_reaction_schema_rejects_unknown_type(self):
+        with self.assertRaises(ValidationError):
+            schemas.CommentReactionRequest(reaction_type="wow")
+
+    def test_post_detail_serializes_comment_reaction_counts_and_viewer_reaction(self):
+        author = self.make_user("commentpayloadauthor")
+        reader = self.make_user("commentpayloadreader")
+        other = self.make_user("commentpayloadother")
+        second_reader = self.make_user("commentpayloadsecond")
+        post = self.make_post(author, "Comment Payload")
+        comment = models.Comment(
+            post_id=post.id,
+            user_id=other.id,
+            content="Approved payload comment",
+            approved=True,
+            moderation_status="approved",
+        )
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+        crud.upsert_comment_reaction(self.db, comment.id, reader.id, "insightful")
+        crud.upsert_comment_reaction(self.db, comment.id, second_reader.id, "helpful")
+
+        payload = api_pages.post_detail_data(
+            request=DummyRequest({}),
+            username=author.username,
+            slug=post.slug,
+            db=self.db,
+            current_user=reader,
+        )
+        comment_payload = payload["post"]["approved_comments"][0]
+
+        self.assertEqual(comment_payload["reaction_counts"], {"helpful": 1, "funny": 0, "insightful": 1})
+        self.assertEqual(comment_payload["reaction_total"], 2)
+        self.assertEqual(comment_payload["viewer_reaction"], "insightful")
+
+    def test_post_detail_includes_moderating_comments_but_public_pages_hide_pending_posts(self):
+        author = self.make_user("moderationruleauthor")
+        reader = self.make_user("moderationrulereader")
+        approved_post = self.make_post(author, "Visible Text")
+        pending_post = self.make_post(author, "Hidden Pending Text", moderation_status="pending")
+        stale_rejected_post = self.make_post(author, "Stale Rejected Text", moderation_status="pending")
+        comments = [
+            models.Comment(post_id=approved_post.id, user_id=reader.id, content="approved", approved=True, moderation_status="approved"),
+            models.Comment(post_id=approved_post.id, user_id=reader.id, content="pending", approved=False, moderation_status="pending"),
+            models.Comment(post_id=approved_post.id, user_id=reader.id, content="flagged", approved=False, moderation_status="flagged"),
+            models.Comment(post_id=approved_post.id, user_id=reader.id, content="rejected", approved=False, moderation_status="rejected"),
+        ]
+        self.db.add_all(comments)
+        self.db.commit()
+        self.db.add(
+            models.ModerationLog(
+                content_type="post",
+                content_id=stale_rejected_post.id,
+                user_id=author.id,
+                ai_decision="flagged",
+                human_decision="rejected",
+            )
+        )
+        self.db.commit()
+
+        public_listing = api_pages.blog_all_works_data(DummyRequest({}), author.username, db=self.db, current_user=None)
+        self.assertEqual([post["id"] for post in public_listing["posts"]], [approved_post.id])
+        self.assertEqual(public_listing["posts"][0]["comments_count"], 3)
+
+        with self.assertRaises(HTTPException) as pending_public:
+            api_pages.post_detail_data(DummyRequest({}), author.username, pending_post.slug, db=self.db, current_user=None)
+        self.assertEqual(pending_public.exception.status_code, 404)
+
+        owner_pending = api_pages.post_detail_data(DummyRequest({}), author.username, pending_post.slug, db=self.db, current_user=author)
+        self.assertEqual(owner_pending["post"]["moderation_status"], "pending")
+
+        with self.assertRaises(HTTPException) as stale_rejected:
+            api_pages.post_detail_data(DummyRequest({}), author.username, stale_rejected_post.slug, db=self.db, current_user=author)
+        self.assertEqual(stale_rejected.exception.status_code, 404)
+
+        detail = api_pages.post_detail_data(DummyRequest({}), author.username, approved_post.slug, db=self.db, current_user=None)
+        self.assertEqual(detail["post"]["comments_count"], 3)
+        self.assertEqual(
+            [comment["moderation_status"] for comment in detail["post"]["approved_comments"]],
+            ["approved", "pending", "flagged"],
+        )
+
+    def test_human_rejected_content_is_hidden_even_when_content_status_is_stale(self):
+        author = self.make_user("stalehumanreject")
+        reader = self.make_user("stalehumanreader")
+        stale_post = self.make_post(author, "Stale Human Rejected", moderation_status="pending")
+        approved_post = self.make_post(author, "Approved Human Rejection Anchor")
+        comment = models.Comment(
+            post_id=approved_post.id,
+            user_id=reader.id,
+            content="Still pending but rejected by human",
+            approved=False,
+            moderation_status="pending",
+        )
+        self.db.add(comment)
+        self.db.commit()
+        self.db.refresh(comment)
+
+        thread = crud.create_forum_thread(
+            self.db,
+            author,
+            schemas.ForumThreadCreate(section="general", title="Stale rejected forum", content="Pending content."),
+        )
+        approved = SimpleNamespace(status=moderation.ModerationStatus.APPROVED, toxicity_score=0.0, reason="ok")
+        live_thread = crud.create_forum_thread(
+            self.db,
+            author,
+            schemas.ForumThreadCreate(section="general", title="Visible thread", content="Visible content."),
+        )
+        crud.apply_forum_thread_moderation_result(self.db, live_thread, approved)
+        reply, error = crud.create_forum_reply(
+            self.db,
+            reader,
+            live_thread,
+            schemas.ForumReplyCreate(content="Pending reply rejected by human."),
+        )
+        self.assertIsNone(error)
+
+        self.db.add_all(
+            [
+                models.ModerationLog(content_type="post", content_id=stale_post.id, user_id=author.id, ai_decision="flagged", human_decision="rejected"),
+                models.ModerationLog(content_type="comment", content_id=comment.id, user_id=reader.id, ai_decision="flagged", human_decision="rejected"),
+                models.ModerationLog(content_type="forum_thread", content_id=thread.id, user_id=author.id, ai_decision="flagged", human_decision="rejected"),
+                models.ModerationLog(content_type="forum_reply", content_id=reply.id, user_id=reader.id, ai_decision="flagged", human_decision="rejected"),
+            ]
+        )
+        self.db.commit()
+
+        archive = post_routes.get_posts_archive(db=self.db, current_user=author)
+        self.assertNotIn(stale_post.id, [post["id"] for post in archive["posts"]])
+
+        with self.assertRaises(HTTPException) as hidden_post:
+            api_pages.post_detail_data(DummyRequest({}), author.username, stale_post.slug, db=self.db, current_user=author)
+        self.assertEqual(hidden_post.exception.status_code, 404)
+
+        comments_payload = api_pages.post_detail_data(DummyRequest({}), author.username, approved_post.slug, db=self.db, current_user=None)
+        self.assertEqual(comments_payload["post"]["approved_comments"], [])
+
+        self.assertEqual([item.id for item in crud.list_forum_threads(self.db)], [live_thread.id])
+        with self.assertRaises(HTTPException) as hidden_thread:
+            forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
+        self.assertEqual(hidden_thread.exception.status_code, 404)
+        self.assertEqual(crud.list_forum_replies_for_thread(self.db, live_thread.id, None), [])
 
     def test_google_login_redirects_with_sync_auth_url_helper(self):
         request = DummyRequest({})
@@ -1615,6 +2665,30 @@ class BackendStabilizationTests(unittest.TestCase):
         args = popen.call_args.args[0]
         self.assertEqual(args, [run.sys.executable, str(run.PROJECT_ROOT / "scripts" / "process_ai_jobs.py"), "--loop"])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(run.PROJECT_ROOT))
+        self.assertIn(fake_process, run.child_processes)
+        run.child_processes.clear()
+
+    def test_run_starts_email_worker_loop(self):
+        import run
+
+        class FakeProcess:
+            pid = 23456
+
+        fake_process = FakeProcess()
+        run.child_processes.clear()
+
+        with patch.dict(os.environ, {"EMAIL_WORKER_ENABLED": "true"}), patch.object(
+            run.subprocess,
+            "Popen",
+            return_value=fake_process,
+        ) as popen:
+            proc = run.start_email_worker()
+
+        self.assertIs(proc, fake_process)
+        args = popen.call_args.args[0]
+        self.assertEqual(args, [run.sys.executable, str(run.PROJECT_ROOT / "scripts" / "process_email_outbox.py"), "--loop"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], str(run.PROJECT_ROOT))
+        self.assertEqual(popen.call_args.kwargs["env"]["PYTHONUNBUFFERED"], "1")
         self.assertIn(fake_process, run.child_processes)
         run.child_processes.clear()
 
@@ -2076,25 +3150,6 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual(response.headers["pragma"], "no-cache")
         self.assertEqual(response.headers["expires"], "0")
 
-    def test_theme_helpers_return_normalized_deduplicated_values(self):
-        author = self.make_user("writer")
-        self.make_post(
-            author,
-            "Themes",
-            themes=["Dor", "timp", "dor"],
-            feelings=["Nostalgie", "bucurie", "nostalgie"],
-        )
-        self.make_post(
-            author,
-            "Ignored",
-            moderation_status="pending",
-            themes=["should-not-appear"],
-            feelings=["should-not-appear"],
-        )
-
-        self.assertEqual(crud.get_distinct_themes(self.db), ["dor", "timp"])
-        self.assertEqual(crud.get_distinct_feelings(self.db), ["bucurie", "nostalgie"])
-
     def test_comment_helpers_approve_and_delete_comments(self):
         author = self.make_user("author")
         post = self.make_post(author, "Post")
@@ -2151,7 +3206,7 @@ class BackendStabilizationTests(unittest.TestCase):
         comment_notification = crud.get_notifications_for_user(self.db, target.id)[0]
         self.assertEqual(comment_notification.type, "mention")
         self.assertEqual(comment_notification.extra_data["source_type"], "comment")
-        self.assertIn(f"/{post.slug}#comment-{comment.id}", comment_notification.link)
+        self.assertEqual(comment_notification.link, f"//{author.username}.calimara.ro/{post.slug}#comment-{comment.id}")
         comment_payload = api_pages.serialize_comment(comment, self.db)
         self.assertIn('class="mention-link"', comment_payload["content"])
         self.assertIn('href="//mentiontarget.calimara.ro"', comment_payload["content"])
@@ -2203,11 +3258,17 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertIsNotNone(first_message)
         self.assertEqual(conversation.user1_id, min(alice.id, bob.id))
         self.assertEqual(conversation.user2_id, max(alice.id, bob.id))
+        bob_notification = crud.get_notifications_for_user(self.db, bob.id)[0]
+        self.assertEqual(bob_notification.type, "private_message")
+        self.assertEqual(bob_notification.link, "/mesaje")
+        self.assertEqual(bob_notification.extra_data["conversation_id"], conversation.id)
+        self.assertEqual(bob_notification.extra_data["message_id"], first_message.id)
 
         reply = crud.send_message_to_user(self.db, bob.id, "alice", "reply to alice")
         self.assertEqual(reply.conversation_id, conversation.id)
         self.assertEqual(self.db.query(models.Conversation).count(), 1)
         self.assertEqual(crud.get_unread_message_count(self.db, alice.id), 1)
+        self.assertEqual(crud.get_unread_notification_count(self.db, alice.id), 1)
 
         conversations = crud.get_user_conversations(self.db, alice.id)
         self.assertEqual(len(conversations), 1)
@@ -2223,11 +3284,25 @@ class BackendStabilizationTests(unittest.TestCase):
 
         third_message = crud.create_message(self.db, conversation.id, alice.id, "third message")
         self.assertIsNotNone(third_message)
+        self.assertEqual(crud.get_unread_notification_count(self.db, bob.id), 2)
         self.assertIsNone(crud.get_conversation_by_id(self.db, conversation.id, carol.id))
         self.assertFalse(crud.delete_conversation(self.db, conversation.id, carol.id))
         self.assertTrue(crud.delete_conversation(self.db, conversation.id, alice.id))
         self.assertEqual(self.db.query(models.Conversation).count(), 0)
         self.assertEqual(self.db.query(models.Message).count(), 0)
+
+    def test_message_api_includes_avatar_payloads(self):
+        alice = self.make_user("messagealice")
+        bob = self.make_user("messagebob")
+        crud.send_message_to_user(self.db, bob.id, "messagealice", "hello alice")
+
+        conversations = message_routes.get_user_conversations_api(db=self.db, current_user=alice)
+        other_user = conversations["conversations"][0]["other_user"]
+
+        self.assertEqual(other_user["username"], "messagebob")
+        self.assertIn("avatar_url", other_user)
+        self.assertEqual(other_user["avatar_seed"], "seed-messagebob")
+        self.assertIsNone(other_user["profile_photo_url"])
 
     def test_forum_crud_supports_thread_reply_lifecycle_and_permissions(self):
         alice = self.make_user("alice")
@@ -2264,7 +3339,9 @@ class BackendStabilizationTests(unittest.TestCase):
 
         self.assertEqual(thread.moderation_status, "pending")
         self.assertNotEqual(thread.slug, duplicate.slug)
-        self.assertEqual(crud.list_forum_threads(self.db), [])
+        duplicate.moderation_status = "rejected"
+        self.db.commit()
+        self.assertEqual([item.id for item in crud.list_forum_threads(self.db)], [thread.id])
 
         crud.apply_forum_thread_moderation_result(self.db, thread, approved)
         visible_threads = crud.list_forum_threads(self.db)
@@ -2310,7 +3387,11 @@ class BackendStabilizationTests(unittest.TestCase):
         alice = self.make_user("forumreader")
         bob = self.make_user("forumreply")
         alice.gologani_balance = 77
+        alice.profile_photo_storage_key = "users/1/profil.webp"
+        alice.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
         bob.gologani_balance = 6
+        bob.profile_photo_storage_key = "users/2/profil.webp"
+        bob.premium_until = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
         self.db.commit()
         self.make_post(alice, "Forum Reader Text")
         self.make_post(bob, "Forum Reply Text")
@@ -2330,9 +3411,10 @@ class BackendStabilizationTests(unittest.TestCase):
             ),
         )
 
-        with self.assertRaises(HTTPException) as pending_error:
-            forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
-        self.assertEqual(pending_error.exception.status_code, 404)
+        pending_detail = forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
+        self.assertEqual(pending_detail["moderation_status"], "pending")
+        self.assertEqual(pending_detail["author"]["profile_photo_url"], "/api/utilizatori/forumreader/media/profil")
+        self.assertEqual(pending_detail["author"]["avatar_url"], "/api/utilizatori/forumreader/media/profil")
 
         crud.apply_forum_thread_moderation_result(self.db, thread, approved)
         reply, error = crud.create_forum_reply(
@@ -2342,7 +3424,7 @@ class BackendStabilizationTests(unittest.TestCase):
             schemas.ForumReplyCreate(content="Un răspuns aprobat pentru cititori publici."),
         )
         self.assertIsNone(error)
-        self.assertEqual(crud.list_forum_replies_for_thread(self.db, thread.id, None), [])
+        self.assertEqual([item.id for item in crud.list_forum_replies_for_thread(self.db, thread.id, None)], [reply.id])
         crud.apply_forum_reply_moderation_result(self.db, reply, approved)
 
         sections = forum_routes.list_forum_sections_api()
@@ -2352,15 +3434,20 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual([item["key"] for item in sections["sections"]], ["anunturi", "general", "poezie", "proza_scurta"])
         self.assertEqual(sections["sections"][1]["label"], "Discuții generale")
         self.assertEqual([item["id"] for item in listing["threads"]], [thread.id])
+        self.assertEqual(listing["threads"][0]["author"]["profile_photo_url"], "/api/utilizatori/forumreader/media/profil")
+        self.assertEqual(listing["threads"][0]["author"]["avatar_url"], "/api/utilizatori/forumreader/media/profil")
         self.assertEqual(detail["id"], thread.id)
         self.assertEqual(detail["author"]["gologani_balance"], 92)
         self.assertEqual(detail["author"]["forum_post_count"], 1)
         self.assertEqual(detail["author"]["published_post_count"], 1)
-        self.assertIn("avatar_url", detail["author"])
+        self.assertEqual(detail["author"]["profile_photo_url"], "/api/utilizatori/forumreader/media/profil")
+        self.assertEqual(detail["author"]["avatar_url"], "/api/utilizatori/forumreader/media/profil")
         self.assertEqual([item["id"] for item in detail["replies"]], [reply.id])
         self.assertEqual(detail["replies"][0]["author"]["gologani_balance"], 14)
         self.assertEqual(detail["replies"][0]["author"]["forum_post_count"], 1)
         self.assertEqual(detail["replies"][0]["author"]["published_post_count"], 1)
+        self.assertEqual(detail["replies"][0]["author"]["profile_photo_url"], "/api/utilizatori/forumreply/media/profil")
+        self.assertEqual(detail["replies"][0]["author"]["avatar_url"], "/api/utilizatori/forumreply/media/profil")
 
     def test_forum_content_integrates_with_moderation_helpers(self):
         alice = self.make_user("alice")

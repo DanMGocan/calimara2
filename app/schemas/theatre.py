@@ -3,7 +3,12 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .common import _sanitize_required_rich_text, _trim_optional_string, _validate_visible_text_limit
+from .common import (
+    _sanitize_required_rich_text,
+    _trim_optional_string,
+    _trim_required_string,
+    _validate_visible_text_limit,
+)
 
 
 THEATRE_TITLE_LIMIT = 160
@@ -37,18 +42,15 @@ class TheatreCharacterInput(BaseModel):
     description: str = Field(..., min_length=1, max_length=THEATRE_CHARACTER_DESCRIPTION_LIMIT)
     assigned_username: Optional[str] = Field(None, max_length=255)
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
     def trim_name(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, THEATRE_CHARACTER_NAME_LIMIT, "Numele personajului")
 
-    @field_validator("description")
+    @field_validator("description", mode="before")
     @classmethod
     def trim_description(cls, value: str) -> str:
-        trimmed = value.strip()
-        if not trimmed:
-            raise ValueError("Descrierea personajului este obligatorie")
-        return trimmed
+        return _trim_required_string(value, THEATRE_CHARACTER_DESCRIPTION_LIMIT, "Descrierea personajului")
 
     @field_validator("assigned_username")
     @classmethod
@@ -61,10 +63,10 @@ class TheatrePlayCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=THEATRE_DESCRIPTION_LIMIT)
     characters: List[TheatreCharacterInput] = Field(default_factory=list, max_length=40)
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
     def trim_title(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, THEATRE_TITLE_LIMIT, "Titlul")
 
     @field_validator("description")
     @classmethod
@@ -77,10 +79,10 @@ class TheatrePlayUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=THEATRE_DESCRIPTION_LIMIT)
     status: Optional[TheatrePlayStatus] = None
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
     def trim_title(cls, value: Optional[str]) -> Optional[str]:
-        return value.strip() if value and value.strip() else None
+        return _trim_optional_string(value, THEATRE_TITLE_LIMIT, "Titlul")
 
     @field_validator("description")
     @classmethod
@@ -92,13 +94,15 @@ class TheatreCharacterCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=THEATRE_CHARACTER_NAME_LIMIT)
     description: str = Field(..., min_length=1, max_length=THEATRE_CHARACTER_DESCRIPTION_LIMIT)
 
-    @field_validator("name", "description")
+    @field_validator("name", mode="before")
     @classmethod
-    def trim_required(cls, value: str) -> str:
-        trimmed = value.strip()
-        if not trimmed:
-            raise ValueError("Câmp obligatoriu")
-        return trimmed
+    def trim_name(cls, value: str) -> str:
+        return _trim_required_string(value, THEATRE_CHARACTER_NAME_LIMIT, "Numele personajului")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def trim_description(cls, value: str) -> str:
+        return _trim_required_string(value, THEATRE_CHARACTER_DESCRIPTION_LIMIT, "Descrierea personajului")
 
 
 class TheatreCharacterReview(BaseModel):
@@ -108,10 +112,10 @@ class TheatreCharacterReview(BaseModel):
 class TheatreCharacterAssign(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
 
-    @field_validator("username")
+    @field_validator("username", mode="before")
     @classmethod
     def trim_username(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, 255, "Utilizatorul")
 
 
 class TheatreJoinApply(BaseModel):
@@ -130,10 +134,10 @@ class TheatreInvite(BaseModel):
     character_id: Optional[int] = Field(None, ge=1)
     note: Optional[str] = Field(None, max_length=THEATRE_NOTE_LIMIT)
 
-    @field_validator("username")
+    @field_validator("username", mode="before")
     @classmethod
     def trim_username(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, 255, "Utilizatorul")
 
     @field_validator("note")
     @classmethod
@@ -150,10 +154,10 @@ class TheatreSceneCreate(BaseModel):
     content: str
     first_character_id: int = Field(..., ge=1)
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
     def trim_title(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, THEATRE_TITLE_LIMIT, "Titlul scenei")
 
     @field_validator("content")
     @classmethod

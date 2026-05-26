@@ -1,6 +1,8 @@
 from ._shared import *
 from .slugs import generate_slug
 
+USER_VISIBLE_POST_STATUSES = ("approved", "pending", "flagged")
+
 def ensure_unique_slug(db: Session, base_slug: str) -> str:
     slug = base_slug
     counter = 1
@@ -105,9 +107,6 @@ def update_post(db: Session, post_id: int, post_update: schemas.PostUpdate, cate
         db_post.category = category
         
     db_post.moderation_status = "pending"
-    db_post.theme_analysis_status = "pending"
-    db_post.themes = []
-    db_post.feelings = []
     db_post.ai_critic_requested = False
     db.query(models.PostAudio).filter(models.PostAudio.post_id == post_id).update(
         {
@@ -126,14 +125,6 @@ def delete_post(db: Session, post_id: int):
         db.delete(db_post)
         db.commit()
     return db_post
-
-def update_post_theme_analysis(db: Session, post_id: int, themes: list, feelings: list, status: str):
-    post = db.query(models.Post).filter(models.Post.id == post_id).first()
-    if post:
-        post.themes = themes
-        post.feelings = feelings
-        post.theme_analysis_status = status
-        db.commit()
 
 def get_platform_stats(db: Session):
     try:
@@ -192,8 +183,16 @@ def get_weighted_random_posts_by_category(db: Session, category: str, limit: int
 
 def count_posts_for_user(db: Session, user_id: int, include_unapproved: bool = False):
     query = db.query(func.count(models.Post.id)).filter(models.Post.user_id == user_id)
-    if not include_unapproved:
-        query = query.filter(models.Post.moderation_status == "approved")
+    if include_unapproved:
+        query = query.filter(
+            models.Post.moderation_status.in_(USER_VISIBLE_POST_STATUSES),
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     return query.scalar() or 0
 
 def count_posts_by_month_year(
@@ -208,14 +207,30 @@ def count_posts_by_month_year(
         extract('month', models.Post.created_at) == month,
         extract('year', models.Post.created_at) == year
     )
-    if not include_unapproved:
-        query = query.filter(models.Post.moderation_status == "approved")
+    if include_unapproved:
+        query = query.filter(
+            models.Post.moderation_status.in_(USER_VISIBLE_POST_STATUSES),
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     return query.scalar() or 0
 
 def get_latest_posts_for_user(db: Session, user_id: int, limit: int = 5, include_unapproved: bool = False, offset: int = 0):
     query = db.query(models.Post).filter(models.Post.user_id == user_id)
-    if not include_unapproved:
-        query = query.filter(models.Post.moderation_status == "approved")
+    if include_unapproved:
+        query = query.filter(
+            models.Post.moderation_status.in_(USER_VISIBLE_POST_STATUSES),
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     return query.order_by(models.Post.created_at.desc()).offset(max(0, offset)).limit(limit).all()
 
 def get_posts_by_month_year(
@@ -232,8 +247,16 @@ def get_posts_by_month_year(
         extract('month', models.Post.created_at) == month,
         extract('year', models.Post.created_at) == year
     )
-    if not include_unapproved:
-        query = query.filter(models.Post.moderation_status == "approved")
+    if include_unapproved:
+        query = query.filter(
+            models.Post.moderation_status.in_(USER_VISIBLE_POST_STATUSES),
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     return query.order_by(models.Post.created_at.desc()).offset(max(0, offset)).limit(limit).all()
 
 def get_available_months_for_user(db: Session, user_id: int, include_unapproved: bool = False):
@@ -244,8 +267,16 @@ def get_available_months_for_user(db: Session, user_id: int, include_unapproved:
     ).filter(
         models.Post.user_id == user_id,
     )
-    if not include_unapproved:
-        query = query.filter(models.Post.moderation_status == "approved")
+    if include_unapproved:
+        query = query.filter(
+            models.Post.moderation_status.in_(USER_VISIBLE_POST_STATUSES),
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
 
     results = query.group_by('year', 'month').order_by(desc('year'), desc('month')).all()
     
@@ -267,25 +298,6 @@ def get_user_post_counts_by_category(db: Session, user_id: int):
         models.Post.moderation_status == "approved",
     ).group_by(models.Post.category).all()
     return {category: count for category, count in rows if category}
-
-def _get_distinct_post_terms(db: Session, field_name: str) -> List[str]:
-    posts = db.query(models.Post).filter(
-        models.Post.moderation_status == "approved",
-        models.Post.theme_analysis_status == "completed",
-    ).all()
-    terms = set()
-    for post in posts:
-        values = getattr(post, field_name, None) or []
-        for value in values:
-            if isinstance(value, str) and value.strip():
-                terms.add(value.strip().lower())
-    return sorted(terms)
-
-def get_distinct_themes(db: Session):
-    return _get_distinct_post_terms(db, "themes")
-
-def get_distinct_feelings(db: Session):
-    return _get_distinct_post_terms(db, "feelings")
 
 # ===================================
 # COMMENT CRUD FUNCTIONS

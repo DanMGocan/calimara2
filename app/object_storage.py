@@ -23,6 +23,32 @@ def delete_object(key: str | None) -> None:
     _s3_client().delete_object(Bucket=bucket_name(), Key=key)
 
 
+def list_objects(
+    *,
+    prefix: str = "",
+    continuation_token: str | None = None,
+    max_keys: int = 100,
+) -> dict:
+    params = {
+        "Bucket": bucket_name(),
+        "MaxKeys": max(1, min(max_keys, 1000)),
+    }
+    if prefix:
+        params["Prefix"] = prefix
+    if continuation_token:
+        params["ContinuationToken"] = continuation_token
+    response = _s3_client().list_objects_v2(**params)
+    return {
+        "objects": response.get("Contents", []) or [],
+        "next_cursor": response.get("NextContinuationToken"),
+        "is_truncated": bool(response.get("IsTruncated")),
+    }
+
+
+def head_object_metadata(key: str) -> dict:
+    return _s3_client().head_object(Bucket=bucket_name(), Key=key)
+
+
 def presigned_get_url(
     key: str,
     *,

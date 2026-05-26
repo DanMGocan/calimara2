@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS stripe_events CASCADE;
 DROP TABLE IF EXISTS email_outbox CASCADE;
 DROP TABLE IF EXISTS email_campaigns CASCADE;
 DROP TABLE IF EXISTS auth_email_codes CASCADE;
+DROP TABLE IF EXISTS platform_invitations CASCADE;
 DROP TABLE IF EXISTS platform_allowed_emails CASCADE;
 DROP TABLE IF EXISTS platform_access_settings CASCADE;
 DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
@@ -20,6 +21,7 @@ DROP TABLE IF EXISTS moderation_logs CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS conversations CASCADE;
 DROP TABLE IF EXISTS likes CASCADE;
+DROP TABLE IF EXISTS comment_reactions CASCADE;
 DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS friendships CASCADE;
 DROP TABLE IF EXISTS user_follows CASCADE;
@@ -28,6 +30,7 @@ DROP TABLE IF EXISTS featured_posts CASCADE;
 DROP TABLE IF EXISTS user_equipped_items CASCADE;
 DROP TABLE IF EXISTS user_inventory CASCADE;
 DROP TABLE IF EXISTS shop_items CASCADE;
+DROP TABLE IF EXISTS gologani_reward_settings CASCADE;
 DROP TABLE IF EXISTS gologani_transactions CASCADE;
 DROP TABLE IF EXISTS user_awards CASCADE;
 DROP TABLE IF EXISTS forum_replies CASCADE;
@@ -51,8 +54,13 @@ DROP TABLE IF EXISTS series_posts CASCADE;
 DROP TABLE IF EXISTS series CASCADE;
 DROP TABLE IF EXISTS collection_posts CASCADE;
 DROP TABLE IF EXISTS collections CASCADE;
+DROP TABLE IF EXISTS audio_playlist_items CASCADE;
+DROP TABLE IF EXISTS audio_playlists CASCADE;
 DROP TABLE IF EXISTS audio_listen_events CASCADE;
 DROP TABLE IF EXISTS post_audio CASCADE;
+DROP TABLE IF EXISTS imported_post_snapshots CASCADE;
+DROP TABLE IF EXISTS user_data_imports CASCADE;
+DROP TABLE IF EXISTS diacritics_usage_events CASCADE;
 DROP TABLE IF EXISTS post_reports CASCADE;
 DROP TABLE IF EXISTS post_drafts CASCADE;
 DROP TABLE IF EXISTS posts CASCADE;
@@ -93,6 +101,7 @@ CREATE TABLE users (
     buymeacoffee_url VARCHAR(300),
     is_admin BOOLEAN DEFAULT FALSE NOT NULL,
     is_moderator BOOLEAN DEFAULT FALSE NOT NULL,
+    is_system BOOLEAN DEFAULT FALSE NOT NULL,
     is_suspended BOOLEAN DEFAULT FALSE NOT NULL,
     suspension_reason TEXT,
     suspended_at TIMESTAMP,
@@ -105,6 +114,11 @@ CREATE TABLE users (
     premium_period_start TIMESTAMP,
     premium_until TIMESTAMP,
     gologani_balance INT DEFAULT 0 NOT NULL,
+    referral_code VARCHAR(24) UNIQUE,
+    referred_by_user_id INT,
+    referral_rewarded_at TIMESTAMP,
+    referral_reward_premium_until TIMESTAMP,
+    referral_reward_qualified_gologani INT,
     seconds_listened INT DEFAULT 0 NOT NULL,
     last_login_at TIMESTAMP,
     email_comment_notifications BOOLEAN DEFAULT TRUE NOT NULL,
@@ -114,7 +128,9 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT fk_suspended_by FOREIGN KEY (suspended_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_suspended_by FOREIGN KEY (suspended_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_users_referred_by FOREIGN KEY (referred_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT ck_users_referral_not_self CHECK (referred_by_user_id IS NULL OR referred_by_user_id <> id)
 );
 
 CREATE INDEX idx_users_username ON users(username);
@@ -127,7 +143,32 @@ CREATE INDEX idx_users_stripe_customer_id ON users(stripe_customer_id);
 CREATE INDEX idx_users_premium_tier ON users(premium_tier);
 CREATE INDEX idx_users_premium_period_start ON users(premium_period_start);
 CREATE INDEX idx_users_premium_until ON users(premium_until);
+CREATE INDEX idx_users_referral_code ON users(referral_code);
+CREATE INDEX idx_users_referred_by_user_id ON users(referred_by_user_id);
+CREATE INDEX idx_users_referral_rewarded_at ON users(referral_rewarded_at);
 CREATE INDEX idx_users_last_login_at ON users(last_login_at);
+
+-- ===================================
+-- DIACRITICS USAGE TABLE
+-- ===================================
+CREATE TABLE diacritics_usage_events (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    kind VARCHAR(30) NOT NULL,
+    word_count INT DEFAULT 0 NOT NULL, -- historical name; stores charged character count
+    quota_period_start TIMESTAMP NOT NULL,
+    quota_period_end TIMESTAMP NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CHECK (status IN ('pending', 'succeeded', 'failed')),
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_diacritics_usage_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_diacritics_usage_user_period ON diacritics_usage_events(user_id, quota_period_start, quota_period_end);
+CREATE INDEX idx_diacritics_usage_status ON diacritics_usage_events(status);
 
 -- ===================================
 -- PLATFORM ACCESS SETTINGS
@@ -158,6 +199,39 @@ CREATE TABLE platform_allowed_emails (
 
 CREATE UNIQUE INDEX idx_platform_allowed_emails_email ON platform_allowed_emails(email);
 CREATE INDEX idx_platform_allowed_emails_created_by ON platform_allowed_emails(created_by);
+
+CREATE TABLE platform_invitations (
+    id BIGSERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    temporary_password_hash VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL
+        CONSTRAINT ck_platform_invitations_status
+        CHECK (status IN ('pending', 'accepted', 'revoked')),
+    premium_tier VARCHAR(20) DEFAULT 'free' NOT NULL
+        CONSTRAINT ck_platform_invitations_premium_tier
+        CHECK (premium_tier IN ('free', 'trubadur', 'cronicar', 'rapsod')),
+    premium_days INT,
+    note TEXT,
+    created_by INT,
+    accepted_user_id INT,
+    expires_at TIMESTAMP NOT NULL,
+    accepted_at TIMESTAMP,
+    revoked_at TIMESTAMP,
+    resent_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_platform_invitations_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_platform_invitations_accepted_user FOREIGN KEY (accepted_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX idx_platform_invitations_email ON platform_invitations(email);
+CREATE UNIQUE INDEX idx_platform_invitations_token_hash ON platform_invitations(token_hash);
+CREATE INDEX idx_platform_invitations_status ON platform_invitations(status);
+CREATE INDEX idx_platform_invitations_created_by ON platform_invitations(created_by);
+CREATE INDEX idx_platform_invitations_accepted_user ON platform_invitations(accepted_user_id);
+CREATE INDEX idx_platform_invitations_expires ON platform_invitations(expires_at);
 
 -- ===================================
 -- FRIENDSHIPS TABLE
@@ -333,10 +407,6 @@ CREATE TABLE posts (
     toxicity_score DECIMAL(3,2),
     moderated_by INT,
     moderated_at TIMESTAMP,
-    themes JSONB DEFAULT '[]'::jsonb,
-    feelings JSONB DEFAULT '[]'::jsonb,
-    theme_analysis_status VARCHAR(20) DEFAULT 'pending' NOT NULL
-        CHECK (theme_analysis_status IN ('pending', 'completed', 'failed')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
@@ -354,9 +424,56 @@ CREATE INDEX idx_posts_created_at ON posts(created_at);
 CREATE INDEX idx_posts_category_genre_views ON posts(category, genre, view_count);
 CREATE INDEX idx_posts_moderation_status ON posts(moderation_status);
 CREATE INDEX idx_posts_toxicity_score ON posts(toxicity_score);
-CREATE INDEX idx_posts_themes ON posts USING GIN (themes);
-CREATE INDEX idx_posts_feelings ON posts USING GIN (feelings);
-CREATE INDEX idx_posts_theme_analysis_status ON posts(theme_analysis_status);
+
+-- ===================================
+-- USER DATA IMPORTS TABLES
+-- ===================================
+CREATE TABLE user_data_imports (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    source_export_id VARCHAR(100) NOT NULL,
+    source_username VARCHAR(255),
+    source_created_at TIMESTAMP,
+    profile_snapshot JSONB DEFAULT '{}'::jsonb NOT NULL,
+    media_snapshot JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_user_data_imports_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_user_data_imports_user_id ON user_data_imports(user_id);
+CREATE INDEX idx_user_data_imports_source_export_id ON user_data_imports(source_export_id);
+
+CREATE TABLE imported_post_snapshots (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    post_id INT NOT NULL,
+    import_id INT,
+    source_export_id VARCHAR(100) NOT NULL,
+    source_stable_id VARCHAR(500) NOT NULL,
+    source_post_id INT,
+    source_slug VARCHAR(300),
+    source_title VARCHAR(255),
+    source_created_at TIMESTAMP,
+    imported_view_count INT DEFAULT 0 NOT NULL,
+    imported_likes_count INT DEFAULT 0 NOT NULL,
+    imported_super_likes_count INT DEFAULT 0 NOT NULL,
+    public_url VARCHAR(1000),
+    audio_playback_url VARCHAR(1000),
+    audio_download_url VARCHAR(1000),
+    metadata JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_imported_post_snapshots_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_imported_post_snapshots_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_imported_post_snapshots_import FOREIGN KEY (import_id) REFERENCES user_data_imports(id) ON DELETE SET NULL,
+    CONSTRAINT uq_imported_post_snapshot_user_stable UNIQUE (user_id, source_stable_id)
+);
+
+CREATE INDEX idx_imported_post_snapshots_user_id ON imported_post_snapshots(user_id);
+CREATE INDEX idx_imported_post_snapshots_post_id ON imported_post_snapshots(post_id);
+CREATE INDEX idx_imported_post_snapshots_import_id ON imported_post_snapshots(import_id);
 
 -- ===================================
 -- POST AUDIO TABLE
@@ -396,6 +513,38 @@ CREATE INDEX idx_post_audio_requester_user_id ON post_audio(requester_user_id);
 CREATE INDEX idx_post_audio_status ON post_audio(status);
 CREATE INDEX idx_post_audio_source_status ON post_audio(source, status);
 CREATE INDEX idx_post_audio_tts_quota ON post_audio(requester_user_id, quota_period_start, quota_period_end);
+
+-- ===================================
+-- AUDIO PLAYLISTS TABLES
+-- ===================================
+CREATE TABLE audio_playlists (
+    id SERIAL PRIMARY KEY,
+    owner_id INT NOT NULL,
+    title VARCHAR(120) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_audio_playlists_owner FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_audio_playlists_owner_id ON audio_playlists(owner_id);
+CREATE INDEX idx_audio_playlists_created_at ON audio_playlists(created_at);
+
+CREATE TABLE audio_playlist_items (
+    id SERIAL PRIMARY KEY,
+    playlist_id INT NOT NULL,
+    post_id INT NOT NULL,
+    position INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_audio_playlist_items_playlist FOREIGN KEY (playlist_id) REFERENCES audio_playlists(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audio_playlist_items_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    CONSTRAINT uq_audio_playlist_item_post UNIQUE (playlist_id, post_id),
+    CONSTRAINT uq_audio_playlist_item_position UNIQUE (playlist_id, position)
+);
+
+CREATE INDEX idx_audio_playlist_items_playlist_id ON audio_playlist_items(playlist_id);
+CREATE INDEX idx_audio_playlist_items_post_id ON audio_playlist_items(post_id);
 
 -- ===================================
 -- POST REPORTS TABLE
@@ -494,6 +643,27 @@ CREATE INDEX idx_comments_post_approved ON comments(post_id, approved);
 CREATE INDEX idx_comments_moderation_status ON comments(moderation_status);
 CREATE INDEX idx_comments_toxicity_score ON comments(toxicity_score);
 CREATE INDEX idx_comments_is_robot ON comments(post_id, is_robot);
+
+-- ===================================
+-- COMMENT REACTIONS TABLE
+-- ===================================
+CREATE TABLE comment_reactions (
+    id SERIAL PRIMARY KEY,
+    comment_id INT NOT NULL,
+    user_id INT NOT NULL,
+    reaction_type VARCHAR(20) NOT NULL
+        CHECK (reaction_type IN ('helpful', 'funny', 'insightful')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_comment_reactions_comment_user UNIQUE (comment_id, user_id),
+    CONSTRAINT fk_comment_reactions_comment FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comment_reactions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_comment_reactions_comment_id ON comment_reactions(comment_id);
+CREATE INDEX idx_comment_reactions_user_id ON comment_reactions(user_id);
+CREATE INDEX idx_comment_reactions_type ON comment_reactions(reaction_type);
 
 -- ===================================
 -- LIKES TABLE
@@ -837,7 +1007,7 @@ CREATE TABLE theatre_scenes (
     title VARCHAR(160) NOT NULL,
     status VARCHAR(20) DEFAULT 'active' NOT NULL
         CHECK (status IN ('active', 'ended')),
-    opened_by INT NOT NULL,
+    opened_by INT,
     ended_by INT,
     ended_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1127,6 +1297,37 @@ CREATE INDEX idx_gologani_user_created ON gologani_transactions(user_id, created
 CREATE INDEX idx_gologani_event_type ON gologani_transactions(event_type);
 CREATE INDEX idx_gologani_source ON gologani_transactions(source_type, source_id);
 CREATE INDEX idx_gologani_idempotency ON gologani_transactions(idempotency_key);
+
+-- ===================================
+-- GOLOGANI REWARD SETTINGS
+-- ===================================
+CREATE TABLE gologani_reward_settings (
+    event_type VARCHAR(50) PRIMARY KEY,
+    label VARCHAR(120) NOT NULL,
+    description VARCHAR(255),
+    amount INT DEFAULT 0 NOT NULL CHECK (amount >= 0),
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    sort_order INT DEFAULT 0 NOT NULL,
+    updated_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_gologani_reward_settings_user FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_gologani_reward_settings_active_order ON gologani_reward_settings(is_active, sort_order, event_type);
+CREATE INDEX idx_gologani_reward_settings_updated_by ON gologani_reward_settings(updated_by);
+
+INSERT INTO gologani_reward_settings (event_type, label, description, amount, sort_order)
+VALUES
+    ('post_approved', 'Text aprobat', 'Autorul primește recompensa când o postare devine aprobată.', 25, 10),
+    ('comment_approved', 'Comentariu aprobat', 'Autorul primește recompensa când un comentariu devine aprobat.', 8, 20),
+    ('like_given', 'Apreciere oferită', 'Cititorul primește recompensa când apreciază textul altcuiva.', 1, 30),
+    ('like_received', 'Apreciere primită', 'Autorul primește recompensa când textul lui primește o apreciere.', 2, 40),
+    ('super_like_given', 'Super-apreciere oferită', 'Cititorul primește recompensa când oferă Super-apreciez.', 5, 50),
+    ('super_like_received', 'Super-apreciere primită', 'Autorul primește recompensa când textul lui primește Super-apreciez.', 15, 60),
+    ('forum_thread_approved', 'Discuție forum aprobată', 'Autorul primește recompensa când o discuție de forum devine aprobată.', 15, 70),
+    ('forum_reply_approved', 'Răspuns forum aprobat', 'Autorul primește recompensa când un răspuns de forum devine aprobat.', 8, 80);
 
 -- ===================================
 -- SHOP ITEMS TABLE
@@ -1437,17 +1638,21 @@ CREATE TABLE site_feedback (
     admin_note TEXT,
     resolved_by INT,
     resolved_at TIMESTAMP,
+    support_conversation_id INT,
+    support_started_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
     CONSTRAINT fk_site_feedback_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_site_feedback_resolver FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_site_feedback_resolver FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_site_feedback_support_conversation FOREIGN KEY (support_conversation_id) REFERENCES conversations(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_site_feedback_kind ON site_feedback(kind);
 CREATE INDEX idx_site_feedback_status_created ON site_feedback(status, created_at DESC);
 CREATE INDEX idx_site_feedback_user ON site_feedback(user_id);
 CREATE INDEX idx_site_feedback_resolved_by ON site_feedback(resolved_by);
+CREATE INDEX idx_site_feedback_support_conversation ON site_feedback(support_conversation_id);
 
 -- ===================================
 -- SUPER LIKES TABLE
@@ -1488,7 +1693,11 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_diacritics_usage_events_updated_at BEFORE UPDATE ON diacritics_usage_events
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_posts_updated_at BEFORE UPDATE ON posts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_user_data_imports_updated_at BEFORE UPDATE ON user_data_imports
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_post_audio_updated_at BEFORE UPDATE ON post_audio
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1503,6 +1712,8 @@ CREATE TRIGGER trg_user_follows_updated_at BEFORE UPDATE ON user_follows
 CREATE TRIGGER trg_platform_access_settings_updated_at BEFORE UPDATE ON platform_access_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_platform_allowed_emails_updated_at BEFORE UPDATE ON platform_allowed_emails
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_platform_invitations_updated_at BEFORE UPDATE ON platform_invitations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_featured_posts_updated_at BEFORE UPDATE ON featured_posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1525,6 +1736,8 @@ CREATE TRIGGER trg_forum_threads_updated_at BEFORE UPDATE ON forum_threads
 CREATE TRIGGER trg_forum_replies_updated_at BEFORE UPDATE ON forum_replies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_user_awards_updated_at BEFORE UPDATE ON user_awards
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER trg_gologani_reward_settings_updated_at BEFORE UPDATE ON gologani_reward_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_shop_items_updated_at BEFORE UPDATE ON shop_items
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -68,6 +68,14 @@ class TheatreCharacter(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_theatre_characters_status"),
         UniqueConstraint("play_id", "name", name="uq_theatre_character_name"),
+        Index(
+            "uq_theatre_character_assigned_user",
+            "play_id",
+            "assigned_user_id",
+            unique=True,
+            postgresql_where=text("assigned_user_id IS NOT NULL"),
+            sqlite_where=text("assigned_user_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -93,6 +101,14 @@ class TheatreJoinRequest(Base):
     __table_args__ = (
         CheckConstraint("direction IN ('application', 'invitation')", name="ck_theatre_join_requests_direction"),
         CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_theatre_join_requests_status"),
+        Index(
+            "uq_theatre_join_requests_pending_character",
+            "play_id",
+            "character_id",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND character_id IS NOT NULL"),
+            sqlite_where=text("status = 'pending' AND character_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
@@ -126,14 +142,14 @@ class TheatreScene(Base):
     scene_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    opened_by: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
+    opened_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ended_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     play: Mapped["TheatrePlay"] = relationship("TheatrePlay", foreign_keys=[play_id], back_populates="scenes")
-    opener: Mapped["User"] = relationship("User", foreign_keys=[opened_by])
+    opener: Mapped[Optional["User"]] = relationship("User", foreign_keys=[opened_by])
     ender: Mapped[Optional["User"]] = relationship("User", foreign_keys=[ended_by])
     entries: Mapped[List["TheatreEntry"]] = relationship("TheatreEntry", back_populates="scene", cascade="all, delete-orphan")
 

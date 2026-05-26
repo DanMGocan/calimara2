@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..repositories.notifications import create_notification
+from ..utils import post_public_url
 from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,10 @@ def _hermes_metadata(db: Session, event: AchievementEvent) -> dict[str, Any]:
 
 def _post_link(db: Session, event: AchievementEvent) -> Optional[str]:
     post = _post_from_event(db, event)
-    return f"/{post.slug}" if post and post.slug else None
+    if not post:
+        return None
+    author = post.owner or db.query(models.User).filter(models.User.id == post.user_id).first()
+    return post_public_url(author, post.slug) if author else None
 
 
 ACHIEVEMENTS: tuple[AchievementDefinition, ...] = (

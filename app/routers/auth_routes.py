@@ -1,7 +1,7 @@
 import re
 import logging
 import os
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from fastapi.responses import FileResponse, RedirectResponse
@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import crud, email_service, facebook_oauth, google_oauth, local_auth, models, platform_access, schemas
+from .. import crud, diacritics, email_service, facebook_oauth, google_oauth, invitations, local_auth, models, platform_access, schemas
 from ..auth import get_db_epoch
 from ..database import get_db
+from ..mistral_context import MistralContextWindowExceeded
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed
 from ..week_util import utcnow_naive
 
@@ -73,6 +74,24 @@ def _safe_return_url(request: Request, return_to: str | None) -> str | None:
     return None
 
 
+def _referral_code_from_return_to(return_to: str | None) -> str:
+    if not return_to:
+        return ""
+    try:
+        parsed = urlparse(str(return_to))
+        query = parse_qs(parsed.query)
+    except Exception:
+        return ""
+    return crud.normalize_referral_code((query.get("ref") or [""])[0])
+
+
+def _pending_referral_code(request: Request, pending_auth: dict) -> str:
+    return (
+        crud.normalize_referral_code(pending_auth.get("referral_code"))
+        or _referral_code_from_return_to(request.session.get(AUTH_RETURN_TO_SESSION_KEY))
+    )
+
+
 def _store_auth_return_to(request: Request, return_to: str | None) -> str | None:
     redirect_url = _safe_return_url(request, return_to)
     if redirect_url:
@@ -82,6 +101,30 @@ def _store_auth_return_to(request: Request, return_to: str | None) -> str | None
 
 def _session_auth_return_to(request: Request) -> str | None:
     return _safe_return_url(request, request.session.get(AUTH_RETURN_TO_SESSION_KEY))
+
+
+def _is_auth_operational_return_url(return_url: str | None) -> bool:
+    if not return_url:
+        return False
+    try:
+        parsed = urlparse(str(return_url))
+    except Exception:
+        return False
+    path = (parsed.path or "/").rstrip("/") or "/"
+    return (
+        path == "/autentificare"
+        or path.startswith("/autentificare/")
+        or path.startswith("/auth/")
+        or path == "/invitatie"
+        or path.startswith("/invitatie/")
+    )
+
+
+def _post_setup_redirect_url(request: Request, user: models.User) -> str:
+    return_url = _session_auth_return_to(request)
+    if return_url and not _is_auth_operational_return_url(return_url):
+        return return_url
+    return _user_blog_url(request, user)
 
 
 def _login_user(request: Request, db: Session, user: models.User) -> None:
@@ -133,12 +176,16 @@ def _auth_response_payload(request: Request, user: models.User, redirect_url: st
     }
 
 
-def _queue_activation_code(db: Session, *, email: str, password_hash: str) -> None:
+def _queue_activation_code(db: Session, *, email: str, password_hash: str, referral_code: str | None = None) -> None:
+    payload = {"password_hash": password_hash}
+    normalized_referral = crud.normalize_referral_code(referral_code)
+    if normalized_referral:
+        payload["referral_code"] = normalized_referral
     _, code = local_auth.create_email_code(
         db,
         email=email,
         purpose=local_auth.PURPOSE_SIGNUP_ACTIVATION,
-        payload={"password_hash": password_hash},
+        payload=payload,
     )
     outbox_row = email_service.queue_auth_code_email(
         db,
@@ -166,9 +213,27 @@ def _access_denied_response() -> HTTPException:
     return HTTPException(status_code=403, detail=platform_access.ACCESS_DENIED_MESSAGE)
 
 
-def _require_platform_access(db: Session, email: str, user: models.User | None = None) -> None:
-    if not platform_access.can_access_platform(db, email=email, user=user):
-        raise _access_denied_response()
+def _require_platform_access(
+    db: Session,
+    email: str,
+    user: models.User | None = None,
+    referral_code: str | None = None,
+) -> None:
+    if platform_access.can_access_platform(db, email=email, user=user):
+        return
+    if user is None and referral_code and crud.referral_code_allows_access(db, referral_code):
+        return
+    raise _access_denied_response()
+
+
+def _invitation_payload(invitation: models.PlatformInvitation) -> dict:
+    return {
+        "email": invitation.email,
+        "status": invitations.invitation_display_status(invitation),
+        "premium_tier": invitation.premium_tier,
+        "premium_days": invitation.premium_days,
+        "expires_at": invitation.expires_at.isoformat() if invitation.expires_at else None,
+    }
 
 
 def _existing_google_user_for_access(db: Session, google_user: schemas.GoogleUserInfo) -> models.User | None:
@@ -237,7 +302,10 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         # Get user info from Google
         google_user = await google_oauth.handle_google_callback(request)
         existing_user = _existing_google_user_for_access(db, google_user)
-        if not platform_access.can_access_platform(db, email=google_user.email, user=existing_user):
+        referral_code = _referral_code_from_return_to(_session_auth_return_to(request))
+        if not platform_access.can_access_platform(db, email=google_user.email, user=existing_user) and not (
+            existing_user is None and referral_code and crud.referral_code_allows_access(db, referral_code)
+        ):
             logger.warning("Google OAuth blocked by invite-only access gate for email: %s", google_user.email)
             return RedirectResponse(url=_auth_failure_url(request, "access"), status_code=status.HTTP_302_FOUND)
 
@@ -268,7 +336,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 "picture": google_user.picture,
                 "email_verified": bool(getattr(google_user, "email_verified", True)),
             }
-            _store_pending_auth(request, "google", {"provider_user": google_payload})
+            _store_pending_auth(request, "google", {"provider_user": google_payload, "referral_code": referral_code})
             request.session["google_user"] = google_payload
             logger.info(f"New Google user detected: {google_user.email}. Redirecting to setup.")
             return RedirectResponse(
@@ -292,7 +360,10 @@ async def facebook_callback(request: Request, db: Session = Depends(get_db)):
     try:
         facebook_user = await facebook_oauth.handle_facebook_callback(request)
         existing_user = _existing_facebook_user_for_access(db, facebook_user)
-        if not platform_access.can_access_platform(db, email=facebook_user.email, user=existing_user):
+        referral_code = _referral_code_from_return_to(_session_auth_return_to(request))
+        if not platform_access.can_access_platform(db, email=facebook_user.email, user=existing_user) and not (
+            existing_user is None and referral_code and crud.referral_code_allows_access(db, referral_code)
+        ):
             logger.warning("Facebook OAuth blocked by invite-only access gate for email: %s", facebook_user.email)
             return RedirectResponse(url=_auth_failure_url(request, "access"), status_code=status.HTTP_302_FOUND)
         if existing_user and not getattr(facebook_user, "facebook_id", None):
@@ -307,7 +378,7 @@ async def facebook_callback(request: Request, db: Session = Depends(get_db)):
         _store_pending_auth(
             request,
             "facebook",
-            {"provider_user": _pending_provider_payload(facebook_user)},
+            {"provider_user": _pending_provider_payload(facebook_user), "referral_code": referral_code},
         )
         logger.info("New Facebook user detected: %s. Redirecting to setup.", facebook_user.email)
         return RedirectResponse(
@@ -320,6 +391,48 @@ async def facebook_callback(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error("Eroare în răspunsul Facebook: %s", e)
         return RedirectResponse(url=_auth_failure_url(request, "facebook"), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/api/invitatii/{token}")
+def get_platform_invitation(token: str, db: Session = Depends(get_db)):
+    invitation = invitations.get_invitation_by_token(db, token)
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitația nu a fost găsită.")
+    return {"invitation": _invitation_payload(invitation)}
+
+
+@router.post("/api/autentificare/invitatie/parola")
+@limiter.limit("8/minute")
+def login_with_invitation_password(
+    request: Request,
+    data: schemas.InvitationPasswordLoginRequest,
+    db: Session = Depends(get_db),
+):
+    email = local_auth.normalize_email(str(data.email))
+    if crud.get_user_by_email(db, email):
+        raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă. Intră în cont normal.")
+    try:
+        invitation = invitations.verify_invitation_password(
+            db,
+            token=data.token,
+            email=email,
+            password=data.password,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _store_pending_auth(
+        request,
+        "invitation_password",
+        {
+            "email": invitation.email,
+            "password_hash": invitation.temporary_password_hash,
+            "invitation_id": invitation.id,
+        },
+    )
+    return {
+        "message": "Invitația a fost verificată. Continuă configurarea contului.",
+        "setup_url": f"{_frontend_base_url(request)}/autentificare/configurare",
+    }
 
 
 @router.post("/api/autentificare/parola/inregistrare")
@@ -335,12 +448,13 @@ def register_with_password(
             status_code=400,
             detail="Există deja un cont cu această adresă. Folosește resetarea parolei ca să setezi o parolă.",
         )
-    _require_platform_access(db, email)
+    referral_code = crud.normalize_referral_code(data.referral_code)
+    _require_platform_access(db, email, referral_code=referral_code)
     try:
         hashed_password = local_auth.password_hash(data.password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    _queue_activation_code(db, email=email, password_hash=hashed_password)
+    _queue_activation_code(db, email=email, password_hash=hashed_password, referral_code=referral_code)
     return {
         "message": "Ți-am trimis un cod de activare pe email.",
         "email": email,
@@ -358,7 +472,6 @@ def activate_password_signup(
     email = local_auth.normalize_email(str(data.email))
     if crud.get_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
-    _require_platform_access(db, email)
     try:
         code_row = local_auth.verify_email_code(
             db,
@@ -371,10 +484,12 @@ def activate_password_signup(
     password_hash = (code_row.payload or {}).get("password_hash")
     if not password_hash:
         raise HTTPException(status_code=400, detail="Codul nu mai poate fi folosit. Reia înregistrarea.")
+    referral_code = crud.normalize_referral_code((code_row.payload or {}).get("referral_code"))
+    _require_platform_access(db, email, referral_code=referral_code)
     _store_pending_auth(
         request,
         "password",
-        {"email": email, "password_hash": password_hash},
+        {"email": email, "password_hash": password_hash, "referral_code": referral_code},
     )
     return {
         "message": "Email verificat. Continuă configurarea contului.",
@@ -392,7 +507,6 @@ def resend_activation_code(
     email = local_auth.normalize_email(str(data.email))
     if crud.get_user_by_email(db, email):
         raise HTTPException(status_code=400, detail="Există deja un cont cu această adresă.")
-    _require_platform_access(db, email)
     active_code = local_auth.latest_active_email_code(
         db,
         email=email,
@@ -401,7 +515,9 @@ def resend_activation_code(
     password_hash = (active_code.payload or {}).get("password_hash") if active_code else None
     if not password_hash:
         raise HTTPException(status_code=400, detail="Reia înregistrarea ca să primești un cod nou.")
-    _queue_activation_code(db, email=email, password_hash=password_hash)
+    referral_code = crud.normalize_referral_code((active_code.payload or {}).get("referral_code")) if active_code else ""
+    _require_platform_access(db, email, referral_code=referral_code)
+    _queue_activation_code(db, email=email, password_hash=password_hash, referral_code=referral_code)
     return {"message": "Ți-am trimis un cod nou pe email.", "email": email}
 
 
@@ -505,6 +621,56 @@ def auth_setup_page(request: Request):
     return _react_index_response()
 
 
+@router.post("/api/autentificare/configurare/diacritice", response_model=schemas.DiacriticsResponse)
+@limiter.limit("12/minute")
+def add_setup_diacritics(
+    request: Request,
+    body: schemas.DiacriticsRequest,
+    db: Session = Depends(get_db),
+):
+    pending_auth = _pending_auth_from_session(request)
+    if not pending_auth:
+        raise HTTPException(status_code=400, detail="Nu există o sesiune de configurare.")
+    if body.kind != "profile_description":
+        raise HTTPException(status_code=400, detail="Poți adăuga diacritice aici doar pentru descrierea profilului.")
+    try:
+        diacritics.validate_diacritics_request_context(
+            title=body.title,
+            content=body.content or "",
+            kind=body.kind,
+        )
+        result = diacritics.add_diacritics(
+            title=body.title,
+            content=body.content or "",
+            kind=body.kind,
+        )
+        result["quota"] = None
+        return result
+    except MistralContextWindowExceeded as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "Textul este prea lung pentru modelul AI configurat. "
+                f"Estimare: {exc.estimated_input_tokens} tokeni intrare, "
+                f"rezervă răspuns: {exc.max_output_tokens}, limită: {exc.context_limit}."
+            ),
+        )
+    except RuntimeError as exc:
+        logger.warning("AI diacritics failed during setup: %s", exc)
+        email_service.queue_system_alert_email(
+            db,
+            service="Diacritice",
+            summary="Conversia la diacritice din configurarea contului a eșuat.",
+            error_message=str(exc),
+            context={
+                "path": getattr(getattr(request, "url", None), "path", "/api/autentificare/configurare/diacritice"),
+                "kind": body.kind,
+                "pending_source": pending_auth.get("source"),
+            },
+        )
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
 @router.post("/api/autentificare/finalizeaza-configurarea")
 def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Session = Depends(get_db)):
     """Complete user setup after OAuth or password email activation"""
@@ -513,11 +679,18 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
         raise HTTPException(status_code=400, detail="Nu există o sesiune de autentificare")
 
     try:
+        if not setup_data.accept_terms_and_privacy:
+            raise HTTPException(
+                status_code=400,
+                detail="Trebuie să accepți Termenii și condițiile și Politica de confidențialitate pentru a crea blogul.",
+            )
+
         # Validate username
         if not re.fullmatch(r"^[a-zA-Z0-9]+$", setup_data.username):
             raise HTTPException(status_code=400, detail="Numele de utilizator poate conține doar litere și cifre, fără spații sau simboluri speciale.")
 
         source = pending_auth.get("source")
+        referral_code = _pending_referral_code(request, pending_auth)
         provider_user_data = pending_auth.get("provider_user") or {}
         pending_email = ""
         if source == "google":
@@ -526,8 +699,10 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
             pending_email = str(provider_user_data.get("email") or "")
         elif source == "password":
             pending_email = str(pending_auth.get("email") or "")
+        elif source == "invitation_password":
+            pending_email = str(pending_auth.get("email") or "")
         if pending_email:
-            _require_platform_access(db, pending_email)
+            _require_platform_access(db, pending_email, referral_code=referral_code)
         if source == "google":
             google_user = schemas.GoogleUserInfo(**provider_user_data)
             new_user = google_oauth.create_user_from_google(db, google_user, setup_data)
@@ -536,7 +711,7 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
         elif source == "facebook":
             facebook_user = schemas.FacebookUserInfo(**provider_user_data)
             new_user = facebook_oauth.create_user_from_facebook(db, facebook_user, setup_data)
-        elif source == "password":
+        elif source in {"password", "invitation_password"}:
             email = local_auth.normalize_email(str(pending_auth.get("email") or ""))
             password_hash = pending_auth.get("password_hash")
             if not email or not password_hash:
@@ -553,7 +728,7 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
                     "email": email,
                     "password_hash": password_hash,
                     "email_verified_at": utcnow_naive(),
-                    "password_updated_at": utcnow_naive(),
+                    "password_updated_at": utcnow_naive() if source == "password" else None,
                     "subtitle": setup_data.subtitle,
                     "avatar_seed": setup_data.avatar_seed,
                     "cover_seed": setup_data.cover_seed or default_cover_seed(setup_data.username.lower()),
@@ -561,12 +736,16 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
             )
         else:
             raise HTTPException(status_code=400, detail="Sesiunea de autentificare nu este validă")
+        if pending_email:
+            invitations.apply_invitation_for_email(db, email=pending_email, user=new_user)
+        if referral_code:
+            crud.apply_referral_to_user(db, new_user, referral_code)
         new_user.last_login_at = utcnow_naive()
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
 
-        redirect_url = _session_auth_return_to(request) or _user_blog_url(request, new_user)
+        redirect_url = _post_setup_redirect_url(request, new_user)
         request.session.clear()
         request.session["user_id"] = new_user.id
         request.session["db_epoch"] = get_db_epoch()
@@ -584,7 +763,7 @@ def complete_user_setup(request: Request, setup_data: schemas.UserSetup, db: Ses
 @router.get("/api/deconectare")
 def logout_user(request: Request):
     request.session.clear()  # Clear session
-    logger.info("Utilizator deconectat. Sesiune stearsa.")
+    logger.info("Utilizator deconectat. Sesiune ștearsă.")
 
     # Return JSON for React SPA, or redirect for direct browser access
     accept = request.headers.get("accept", "")

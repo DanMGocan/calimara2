@@ -73,7 +73,12 @@ def process_pending_tts_jobs(db: Session, limit: int = 5) -> int:
     return ai_queue.process_ai_jobs(db, limit=limit)
 
 
-def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio:
+def generate_tts_audio(
+    db: Session,
+    audio: models.PostAudio,
+    *,
+    mark_failed_on_error: bool = True,
+) -> models.PostAudio:
     if audio.requester_user_id is None:
         return crud.update_post_audio(
             db,
@@ -98,7 +103,7 @@ def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio
         text = text_for_speech(post)
         if not text:
             raise RuntimeError("Postarea nu are text lizibil")
-        content, content_type = synthesize_text(text)
+        content, content_type = synthesize_text(text, audio_id=audio.id, post_id=post.id)
         backend, key, byte_size = audio_storage.save_audio_bytes(
             post_id=post.id,
             source="tts",
@@ -124,7 +129,7 @@ def generate_tts_audio(db: Session, audio: models.PostAudio) -> models.PostAudio
         crud.update_post_audio(
             db,
             audio.id,
-            status="failed",
+            status="failed" if mark_failed_on_error else "pending",
             error_message=str(exc),
         )
         raise TTSGenerationFailed(str(exc)) from exc
@@ -152,7 +157,7 @@ def audio_quota_payload(db: Session, user: models.User) -> dict:
         "remaining": max(0, limit - used),
         "period_start": period_start,
         "period_end": period_end,
-        "can_request": bool(user and user.has_audio_access and limit > 0 and period_start and period_end),
+        "can_request": bool(user and limit > 0 and period_start and period_end),
     }
 
 
@@ -165,13 +170,11 @@ def request_tts_for_posts(db: Session, user: models.User, post_ids: list[int]) -
             seen.add(post_id)
     if not unique_ids:
         raise TTSRequestInvalid("Selectează cel puțin un text.")
-    if not user.has_audio_access:
-        raise TTSRequestForbidden("Necesită abonament Cronicar sau Rapsod.")
 
     period_start, period_end = crud.audio_tts_quota_period_for_user(user)
     limit = crud.audio_tts_quota_limit_for_user(user)
     if not period_start or not period_end or limit <= 0:
-        raise TTSRequestForbidden("Abonamentul nu are o perioadă de facturare activă.")
+        raise TTSRequestForbidden("Generarea audio nu are o cotă activă pentru contul tău.")
 
     posts = db.query(models.Post).filter(models.Post.id.in_(unique_ids)).all()
     posts_by_id = {post.id: post for post in posts}
@@ -199,6 +202,17 @@ def request_tts_for_posts(db: Session, user: models.User, post_ids: list[int]) -
                     "post_id": post.id,
                     "title": post.title,
                     "status": existing.status,
+                    "audio_id": existing.id,
+                    "character_count": int(existing.tts_character_count or tts_character_count_for_post(post)),
+                }
+            )
+            continue
+        if existing and existing.status == "failed" and _tts_audio_is_retrying(db, existing):
+            skipped.append(
+                {
+                    "post_id": post.id,
+                    "title": post.title,
+                    "status": "pending",
                     "audio_id": existing.id,
                     "character_count": int(existing.tts_character_count or tts_character_count_for_post(post)),
                 }
@@ -262,7 +276,12 @@ def strip_html(value: str | None) -> str:
     return text.strip()
 
 
-def synthesize_text(text: str) -> tuple[bytes, str]:
+def synthesize_text(
+    text: str,
+    *,
+    audio_id: Optional[int] = None,
+    post_id: Optional[int] = None,
+) -> tuple[bytes, str]:
     from google.api_core import exceptions as google_exceptions
     from google.api_core.client_options import ClientOptions
     from google.cloud import texttospeech
@@ -287,12 +306,24 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
     chunks = split_text_for_tts(text)
     audio_parts: list[bytes] = []
     max_attempts = max(1, int(os.getenv("GOOGLE_TTS_MAX_ATTEMPTS", "3")))
-    for chunk in chunks:
+    total_chunks = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        chunk_bytes = _byte_len(chunk)
         input_kwargs = {"text": chunk}
         if style_prompt:
             input_kwargs["prompt"] = style_prompt
         for attempt in range(1, max_attempts + 1):
             try:
+                logger.info(
+                    "TTS chunk synthesis audio_id=%s post_id=%s chunk=%s/%s bytes=%s attempt=%s/%s",
+                    audio_id,
+                    post_id,
+                    index,
+                    total_chunks,
+                    chunk_bytes,
+                    attempt,
+                    max_attempts,
+                )
                 response = client.synthesize_speech(
                     input=texttospeech.SynthesisInput(**input_kwargs),
                     voice=voice,
@@ -303,7 +334,18 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
                 google_exceptions.ServiceUnavailable,
                 google_exceptions.DeadlineExceeded,
                 google_exceptions.ResourceExhausted,
-            ):
+            ) as exc:
+                logger.warning(
+                    "Retryable TTS chunk failure audio_id=%s post_id=%s chunk=%s/%s bytes=%s attempt=%s/%s error=%s",
+                    audio_id,
+                    post_id,
+                    index,
+                    total_chunks,
+                    chunk_bytes,
+                    attempt,
+                    max_attempts,
+                    exc,
+                )
                 if attempt >= max_attempts:
                     raise
                 time.sleep(min(2 ** (attempt - 1), 8))
@@ -312,7 +354,7 @@ def synthesize_text(text: str) -> tuple[bytes, str]:
 
 
 def split_text_for_tts(text: str) -> list[str]:
-    max_bytes = int(os.getenv("GOOGLE_TTS_MAX_BYTES", os.getenv("GOOGLE_TTS_MAX_CHARS", "3800")))
+    max_bytes = int(os.getenv("GOOGLE_TTS_MAX_BYTES", os.getenv("GOOGLE_TTS_MAX_CHARS", "3200")))
     paragraphs = [p.strip() for p in text.splitlines() if p.strip()]
     chunks: list[str] = []
     current = ""
@@ -394,6 +436,7 @@ def create_author_recording(
     post: models.Post,
     content: bytes,
     content_type: str,
+    requester_user_id: int | None = None,
 ) -> models.PostAudio:
     backend, key, byte_size = audio_storage.save_audio_bytes(
         post_id=post.id,
@@ -404,6 +447,7 @@ def create_author_recording(
     audio = crud.create_post_audio(
         db,
         post_id=post.id,
+        requester_user_id=requester_user_id,
         source="author",
         status="pending",
         storage_backend=backend,
@@ -413,6 +457,7 @@ def create_author_recording(
         moderation_status="pending",
         language_code=os.getenv("GOOGLE_STT_LANGUAGE_CODE", "ro-RO"),
     )
+    crud.cancel_non_ready_author_audio_for_post(db, post.id, exclude_audio_id=audio.id)
     from . import ai_queue
 
     ai_queue.enqueue_author_audio_moderation_job(db, audio)
@@ -563,8 +608,16 @@ def post_audio_status_payload(
             "available": False,
             "can_listen": False,
             "requires_audio_tier": False,
+            "author_audio_can_upload": False,
             "message": "Postarea nu a fost găsită",
         }
+    author_audio = crud.get_latest_author_audio_for_post(db, post_id)
+    author_can_upload = bool(
+        current_user
+        and post.user_id == current_user.id
+        and current_user.has_author_audio_access
+        and post.moderation_status == "approved"
+    )
     if post.moderation_status != "approved":
         return {
             "available": False,
@@ -573,33 +626,56 @@ def post_audio_status_payload(
             "status": "post_pending",
             "title": post.title,
             "author_username": post.owner.username if post.owner else None,
+            "author_audio_can_upload": False,
+            "author_audio_status": author_audio.status if author_audio else "missing",
+            "author_audio_message": author_audio_status_message(author_audio),
             "message": "Audio disponibil după aprobarea postării",
         }
     audio = crud.get_best_audio_for_post(db, post_id)
     latest = audio or crud.get_latest_audio_for_post(db, post_id)
     if latest and latest.source == "tts" and latest.requester_user_id is None and latest.status in {"pending", "processing"}:
         latest = None
+    latest_status = _effective_tts_audio_status(db, latest)
     can_listen = audio is not None
     payload = {
         "available": audio is not None,
         "can_listen": can_listen,
         "requires_audio_tier": False,
-        "status": latest.status if latest else "missing",
+        "status": latest_status if latest else "missing",
         "source": latest.source if latest else None,
         "audio_id": audio.id if audio else None,
         "playback_url": audio_storage.playback_url(audio) if audio else None,
         "content_type": audio.content_type if audio else None,
         "title": post.title,
         "author_username": post.owner.username if post.owner else None,
+        "author_audio_can_upload": author_can_upload,
+        "author_audio_status": author_audio.status if author_audio else "missing",
+        "author_audio_message": author_audio_status_message(author_audio),
     }
     if not audio:
-        payload["message"] = audio_status_message(latest)
+        payload["message"] = audio_status_message(latest, retrying=_tts_audio_is_retrying(db, latest))
     return payload
 
 
-def audio_status_message(audio: Optional[models.PostAudio]) -> str:
+def _tts_audio_is_retrying(db: Session, audio: Optional[models.PostAudio]) -> bool:
+    if not audio or audio.source != "tts":
+        return False
+    if audio.status == "failed":
+        return crud.has_active_tts_audio_job(db, audio.id)
+    return bool(audio.status == "pending" and audio.error_message and crud.has_active_tts_audio_job(db, audio.id))
+
+
+def _effective_tts_audio_status(db: Session, audio: Optional[models.PostAudio]) -> Optional[str]:
+    if _tts_audio_is_retrying(db, audio):
+        return "pending"
+    return audio.status if audio else None
+
+
+def audio_status_message(audio: Optional[models.PostAudio], *, retrying: bool = False) -> str:
     if not audio:
         return "Nu există încă fișier audio pentru acest text."
+    if retrying:
+        return "Generarea audio se reîncearcă."
     if audio.source == "author" and audio.status in ("pending", "processing"):
         return "Înregistrarea audio este în curs de transcriere și moderare."
     if audio.status == "pending":
@@ -617,34 +693,76 @@ def audio_status_message(audio: Optional[models.PostAudio]) -> str:
     return "Audio indisponibil momentan."
 
 
+def author_audio_status_message(audio: Optional[models.PostAudio]) -> str:
+    if not audio:
+        return "Nu ai încărcat încă o lectură de autor pentru acest text."
+    if audio.status in ("pending", "processing"):
+        return "Înregistrarea audio este în curs de transcriere și moderare."
+    if audio.status == "ready":
+        return "Lectura ta de autor este publicată."
+    if audio.status == "flagged":
+        return "Lectura ta este în revizuire."
+    if audio.status == "rejected":
+        return "Lectura ta a fost respinsă."
+    if audio.status == "failed":
+        return "Procesarea înregistrării audio a eșuat."
+    if audio.status == "cancelled":
+        return "Această încărcare a fost înlocuită."
+    return audio_status_message(audio)
+
+
 def post_audio_summary(db: Session, post: models.Post) -> dict:
     audio = crud.get_best_audio_for_post(db, post.id)
     latest = audio or crud.get_latest_audio_for_post(db, post.id)
+    author_audio = crud.get_latest_author_audio_for_post(db, post.id)
     if latest and latest.source == "tts" and latest.requester_user_id is None and latest.status in {"pending", "processing"}:
         latest = None
+    latest_status = _effective_tts_audio_status(db, latest)
     return {
         "audio_available": audio is not None,
-        "audio_status": latest.status if latest else "missing",
+        "audio_status": latest_status if latest else "missing",
         "audio_source": latest.source if latest else None,
         "audio_id": audio.id if audio else None,
         "audio_playback_url": audio_storage.playback_url(audio) if audio else None,
         "audio_tts_character_count": tts_character_count_for_post(post),
+        "author_audio_status": author_audio.status if author_audio else "missing",
+        "author_audio_message": author_audio_status_message(author_audio),
     }
 
 
-def audio_track_payload(audio: models.PostAudio) -> dict:
+def audio_track_payload(
+    audio: models.PostAudio,
+    current_user: Optional[models.User] = None,
+    db: Optional[Session] = None,
+) -> dict:
     post = audio.post
+    owner = post.owner if post else None
+    author_id = owner.id if owner else None
+    viewer_following = False
+    viewer_friendship_status = "none"
+    viewer_friendship_id = None
+    if db is not None and current_user and author_id:
+        viewer_friendship_status = crud.get_friendship_status_for_viewer(db, current_user.id, author_id)
+        if current_user.id != author_id:
+            viewer_following = crud.is_following(db, current_user.id, author_id)
+            friendship = crud.get_friendship_between(db, current_user.id, author_id)
+            viewer_friendship_id = friendship.id if friendship else None
+
     return {
         "audio_id": audio.id,
         "post_id": post.id,
         "title": post.title,
         "slug": post.slug,
-        "author_username": post.owner.username if post.owner else "",
+        "author_id": author_id,
+        "author_username": owner.username if owner else "",
         "category": post.category,
         "source": audio.source,
         "playback_url": audio_storage.playback_url(audio),
         "content_type": audio.content_type,
         "duration_seconds": audio.duration_seconds,
+        "viewer_following": viewer_following,
+        "viewer_friendship_status": viewer_friendship_status,
+        "viewer_friendship_id": viewer_friendship_id,
     }
 
 
@@ -674,17 +792,106 @@ def random_listen_audio_track(
     ) or audio
 
 
-def record_listen_seconds(
+def random_author_listen_audio_track(
     db: Session,
     user: models.User,
+    username: str,
+    mode: str,
+) -> models.PostAudio:
+    if not user or not user.has_audio_access:
+        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
+    normalized_mode = normalize_listen_mode(mode)
+    author = crud.get_user_by_username(db, username=username)
+    if not author:
+        raise AudioListenNotFound("Autorul nu a fost găsit.")
+    audio = crud.get_random_ready_audio_for_author_listen_mode(db, author.id, normalized_mode)
+    if not audio:
+        raise AudioListenNotFound("Nu există audio disponibil pentru acest autor.")
+    return (
+        db.query(models.PostAudio)
+        .options(joinedload(models.PostAudio.post).joinedload(models.Post.owner))
+        .filter(models.PostAudio.id == audio.id)
+        .first()
+    ) or audio
+
+
+def audio_playlist_summary_payload(db: Session, playlist: models.AudioPlaylist) -> dict:
+    items = getattr(playlist, "items", None)
+    item_count = len(items) if items is not None else len(crud.get_audio_playlist_items(db, playlist.id))
+    return {
+        "id": playlist.id,
+        "owner_id": playlist.owner_id,
+        "title": playlist.title,
+        "item_count": item_count,
+        "created_at": playlist.created_at,
+        "updated_at": playlist.updated_at,
+    }
+
+
+def audio_playlist_item_payload(db: Session, item: models.AudioPlaylistItem) -> dict:
+    post = item.post
+    audio = crud.get_best_audio_for_post(db, item.post_id)
+    return {
+        "id": item.id,
+        "playlist_id": item.playlist_id,
+        "post_id": item.post_id,
+        "position": item.position,
+        "title": post.title if post else "",
+        "slug": post.slug if post else "",
+        "author_id": post.owner.id if post and post.owner else None,
+        "author_username": post.owner.username if post and post.owner else "",
+        "category": post.category if post else None,
+        "audio_available": bool(audio and post and post.moderation_status == "approved"),
+        "audio_id": audio.id if audio else None,
+        "playback_url": audio_storage.playback_url(audio) if audio else None,
+        "created_at": item.created_at,
+    }
+
+
+def audio_playlist_detail_payload(db: Session, playlist: models.AudioPlaylist) -> dict:
+    items = crud.get_audio_playlist_items(db, playlist.id)
+    return {
+        **audio_playlist_summary_payload(db, playlist),
+        "items": [audio_playlist_item_payload(db, item) for item in items],
+    }
+
+
+def audio_playlist_playback_payload(
+    db: Session,
+    playlist: models.AudioPlaylist,
+    current_user: Optional[models.User] = None,
+) -> dict:
+    tracks = []
+    for item in crud.get_audio_playlist_items(db, playlist.id):
+        post = item.post
+        if not post or post.moderation_status != "approved":
+            continue
+        audio = crud.get_best_audio_for_post(db, post.id)
+        if not audio:
+            continue
+        refreshed = (
+            db.query(models.PostAudio)
+            .options(joinedload(models.PostAudio.post).joinedload(models.Post.owner))
+            .filter(models.PostAudio.id == audio.id)
+            .first()
+        ) or audio
+        tracks.append(audio_track_payload(refreshed, current_user=current_user, db=db))
+    return {
+        "playlist_id": playlist.id,
+        "title": playlist.title,
+        "tracks": tracks,
+    }
+
+
+def record_listen_seconds(
+    db: Session,
+    user: Optional[models.User],
     *,
     event_id: str,
     audio_id: int,
     seconds: int,
     mode: str,
 ) -> dict:
-    if not user or not user.has_audio_access:
-        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
     normalized_mode = normalize_listen_mode(mode)
     clean_event_id = (event_id or "").strip()
     if not clean_event_id:
@@ -703,7 +910,7 @@ def record_listen_seconds(
         db,
         event_id=clean_event_id,
         audio=audio,
-        listener_user_id=user.id,
+        listener_user_id=user.id if user else None,
         seconds=int(seconds),
         mode=normalized_mode,
     )

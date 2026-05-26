@@ -109,7 +109,6 @@ def build_e2e_env(backend_port: int, frontend_port: int) -> dict[str, str]:
             "STATS_ENABLED": "false",
             "BOT_DETECTION_ENABLED": "false",
             "MODERATION_ENABLED": "false",
-            "THEME_ANALYSIS_ENABLED": "false",
             "AI_CRITIC_ENABLED": "false",
             "EMAILS_ENABLED": "false",
             "AUDIO_STORAGE_BACKEND": "local",

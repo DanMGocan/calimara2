@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { FiBookOpen } from "react-icons/fi";
 import { fetchPostDetail, postPdfUrl } from "../api/public.js";
-import { TEXT_MODERATION_MESSAGE } from "../app/constants.js";
+import { MODERATING_STATUSES, TEXT_MODERATION_MESSAGE } from "../app/constants.js";
 import { PieceCol, postHref, postToPiece } from "../app/content.jsx";
 import { formatNumber } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, StatusPanel } from "../app/layout.jsx";
 import { mainPath } from "../app/paths.js";
 import { PostPromotionMenu } from "../app/post-actions.jsx";
+import { postSeo, usePageSeo } from "../app/seo.js";
 
 const DESKTOP_READER_QUERY = "(min-width: 821px)";
 
@@ -64,6 +65,7 @@ function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPost
   const pdfHref = data?.blog_owner?.username && data?.post?.slug
     ? postPdfUrl(data.blog_owner.username, data.post.slug)
     : "#";
+  usePageSeo(data ? postSeo(data.post, data.blog_owner) : null, [data?.post?.id, data?.post?.updated_at, data?.blog_owner?.username]);
 
   useEffect(() => {
     const visiblePostId = data?.post?.moderation_status === "approved" ? data.post.id : null;
@@ -98,15 +100,13 @@ function PostDetailView({ username, slug, user, onAuthPostIdChange, onFooterPost
       {piece ? (
         <div className={`piece-wrap ${data.post.super_likes_count > 0 ? "has-super-like" : ""}`}>
           <div className="detail-stack">
-            {data.post.moderation_status !== "approved" ? (
-              <StatusPanel title="Text în curs de moderare">{TEXT_MODERATION_MESSAGE}</StatusPanel>
-            ) : null}
             <PieceCol
               piece={piece}
               animKey={slug}
               titleAction={data.post.moderation_status === "approved" ? (
                 <PostPromotionMenu post={actionPost} author={data.blog_owner} user={user} />
               ) : null}
+              moderationOverlayText={MODERATING_STATUSES.has(data.post.moderation_status) ? TEXT_MODERATION_MESSAGE : ""}
               readerFooter={desktopReaderSurface ? detailExtras : null}
             />
             {desktopReaderSurface ? null : detailExtras}

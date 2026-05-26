@@ -6,8 +6,21 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, fie
 from .common import *
 from .users import UserBase
 
+
+def _clean_message_content(value: str) -> str:
+    content = value.strip()
+    if not content:
+        raise ValueError("Mesajul nu poate fi gol")
+    return content
+
+
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def clean_content(cls, value: str) -> str:
+        return _clean_message_content(value)
 
 
 class MessageToUser(BaseModel):
@@ -20,6 +33,11 @@ class MessageToUser(BaseModel):
         if isinstance(data, dict) and "recipient_username" not in data and "username" in data:
             return {**data, "recipient_username": data["username"]}
         return data
+
+    @field_validator("content")
+    @classmethod
+    def clean_content(cls, value: str) -> str:
+        return _clean_message_content(value)
 
 
 class MessageBase(BaseModel):
@@ -62,4 +80,3 @@ class ConversationSummary(BaseModel):
 # ===================================
 # MODERATION & ADMIN SCHEMAS
 # ===================================
-

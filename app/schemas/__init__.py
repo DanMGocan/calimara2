@@ -1,12 +1,12 @@
 from .common import PostCategory
-from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, FacebookUserInfo, PasswordRegisterRequest, PasswordLoginRequest, AuthCodeVerifyRequest, PasswordResetRequest, PasswordResetConfirmRequest, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, EmailPreferences, BestFriendsUpdate, FeaturedPostsUpdate, UserPromotionsUpdate
-from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentBase, CommentCreate, Comment, Like
-from .writing import DiacriticsKind, DiacriticsRequest, DiacriticsResponse
+from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, FacebookUserInfo, PasswordRegisterRequest, PasswordLoginRequest, AuthCodeVerifyRequest, PasswordResetRequest, PasswordResetConfirmRequest, InvitationPasswordLoginRequest, PasswordChangeRequest, UserInDB, SocialLinksUpdate, UserProfileSettingsUpdate, EmailPreferences, BestFriendsUpdate, FeaturedPostsUpdate, UserPromotionsUpdate
+from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentReactionType, CommentBase, CommentCreate, Comment, CommentReactionRequest, CommentReactionSummary, CommentReaction, Like
+from .writing import DiacriticsKind, DiacriticsTheatreCharacter, DiacriticsTheatreCharacterResponse, DiacriticsQuota, DiacriticsRequest, DiacriticsResponse, PostFormatRequest, PostFormatResponse
 from .messages import MessageCreate, MessageToUser, MessageBase, Message, ConversationBase, Conversation, ConversationSummary
-from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminPlatformAccessUpdate, AdminPlatformAllowedEmailCreate, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
+from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminStorageObjectRequest, AdminStorageObjectDelete, AdminStorageObjectCleanup, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminPlatformAccessUpdate, AdminPlatformAllowedEmailCreate, AdminInvitationCreate, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
 from .notifications import NotificationResponse
 from .friends import FriendshipStatus, FriendUserRef, FriendshipOut
-from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut
+from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut, GologaniRewardSettingUpdate, GologaniRewardSettingOut
 from .forum import ForumSection, ForumModerationStatus, ForumAuthorRef, ForumThreadCreate, ForumReplyCreate, ForumThreadModerationAction, ForumThreadSummary, ForumReplyOut, ForumThreadDetail
 from .series import SeriesAuthor, SeriesCreate, SeriesUpdate, SeriesSummary, SeriesPostPostRef, SeriesPostEntry, SeriesDetail, SeriesAddPostRequest, SeriesReorderRequest, SeriesMembershipRef
 from .clubs import ClubSpeciality, ClubMemberRole, ClubJoinPolicy, ClubOwnerRef, ClubMemberRef, ClubCreate, ClubUpdate, ClubFeaturedRef, ClubBoardMessageCreate, ClubJoinApplyRequest, ClubBoardAuthorRef, ClubBoardMessageOut, ClubSummary, ClubAchievementOut, ClubDetail, ClubInviteRequest, ClubJoinRespondRequest, ClubMemberRoleUpdate, ClubFeaturedSetRequest, ClubJoinRequestOut, ClubPendingItem
@@ -14,8 +14,9 @@ from .theatre import TheatrePlayStatus, TheatreCharacterStatus, TheatreMemberRol
 from .stafeta import StafetaWorkStatus, StafetaAssignmentStatus, StafetaAssignmentSource, StafetaModerationStatus, StafetaTargetMode, StafetaCreateTargetMode, StafetaAssignmentAction, StafetaListFilter, StafetaUserRef, StafetaParticipationUpdate, StafetaCreate, StafetaSend, StafetaAssignSpecific, StafetaAssignmentRespond, StafetaParticipantOut, StafetaAssignmentOut, StafetaSegmentOut, StafetaWorkSummary, StafetaWorkDetail, StafetaWorkList
 from .super_likes import SuperLike, SuperLikeQuota
 from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus
-from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse
-from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackOut
+from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioPlaylistCreate, AudioPlaylistUpdate, AudioPlaylistAddPostRequest, AudioPlaylistSummary, AudioPlaylistItem, AudioPlaylistDetail, AudioPlaylistList, AudioPlaylistPlayback, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse
+from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackReplyCreate, SiteFeedbackOut
+from .portability import DataPortabilityProfile, DataPortabilityMedia, DataPortabilityPostMetrics, DataPortabilityAudioLink, DataPortabilityPost, DataExportManifest, DataImportCreatedPost, DataImportReport
 
 __all__ = [
     "PostCategory",
@@ -29,6 +30,8 @@ __all__ = [
     "AuthCodeVerifyRequest",
     "PasswordResetRequest",
     "PasswordResetConfirmRequest",
+    "InvitationPasswordLoginRequest",
+    "PasswordChangeRequest",
     "UserInDB",
     "SocialLinksUpdate",
     "UserProfileSettingsUpdate",
@@ -49,13 +52,22 @@ __all__ = [
     "PostReportCreate",
     "PostReportReview",
     "PostReport",
+    "CommentReactionType",
     "CommentBase",
     "CommentCreate",
     "Comment",
+    "CommentReactionRequest",
+    "CommentReactionSummary",
+    "CommentReaction",
     "Like",
     "DiacriticsKind",
+    "DiacriticsTheatreCharacter",
+    "DiacriticsTheatreCharacterResponse",
+    "DiacriticsQuota",
     "DiacriticsRequest",
     "DiacriticsResponse",
+    "PostFormatRequest",
+    "PostFormatResponse",
     "MessageCreate",
     "MessageToUser",
     "MessageBase",
@@ -69,11 +81,15 @@ __all__ = [
     "ModerationActionRequest",
     "SuspendUserRequest",
     "AdminReasonRequest",
+    "AdminStorageObjectRequest",
+    "AdminStorageObjectDelete",
+    "AdminStorageObjectCleanup",
     "AdminRoleUpdate",
     "AdminPremiumUpdate",
     "AdminGologaniAdjustment",
     "AdminPlatformAccessUpdate",
     "AdminPlatformAllowedEmailCreate",
+    "AdminInvitationCreate",
     "AdminEmailAudience",
     "AdminEmailPreviewRequest",
     "AdminEmailCampaignCreate",
@@ -92,6 +108,8 @@ __all__ = [
     "ShopState",
     "EquipItemRequest",
     "GologaniTransactionOut",
+    "GologaniRewardSettingUpdate",
+    "GologaniRewardSettingOut",
     "ForumSection",
     "ForumModerationStatus",
     "ForumAuthorRef",
@@ -194,6 +212,14 @@ __all__ = [
     "PostAudioStatus",
     "AudioTrack",
     "SeriesAudioPlaylist",
+    "AudioPlaylistCreate",
+    "AudioPlaylistUpdate",
+    "AudioPlaylistAddPostRequest",
+    "AudioPlaylistSummary",
+    "AudioPlaylistItem",
+    "AudioPlaylistDetail",
+    "AudioPlaylistList",
+    "AudioPlaylistPlayback",
     "AudioConversionQuota",
     "TTSConversionRequest",
     "TTSConversionItem",
@@ -204,5 +230,14 @@ __all__ = [
     "SiteFeedbackStatus",
     "SiteFeedbackCreate",
     "SiteFeedbackUpdate",
+    "SiteFeedbackReplyCreate",
     "SiteFeedbackOut",
+    "DataPortabilityProfile",
+    "DataPortabilityMedia",
+    "DataPortabilityPostMetrics",
+    "DataPortabilityAudioLink",
+    "DataPortabilityPost",
+    "DataExportManifest",
+    "DataImportCreatedPost",
+    "DataImportReport",
 ]

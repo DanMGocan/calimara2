@@ -24,6 +24,14 @@ export function fetchAdminShopItems() {
   return api.get("/api/moderare/magazin/obiecte");
 }
 
+export function fetchAdminGologaniRewards() {
+  return api.get("/api/moderare/gologani/recompense");
+}
+
+export function updateAdminGologaniReward(eventType, data) {
+  return api.put(`/api/moderare/gologani/recompense/${encodeURIComponent(eventType)}`, data);
+}
+
 export function createAdminShopItem(data) {
   return api.post("/api/moderare/magazin/obiecte", data);
 }
@@ -31,4 +39,3 @@ export function createAdminShopItem(data) {
 export function updateAdminShopItem(itemId, data) {
   return api.put(`/api/moderare/magazin/obiecte/${encodeURIComponent(itemId)}`, data);
 }
-

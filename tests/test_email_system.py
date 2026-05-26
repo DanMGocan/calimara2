@@ -210,6 +210,61 @@ class EmailSystemTests(unittest.TestCase):
         self.assertEqual(row.status, "sent")
         self.assertEqual(row.provider_message_id, "message-id-admin")
 
+    def test_admin_notification_test_email_sends_to_contact_address(self):
+        admin = self.make_user("adminsender", is_admin=True)
+
+        with patch.dict(os.environ, {"EMAILS_ENABLED": "True"}), patch.object(
+            email_service,
+            "_send_with_brevo",
+            return_value="message-id-test-notification",
+        ):
+            result = admin_routes.send_admin_notification_test_email(
+                request=None,
+                db=self.db,
+                current_user=admin,
+            )
+
+        row = self.db.query(models.EmailOutbox).one()
+        self.assertTrue(result["sent"])
+        self.assertEqual(result["recipient_email"], "contact@calimara.ro")
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(row.recipient_email, "contact@calimara.ro")
+        self.assertEqual(row.email_type, email_service.EMAIL_TYPE_MENTION)
+        self.assertEqual(row.subject, "adminsender te-a menționat")
+        self.assertIn("adminsender te-a menționat pe călimara.ro.", row.text_content)
+        self.assertIn("Ai fost menționat într-o conversație.", row.text_content)
+        self.assertIn("https://calimara.ro/discutii", row.text_content)
+        self.assertIn("Vezi mențiunea", row.html_content)
+        self.assertNotIn("a declanșat un test", row.text_content)
+        self.assertEqual(row.status, "sent")
+        self.assertEqual(row.provider_message_id, "message-id-test-notification")
+        self.assertTrue(row.extra_data["test"])
+        self.assertEqual(row.extra_data["source_type"], "admin_notification_test")
+
+    def test_system_alert_email_dedupes_within_cooldown_window(self):
+        with patch.dict(os.environ, {"SYSTEM_ALERT_COOLDOWN_MINUTES": "30"}):
+            first = email_service.queue_system_alert_email(
+                self.db,
+                service="Diacritice",
+                summary="Provider outage",
+                error_message="Mistral 503",
+                context={"path": "/api/scriere/diacritice"},
+            )
+            second = email_service.queue_system_alert_email(
+                self.db,
+                service="Diacritice",
+                summary="Provider outage",
+                error_message="Mistral 503",
+                context={"path": "/api/scriere/diacritice"},
+            )
+
+        rows = self.db.query(models.EmailOutbox).filter_by(email_type=email_service.EMAIL_TYPE_SYSTEM_ALERT).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(rows[0].recipient_email, "contact@calimara.ro")
+        self.assertEqual(rows[0].extra_data["service"], "Diacritice")
+        self.assertIn("Mistral 503", rows[0].text_content)
+
     def test_admin_campaign_filters_by_posts_and_opt_outs(self):
         admin = self.make_user("admin", is_admin=True, is_moderator=True)
         target = self.make_user("target")

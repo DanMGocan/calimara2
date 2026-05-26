@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app import rich_text, schemas
+from app.schemas.common import PROFILE_DESCRIPTION_CHARACTER_LIMIT
 
 
 def test_sanitize_rich_text_keeps_literary_formatting_and_strips_unsafe_html():
@@ -51,18 +52,42 @@ def test_poetry_line_breaks_are_preserved_inside_paragraphs():
     assert rich_text.rich_text_to_plain_text(content) == "vers 1\nvers 2\n\nstrofa 2"
 
 
+def test_paste_artifacts_are_removed_from_rich_text():
+    content = "<p>Cu\u200bv\u00adânt&nbsp;&nbsp;curat</p><p>\ufeffAlt rând</p>"
+    sanitized = rich_text.sanitize_rich_text(content)
+
+    assert sanitized == "<p>Cuvânt  curat</p><p>Alt rând</p>"
+    assert rich_text.rich_text_to_plain_text(content) == "Cuvânt curat\n\nAlt rând"
+
+
 def test_profile_subtitle_is_sanitized_and_limited_by_visible_text():
+    assert PROFILE_DESCRIPTION_CHARACTER_LIMIT == 400
+    valid_description = "x" * PROFILE_DESCRIPTION_CHARACTER_LIMIT
+    too_long_description = "x" * (PROFILE_DESCRIPTION_CHARACTER_LIMIT + 1)
     setup = schemas.UserSetup(
         username="autor",
         avatar_seed="autor-shapes",
         subtitle='<p>Bio <strong onclick="bad()">scurt</strong></p>',
     )
+    setup_at_limit = schemas.UserSetup(
+        username="autor",
+        avatar_seed="autor-shapes",
+        subtitle=f"<p>{valid_description}</p>",
+    )
 
     assert setup.subtitle == "<p>Bio <strong>scurt</strong></p>"
-    assert schemas.UserProfileUpdate(subtitle=f"<p>{'x' * 1000}</p>").subtitle == f"<p>{'x' * 1000}</p>"
+    assert setup_at_limit.subtitle == f"<p>{valid_description}</p>"
+    assert schemas.UserProfileUpdate(subtitle=f"<p>{valid_description}</p>").subtitle == f"<p>{valid_description}</p>"
+    assert schemas.DiacriticsRequest(kind="profile_description", content=f"<p>{valid_description}</p>").content == f"<p>{valid_description}</p>"
 
     with pytest.raises(ValidationError):
-        schemas.UserProfileUpdate(subtitle=f"<p>{'x' * 1001}</p>")
+        schemas.UserSetup(username="autor", avatar_seed="autor-shapes", subtitle=f"<p>{too_long_description}</p>")
+
+    with pytest.raises(ValidationError):
+        schemas.UserProfileUpdate(subtitle=f"<p>{too_long_description}</p>")
+
+    with pytest.raises(ValidationError):
+        schemas.DiacriticsRequest(kind="profile_description", content=f"<p>{too_long_description}</p>")
 
 
 def test_post_content_limits_count_visible_text_not_html_tags():
@@ -125,6 +150,81 @@ def test_comment_and_title_limits_are_enforced():
 
     with pytest.raises(ValidationError):
         schemas.ForumThreadCreate(section="general", title="x" * 121, content="valid")
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: schemas.PostCreate(title="   ", category="poezie", content="valid"),
+        lambda: schemas.ForumThreadCreate(section="general", title="   ", content="valid"),
+        lambda: schemas.ClubCreate(title="   ", speciality="poezie"),
+        lambda: schemas.ClubBoardMessageCreate(title="Atelier", content="   "),
+        lambda: schemas.ClubInviteRequest(username="   "),
+        lambda: schemas.SeriesCreate(title="   "),
+        lambda: schemas.TheatrePlayCreate(title="   "),
+        lambda: schemas.TheatreCharacterInput(name="   ", description="Descriere"),
+        lambda: schemas.TheatreCharacterCreate(name="Personaj", description="   "),
+        lambda: schemas.TheatreSceneCreate(title="   ", content="valid", first_character_id=1),
+        lambda: schemas.StafetaCreate(title="   ", initial_content="valid"),
+        lambda: schemas.StafetaAssignSpecific(username="   "),
+        lambda: schemas.ShopItemCreate(slug="obiect", name="   ", price=1),
+        lambda: schemas.AdminReasonRequest(reason="   "),
+        lambda: schemas.AdminEmailCampaignCreate(subject="   ", html_content="valid"),
+    ],
+)
+def test_required_schema_strings_reject_whitespace_only_values(factory):
+    with pytest.raises(ValidationError):
+        factory()
+
+
+def test_required_schema_strings_are_trimmed_before_length_validation():
+    title = "x" * 120
+    post = schemas.PostCreate(title=f" {title} ", category="poezie", content="valid")
+    forum_thread = schemas.ForumThreadCreate(section="general", title="  Discuție  ", content="valid")
+    club = schemas.ClubCreate(title="  Atelier  ", speciality="poezie")
+    club_message = schemas.ClubBoardMessageCreate(title="  Fir  ", content="  Mesaj  ")
+    series = schemas.SeriesCreate(title="  Serie  ", description="  Descriere  ")
+    theatre = schemas.TheatrePlayCreate(
+        title="  Piesă  ",
+        characters=[schemas.TheatreCharacterInput(name="  Autor  ", description="  Descriere  ")],
+    )
+    stafeta = schemas.StafetaCreate(title="  Ștafetă  ", initial_content="valid")
+    shop_item = schemas.ShopItemCreate(slug=" obiect ", name="  Nume  ", description="  Descriere  ", price=1)
+    admin_reason = schemas.AdminReasonRequest(reason="  Motiv  ")
+    email_campaign = schemas.AdminEmailCampaignCreate(subject="  Subiect  ", html_content="valid")
+
+    assert post.title == title
+    assert forum_thread.title == "Discuție"
+    assert club.title == "Atelier"
+    assert club_message.title == "Fir"
+    assert club_message.content == "Mesaj"
+    assert series.title == "Serie"
+    assert series.description == "Descriere"
+    assert theatre.title == "Piesă"
+    assert theatre.characters[0].name == "Autor"
+    assert theatre.characters[0].description == "Descriere"
+    assert stafeta.title == "Ștafetă"
+    assert shop_item.slug == "obiect"
+    assert shop_item.name == "Nume"
+    assert shop_item.description == "Descriere"
+    assert admin_reason.reason == "Motiv"
+    assert email_campaign.subject == "Subiect"
+
+
+def test_diacritics_theatre_payload_trims_optional_text_before_empty_check():
+    with pytest.raises(ValidationError):
+        schemas.DiacriticsRequest(kind="theatre_play", title="   ")
+
+    request = schemas.DiacriticsRequest(
+        kind="theatre_play",
+        title="  Piesa  ",
+        description="  Descriere  ",
+        characters=[{"index": 0, "description": "  Personaj  "}],
+    )
+
+    assert request.title == "Piesa"
+    assert request.description == "Descriere"
+    assert request.characters[0].description == "Personaj"
 
 
 def test_diacritics_post_requests_use_selected_category_limit():

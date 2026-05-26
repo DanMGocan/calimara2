@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the Super-apreciez feature end-to-end: a weekly-quota super-like reaction with visual golden-border treatment on recipient posts, gated by a Stripe-powered €3.99/mo Premium tier.
+**Goal:** Ship the Super-apreciez feature end-to-end: a monthly-quota super-like reaction with visual golden-border treatment on recipient posts, gated by Stripe-powered Premium tiers. Current quotas are documented in `docs/superpowers/specs/2026-04-22-super-apreciez-design.md`.
 
-**Architecture:** Server derives weekly quota from row counts (no stored wallet), stores Stripe customer/subscription IDs + `premium_until` on the `User`, and reconciles state via signed Stripe webhooks with event-ID idempotency. Frontend gets a `<SuperLikeButton>` sibling to the existing like button with optimistic updates, plus a `/premium` page that redirects to Stripe Checkout/Portal.
+**Architecture:** Server derives monthly quota from row counts (no stored wallet), stores Stripe customer/subscription IDs + `premium_until` on the `User`, and reconciles state via signed Stripe webhooks with event-ID idempotency. Frontend gets a `<SuperLikeButton>` sibling to the existing like button with optimistic updates, plus a `/premium` page that redirects to Stripe Checkout/Portal.
 
 **Tech Stack:** FastAPI, SQLAlchemy (Mapped annotations), PostgreSQL (prod) / SQLite (tests), Pydantic v2, React + TanStack Query, Stripe Python SDK ≥10.
 
@@ -16,7 +16,7 @@
 - `app/routers/super_like_routes.py` — super-apreciez endpoints
 - `app/routers/premium_routes.py` — Stripe checkout / portal / webhook endpoints
 - `app/stripe_service.py` — Stripe SDK wrapper, env loading, `_client` singleton
-- `app/week_util.py` — `start_of_iso_week_utc()` and `end_of_iso_week_utc()` helpers
+- `app/week_util.py` — calendar period helpers for super-like quotas and related tests
 - `tests/test_super_apreciez.py` — unit tests for super-like rules + quota
 - `tests/test_premium_webhook.py` — webhook signature + idempotency tests
 
@@ -24,7 +24,7 @@
 - `schema.sql` — add `super_likes`, `stripe_events` tables; add Stripe columns to `users`
 - `app/models.py` — `SuperLike` model, Post/User additions
 - `app/schemas.py` — `SuperLike`, `SuperLikeQuota`, `PremiumCheckoutResponse`, add `super_likes_count`/`viewer_super_liked` to `Post`
-- `app/crud.py` — `create_super_like`, `delete_super_like`, `get_user_weekly_super_like_count`, `get_super_likes_count_for_post`, `user_super_liked_post`, `upsert_stripe_customer_id`, `get_user_by_stripe_customer_id`, `set_premium_from_subscription`
+- `app/crud.py` — `create_super_like`, `delete_super_like`, monthly super-like quota helpers, `get_super_likes_count_for_post`, `user_super_liked_post`, `upsert_stripe_customer_id`, `get_user_by_stripe_customer_id`, `set_premium_from_subscription`
 - `app/routers/post_routes.py` — enrich post responses with new fields
 - `app/routers/api_pages.py` — same enrichment for list endpoints
 - `app/routers/user_routes.py` — include `is_premium`, `premium_until` in `/api/users/me`

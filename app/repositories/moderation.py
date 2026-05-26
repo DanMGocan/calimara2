@@ -4,11 +4,12 @@ from ._shared import *
 from .economy import award_content_approved
 from .forum import _notify_forum_reply_approved
 from .mentions import notify_mentions_for_comment, notify_mentions_for_forum_reply, notify_mentions_for_forum_thread
-from .notifications import create_notification
+from .notifications import create_notification, notify_followers_of_new_post
 from .stafeta import apply_stafeta_segment_moderation_result
 from .theatre import apply_theatre_entry_moderation_result
 from ..achievements import emit_post_approved
 from .. import email_service
+from ..utils import post_public_url
 
 def get_posts_for_moderation(db: Session, status_filter: Optional[str] = None, skip: int = 0, limit: int = 50):
     query = db.query(models.Post)
@@ -159,6 +160,11 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
             award_content_approved(db, content_type, content)
             if content_type == "post":
                 emit_post_approved(db, content)
+                try:
+                    notify_followers_of_new_post(db, content)
+                except Exception:
+                    db.rollback()
+                    logger.exception("Could not notify followers for approved post %s", content.id)
 
         if content_type == "forum_reply" and not was_forum_reply_approved:
             _notify_forum_reply_approved(db, content)
@@ -212,8 +218,11 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
                 else "Comentariul"
             )
             link = None
+            notification_extra = None
             if content_type == "post":
-                link = f"/{content.slug}"
+                author = content.owner or db.query(models.User).filter(models.User.id == content.user_id).first()
+                link = post_public_url(author, content.slug) if author else None
+                notification_extra = {"post_id": content.id, "post_slug": content.slug}
             elif content_type == "forum_thread":
                 link = f"/discutii/{content.slug}"
             elif content_type == "forum_reply" and content.thread:
@@ -222,7 +231,8 @@ def approve_content(db: Session, content_type: str, content_id: int, moderator_i
                 db=db, user_id=notification_user_id, notif_type="moderation_approved",
                 title="Conținut aprobat",
                 message=f"{content_label} ta a fost aprobată și publicată. {reason}",
-                link=link
+                link=link,
+                extra_data=notification_extra,
             )
         return content
     return None

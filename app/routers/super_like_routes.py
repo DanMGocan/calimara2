@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from .. import auth, crud, models, schemas
 from ..database import get_db
-from ..week_util import end_of_iso_week_utc
 
 router = APIRouter(tags=["super-apreciez"])
 
@@ -47,7 +46,7 @@ def add_super_like(
     except crud.SuperLikeQuotaError:
         raise HTTPException(
             status_code=403,
-            detail="Ai epuizat super-aprecierile pentru această săptămână.",
+            detail="Ai epuizat super-aprecierile pentru această lună.",
             headers={"X-Error-Code": "quota_exhausted"},
         )
 
@@ -74,12 +73,4 @@ def get_quota(
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     user = _require_user(current_user)
-    quota = crud.weekly_quota_for_user(user)
-    used = crud.get_user_weekly_super_like_count(db, user.id)
-    return schemas.SuperLikeQuota(
-        weekly_quota=quota,
-        used_this_week=used,
-        remaining=max(0, quota - used),
-        week_resets_at=end_of_iso_week_utc(),
-        is_premium=user.is_premium,
-    )
+    return schemas.SuperLikeQuota(**crud.super_like_quota_payload(db, user))

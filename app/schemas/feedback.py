@@ -42,6 +42,18 @@ class SiteFeedbackUpdate(BaseModel):
     admin_note: Optional[str] = Field(None, max_length=2000)
 
 
+class SiteFeedbackReplyCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator("content")
+    @classmethod
+    def trim_content(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Răspunsul este obligatoriu.")
+        return trimmed
+
+
 class SiteFeedbackOut(BaseModel):
     id: int
     kind: SiteFeedbackKind
@@ -56,6 +68,8 @@ class SiteFeedbackOut(BaseModel):
     admin_note: Optional[str] = None
     resolved_by: Optional[int] = None
     resolved_at: Optional[datetime] = None
+    support_conversation_id: Optional[int] = None
+    support_started_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

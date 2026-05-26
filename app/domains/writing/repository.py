@@ -1,1 +1,3 @@
-"""Writing domain has no persistence repository yet."""
+"""Domain repository facade."""
+
+from ...repositories.writing import *

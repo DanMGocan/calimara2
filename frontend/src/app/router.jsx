@@ -34,12 +34,15 @@ const ROUTE_COMPONENTS = {
   shop: lazy(() => import("../routes/economy.jsx")),
   inventory: lazy(() => import("../routes/economy.jsx")),
   premium: lazy(() => import("../routes/premium.jsx")),
+  playlists: lazy(() => import("../routes/playlists.jsx")),
+  referrals: lazy(() => import("../routes/referrals.jsx")),
   about: lazy(() => import("../routes/legal.jsx")),
   privacy: lazy(() => import("../routes/legal.jsx")),
   terms: lazy(() => import("../routes/legal.jsx")),
   authLogin: lazy(() => import("../routes/auth.jsx")),
   authSetup: lazy(() => import("../routes/auth.jsx")),
   authCallback: lazy(() => import("../routes/auth.jsx")),
+  invite: lazy(() => import("../routes/auth.jsx")),
   notFound: lazy(() => import("../routes/not-found.jsx"))
 };
 
@@ -86,16 +89,19 @@ export function routeForLocation() {
   if (path === "/magazin") return { name: "shop" };
   if (path === "/inventar") return { name: "inventory" };
   if (path === "/premium") return { name: "premium" };
+  if (path === "/playlisturi") return { name: "playlists" };
+  if (path === "/invitatii") return { name: "referrals" };
   if (path === "/ce-este-calimara") return { name: "about" };
   if (path === "/confidentialitate") return { name: "privacy" };
   if (path === "/termeni") return { name: "terms" };
   if (path === "/autentificare") return { name: "authLogin" };
   if (path === "/autentificare/configurare") return { name: "authSetup" };
   if (path === "/autentificare/raspuns") return { name: "authCallback" };
+  if (path.startsWith("/invitatie/")) return { name: "invite", token: decodeURIComponent(path.split("/")[2] || "") };
   return { name: "notFound" };
 }
 
-export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange }) {
+export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh, onMessagesRefresh, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange, onStartAuthorListening, onStartPlaylistListening }) {
   if (PROTECTED_ROUTES.has(route.name) && !authLoaded) {
     return <PageShell kicker="cont" title="Se verifică sesiunea" sub="Încărcăm starea contului tău." />;
   }
@@ -107,11 +113,15 @@ export function RouteView({ route, user, authLoaded, onUserUpdate, onUserRefresh
     <Component
       route={route}
       user={user}
+      authLoaded={authLoaded}
       onUserUpdate={onUserUpdate}
       onUserRefresh={onUserRefresh}
+      onMessagesRefresh={onMessagesRefresh}
       onAuthPostIdChange={onAuthPostIdChange}
       onLandingStatsChange={onLandingStatsChange}
       onFooterPostActionsChange={onFooterPostActionsChange}
+      onStartAuthorListening={onStartAuthorListening}
+      onStartPlaylistListening={onStartPlaylistListening}
     />
   );
 }

@@ -74,7 +74,6 @@ class ClubFeatureTests(unittest.TestCase):
             content="versuri",
             category=club.speciality,
             moderation_status="approved",
-            theme_analysis_status="completed",
         )
         self.db.add(post)
         self.db.commit()

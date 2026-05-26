@@ -3,7 +3,13 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .common import PostCategory, _sanitize_required_rich_text, _trim_optional_string, _validate_visible_text_limit
+from .common import (
+    PostCategory,
+    _sanitize_required_rich_text,
+    _trim_optional_string,
+    _trim_required_string,
+    _validate_visible_text_limit,
+)
 
 
 STAFETA_TITLE_LIMIT = 160
@@ -43,10 +49,10 @@ class StafetaCreate(BaseModel):
     first_target_mode: StafetaCreateTargetMode = "random"
     assigned_username: Optional[str] = Field(None, max_length=255)
 
-    @field_validator("title")
+    @field_validator("title", mode="before")
     @classmethod
     def trim_title(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, STAFETA_TITLE_LIMIT, "Titlul")
 
     @field_validator("initial_content")
     @classmethod
@@ -89,10 +95,10 @@ class StafetaSend(BaseModel):
 class StafetaAssignSpecific(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
 
-    @field_validator("username")
+    @field_validator("username", mode="before")
     @classmethod
     def trim_username(cls, value: str) -> str:
-        return value.strip()
+        return _trim_required_string(value, 255, "Utilizatorul")
 
 
 class StafetaAssignmentRespond(BaseModel):

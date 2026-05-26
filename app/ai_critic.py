@@ -3,6 +3,8 @@ import logging
 from typing import Optional
 from dotenv import load_dotenv
 
+from .mistral_context import validate_chat_context
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -81,20 +83,27 @@ def _critique_with_anthropic(title: str, content: str) -> Optional[str]:
 def _critique_with_mistral(title: str, content: str) -> Optional[str]:
     if not mistral_client:
         return None
+    messages = [
+        {"role": "system", "content": CRITIC_PROMPT},
+        {"role": "user", "content": _build_user_message(title, content)},
+    ]
+    validate_chat_context(
+        model=FREE_USERS_MODEL,
+        messages=messages,
+        max_output_tokens=AI_CRITIC_MAX_TOKENS,
+        purpose="Critic AI Mistral",
+    )
     response = mistral_client.chat.complete(
         model=FREE_USERS_MODEL,
         max_tokens=AI_CRITIC_MAX_TOKENS,
-        messages=[
-            {"role": "system", "content": CRITIC_PROMPT},
-            {"role": "user", "content": _build_user_message(title, content)},
-        ],
+        messages=messages,
         temperature=0.7,
     )
     text = (response.choices[0].message.content or "").strip()
     return text or None
 
 
-def generate_critique(title: str, content: str, is_premium: bool) -> Optional[str]:
+def generate_critique(title: str, content: str, is_premium: bool, *, raise_on_failure: bool = False) -> Optional[str]:
     """Generate a short literary critique. Returns None on any failure."""
     if not AI_CRITIC_ENABLED:
         return None
@@ -109,6 +118,8 @@ def generate_critique(title: str, content: str, is_premium: bool) -> Optional[st
 
         if not critique:
             logger.warning(f"AI critic ({provider}) returned empty critique")
+            if raise_on_failure:
+                raise RuntimeError(f"AI critic ({provider}) returned empty critique")
             return None
 
         critique = critique.strip().strip('"').strip()
@@ -120,4 +131,6 @@ def generate_critique(title: str, content: str, is_premium: bool) -> Optional[st
 
     except Exception as e:
         logger.error(f"AI critic failed (premium={is_premium}): {e}")
+        if raise_on_failure:
+            raise
         return None

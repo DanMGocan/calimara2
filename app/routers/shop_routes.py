@@ -26,6 +26,28 @@ def _audit_shop_item_change(
     )
 
 
+def _audit_gologani_reward_change(
+    db: Session,
+    request: Request,
+    actor: models.User,
+    *,
+    action: str,
+    setting: models.GologaniRewardSetting,
+) -> None:
+    admin.write_admin_audit_log(
+        db,
+        actor,
+        action=action,
+        target_type="gologani_reward",
+        request=request,
+        extra_data={
+            "event_type": setting.event_type,
+            "amount": setting.amount,
+            "is_active": setting.is_active,
+        },
+    )
+
+
 def _item_payload(item: models.ShopItem, owned_ids=None, equipped_ids=None) -> dict:
     owned_ids = owned_ids or set()
     equipped_ids = equipped_ids or set()
@@ -179,3 +201,27 @@ def admin_update_shop_item_api(
         raise HTTPException(status_code=404, detail="Obiectul nu a fost găsit")
     _audit_shop_item_change(db, request, current_user, action="shop_item_update", item=item)
     return _item_payload(item)
+
+
+@router.get("/api/moderare/gologani/recompense", response_model=list[schemas.GologaniRewardSettingOut])
+def admin_list_gologani_rewards_api(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    return crud.list_gologani_reward_settings(db)
+
+
+@router.put("/api/moderare/gologani/recompense/{event_type}", response_model=schemas.GologaniRewardSettingOut)
+def admin_update_gologani_reward_api(
+    event_type: str,
+    data: schemas.GologaniRewardSettingUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    try:
+        setting = crud.update_gologani_reward_setting(db, event_type, data, updated_by=current_user.id)
+    except crud.GologaniRewardSettingNotFoundError:
+        raise HTTPException(status_code=404, detail="Recompensa nu a fost găsită")
+    _audit_gologani_reward_change(db, request, current_user, action="gologani_reward_update", setting=setting)
+    return setting

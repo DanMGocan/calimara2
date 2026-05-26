@@ -424,7 +424,7 @@ async function main() {
       const value = evaluation.result?.value || {};
       const issues = cdp.drainPageIssues(sessionId);
       if (!value.rootTextLength) failures.push(`${route}: root rendered no text at ${value.href}`);
-      if (value.textSample?.includes("Pagina nu a putut fi afisata")) {
+      if (value.textSample?.includes("Pagina nu a putut fi afișată")) {
         failures.push(`${route}: React error boundary rendered`);
       }
       for (const issue of issues.consoleErrors) failures.push(`${route}: console error: ${issue}`);

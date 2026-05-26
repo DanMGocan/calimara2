@@ -70,7 +70,15 @@ def count_series_posts(db: Session, series_id: int, approved_only: bool = True) 
         models.SeriesPost.series_id == series_id,
     )
     if approved_only:
-        query = query.filter(models.Post.moderation_status == "approved")
+        query = query.filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.filter(
+            models.Post.moderation_status != "rejected",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     return query.count()
 
 def get_series_entries(
@@ -82,7 +90,15 @@ def get_series_entries(
         joinedload(models.SeriesPost.post).joinedload(models.Post.owner)
     ).filter(models.SeriesPost.series_id == series_id)
     if approved_posts_only:
-        query = query.join(models.Post).filter(models.Post.moderation_status == "approved")
+        query = query.join(models.Post).filter(
+            models.Post.moderation_status == "approved",
+            not_human_rejected_condition("post", models.Post.id),
+        )
+    else:
+        query = query.join(models.Post).filter(
+            models.Post.moderation_status != "rejected",
+            not_human_rejected_condition("post", models.Post.id),
+        )
     entries = query.order_by(
         models.SeriesPost.position.asc(),
         models.SeriesPost.created_at.asc(),

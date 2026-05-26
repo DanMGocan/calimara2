@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { addAdminPlatformAllowedEmail, cancelAdminJob, createAdminEmailCampaign, deleteAdminContent, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPlatformAccess, fetchAdminSiteFeedback, fetchAdminUsers, moderateAdminContent, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, retryAdminJob, rollupAdminMetrics, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
-import { createAdminShopItem, fetchAdminShopItems, updateAdminShopItem } from "../api/economy.js";
+import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { createAdminShopItem, fetchAdminGologaniRewards, fetchAdminShopItems, updateAdminGologaniReward, updateAdminShopItem } from "../api/economy.js";
 import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
+import { blogUrl, mainPath } from "../app/paths.js";
 import { safeExternalUrl } from "../app/urls.js";
 
 const PREMIUM_TIER_LABELS = {
@@ -20,6 +21,13 @@ const SITE_FEEDBACK_STATUS_LABELS = {
   open: "Deschis",
   closed: "Închis"
 };
+const INVITATION_STATUS_LABELS = {
+  pending: "În așteptare",
+  accepted: "Acceptată",
+  revoked: "Revocată",
+  expired: "Expirată"
+};
+const INVITATION_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ADMIN_NAV_GROUPS = [
   {
     label: "Platformă",
@@ -31,12 +39,40 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: "Operațiuni",
-    items: ["economy", "premium", "jobs", "audit"]
+    items: ["economy", "premium", "storage", "jobs", "audit"]
   }
 ];
 
+const DEFAULT_STORAGE_FILTERS = {
+  prefix: "",
+  q: "",
+  status: "all"
+};
+
 function premiumTierLabel(tier) {
   return PREMIUM_TIER_LABELS[tier] || tier || PREMIUM_TIER_LABELS.free;
+}
+
+function parseInvitationEmails(value) {
+  return String(value || "")
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function invitationResultMessage(response) {
+  return `Invitații: ${formatNumber(response.created_count || 0)} noi, ${formatNumber(response.updated_count || 0)} retrimise, ${formatNumber(response.skipped_count || 0)} omise.`;
+}
+
+function qaReportTitle(entry) {
+  return entry.title || String(entry.message || "").split(/\r?\n/).find((line) => line.trim()) || "Raport QA";
+}
+
+function qaReportBody(entry) {
+  const body = entry.body || "";
+  if (body.trim()) return body;
+  const lines = String(entry.message || "").split(/\r?\n/);
+  return lines.slice(1).join("\n").trim() || entry.message || "";
 }
 
 const DEFAULT_USER_FILTERS = {
@@ -74,6 +110,75 @@ function countActiveUserFilters(search, filters) {
   return count;
 }
 
+function formatCornerBadge(count) {
+  const value = Math.max(0, Number(count) || 0);
+  return value > 99 ? "99+" : formatNumber(value);
+}
+
+function feedbackUnreadReplyLabel(count) {
+  const value = Math.max(0, Number(count) || 0);
+  if (value === 1) return "1 răspuns nou";
+  return `${formatNumber(value)} răspunsuri noi`;
+}
+
+function normalizeAdminHref(value) {
+  const raw = String(value || "").trim();
+  if (!raw || raw === "#") return "";
+  if (/^(https?:)?\/\//i.test(raw)) return raw;
+  if (raw.startsWith("/")) return mainPath(raw);
+  return raw;
+}
+
+function profileHref(username, explicitUrl = "") {
+  const direct = normalizeAdminHref(explicitUrl);
+  if (direct) return direct;
+  const clean = String(username || "").trim().replace(/^@/, "");
+  if (!clean || clean === "Necunoscut" || clean === "Anonim") return "";
+  return blogUrl(clean);
+}
+
+function postHrefFromParts(author, slug, anchor = "") {
+  const cleanAuthor = String(author || "").trim().replace(/^@/, "");
+  const cleanSlug = String(slug || "").trim().replace(/^\/+/, "");
+  if (!cleanAuthor || !cleanSlug) return "";
+  const hash = anchor ? `#${String(anchor).replace(/^#/, "")}` : "";
+  return `${blogUrl(cleanAuthor)}/${cleanSlug}${hash}`;
+}
+
+function contentHref(item = {}) {
+  if (!item) return "";
+  if (item.type === "post" && item.author && item.slug) return postHrefFromParts(item.author, item.slug);
+  if (item.type === "comment" && item.post_author && item.post_slug) {
+    return postHrefFromParts(item.post_author, item.post_slug, `comment-${item.id}`);
+  }
+  if (item.type === "audio" && item.post_author && item.post_slug) return postHrefFromParts(item.post_author, item.post_slug);
+  if (item.type === "forum_thread" && item.slug) return mainPath(`/discutii/${item.slug}`);
+  if (item.type === "forum_reply" && item.thread_slug) return mainPath(`/discutii/${item.thread_slug}#reply-${item.id}`);
+  if (item.type === "theatre_entry" && item.play_slug) return mainPath(`/teatru/${item.play_slug}`);
+  if (item.type === "stafeta_segment" && item.work_slug) return mainPath(`/stafeta/${item.work_slug}`);
+  return normalizeAdminHref(item.target_url);
+}
+
+function reportHref(report = {}) {
+  if (report.post_author && report.post_slug && report.target_type === "post") {
+    return postHrefFromParts(report.post_author, report.post_slug);
+  }
+  return normalizeAdminHref(report.target_url || report.post_url);
+}
+
+function AdminTextLink({ href, children, className = "admin-inline-link" }) {
+  const normalized = normalizeAdminHref(href);
+  if (!normalized) return children ?? null;
+  return <a className={className} href={normalized}>{children}</a>;
+}
+
+function AdminPreview({ children, href }) {
+  if (!children) return null;
+  const normalized = normalizeAdminHref(href);
+  if (normalized) return <a className="admin-preview admin-preview-link" href={normalized}>{children}</a>;
+  return <p className="admin-preview">{children}</p>;
+}
+
 function AdminStat({ label, value, sub }) {
   return (
     <div className="admin-stat">
@@ -97,6 +202,8 @@ function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
   const title = content?.title || content?.post_title || contentTypeLabel(contentType);
   const preview = content?.content || item.content || "";
   const author = content?.author || item.author || "Necunoscut";
+  const targetHref = contentHref(content);
+  const authorHref = profileHref(author, content?.author_url || item.author_url);
   const createdAt = content?.created_at || item.created_at || item.flagged_at;
   const score = isFlagged ? item.ai_analysis?.toxicity_score : item.toxicity_score;
   const reason = isFlagged ? item.ai_analysis?.reason : item.moderation_reason;
@@ -119,16 +226,18 @@ function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
             {status ? <span className="piece-card-status status-flagged">{decisionLabel(status)}</span> : null}
             {score !== null && score !== undefined ? <span className="piece-card-status">{formatScore(score)}</span> : null}
           </div>
-          <h2 className="admin-row-title">{title}</h2>
+          <h2 className="admin-row-title">
+            <AdminTextLink className="admin-title-link" href={targetHref}>{title}</AdminTextLink>
+          </h2>
         </div>
         <div className="admin-row-meta">
-          <span>{author}</span>
+          <span><AdminTextLink href={authorHref}>{author}</AdminTextLink></span>
           {createdAt ? <span>{formatDateTime(createdAt)}</span> : null}
         </div>
       </div>
       {preview || reason ? (
         <div className="admin-row-body">
-          {preview ? <p className="admin-preview">{htmlToText(preview)}</p> : null}
+          {preview ? <AdminPreview href={targetHref}>{htmlToText(preview)}</AdminPreview> : null}
           {reason ? <p className="admin-reason">{reason}</p> : null}
         </div>
       ) : null}
@@ -153,6 +262,9 @@ function AdminWorkRow({ item, mode, busy, onApprove, onReject }) {
   );
 }
 function AdminJournalRow({ log }) {
+  const targetHref = normalizeAdminHref(log.target_url);
+  const authorHref = profileHref(log.content_author, log.content_author_url);
+  const moderatorHref = profileHref(log.moderator, log.moderator_url);
   return (
     <article className="admin-row">
       <div className="admin-row-head">
@@ -163,18 +275,20 @@ function AdminJournalRow({ log }) {
             <span className="piece-card-status">Om: {decisionLabel(log.human_decision)}</span>
             {log.needs_review ? <span className="piece-card-status status-rejected">revizie</span> : null}
           </div>
-          <h2 className="admin-row-title">{log.content_title || contentTypeLabel(log.content_type)}</h2>
+          <h2 className="admin-row-title">
+            <AdminTextLink className="admin-title-link" href={targetHref}>{log.content_title || contentTypeLabel(log.content_type)}</AdminTextLink>
+          </h2>
         </div>
         <div className="admin-row-meta">
-          {log.content_author ? <span>{log.content_author}</span> : null}
+          {log.content_author ? <span><AdminTextLink href={authorHref}>{log.content_author}</AdminTextLink></span> : null}
           {log.created_at ? <span>{formatDateTime(log.created_at)}</span> : null}
         </div>
       </div>
       <div className="admin-row-body">
-        {log.content_preview ? <p className="admin-preview">{htmlToText(log.content_preview)}</p> : null}
+        {log.content_preview ? <AdminPreview href={targetHref}>{htmlToText(log.content_preview)}</AdminPreview> : null}
         <div className="admin-journal-grid">
           <span>toxicitate {formatScore(log.toxicity_score)}</span>
-          {log.moderator ? <span>moderator {log.moderator}</span> : null}
+          {log.moderator ? <span>moderator <AdminTextLink href={moderatorHref}>{log.moderator}</AdminTextLink></span> : null}
           {log.moderated_at ? <span>moderat {formatDateTime(log.moderated_at)}</span> : null}
         </div>
         {log.ai_reason ? <p className="admin-reason">{log.ai_reason}</p> : null}
@@ -192,28 +306,37 @@ function AdminReportRow({ report, busy, onDismiss, onRejectPost, onDeletePost })
   const reportBusy = busy?.startsWith(`report:${report.id}:`);
   const evidence = report.evidence_url ? String(report.evidence_url) : "";
   const details = report.details ? String(report.details) : "";
+  const targetUrl = reportHref(report);
+  const authorHref = profileHref(report.post_author, report.post_author_url);
+  const reporterHref = profileHref(report.reporter_username, report.reporter_url);
+  const reviewerHref = profileHref(report.reviewer_username, report.reviewer_url);
   const title = report.post_title || "Postare ștearsă";
+  const targetLabel = report.target_label || "Postare";
   return (
     <article className="admin-row">
       <div className="admin-row-head">
         <div>
           <div className="admin-badges">
+            <span className="piece-card-status">{targetLabel}</span>
             <span className="piece-card-status">{reportTypeLabel(report.reason_type)}</span>
             <span className="piece-card-status">{decisionLabel(report.status)}</span>
           </div>
-          <h2 className="admin-row-title">{title}</h2>
+          <h2 className="admin-row-title">
+            <AdminTextLink className="admin-title-link" href={targetUrl}>{title}</AdminTextLink>
+          </h2>
         </div>
         <div className="admin-row-meta">
-          {report.post_author ? <span>{report.post_author}</span> : null}
+          {report.post_author ? <span><AdminTextLink href={authorHref}>{report.post_author}</AdminTextLink></span> : null}
           {report.created_at ? <span>{formatDateTime(report.created_at)}</span> : null}
         </div>
       </div>
       <div className="admin-row-body">
-        {details ? <p className="admin-preview">{details}</p> : null}
+        {details ? <AdminPreview href={targetUrl}>{details}</AdminPreview> : null}
+        {targetUrl ? <p className="admin-reason"><a href={targetUrl}>Deschide conținutul raportat</a></p> : null}
         {evidence ? <p className="admin-reason">{evidence}</p> : null}
         <div className="admin-journal-grid">
-          {report.reporter_username ? <span>raportat de {report.reporter_username}</span> : null}
-          {report.reviewer_username ? <span>revizuit de {report.reviewer_username}</span> : null}
+          {report.reporter_username ? <span>raportat de <AdminTextLink href={reporterHref}>{report.reporter_username}</AdminTextLink></span> : null}
+          {report.reviewer_username ? <span>revizuit de <AdminTextLink href={reviewerHref}>{report.reviewer_username}</AdminTextLink></span> : null}
           {report.reviewed_at ? <span>{formatDateTime(report.reviewed_at)}</span> : null}
         </div>
         {report.review_note ? <p className="admin-reason">{report.review_note}</p> : null}
@@ -251,21 +374,163 @@ function adminPrompt(label, fallback = "") {
 function adminReason(label = "Motiv administrativ") {
   return adminPrompt(label);
 }
-function AdminDataRow({ kicker, title, meta, preview, children, compact = false }) {
+function formatBytes(value) {
+  const bytes = Number(value ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const amount = bytes / (1024 ** index);
+  return `${amount.toLocaleString("ro-RO", { maximumFractionDigits: index ? 1 : 0 })} ${units[index]}`;
+}
+function AdminDataRow({ kicker, badges = [], title, titleHref, meta, preview, previewHref, children, compact = false, className = "" }) {
+  const extraClass = className ? ` ${className}` : "";
   return (
-    <article className={`admin-row${compact ? " compact" : ""}`}>
+    <article className={`admin-row${compact ? " compact" : ""}${extraClass}`}>
       <div className="admin-row-head">
         <div>
           <div className="admin-badges">
             {kicker ? <span className="piece-card-status">{kicker}</span> : null}
+            {badges.map((badge, index) => (
+              <span className={`piece-card-status ${badge.className || ""}`.trim()} key={`${badge.label}-${index}`}>
+                {badge.label}
+              </span>
+            ))}
           </div>
-          <h2 className="admin-row-title">{title}</h2>
+          <h2 className="admin-row-title">
+            <AdminTextLink className="admin-title-link" href={titleHref}>{title}</AdminTextLink>
+          </h2>
         </div>
         {meta ? <div className="admin-row-meta">{meta}</div> : null}
       </div>
-      {preview ? <div className="admin-row-body"><p className="admin-preview">{preview}</p></div> : null}
+      {preview ? <div className="admin-row-body"><AdminPreview href={previewHref}>{preview}</AdminPreview></div> : null}
       {children ? <div className="admin-actions">{children}</div> : null}
     </article>
+  );
+}
+function AdminQaReportRow({ entry }) {
+  const pageUrl = safeExternalUrl(entry.page_url);
+  const stamp = entry.report_stamp || entry.client_context?.report_stamp;
+  const part = entry.report_part || entry.client_context?.part;
+  return (
+    <article className="admin-row admin-report-row">
+      <div className="admin-row-head">
+        <div>
+          <div className="admin-badges">
+            <span className="piece-card-status">Raport QA · {SITE_FEEDBACK_STATUS_LABELS[entry.status] || entry.status}</span>
+            {stamp ? <span className="piece-card-status">{stamp}</span> : null}
+            {part ? <span className="piece-card-status">{part}</span> : null}
+          </div>
+          <h2 className="admin-row-title">{qaReportTitle(entry)}</h2>
+        </div>
+        <div className="admin-row-meta">
+          <span>#{entry.id}</span>
+          <span>{formatDateTime(entry.created_at)}</span>
+        </div>
+      </div>
+      <div className="admin-row-body">
+        <p className="admin-report-body">{qaReportBody(entry)}</p>
+      </div>
+      {pageUrl ? (
+        <div className="admin-actions">
+          <a className="cal-btn" href={pageUrl} target="_blank" rel="noreferrer">Pagina testată</a>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+function SiteFeedbackReplyModal({ state, busy, onReplyChange, onClose, onSend }) {
+  if (!state.open) return null;
+  const feedback = state.thread?.feedback || state.item || {};
+  const messages = state.thread?.messages || [];
+  return (
+    <div className="admin-feedback-reply-scrim" role="presentation" onClick={onClose}>
+      <section className="admin-feedback-reply-modal" role="dialog" aria-modal="true" aria-labelledby="admin-feedback-reply-title" onClick={(event) => event.stopPropagation()}>
+        <button className="feedback-modal-close" type="button" aria-label="Închide" onClick={onClose} disabled={Boolean(busy)}>x</button>
+        <header className="admin-feedback-reply-head">
+          <div>
+            <span className="piece-card-status">{SITE_FEEDBACK_KIND_LABELS[feedback.kind] || feedback.kind || "Sesizare"}</span>
+            <h2 id="admin-feedback-reply-title" className="admin-feedback-reply-title">Răspuns către {feedback.username_snapshot || `utilizator #${feedback.user_id || "n/a"}`}</h2>
+          </div>
+          <div className="admin-row-meta">
+            {feedback.support_conversation_id ? <span>Conversație #{feedback.support_conversation_id}</span> : <span>Conversație nouă</span>}
+            {feedback.created_at ? <span>{formatDateTime(feedback.created_at)}</span> : null}
+          </div>
+        </header>
+        <div className="admin-feedback-original">
+          <strong>Sesizare</strong>
+          <p>{feedback.message}</p>
+          {feedback.page_url ? <a href={safeExternalUrl(feedback.page_url)} target="_blank" rel="noreferrer">Pagina trimisă</a> : null}
+        </div>
+        {state.loading ? <div className="message-thread-note">Se încarcă firul...</div> : null}
+        {state.error ? <div className="inline-error">{state.error}</div> : null}
+        <div className="admin-feedback-thread" aria-live="polite">
+          {messages.map((message) => (
+            <div className={`admin-feedback-message ${message.sender_is_system ? "system" : "user"}`} key={message.id}>
+              <div className="admin-feedback-message-head">
+                <strong>{message.sender_label || message.sender_username || "Utilizator"}</strong>
+                <time dateTime={message.created_at}>{formatDateTime(message.created_at)}</time>
+              </div>
+              <p>{message.content}</p>
+            </div>
+          ))}
+          {!state.loading && !messages.length ? <div className="message-thread-note">Firul se va crea la primul răspuns.</div> : null}
+        </div>
+        <form className="admin-feedback-reply-form" onSubmit={onSend}>
+          <label className="cal-label" htmlFor="admin-feedback-reply-content">Răspuns</label>
+          <textarea
+            id="admin-feedback-reply-content"
+            className="cal-textarea admin-feedback-reply-textarea"
+            value={state.reply}
+            onChange={(event) => onReplyChange(event.target.value)}
+            maxLength="2000"
+            rows="5"
+            autoFocus
+          />
+          <div className="feedback-form-foot">
+            <span className="feedback-counter">{state.reply.trim().length}/2000</span>
+            <div className="admin-actions inline">
+              <button className="cal-btn" type="button" onClick={onClose} disabled={Boolean(busy)}>Anulează</button>
+              <button className="cal-btn primary" type="submit" disabled={Boolean(busy) || !state.reply.trim()}>{busy ? "Se trimite..." : "Trimite răspuns"}</button>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+function AdminStorageRow({ object, busy, onPreview, onDelete, onCleanup }) {
+  const references = object.references || [];
+  const meta = (
+    <>
+      <span>{formatBytes(object.size)}</span>
+      {object.last_modified ? <span>{formatDateTime(object.last_modified)}</span> : null}
+      <span>{object.prefix_type === "outside" ? "extern" : object.prefix_type}</span>
+    </>
+  );
+  const preview = references.length
+    ? references.map((reference, index) => (
+      <span className="admin-reference-item" key={`${reference.type}-${reference.id}-${index}`}>
+        {index ? <span className="admin-reference-separator"> · </span> : null}
+        <AdminTextLink href={reference.target_url}>{reference.label}</AdminTextLink>
+      </span>
+    ))
+    : object.protected_reason || "Fără referință în baza de date.";
+  return (
+    <AdminDataRow
+      compact
+      kicker={`${object.can_delete ? "ștergibil" : "protejat"} · ${references.length ? "referențiat" : "nereferențiat"}`}
+      title={object.key}
+      meta={meta}
+      preview={preview}
+    >
+      <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => onPreview(object)}>Deschide</button>
+      <button className="cal-btn danger" type="button" disabled={Boolean(busy) || !object.can_delete} title={object.protected_reason || ""} onClick={() => onDelete(object)}>
+        Șterge
+      </button>
+      <button className="cal-btn danger" type="button" disabled={Boolean(busy)} onClick={() => onCleanup(object)}>
+        Curăță
+      </button>
+    </AdminDataRow>
   );
 }
 function AdminDashboardView({ user }) {
@@ -277,10 +542,16 @@ function AdminDashboardView({ user }) {
   const [userFiltersOpen, setUserFiltersOpen] = useState(false);
   const [accessEmail, setAccessEmail] = useState("");
   const [accessNote, setAccessNote] = useState("");
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteTier, setInviteTier] = useState("free");
+  const [inviteDays, setInviteDays] = useState("30");
+  const [inviteNote, setInviteNote] = useState("");
+  const [inviteStatus, setInviteStatus] = useState({ kind: "", message: "" });
   const [contentSearch, setContentSearch] = useState("");
   const [contentType, setContentType] = useState("all");
   const [feedbackKind, setFeedbackKind] = useState("all");
   const [feedbackStatus, setFeedbackStatus] = useState("open");
+  const [storageFilters, setStorageFilters] = useState(DEFAULT_STORAGE_FILTERS);
   const [selectedUserIds, setSelectedUserIds] = useState(() => new Set());
   const [emailFilters, setEmailFilters] = useState(DEFAULT_EMAIL_FILTERS);
   const [emailMode, setEmailMode] = useState("filters");
@@ -301,14 +572,36 @@ function AdminDashboardView({ user }) {
     jobs: [],
     audit: [],
     shop: [],
+    gologaniRewards: [],
+    qaReport: [],
+    qaReportTotal: 0,
+    qaReportOpenCount: 0,
+    qaReportClosedCount: 0,
     submissions: [],
     submissionsTotal: 0,
+    submissionsUnreadReplyCount: 0,
     emailCampaigns: [],
     error: "",
     loading: true
   });
+  const [storageState, setStorageState] = useState({
+    objects: [],
+    nextCursor: null,
+    summary: null,
+    loading: false,
+    error: "",
+    loaded: false
+  });
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
+  const [feedbackReplyState, setFeedbackReplyState] = useState({
+    open: false,
+    item: null,
+    thread: null,
+    reply: "",
+    loading: false,
+    error: ""
+  });
 
   const loadAdminData = useCallback(async () => {
     if (!canModerate) {
@@ -333,11 +626,17 @@ function AdminDashboardView({ user }) {
         jobs: [],
         audit: [],
         shop: [],
+        gologaniRewards: [],
+        qaReport: [],
+        qaReportTotal: 0,
+        qaReportOpenCount: 0,
+        qaReportClosedCount: 0,
         submissions: [],
-        submissionsTotal: 0
+        submissionsTotal: 0,
+        submissionsUnreadReplyCount: 0
       };
       if (canAdmin) {
-        const [overview, users, content, platformAccess, jobs, audit, shop, submissions, emailCampaigns] = await Promise.all([
+        const [overview, users, content, platformAccess, jobs, audit, shop, gologaniRewards, qaReport, submissions, emailCampaigns] = await Promise.all([
           fetchAdminOverview(),
           fetchAdminUsers({ q: userSearch, ...cleanFilters(userFilters), limit: 50 }),
           fetchAdminContent({ q: contentSearch, content_type: contentType, limit: 50 }),
@@ -345,6 +644,8 @@ function AdminDashboardView({ user }) {
           fetchAdminJobs({ limit: 50 }),
           fetchAdminAuditLog({ limit: 100 }),
           fetchAdminShopItems(),
+          fetchAdminGologaniRewards(),
+          fetchAdminQaReport({ limit: 200 }),
           fetchAdminSiteFeedback({ kind: feedbackKind, status: feedbackStatus, limit: 50 }),
           fetchAdminEmailCampaigns({ limit: 20 })
         ]);
@@ -356,8 +657,14 @@ function AdminDashboardView({ user }) {
           jobs: jobs.jobs || [],
           audit: audit.logs || [],
           shop: Array.isArray(shop) ? shop : [],
+          gologaniRewards: Array.isArray(gologaniRewards) ? gologaniRewards : [],
+          qaReport: qaReport.entries || [],
+          qaReportTotal: qaReport.total || 0,
+          qaReportOpenCount: qaReport.open_count || 0,
+          qaReportClosedCount: qaReport.closed_count || 0,
           submissions: submissions.submissions || [],
           submissionsTotal: submissions.total || 0,
+          submissionsUnreadReplyCount: submissions.unread_reply_count || 0,
           emailCampaigns: emailCampaigns.campaigns || []
         };
       }
@@ -384,6 +691,39 @@ function AdminDashboardView({ user }) {
   useEffect(() => {
     loadAdminData();
   }, [loadAdminData]);
+
+  const loadStorageObjects = useCallback(async ({ cursor = "", append = false } = {}) => {
+    if (!canAdmin) return;
+    setStorageState((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const response = await fetchAdminStorageObjects({
+        ...cleanFilters(storageFilters),
+        limit: 50,
+        cursor
+      });
+      setStorageState((current) => ({
+        objects: append ? [...current.objects, ...(response.objects || [])] : (response.objects || []),
+        nextCursor: response.next_cursor || null,
+        summary: response.summary || null,
+        loading: false,
+        error: "",
+        loaded: true
+      }));
+    } catch (requestError) {
+      setStorageState((current) => ({
+        ...current,
+        loading: false,
+        error: requestError.message || "Nu am putut încărca obiectele din bucket.",
+        loaded: true
+      }));
+    }
+  }, [canAdmin, storageFilters]);
+
+  useEffect(() => {
+    if (canAdmin && activeTab === "storage" && !storageState.loaded && !storageState.loading) {
+      loadStorageObjects();
+    }
+  }, [activeTab, canAdmin, loadStorageObjects, storageState.loaded, storageState.loading]);
 
   if (!user) return <AuthRequired />;
   if (!canModerate) {
@@ -547,6 +887,20 @@ function AdminDashboardView({ user }) {
       setBusy("");
     }
   };
+  const sendNotificationTestEmail = async () => {
+    setBusy("email:test-notification");
+    setStatus("");
+    try {
+      const response = await sendAdminNotificationTestEmail();
+      const delivery = response.sent ? "trimis" : "pus în coadă";
+      setStatus(`Mostra de notificare pentru utilizatori a fost ${delivery} către ${response.recipient_email}. Status: ${response.status}.`);
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut trimite emailul de test pentru notificări.");
+    } finally {
+      setBusy("");
+    }
+  };
   const setPlatformOpen = (nextOpen) => {
     runAction(`platform-access:${nextOpen ? "open" : "closed"}`, () => updateAdminPlatformAccess({ open: nextOpen }));
   };
@@ -568,9 +922,60 @@ function AdminDashboardView({ user }) {
       setBusy("");
     }
   };
+  const updateInviteEmails = (value) => {
+    setInviteEmails(value);
+    if (inviteStatus.message) {
+      setInviteStatus({ kind: "", message: "" });
+    }
+  };
+  const sendInvitations = async (event) => {
+    event.preventDefault();
+    const emails = parseInvitationEmails(inviteEmails);
+    if (!emails.length) {
+      setInviteStatus({ kind: "error", message: "Adaugă cel puțin un email pentru invitație." });
+      return;
+    }
+    const invalidEmail = emails.find((email) => !INVITATION_EMAIL_PATTERN.test(email));
+    if (invalidEmail) {
+      setInviteStatus({ kind: "error", message: `Email invalid: ${invalidEmail}. Separă adresele cu virgulă, punct și virgulă sau rând nou.` });
+      return;
+    }
+    const premiumDays = inviteTier === "free" ? null : Number(inviteDays || 30);
+    if (inviteTier !== "free" && (!Number.isFinite(premiumDays) || premiumDays < 1 || premiumDays > 3650)) {
+      setInviteStatus({ kind: "error", message: "Zilele premium trebuie să fie între 1 și 3650." });
+      return;
+    }
+    setBusy("platform-invitations:add");
+    setStatus("");
+    setInviteStatus({ kind: "info", message: "Se trimit invitațiile..." });
+    try {
+      const response = await createAdminInvitations({
+        emails,
+        premium_tier: inviteTier,
+        premium_days: premiumDays,
+        note: inviteNote.trim() || null
+      });
+      const message = invitationResultMessage(response);
+      setInviteEmails("");
+      setInviteNote("");
+      setInviteStatus({ kind: "success", message });
+      await loadAdminData();
+    } catch (requestError) {
+      setInviteStatus({ kind: "error", message: requestError.message || "Nu am putut trimite invitațiile." });
+    } finally {
+      setBusy("");
+    }
+  };
   const removePlatformEmail = (item) => {
     if (!window.confirm(`Ștergi ${item.email} din lista de acces?`)) return;
     runAction(`platform-access:${item.id}:delete`, () => deleteAdminPlatformAllowedEmail(item.id));
+  };
+  const resendInvitation = (item) => {
+    runAction(`platform-invitation:${item.id}:resend`, () => resendAdminInvitation(item.id));
+  };
+  const revokeInvitation = (item) => {
+    if (!window.confirm(`Revoci invitația pentru ${item.email}?`)) return;
+    runAction(`platform-invitation:${item.id}:revoke`, () => revokeAdminInvitation(item.id));
   };
 
   const moderateListedContent = (item, action) => {
@@ -622,6 +1027,17 @@ function AdminDashboardView({ user }) {
     if (!Number.isFinite(price)) return;
     runAction(`shop:${item.id}:price`, () => updateAdminShopItem(item.id, { price }));
   };
+  const updateGologaniRewardAmount = (reward) => {
+    const amount = Number(adminPrompt("Gologani pentru interacțiune", String(reward.amount ?? 0)));
+    if (!Number.isFinite(amount) || amount < 0) return;
+    runAction(`gologani-reward:${reward.event_type}:amount`, () => updateAdminGologaniReward(reward.event_type, { amount }));
+  };
+  const toggleGologaniReward = (reward) => {
+    runAction(
+      `gologani-reward:${reward.event_type}:toggle`,
+      () => updateAdminGologaniReward(reward.event_type, { is_active: !reward.is_active })
+    );
+  };
 
   const runRollup = () => {
     const date = adminPrompt("Dată pentru metricile zilnice YYYY-MM-DD, gol pentru ieri", "");
@@ -636,11 +1052,116 @@ function AdminDashboardView({ user }) {
       () => updateAdminSiteFeedback(item.id, { status: nextStatus, admin_note: note.trim() || null })
     );
   };
+  const openFeedbackReply = async (item) => {
+    setFeedbackReplyState({ open: true, item, thread: null, reply: "", loading: true, error: "" });
+    try {
+      const thread = await fetchAdminSiteFeedbackThread(item.id);
+      setFeedbackReplyState((current) => ({ ...current, thread, loading: false, error: "" }));
+      setState((current) => ({
+        ...current,
+        submissions: current.submissions.map((submission) => submission.id === thread.feedback.id ? thread.feedback : submission),
+        submissionsUnreadReplyCount: thread.unread_reply_count || 0
+      }));
+    } catch (requestError) {
+      setFeedbackReplyState((current) => ({
+        ...current,
+        loading: false,
+        error: requestError.message || "Nu am putut încărca firul de suport."
+      }));
+    }
+  };
+  const closeFeedbackReply = () => {
+    if (busy === "site-feedback:reply") return;
+    setFeedbackReplyState({ open: false, item: null, thread: null, reply: "", loading: false, error: "" });
+  };
+  const sendFeedbackReply = async (event) => {
+    event.preventDefault();
+    const feedbackId = feedbackReplyState.thread?.feedback?.id || feedbackReplyState.item?.id;
+    const content = feedbackReplyState.reply.trim();
+    if (!feedbackId || !content || busy) return;
+    setBusy("site-feedback:reply");
+    setStatus("");
+    try {
+      const thread = await replyAdminSiteFeedback(feedbackId, { content });
+      setFeedbackReplyState((current) => ({ ...current, thread, item: thread.feedback, reply: "", loading: false, error: "" }));
+      setState((current) => ({
+        ...current,
+        submissions: current.submissions.map((item) => item.id === thread.feedback.id ? thread.feedback : item),
+        submissionsUnreadReplyCount: thread.unread_reply_count || 0
+      }));
+      setStatus("Răspunsul a fost trimis ca mesaj direct de la Călimara.");
+    } catch (requestError) {
+      setFeedbackReplyState((current) => ({
+        ...current,
+        error: requestError.message || "Nu am putut trimite răspunsul."
+      }));
+    } finally {
+      setBusy("");
+    }
+  };
+  const setStorageFilter = (field, value) => {
+    setStorageFilters((current) => ({ ...current, [field]: value }));
+    setStorageState((current) => ({ ...current, nextCursor: null }));
+  };
+  const applyStorageFilters = (event) => {
+    event.preventDefault();
+    loadStorageObjects();
+  };
+  const refreshStorageObjects = () => {
+    loadStorageObjects();
+  };
+  const loadMoreStorageObjects = () => {
+    if (!storageState.nextCursor) return;
+    loadStorageObjects({ cursor: storageState.nextCursor, append: true });
+  };
+  const previewStorageObject = async (object) => {
+    setBusy(`storage:${object.key}:preview`);
+    setStatus("");
+    try {
+      const response = await presignAdminStorageObject(object.key);
+      window.open(response.url, "_blank", "noreferrer");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut deschide obiectul.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const deleteStorageObject = (object) => {
+    if (!object.can_delete) return;
+    if (!window.confirm(`Ștergi definitiv obiectul "${object.key}" din bucket?`)) return;
+    const reason = adminReason("Motiv ștergere obiect");
+    if (!reason) return;
+    runAction(`storage:${object.key}:delete`, async () => {
+      await deleteAdminStorageObject(object.key, reason);
+      await loadStorageObjects();
+    });
+  };
+  const cleanupStorageObject = async (object) => {
+    const references = object.references?.length || 0;
+    const referenceText = references
+      ? ` Va elimina ${formatNumber(references)} referințe cunoscute din baza de date.`
+      : " Nu există referințe cunoscute în baza de date.";
+    if (!window.confirm(`Cureți definitiv obiectul "${object.key}" din bucket?${referenceText}`)) return;
+    const reason = adminReason("Motiv curățare obiect");
+    if (!reason) return;
+    setBusy(`storage:${object.key}:cleanup`);
+    setStatus("");
+    try {
+      const response = await cleanupAdminStorageObject(object.key, reason);
+      setStatus(`Obiect curățat. Referințe eliminate: ${formatNumber(response.references_removed || 0)}.`);
+      await loadStorageObjects();
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut curăța obiectul.");
+    } finally {
+      setBusy("");
+    }
+  };
 
   const tabs = canAdmin
     ? [
         ["overview", "Ansamblu", state.overview?.cards?.pending_moderation],
-        ["access", "Acces", state.platformAccess?.allowed_count],
+        ["access", "Acces", (state.platformAccess?.allowed_count || 0) + (state.platformAccess?.invitation_count || 0)],
         ["users", "Utilizatori", state.users.length],
         ["content", "Conținut", state.content.length],
         ["submissions", "Sesizări", state.submissionsTotal],
@@ -650,6 +1171,7 @@ function AdminDashboardView({ user }) {
         ["journal", "Jurnal", state.logs.length],
         ["economy", "Economie", state.shop.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
+        ["storage", "Stocare", storageState.objects.length],
         ["jobs", "Joburi", state.jobs.length],
         ["audit", "Audit", state.audit.length]
       ]
@@ -672,7 +1194,9 @@ function AdminDashboardView({ user }) {
   const jobsByStatus = state.overview?.jobs?.by_status || {};
   const traffic = state.overview?.traffic || {};
   const activeUserFilterCount = countActiveUserFilters(userSearch, userFilters);
-  const platformAccess = state.platformAccess || { open: false, allowed_count: 0, emails: [] };
+  const unreadFeedbackReplyCount = Math.max(0, Number(state.submissionsUnreadReplyCount) || 0);
+  const platformAccess = state.platformAccess || { open: false, allowed_count: 0, emails: [], invitation_count: 0, invitations: [] };
+  const inviteBusy = busy === "platform-invitations:add";
 
   return (
     <PageShell kicker="admin" title={canAdmin ? "Admin" : "Moderare"} sub={`Conectat ca ${user.username}.`}>
@@ -692,12 +1216,20 @@ function AdminDashboardView({ user }) {
             <section className="admin-nav-group" key={group.label}>
               <h2>{group.label}</h2>
               <div className="admin-tabs" role="tablist" aria-label={group.label}>
-                {group.tabs.map(([key, label, count]) => (
-                  <button key={key} className={`admin-tab ${activeTab === key ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
-                    <span>{label}</span>
-                    <strong>{formatNumber(count || 0)}</strong>
-                  </button>
-                ))}
+                {group.tabs.map(([key, label, count]) => {
+                  const alertCount = key === "submissions" ? unreadFeedbackReplyCount : 0;
+                  return (
+                    <button key={key} className={`admin-tab ${activeTab === key ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === key} onClick={() => setActiveTab(key)}>
+                      <span>{label}</span>
+                      <strong>{formatNumber(count || 0)}</strong>
+                      {alertCount > 0 ? (
+                        <span className="admin-tab-alert-badge" aria-label={`${formatNumber(alertCount)} răspunsuri noi la sesizări`}>
+                          {formatCornerBadge(alertCount)}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
             </section>
           ))}
@@ -705,6 +1237,10 @@ function AdminDashboardView({ user }) {
             <section className="admin-nav-group">
               <h2>Referință</h2>
               <div className="admin-tabs">
+                <button className={`admin-tab ${activeTab === "qaReport" ? "active" : ""}`} type="button" role="tab" aria-selected={activeTab === "qaReport"} onClick={() => setActiveTab("qaReport")}>
+                  <span>Raport QA</span>
+                  <strong>{formatNumber(state.qaReportTotal || 0)}</strong>
+                </button>
                 <a className="admin-tab admin-tab-link" href="/docs">
                   <span>Documentație</span>
                   <strong>docs</strong>
@@ -782,6 +1318,42 @@ function AdminDashboardView({ user }) {
                   <button className="cal-btn danger" type="button" disabled={Boolean(busy)} onClick={() => removePlatformEmail(item)}>Șterge</button>
                 </AdminDataRow>
               )) : <StatusPanel title="Lista de acces este goală" />}
+            </div>
+          </AdminPanel>
+          <AdminPanel title="Invitații" description={`${formatNumber(platformAccess.invitation_count || 0)} invitații create. Emailurile invitate pot intra cât timp platforma este închisă.`}>
+            <form className="admin-invite-form" onSubmit={sendInvitations} noValidate>
+              <textarea className="cal-input admin-invite-emails" value={inviteEmails} onChange={(event) => updateInviteEmails(event.target.value)} placeholder="email1@example.com, email2@example.com" aria-describedby="admin-invite-status" required />
+              <div className="admin-controls admin-filter-controls">
+                <select className="cal-input" value={inviteTier} onChange={(event) => setInviteTier(event.target.value)}>
+                  <option value="free">Gratuit</option>
+                  <option value="trubadur">Trubadur</option>
+                  <option value="cronicar">Cronicar</option>
+                  <option value="rapsod">Rapsod</option>
+                </select>
+                <input className="cal-input compact-number" type="number" min="1" max="3650" value={inviteDays} onChange={(event) => setInviteDays(event.target.value)} placeholder="Zile premium" disabled={inviteTier === "free"} />
+                <input className="cal-input" value={inviteNote} onChange={(event) => setInviteNote(event.target.value)} placeholder="Notă opțională" maxLength="500" />
+                <button className="cal-btn primary" type="submit" disabled={Boolean(busy) || !inviteEmails.trim()}>{inviteBusy ? "Se trimit..." : "Trimite invitații"}</button>
+              </div>
+              {inviteStatus.message ? (
+                <div id="admin-invite-status" className={inviteStatus.kind === "success" || inviteStatus.kind === "info" ? "inline-status admin-invite-status" : "inline-error admin-invite-status"} role={inviteStatus.kind === "error" ? "alert" : "status"} aria-live="polite">
+                  {inviteStatus.message}
+                </div>
+              ) : null}
+            </form>
+            <div className="admin-feed compact">
+              {platformAccess.invitations?.length ? platformAccess.invitations.map((item) => (
+                <AdminDataRow
+                  key={item.id}
+                  compact
+                  kicker={`invitație · ${INVITATION_STATUS_LABELS[item.status] || item.status}`}
+                  title={item.email}
+                  meta={<><span>{premiumTierLabel(item.premium_tier)}{item.premium_tier !== "free" ? ` · ${formatNumber(item.premium_days || 30)} zile` : ""}</span><span>{formatDateTime(item.created_at)}</span></>}
+                  preview={item.note || (item.expires_at ? `Expiră: ${formatDateTime(item.expires_at)}` : "")}
+                >
+                  {item.status !== "accepted" ? <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => resendInvitation(item)}>Retrimite</button> : null}
+                  {item.status === "pending" || item.status === "expired" ? <button className="cal-btn danger" type="button" disabled={Boolean(busy)} onClick={() => revokeInvitation(item)}>Revocă</button> : null}
+                </AdminDataRow>
+              )) : <StatusPanel title="Nu există invitații" />}
             </div>
           </AdminPanel>
         </div>
@@ -865,6 +1437,7 @@ function AdminDashboardView({ user }) {
                 compact
                 kicker={`${target.is_admin ? "admin" : target.is_moderator ? "moderator" : "utilizator"} · ${target.is_suspended ? "suspendat" : "activ"}`}
                 title={target.username}
+                titleHref={profileHref(target.username)}
                 meta={<><span>{target.email}</span><span>{formatDateTime(target.created_at)}</span></>}
                 preview={`${premiumTierLabel(target.premium_tier)} · ${formatGologani(target.gologani_balance)} · ${formatNumber(target.counts?.posts)} texte · login ${target.last_login_at ? formatDateTime(target.last_login_at) : "niciodată"}`}
               >
@@ -941,7 +1514,9 @@ function AdminDashboardView({ user }) {
                   <span>{formatNumber(emailPreview.matched_count)} potriviți înainte de opt-out.</span>
                   {emailPreview.sample?.length ? (
                     <div className="admin-preview-users">
-                      {emailPreview.sample.map((sampleUser) => <span key={sampleUser.id}>{sampleUser.username}</span>)}
+                      {emailPreview.sample.map((sampleUser) => (
+                        <a key={sampleUser.id} href={profileHref(sampleUser.username)}>{sampleUser.username}</a>
+                      ))}
                     </div>
                   ) : null}
                 </div>
@@ -951,7 +1526,16 @@ function AdminDashboardView({ user }) {
           <AdminPanel
             title="Campanii recente"
             description="Trimiteri, coadă și eșecuri."
-            actions={<button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={processEmailOutbox} title="Trimite acum până la 50 de emailuri din coadă.">{busy === "email:process" ? "Se procesează..." : "Trimite coada acum"}</button>}
+            actions={(
+              <div className="button-row">
+                <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={sendNotificationTestEmail} title="Trimite către contact@calimara.ro o mostră identică cu notificarea email primită de un utilizator cu emailurile active.">
+                  {busy === "email:test-notification" ? "Se trimite testul..." : "Trimite notificare test"}
+                </button>
+                <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={processEmailOutbox} title="Trimite acum până la 50 de emailuri din coadă.">
+                  {busy === "email:process" ? "Se procesează..." : "Trimite coada acum"}
+                </button>
+              </div>
+            )}
           >
             <div className="admin-feed">
               {state.emailCampaigns.length ? state.emailCampaigns.map((campaign) => (
@@ -995,8 +1579,10 @@ function AdminDashboardView({ user }) {
                 compact
                 kicker={`${contentTypeLabel(item.type)} · ${decisionLabel(item.status)}`}
                 title={item.title || contentTypeLabel(item.type)}
-                meta={<><span>{item.author || "Necunoscut"}</span><span>{formatDateTime(item.created_at)}</span></>}
+                titleHref={contentHref(item)}
+                meta={<><span><AdminTextLink href={profileHref(item.author, item.author_url)}>{item.author || "Necunoscut"}</AdminTextLink></span><span>{formatDateTime(item.created_at)}</span></>}
                 preview={htmlToText(item.content || "")}
+                previewHref={contentHref(item)}
               >
                 <button className="cal-btn primary" disabled={Boolean(busy)} onClick={() => moderateListedContent(item, "approve")}>Aprobă</button>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => moderateListedContent(item, "reject")}>Respinge</button>
@@ -1006,6 +1592,25 @@ function AdminDashboardView({ user }) {
               </AdminDataRow>
             ))}
           </div>
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "qaReport" ? (
+        <AdminPanel
+          title="Raport QA"
+          description="Raportul complet al testării este separat de sesizările trimise de utilizatori."
+        >
+          <AdminStatGrid compact>
+            <AdminStat label="Intrări" value={state.qaReportTotal} sub="total" />
+            <AdminStat label="Deschise" value={state.qaReportOpenCount} sub="raport" />
+            <AdminStat label="Închise" value={state.qaReportClosedCount} sub="raport" />
+            <AdminStat label="Afișate" value={state.qaReport.length} sub="în listă" />
+          </AdminStatGrid>
+          {state.qaReport.length ? (
+            <div className="admin-feed">
+              {state.qaReport.map((entry) => <AdminQaReportRow key={entry.id} entry={entry} />)}
+            </div>
+          ) : <StatusPanel title="Nu există raport QA" />}
         </AdminPanel>
       ) : null}
 
@@ -1021,7 +1626,7 @@ function AdminDashboardView({ user }) {
                 <option value="bug">Buguri</option>
               </select>
               <select className="cal-input" value={feedbackStatus} onChange={(event) => setFeedbackStatus(event.target.value)}>
-                <option value="open">Deschise</option>
+                <option value="open">Deschise + răspunsuri noi</option>
                 <option value="closed">Închise</option>
                 <option value="all">Toate statusurile</option>
               </select>
@@ -1032,17 +1637,26 @@ function AdminDashboardView({ user }) {
             <div className="admin-feed">
               {state.submissions.map((item) => {
                 const pageUrl = safeExternalUrl(item.page_url);
+                const unreadReplies = Math.max(0, Number(item.unread_reply_count) || 0);
+                const latestReplyPreview = item.latest_unread_reply_preview || "";
+                const preview = unreadReplies && latestReplyPreview
+                  ? `${item.message}\n\nRăspuns nou: ${latestReplyPreview}`
+                  : item.message;
                 return (
                   <AdminDataRow
                     key={item.id}
                     kicker={`${SITE_FEEDBACK_KIND_LABELS[item.kind] || item.kind} · ${SITE_FEEDBACK_STATUS_LABELS[item.status] || item.status}`}
+                    badges={unreadReplies ? [{ label: feedbackUnreadReplyLabel(unreadReplies), className: "status-unread" }] : []}
+                    className={unreadReplies ? "admin-feedback-has-unread" : ""}
                     title={item.username_snapshot || item.email_snapshot || `Utilizator #${item.user_id || "n/a"}`}
-                    meta={<><span>{item.email_snapshot || "fără email"}</span><span>{formatDateTime(item.created_at)}</span></>}
-                    preview={item.message}
+                    titleHref={item.username_snapshot ? profileHref(item.username_snapshot) : ""}
+                    meta={<><span>{item.email_snapshot || "fără email"}</span><span>{formatDateTime(item.created_at)}</span>{unreadReplies && item.latest_unread_reply_at ? <span>ultimul răspuns {formatDateTime(item.latest_unread_reply_at)}</span> : null}</>}
+                    preview={preview}
                   >
                     {pageUrl ? <a className="cal-btn" href={pageUrl} target="_blank" rel="noreferrer">Pagina</a> : null}
+                    <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => openFeedbackReply(item)}>Răspunde</button>
                     {item.status === "open" ? (
-                      <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "closed")}>Închide</button>
+                      <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "closed")}>Închide</button>
                     ) : (
                       <button className="cal-btn" type="button" disabled={Boolean(busy)} onClick={() => changeFeedbackStatus(item, "open")}>Redeschide</button>
                     )}
@@ -1106,7 +1720,15 @@ function AdminDashboardView({ user }) {
           <AdminPanel title="Audit administrativ" description="Istoric de acțiuni.">
             <div className="admin-feed">
               {state.audit.map((log) => (
-                <AdminDataRow key={log.id} kicker={log.action} title={`${log.target_type} #${log.target_id || "n/a"}`} meta={<><span>{log.actor_username}</span><span>{formatDateTime(log.created_at)}</span></>} preview={log.reason || ""} />
+                <AdminDataRow
+                  key={log.id}
+                  kicker={log.action}
+                  title={`${log.target_type} #${log.target_id || "n/a"}`}
+                  titleHref={log.target_url}
+                  meta={<><span><AdminTextLink href={profileHref(log.actor_username, log.actor_url)}>{log.actor_username}</AdminTextLink></span><span>{formatDateTime(log.created_at)}</span></>}
+                  preview={log.reason || ""}
+                  previewHref={log.target_url}
+                />
               ))}
             </div>
           </AdminPanel>
@@ -1121,6 +1743,18 @@ function AdminDashboardView({ user }) {
             <AdminStat label="Gologani" value={state.overview?.economy?.gologani_balance_total} sub="în conturi" />
           </AdminStatGrid>
           <div className="admin-feed">
+            {state.gologaniRewards.map((reward) => (
+              <AdminDataRow
+                key={reward.event_type}
+                kicker={`recompensă · ${reward.is_active ? "activă" : "inactivă"}`}
+                title={reward.label}
+                meta={<><span>{reward.event_type}</span><span>{formatGologani(reward.amount)}</span></>}
+                preview={reward.description}
+              >
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => updateGologaniRewardAmount(reward)}>Gologani</button>
+                <button className="cal-btn" disabled={Boolean(busy)} onClick={() => toggleGologaniReward(reward)}>{reward.is_active ? "Dezactivează" : "Activează"}</button>
+              </AdminDataRow>
+            ))}
             {state.shop.map((item) => (
               <AdminDataRow key={item.id} kicker={`${slotLabel(item.slot)} · ${item.is_active ? "activ" : "inactiv"}`} title={item.name} meta={<><span>{item.slug}</span><span>{formatGologani(item.price)}</span></>}>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => toggleShopItem(item)}>{item.is_active ? "Dezactivează" : "Activează"}</button>
@@ -1142,6 +1776,58 @@ function AdminDashboardView({ user }) {
         </AdminPanel>
       ) : null}
 
+      {!state.loading && !state.error && canAdmin && activeTab === "storage" ? (
+        <AdminPanel
+          title="Stocare obiecte"
+          description="Bucket S3/Hetzner, referințe din baza de date și ștergeri sigure."
+          actions={<button className="cal-btn" type="button" disabled={storageState.loading || Boolean(busy)} onClick={refreshStorageObjects}>Reîncarcă</button>}
+        >
+          <form className="admin-controls admin-filter-controls" onSubmit={applyStorageFilters}>
+            <input className="cal-input admin-search" value={storageFilters.prefix} onChange={(event) => setStorageFilter("prefix", event.target.value)} placeholder="Prefix, ex. posts/" />
+            <input className="cal-input admin-search" value={storageFilters.q} onChange={(event) => setStorageFilter("q", event.target.value)} placeholder="Caută cheie" />
+            <select className="cal-input" value={storageFilters.status} onChange={(event) => setStorageFilter("status", event.target.value)}>
+              <option value="all">Toate</option>
+              <option value="deletable">Ștergibile</option>
+              <option value="referenced">Referențiate</option>
+              <option value="unreferenced">Nereferențiate</option>
+              <option value="protected">Protejate</option>
+            </select>
+            <button className="cal-btn primary" type="submit" disabled={storageState.loading || Boolean(busy)}>Aplică</button>
+          </form>
+          {storageState.error ? <StatusPanel title="Stocarea nu este disponibilă">{storageState.error}</StatusPanel> : null}
+          {storageState.summary ? (
+            <AdminStatGrid compact>
+              <AdminStat label="Afișate" value={storageState.summary.listed_count} sub={`${formatNumber(storageState.summary.raw_count)} citite`} />
+              <AdminStat label="Referențiate" value={storageState.summary.referenced_count} sub="DB" />
+              <AdminStat label="Ștergibile" value={storageState.summary.deletable_count} sub="safe" />
+              <AdminStat label="Pagină" value={storageState.nextCursor ? 1 : 0} sub={storageState.nextCursor ? "mai există" : "final"} />
+            </AdminStatGrid>
+          ) : null}
+          {storageState.loading && !storageState.objects.length ? <StatusPanel title="Se încarcă obiectele" /> : null}
+          {storageState.objects.length ? (
+            <div className="admin-feed compact">
+              {storageState.objects.map((object) => (
+                <AdminStorageRow
+                  key={object.key}
+                  object={object}
+                  busy={busy || (storageState.loading ? "storage:loading" : "")}
+                  onPreview={previewStorageObject}
+                  onDelete={deleteStorageObject}
+                  onCleanup={cleanupStorageObject}
+                />
+              ))}
+            </div>
+          ) : (!storageState.loading && !storageState.error ? <StatusPanel title="Nu există obiecte pentru filtrele curente" /> : null)}
+          {storageState.nextCursor ? (
+            <div className="button-row">
+              <button className="cal-btn" type="button" disabled={storageState.loading || Boolean(busy)} onClick={loadMoreStorageObjects}>
+                {storageState.loading ? "Se încarcă..." : "Încarcă pagina următoare"}
+              </button>
+            </div>
+          ) : null}
+        </AdminPanel>
+      ) : null}
+
       {!state.loading && !state.error && canAdmin && activeTab === "jobs" ? (
         <AdminPanel title="Joburi AI" description="Procese asincrone și joburi blocate.">
           <AdminStatGrid compact>
@@ -1149,7 +1835,7 @@ function AdminDashboardView({ user }) {
           </AdminStatGrid>
           <div className="admin-feed">
             {state.jobs.map((job) => (
-              <AdminDataRow key={job.id} kicker={`${job.job_type} · ${job.status}`} title={`${job.target_type} #${job.target_id}`} meta={<><span>{job.attempts}/{job.max_attempts}</span><span>{formatDateTime(job.created_at)}</span></>} preview={job.error_message || ""}>
+              <AdminDataRow key={job.id} kicker={`${job.job_type} · ${job.status}`} title={`${job.target_type} #${job.target_id}`} titleHref={job.target_url} meta={<><span>{job.attempts}/{job.max_attempts}</span><span>{formatDateTime(job.created_at)}</span></>} preview={job.error_message || ""} previewHref={job.target_url}>
                 <button className="cal-btn primary" disabled={Boolean(busy)} onClick={() => retryJob(job)}>Retry</button>
                 <button className="cal-btn danger" disabled={Boolean(busy)} onClick={() => cancelJob(job)}>Anulează</button>
               </AdminDataRow>
@@ -1157,8 +1843,15 @@ function AdminDashboardView({ user }) {
           </div>
         </AdminPanel>
       ) : null}
-      </div>
-    </PageShell>
+	      </div>
+	      <SiteFeedbackReplyModal
+	        state={feedbackReplyState}
+	        busy={busy === "site-feedback:reply" ? busy : ""}
+	        onReplyChange={(reply) => setFeedbackReplyState((current) => ({ ...current, reply }))}
+	        onClose={closeFeedbackReply}
+	        onSend={sendFeedbackReply}
+	      />
+	    </PageShell>
   );
 }
 

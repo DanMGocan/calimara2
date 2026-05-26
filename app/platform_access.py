@@ -5,7 +5,7 @@ from typing import Optional
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from . import admin, local_auth, models
+from . import admin, invitations, local_auth, models
 
 SETTING_ID = 1
 ACCESS_DENIED_MESSAGE = "Platforma este momentan disponibilă doar pentru emailurile adăugate în lista de acces."
@@ -57,7 +57,7 @@ def is_email_allowed(db: Session, email: str) -> bool:
 def can_access_platform(db: Session, *, email: str, user: Optional[models.User] = None) -> bool:
     if is_platform_open(db):
         return True
-    return is_email_allowed(db, email)
+    return is_email_allowed(db, email) or invitations.email_has_invitation_access(db, email)
 
 
 def set_platform_open(db: Session, *, is_open: bool, actor: Optional[models.User] = None) -> models.PlatformAccessSetting:

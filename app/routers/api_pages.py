@@ -6,13 +6,13 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, HTTPException, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from .. import models, crud, auth, statistics, pdf_exporter, profile_media, rich_text
 from ..database import get_db
-from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed, get_avatar_url, get_cover_url
+from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed, get_avatar_url, get_client_ip, get_cover_url
 from ..categories import CATEGORIES, get_category_name
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["api-pages"])
 
 SUPPORT_LINK_PREMIUM_TIERS = {"trubadur", "cronicar", "rapsod"}
+LIKE_SESSION_KEY = "liked_post_ids"
 
 
 def _can_use_support_links(user) -> bool:
@@ -128,6 +129,7 @@ def serialize_post(
     include_owner=False,
     super_likes_count=None,
     viewer_super_liked=False,
+    viewer_liked=False,
     comments_count=None,
     viewer_promoted=False,
 ):
@@ -152,6 +154,7 @@ def serialize_post(
         "vizualizari": post.view_count,
         "seconds_listened": post.seconds_listened or 0,
         "likes_count": post.likes_count,
+        "viewer_liked": viewer_liked,
         "comments_count": comments_count if comments_count is not None else len(post.approved_comments),
         "super_likes_count": super_likes_count,
         "viewer_super_liked": viewer_super_liked,
@@ -202,6 +205,36 @@ def compute_super_like_fields(db: Session, posts, current_user):
     return counts, liked
 
 
+def compute_like_fields(db: Session, posts, current_user, request: Optional[Request] = None):
+    if not posts:
+        return {}
+    post_ids = [p.id for p in posts]
+    session_liked_ids = set()
+    if request:
+        values = request.session.get(LIKE_SESSION_KEY, [])
+        if isinstance(values, list):
+            for value in values:
+                try:
+                    session_liked_ids.add(int(value))
+                except (TypeError, ValueError):
+                    continue
+    identity_filters = []
+    if current_user:
+        identity_filters.append(models.Like.user_id == current_user.id)
+    if request:
+        identity_filters.append(models.Like.ip_address == get_client_ip(request))
+    liked_ids = set()
+    if identity_filters:
+        query = db.query(models.Like.post_id).filter(models.Like.post_id.in_(post_ids))
+        query = query.filter(or_(*identity_filters))
+        liked_ids = {row[0] for row in query.all()}
+    liked_ids.update(pid for pid in session_liked_ids if pid in post_ids)
+    return {pid: (pid in liked_ids) for pid in post_ids}
+
+
+COMMENT_VISIBLE_STATUSES = ("approved", "pending", "flagged")
+
+
 def compute_approved_comment_counts(db: Session, posts):
     if not posts:
         return {}
@@ -210,9 +243,24 @@ def compute_approved_comment_counts(db: Session, posts):
         db.query(models.Comment.post_id, func.count(models.Comment.id))
         .filter(
             models.Comment.post_id.in_(post_ids),
-            models.Comment.approved == True,
+            models.Comment.moderation_status.in_(COMMENT_VISIBLE_STATUSES),
+            crud.not_human_rejected_condition("comment", models.Comment.id),
         )
         .group_by(models.Comment.post_id)
+        .all()
+    )
+
+
+def visible_comments_for_post(db: Session, post_id: int):
+    return (
+        db.query(models.Comment)
+        .options(joinedload(models.Comment.commenter))
+        .filter(
+            models.Comment.post_id == post_id,
+            models.Comment.moderation_status.in_(COMMENT_VISIBLE_STATUSES),
+            crud.not_human_rejected_condition("comment", models.Comment.id),
+        )
+        .order_by(models.Comment.created_at.asc(), models.Comment.id.asc())
         .all()
     )
 
@@ -233,11 +281,22 @@ def compute_promoted_post_fields(db: Session, posts, current_user):
     return {pid: (pid in promoted_ids) for pid in post_ids}
 
 
-def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False, include_comments=False):
+def serialize_posts_with_super_likes(db, posts, current_user, include_owner=False, include_comments=False, request: Optional[Request] = None):
     """Serialize a list of posts with efficient bulk super-like lookups."""
     counts, liked = compute_super_like_fields(db, posts, current_user)
+    viewer_liked = compute_like_fields(db, posts, current_user, request)
     comment_counts = compute_approved_comment_counts(db, posts)
     promoted = compute_promoted_post_fields(db, posts, current_user)
+    comments_by_post = {}
+    comment_reaction_counts = {}
+    comment_viewer_reactions = {}
+    if include_comments:
+        all_comments = []
+        for post in posts:
+            post_comments = visible_comments_for_post(db, post.id)
+            comments_by_post[post.id] = post_comments
+            all_comments.extend(post_comments)
+        comment_reaction_counts, comment_viewer_reactions = compute_comment_reaction_fields(db, all_comments, current_user)
     serialized = []
     for post in posts:
         item = serialize_post(
@@ -245,12 +304,19 @@ def serialize_posts_with_super_likes(db, posts, current_user, include_owner=Fals
             include_owner=include_owner,
             super_likes_count=counts.get(post.id, 0),
             viewer_super_liked=liked.get(post.id, False),
+            viewer_liked=viewer_liked.get(post.id, False),
             comments_count=comment_counts.get(post.id, 0),
             viewer_promoted=promoted.get(post.id, False),
         )
         if include_comments:
             item["approved_comments"] = [
-                serialize_comment(comment, db) for comment in (post.approved_comments or [])
+                serialize_comment(
+                    comment,
+                    db,
+                    reaction_counts=comment_reaction_counts.get(comment.id),
+                    viewer_reaction=comment_viewer_reactions.get(comment.id),
+                )
+                for comment in comments_by_post.get(post.id, [])
             ]
         serialized.append(item)
     return serialized
@@ -277,11 +343,22 @@ def serialize_series_summary(db: Session, series):
     }
 
 
-def serialize_comment(comment, db: Optional[Session] = None):
+def serialize_comment(
+    comment,
+    db: Optional[Session] = None,
+    reaction_counts: Optional[dict[str, int]] = None,
+    viewer_reaction: Optional[str] = None,
+):
     """Serialize a comment for JSON response"""
     content = rich_text.sanitize_rich_text(comment.content)
     if db is not None:
         content = crud.link_mentions_in_rich_text(db, comment.content)
+    if reaction_counts is None:
+        if db is not None:
+            summary = crud.comment_reaction_summary(db, comment.id)
+            reaction_counts = summary["counts"]
+        else:
+            reaction_counts = crud.empty_comment_reaction_counts()
     result = {
         "id": comment.id,
         "post_id": comment.post_id,
@@ -292,6 +369,9 @@ def serialize_comment(comment, db: Optional[Session] = None):
         "approved": comment.approved,
         "is_robot": getattr(comment, "is_robot", False),
         "moderation_status": comment.moderation_status,
+        "reaction_counts": reaction_counts,
+        "reaction_total": sum(int(value or 0) for value in reaction_counts.values()),
+        "viewer_reaction": viewer_reaction,
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
         "user": None,
     }
@@ -303,6 +383,43 @@ def serialize_comment(comment, db: Optional[Session] = None):
             "premium_tier": getattr(comment.commenter, "premium_tier", "free") or "free",
         }
     return result
+
+
+def compute_comment_reaction_fields(db: Session, comments, current_user):
+    if not comments:
+        return {}, {}
+    comment_ids = [comment.id for comment in comments]
+    counts = {
+        comment_id: crud.empty_comment_reaction_counts()
+        for comment_id in comment_ids
+    }
+    for comment_id, reaction_type, count in (
+        db.query(
+            models.CommentReaction.comment_id,
+            models.CommentReaction.reaction_type,
+            func.count(models.CommentReaction.id),
+        )
+        .filter(models.CommentReaction.comment_id.in_(comment_ids))
+        .group_by(models.CommentReaction.comment_id, models.CommentReaction.reaction_type)
+        .all()
+    ):
+        if reaction_type in counts[comment_id]:
+            counts[comment_id][reaction_type] = int(count or 0)
+
+    viewer = {}
+    if current_user:
+        viewer = {
+            comment_id: reaction_type
+            for comment_id, reaction_type in (
+                db.query(models.CommentReaction.comment_id, models.CommentReaction.reaction_type)
+                .filter(
+                    models.CommentReaction.user_id == current_user.id,
+                    models.CommentReaction.comment_id.in_(comment_ids),
+                )
+                .all()
+            )
+        }
+    return counts, viewer
 
 
 @router.get("/api/prima-pagina")
@@ -332,7 +449,7 @@ def landing_data(
         statistics.record_view(db, request, "post", post.id, post.slug, post.user_id, current_user)
 
     return {
-        "random_posts": serialize_posts_with_super_likes(db, random_posts, current_user, include_owner=True, include_comments=True),
+        "random_posts": serialize_posts_with_super_likes(db, random_posts, current_user, include_owner=True, include_comments=True, request=request),
         "stats": crud.get_platform_stats(db),
     }
 
@@ -399,12 +516,12 @@ def blog_data(
 
     return {
         "blog_owner": serialize_user(user),
-        "featured_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user),
-        "promoted_own_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, include_owner=True),
+        "featured_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, request=request),
+        "promoted_own_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, include_owner=True, request=request),
         "promoted_authors": promoted_authors,
-        "promoted_external_posts": serialize_posts_with_super_likes(db, promoted_other_posts, current_user, include_owner=True),
-        "latest_posts": serialize_posts_with_super_likes(db, latest_posts, current_user),
-        "all_posts": serialize_posts_with_super_likes(db, all_posts, current_user),
+        "promoted_external_posts": serialize_posts_with_super_likes(db, promoted_other_posts, current_user, include_owner=True, request=request),
+        "latest_posts": serialize_posts_with_super_likes(db, latest_posts, current_user, request=request),
+        "all_posts": serialize_posts_with_super_likes(db, all_posts, current_user, request=request),
         "available_months": [
             {"month": m["month"], "year": m["year"], "count": m["post_count"]}
             for m in available_months
@@ -414,6 +531,7 @@ def blog_data(
         "friend_count": crud.get_friend_count_for_user(db, user.id),
         "follower_count": crud.get_follower_count_for_user(db, user.id),
         "following_count": crud.get_following_count_for_user(db, user.id),
+        "ready_audio_count": crud.get_ready_audio_post_count_for_author(db, user.id),
         "viewer_friendship_status": crud.get_friendship_status_for_viewer(
             db,
             current_user.id if current_user else None,
@@ -458,6 +576,7 @@ def blog_data(
 
 @router.get("/api/bloguri/{username}/toate-operele")
 def blog_all_works_data(
+    request: Request,
     username: str,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(auth.get_current_user),
@@ -480,7 +599,7 @@ def blog_all_works_data(
 
     return {
         "blog_owner": serialize_user(user),
-        "posts": serialize_posts_with_super_likes(db, posts, current_user),
+        "posts": serialize_posts_with_super_likes(db, posts, current_user, request=request),
         "category_counts": [
             {"category": key, "category_name": get_category_name(key), "count": category_counts.get(key, 0)}
             for key in CATEGORIES
@@ -512,6 +631,8 @@ def post_detail_data(
             or current_user.is_moderator
         )
     )
+    if post.moderation_status == "rejected" or crud.content_has_human_rejection(db, "post", post.id):
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
     if post.moderation_status != "approved" and not can_view_pending:
         raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
 
@@ -529,15 +650,26 @@ def post_detail_data(
     # Serialize post with comments (bulk-compute super-like fields for post + related posts in one pass)
     post_group = [post] + list(related_posts)
     counts, liked = compute_super_like_fields(db, post_group, current_user)
+    viewer_liked = compute_like_fields(db, post_group, current_user, request)
     promoted = compute_promoted_post_fields(db, post_group, current_user)
+    approved_comments = visible_comments_for_post(db, post.id)
     post_data = serialize_post(
         post,
         super_likes_count=counts.get(post.id, 0),
         viewer_super_liked=liked.get(post.id, False),
+        viewer_liked=viewer_liked.get(post.id, False),
+        comments_count=len(approved_comments),
         viewer_promoted=promoted.get(post.id, False),
     )
+    comment_reaction_counts, comment_viewer_reactions = compute_comment_reaction_fields(db, approved_comments, current_user)
     post_data["approved_comments"] = [
-        serialize_comment(c, db) for c in (post.approved_comments or [])
+        serialize_comment(
+            c,
+            db,
+            reaction_counts=comment_reaction_counts.get(c.id),
+            viewer_reaction=comment_viewer_reactions.get(c.id),
+        )
+        for c in approved_comments
     ]
     series_context = crud.get_series_context_for_post(db, post, include_unapproved=can_view_pending)
 
@@ -550,6 +682,7 @@ def post_detail_data(
                 p,
                 super_likes_count=counts.get(p.id, 0),
                 viewer_super_liked=liked.get(p.id, False),
+                viewer_liked=viewer_liked.get(p.id, False),
                 viewer_promoted=promoted.get(p.id, False),
             )
             for p in related_posts

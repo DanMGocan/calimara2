@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .. import ai_queue, models, schemas, crud, admin, moderation
 from ..database import get_db
+from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,23 @@ def _content_type_label(content_type: str) -> str:
         "stafeta_segment": "Contribuția din Ștafeta",
     }
     return labels.get(content_type, "Conținutul")
+
+
+def _forum_thread_url(thread: Optional[models.ForumThread], anchor: Optional[str] = None) -> Optional[str]:
+    if not thread or not thread.slug:
+        return None
+    path = f"/discutii/{thread.slug}"
+    if anchor:
+        path = f"{path}#{str(anchor).lstrip('#')}"
+    return path
+
+
+def _theatre_play_url(play: Optional[models.TheatrePlay]) -> Optional[str]:
+    return f"/teatru/{play.slug}" if play and play.slug else None
+
+
+def _stafeta_work_url(work: Optional[models.StafetaWork]) -> Optional[str]:
+    return f"/stafeta/{work.slug}" if work and work.slug else None
 
 
 @router.get("/api/moderare/statistici")
@@ -108,8 +126,11 @@ def get_pending_content(
                     "id": post.id,
                     "type": "post",
                     "title": post.title,
+                    "slug": post.slug,
                     "content": post.content,
                     "author": post.owner.username,
+                    "author_url": author_public_url(post.owner) if post.owner else None,
+                    "target_url": post_public_url(post.owner, post.slug) if post.owner else None,
                     "toxicity_score": getattr(post, 'toxicity_score', 0.0),
                     "moderation_status": post.moderation_status,
                     "moderation_reason": getattr(post, 'moderation_reason', ''),
@@ -121,12 +142,20 @@ def get_pending_content(
 
             for comment in comments:
                 author = comment.commenter.username if comment.commenter else comment.author_name
+                post = comment.post
+                post_owner = post.owner if post and post.owner else None
                 content.append({
                     "id": comment.id,
                     "type": "comment",
-                    "title": None,
+                    "title": f"Comentariu la: {post.title}" if post else "Comentariu",
                     "content": comment.content,
                     "author": author,
+                    "author_url": author_public_url(comment.commenter) if comment.commenter else None,
+                    "post_id": comment.post_id,
+                    "post_title": post.title if post else None,
+                    "post_slug": post.slug if post else None,
+                    "post_author": post_owner.username if post_owner else None,
+                    "target_url": post_public_url(post_owner, post.slug, f"comment-{comment.id}") if post_owner else None,
                     "toxicity_score": getattr(comment, 'toxicity_score', 0.0),
                     "moderation_status": comment.moderation_status,
                     "moderation_reason": getattr(comment, 'moderation_reason', ''),
@@ -140,8 +169,11 @@ def get_pending_content(
                     "id": thread.id,
                     "type": "forum_thread",
                     "title": thread.title,
+                    "slug": thread.slug,
                     "content": thread.content,
                     "author": thread.author.username if thread.author else "Necunoscut",
+                    "author_url": author_public_url(thread.author) if thread.author else None,
+                    "target_url": _forum_thread_url(thread),
                     "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": thread.moderation_status,
                     "moderation_reason": getattr(thread, "moderation_reason", ""),
@@ -157,6 +189,10 @@ def get_pending_content(
                     "title": reply.thread.title if reply.thread else None,
                     "content": reply.content,
                     "author": reply.author.username if reply.author else "Necunoscut",
+                    "author_url": author_public_url(reply.author) if reply.author else None,
+                    "thread_id": reply.thread_id,
+                    "thread_slug": reply.thread.slug if reply.thread else None,
+                    "target_url": _forum_thread_url(reply.thread, f"reply-{reply.id}"),
                     "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": reply.moderation_status,
                     "moderation_reason": getattr(reply, "moderation_reason", ""),
@@ -172,6 +208,10 @@ def get_pending_content(
                     "title": entry.play.title if entry.play else "Teatru colaborativ",
                     "content": entry.content,
                     "author": entry.author.username if entry.author else "Necunoscut",
+                    "author_url": author_public_url(entry.author) if entry.author else None,
+                    "play_id": entry.play_id,
+                    "play_slug": entry.play.slug if entry.play else None,
+                    "target_url": _theatre_play_url(entry.play),
                     "toxicity_score": getattr(entry, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": entry.moderation_status,
                     "moderation_reason": getattr(entry, "moderation_reason", ""),
@@ -187,6 +227,10 @@ def get_pending_content(
                     "title": segment.work.title if segment.work else "Ștafeta",
                     "content": segment.content,
                     "author": segment.author.username if segment.author else "Necunoscut",
+                    "author_url": author_public_url(segment.author) if segment.author else None,
+                    "work_id": segment.work_id,
+                    "work_slug": segment.work.slug if segment.work else None,
+                    "target_url": _stafeta_work_url(segment.work),
                     "toxicity_score": getattr(segment, "toxicity_score", 0.0) or 0.0,
                     "moderation_status": segment.moderation_status,
                     "moderation_reason": getattr(segment, "moderation_reason", ""),
@@ -198,6 +242,8 @@ def get_pending_content(
 
         return {"content": content}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Eroare la obținerea conținutului în așteptare: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut încărca conținutul în așteptare")
@@ -225,8 +271,11 @@ def get_flagged_content(
                 "id": post.id,
                 "type": "post",
                 "title": post.title,
+                "slug": post.slug,
                 "content": post.content,
                 "author": post.owner.username,
+                "author_url": author_public_url(post.owner) if post.owner else None,
+                "target_url": post_public_url(post.owner, post.slug) if post.owner else None,
                 "toxicity_score": getattr(post, 'toxicity_score', 0.0),
                 "moderation_status": getattr(post, 'moderation_status', 'flagged'),
                 "moderation_reason": getattr(post, 'moderation_reason', ''),
@@ -239,12 +288,20 @@ def get_flagged_content(
 
         for comment in comments:
             author = comment.commenter.username if comment.commenter else comment.author_name
+            post = comment.post
+            post_owner = post.owner if post and post.owner else None
             content.append({
                 "id": comment.id,
                 "type": "comment",
-                "title": None,
+                "title": f"Comentariu la: {post.title}" if post else "Comentariu",
                 "content": comment.content,
                 "author": author,
+                "author_url": author_public_url(comment.commenter) if comment.commenter else None,
+                "post_id": comment.post_id,
+                "post_title": post.title if post else None,
+                "post_slug": post.slug if post else None,
+                "post_author": post_owner.username if post_owner else None,
+                "target_url": post_public_url(post_owner, post.slug, f"comment-{comment.id}") if post_owner else None,
                 "toxicity_score": getattr(comment, 'toxicity_score', 0.0),
                 "moderation_status": getattr(comment, 'moderation_status', 'flagged'),
                 "moderation_reason": getattr(comment, 'moderation_reason', ''),
@@ -264,6 +321,11 @@ def get_flagged_content(
                 "title": post.title if post else None,
                 "content": audio.transcript or audio.moderation_reason or "Înregistrare audio fără transcriere",
                 "author": post.owner.username if post and post.owner else None,
+                "author_url": author_public_url(post.owner) if post and post.owner else None,
+                "post_id": audio.post_id,
+                "post_slug": post.slug if post else None,
+                "post_author": post.owner.username if post and post.owner else None,
+                "target_url": post_public_url(post.owner, post.slug) if post and post.owner else None,
                 "toxicity_score": 0.0,
                 "moderation_status": audio.status,
                 "moderation_reason": audio.moderation_reason or "",
@@ -277,8 +339,11 @@ def get_flagged_content(
                 "id": thread.id,
                 "type": "forum_thread",
                 "title": thread.title,
+                "slug": thread.slug,
                 "content": thread.content,
                 "author": thread.author.username if thread.author else "Necunoscut",
+                "author_url": author_public_url(thread.author) if thread.author else None,
+                "target_url": _forum_thread_url(thread),
                 "toxicity_score": getattr(thread, "toxicity_score", 0.0) or 0.0,
                 "moderation_status": getattr(thread, "moderation_status", "flagged"),
                 "moderation_reason": getattr(thread, "moderation_reason", ""),
@@ -294,6 +359,10 @@ def get_flagged_content(
                 "title": reply.thread.title if reply.thread else None,
                 "content": reply.content,
                 "author": reply.author.username if reply.author else "Necunoscut",
+                "author_url": author_public_url(reply.author) if reply.author else None,
+                "thread_id": reply.thread_id,
+                "thread_slug": reply.thread.slug if reply.thread else None,
+                "target_url": _forum_thread_url(reply.thread, f"reply-{reply.id}"),
                 "toxicity_score": getattr(reply, "toxicity_score", 0.0) or 0.0,
                 "moderation_status": getattr(reply, "moderation_status", "flagged"),
                 "moderation_reason": getattr(reply, "moderation_reason", ""),
@@ -309,6 +378,10 @@ def get_flagged_content(
                 "title": entry.play.title if entry.play else "Teatru colaborativ",
                 "content": entry.content,
                 "author": entry.author.username if entry.author else "Necunoscut",
+                "author_url": author_public_url(entry.author) if entry.author else None,
+                "play_id": entry.play_id,
+                "play_slug": entry.play.slug if entry.play else None,
+                "target_url": _theatre_play_url(entry.play),
                 "toxicity_score": getattr(entry, "toxicity_score", 0.0) or 0.0,
                 "moderation_status": getattr(entry, "moderation_status", "flagged"),
                 "moderation_reason": getattr(entry, "moderation_reason", ""),
@@ -321,6 +394,8 @@ def get_flagged_content(
         logger.info(f"Returning {len(content)} flagged content items")
         return {"content": content}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Eroare la obținerea conținutului marcat: {e}")
         raise HTTPException(status_code=500, detail="Nu am putut încărca conținutul marcat")
@@ -610,6 +685,8 @@ def get_moderation_logs_api(
             content_preview = ""
             content_title = ""
             content_author = ""
+            content_author_url = None
+            target_url = None
 
             if log.content_type == "post":
                 post = db.query(models.Post).filter(models.Post.id == log.content_id).first()
@@ -617,18 +694,34 @@ def get_moderation_logs_api(
                     content_title = post.title
                     content_preview = post.content[:100] + "..." if len(post.content) > 100 else post.content
                     content_author = post.owner.username if post.owner else "Necunoscut"
+                    content_author_url = author_public_url(post.owner) if post.owner else None
+                    target_url = post_public_url(post.owner, post.slug) if post.owner else None
             elif log.content_type == "comment":
                 comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
                 if comment:
                     content_title = f"Comentariu la: {comment.post.title}" if comment.post else "Comentariu"
                     content_preview = comment.content[:100] + "..." if len(comment.content) > 100 else comment.content
                     content_author = comment.commenter.username if comment.commenter else (comment.author_name or "Anonim")
+                    content_author_url = author_public_url(comment.commenter) if comment.commenter else None
+                    target_url = post_public_url(comment.post.owner, comment.post.slug, f"comment-{comment.id}") if comment.post and comment.post.owner else None
+            elif log.content_type == "audio":
+                audio = db.query(models.PostAudio).options(
+                    joinedload(models.PostAudio.post).joinedload(models.Post.owner)
+                ).filter(models.PostAudio.id == log.content_id).first()
+                if audio:
+                    content_title = audio.post.title if audio.post else "Audio"
+                    content_preview = audio.transcript or audio.moderation_reason or ""
+                    content_author = audio.post.owner.username if audio.post and audio.post.owner else "Necunoscut"
+                    content_author_url = author_public_url(audio.post.owner) if audio.post and audio.post.owner else None
+                    target_url = post_public_url(audio.post.owner, audio.post.slug) if audio.post and audio.post.owner else None
             elif log.content_type == "forum_thread":
                 thread = db.query(models.ForumThread).filter(models.ForumThread.id == log.content_id).first()
                 if thread:
                     content_title = thread.title
                     content_preview = thread.content[:100] + "..." if len(thread.content) > 100 else thread.content
                     content_author = thread.author.username if thread.author else "Necunoscut"
+                    content_author_url = author_public_url(thread.author) if thread.author else None
+                    target_url = _forum_thread_url(thread)
             elif log.content_type == "forum_reply":
                 reply = db.query(models.ForumReply).options(
                     joinedload(models.ForumReply.thread),
@@ -638,6 +731,8 @@ def get_moderation_logs_api(
                     content_title = f"Răspuns în: {reply.thread.title}" if reply.thread else "Răspuns pe forum"
                     content_preview = reply.content[:100] + "..." if len(reply.content) > 100 else reply.content
                     content_author = reply.author.username if reply.author else "Necunoscut"
+                    content_author_url = author_public_url(reply.author) if reply.author else None
+                    target_url = _forum_thread_url(reply.thread, f"reply-{reply.id}")
             elif log.content_type == "theatre_entry":
                 entry = db.query(models.TheatreEntry).options(
                     joinedload(models.TheatreEntry.play),
@@ -647,6 +742,19 @@ def get_moderation_logs_api(
                     content_title = entry.play.title if entry.play else "Teatru colaborativ"
                     content_preview = entry.content[:100] + "..." if len(entry.content) > 100 else entry.content
                     content_author = entry.author.username if entry.author else "Necunoscut"
+                    content_author_url = author_public_url(entry.author) if entry.author else None
+                    target_url = _theatre_play_url(entry.play)
+            elif log.content_type == "stafeta_segment":
+                segment = db.query(models.StafetaSegment).options(
+                    joinedload(models.StafetaSegment.work),
+                    joinedload(models.StafetaSegment.author),
+                ).filter(models.StafetaSegment.id == log.content_id).first()
+                if segment:
+                    content_title = segment.work.title if segment.work else "Ștafeta"
+                    content_preview = segment.content[:100] + "..." if len(segment.content) > 100 else segment.content
+                    content_author = segment.author.username if segment.author else "Necunoscut"
+                    content_author_url = author_public_url(segment.author) if segment.author else None
+                    target_url = _stafeta_work_url(segment.work)
 
             result.append({
                 "id": log.id,
@@ -655,6 +763,8 @@ def get_moderation_logs_api(
                 "content_title": content_title,
                 "content_preview": content_preview,
                 "content_author": content_author,
+                "content_author_url": content_author_url,
+                "target_url": target_url,
                 "ai_decision": log.ai_decision,
                 "toxicity_score": log.toxicity_score,
                 "harassment_score": log.harassment_score,
@@ -666,6 +776,7 @@ def get_moderation_logs_api(
                 "human_decision": log.human_decision,
                 "human_reason": log.human_reason,
                 "moderator": log.moderator.username if log.moderator else None,
+                "moderator_url": author_public_url(log.moderator) if log.moderator else None,
                 "moderated_at": log.moderated_at.isoformat() if log.moderated_at else None,
                 "created_at": log.created_at.isoformat(),
                 "needs_review": log.needs_human_review
@@ -699,8 +810,11 @@ def get_moderation_queue_api(
                     content_data = {
                         "id": post.id,
                         "title": post.title,
+                        "slug": post.slug,
                         "content": post.content,
                         "author": post.owner.username if post.owner else "Necunoscut",
+                        "author_url": author_public_url(post.owner) if post.owner else None,
+                        "target_url": post_public_url(post.owner, post.slug) if post.owner else None,
                         "created_at": post.created_at.isoformat(),
                         "view_count": post.view_count,
                         "category": post.category
@@ -708,12 +822,19 @@ def get_moderation_queue_api(
             elif log.content_type == "comment":
                 comment = db.query(models.Comment).filter(models.Comment.id == log.content_id).first()
                 if comment:
+                    post = comment.post
+                    post_owner = post.owner if post and post.owner else None
                     content_data = {
                         "id": comment.id,
+                        "title": f"Comentariu la: {post.title}" if post else "Comentariu",
                         "content": comment.content,
                         "author": comment.commenter.username if comment.commenter else (comment.author_name or "Anonim"),
-                        "post_title": comment.post.title if comment.post else "Postare necunoscută",
+                        "author_url": author_public_url(comment.commenter) if comment.commenter else None,
+                        "post_title": post.title if post else "Postare necunoscută",
                         "post_id": comment.post_id,
+                        "post_slug": post.slug if post else None,
+                        "post_author": post_owner.username if post_owner else None,
+                        "target_url": post_public_url(post_owner, post.slug, f"comment-{comment.id}") if post_owner else None,
                         "created_at": comment.created_at.isoformat()
                     }
             elif log.content_type == "audio":
@@ -725,8 +846,12 @@ def get_moderation_queue_api(
                         "id": audio.id,
                         "content": audio.transcript or audio.moderation_reason or "Înregistrare audio",
                         "author": audio.post.owner.username if audio.post and audio.post.owner else "Necunoscut",
+                        "author_url": author_public_url(audio.post.owner) if audio.post and audio.post.owner else None,
                         "post_title": audio.post.title if audio.post else "Postare necunoscută",
                         "post_id": audio.post_id,
+                        "post_slug": audio.post.slug if audio.post else None,
+                        "post_author": audio.post.owner.username if audio.post and audio.post.owner else None,
+                        "target_url": post_public_url(audio.post.owner, audio.post.slug) if audio.post and audio.post.owner else None,
                         "created_at": audio.created_at.isoformat(),
                         "match_score": audio.transcript_match_score,
                     }
@@ -738,8 +863,11 @@ def get_moderation_queue_api(
                     content_data = {
                         "id": thread.id,
                         "title": thread.title,
+                        "slug": thread.slug,
                         "content": thread.content,
                         "author": thread.author.username if thread.author else "Necunoscut",
+                        "author_url": author_public_url(thread.author) if thread.author else None,
+                        "target_url": _forum_thread_url(thread),
                         "created_at": thread.created_at.isoformat(),
                         "section": thread.section,
                     }
@@ -754,7 +882,10 @@ def get_moderation_queue_api(
                         "title": reply.thread.title if reply.thread else None,
                         "content": reply.content,
                         "author": reply.author.username if reply.author else "Necunoscut",
+                        "author_url": author_public_url(reply.author) if reply.author else None,
                         "thread_id": reply.thread_id,
+                        "thread_slug": reply.thread.slug if reply.thread else None,
+                        "target_url": _forum_thread_url(reply.thread, f"reply-{reply.id}"),
                         "created_at": reply.created_at.isoformat(),
                     }
             elif log.content_type == "theatre_entry":
@@ -770,11 +901,31 @@ def get_moderation_queue_api(
                         "title": entry.play.title if entry.play else "Teatru colaborativ",
                         "content": entry.content,
                         "author": entry.author.username if entry.author else "Necunoscut",
+                        "author_url": author_public_url(entry.author) if entry.author else None,
                         "play_id": entry.play_id,
+                        "play_slug": entry.play.slug if entry.play else None,
+                        "target_url": _theatre_play_url(entry.play),
                         "scene_id": entry.scene_id,
                         "entry_type": entry.entry_type,
                         "character": entry.character.name if entry.character else None,
                         "created_at": entry.created_at.isoformat(),
+                    }
+            elif log.content_type == "stafeta_segment":
+                segment = db.query(models.StafetaSegment).options(
+                    joinedload(models.StafetaSegment.author),
+                    joinedload(models.StafetaSegment.work),
+                ).filter(models.StafetaSegment.id == log.content_id).first()
+                if segment:
+                    content_data = {
+                        "id": segment.id,
+                        "title": segment.work.title if segment.work else "Ștafeta",
+                        "content": segment.content,
+                        "author": segment.author.username if segment.author else "Necunoscut",
+                        "author_url": author_public_url(segment.author) if segment.author else None,
+                        "work_id": segment.work_id,
+                        "work_slug": segment.work.slug if segment.work else None,
+                        "target_url": _stafeta_work_url(segment.work),
+                        "created_at": segment.created_at.isoformat(),
                     }
 
             if content_data:

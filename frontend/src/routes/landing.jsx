@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { GiRollingDices } from "react-icons/gi";
 import { fetchLanding, postPdfUrl } from "../api/public.js";
-import { PieceCol, fallbackPiece, postToPiece } from "../app/content.jsx";
+import { PieceCol, postToPiece } from "../app/content.jsx";
 import { PostPromotionMenu } from "../app/post-actions.jsx";
 
 const LANDING_NETWORK_RETRY_DELAYS = [350, 900];
-const LANDING_POST_FADE_OUT_MS = 240;
-const LANDING_POST_SWAP_SETTLE_MS = 50;
-const LANDING_DICE_MIN_SPIN_MS = 760;
+const LANDING_POST_FADE_OUT_MS = 360;
+const LANDING_POST_SWAP_SETTLE_MS = 140;
 
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -28,22 +26,6 @@ async function fetchLandingWithNetworkRetry(category, postId = null) {
   throw lastError;
 }
 
-function TitleShuffleButton({ onShuffle, disabled, spinning }) {
-  return (
-    <button
-      className={`landing-title-dice ${spinning ? "spinning" : ""}`}
-      type="button"
-      aria-label="Alege un text aleatoriu"
-      title="Alege un text aleatoriu"
-      disabled={disabled}
-      onClick={onShuffle}
-    >
-      <GiRollingDices aria-hidden="true" focusable="false" />
-      <span className="landing-title-dice-label" aria-hidden="true">Schimbă</span>
-      <span className="visually-hidden">Alege un text aleatoriu</span>
-    </button>
-  );
-}
 function AuthErrorModal({ open, errorKind, onClose }) {
   if (!open) return null;
   const inviteOnly = errorKind === "access";
@@ -74,13 +56,20 @@ function clearLandingPostUrlParam() {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+function LandingEmptyState({ loading }) {
+  return (
+    <section className="landing-empty-state" role="status" aria-live="polite">
+      {loading ? "Se încarcă..." : "Nu există lucrări pe platformă încă"}
+    </section>
+  );
+}
+
 function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterPostActionsChange }) {
-  const [piece, setPiece] = useState(fallbackPiece("poem"));
+  const [piece, setPiece] = useState(null);
   const [landingPost, setLandingPost] = useState(null);
   const [stats, setStats] = useState(null);
   const [animKey, setAnimKey] = useState(0);
   const [transitioning, setTransitioning] = useState(false);
-  const [diceSpinning, setDiceSpinning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [authErrorOpen, setAuthErrorOpen] = useState(false);
@@ -90,10 +79,8 @@ function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterP
     : "#";
 
   const loadLanding = useCallback(async (initial = false, requestedPostId = null) => {
-    const startedAt = Date.now();
     if (!initial) clearLandingPostUrlParam();
     if (!initial) setTransitioning(true);
-    if (!initial) setDiceSpinning(true);
     setError("");
     try {
       const dataPromise = fetchLandingWithNetworkRetry("toate", requestedPostId);
@@ -103,21 +90,17 @@ function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterP
       const post = data.random_posts?.[0];
       setStats(data.stats ?? null);
       setLandingPost(post ?? null);
-      setPiece(post ? postToPiece(post) : fallbackPiece("poem"));
+      setPiece(post ? postToPiece(post) : null);
       setAnimKey((key) => key + 1);
     } catch (requestError) {
       if (!initial) await wait(LANDING_POST_FADE_OUT_MS);
       setError(requestError.message || "Nu am putut încărca textul.");
       setLandingPost(null);
-      setPiece(fallbackPiece("poem"));
+      setPiece(null);
       setAnimKey((key) => key + 1);
     } finally {
       setLoading(false);
       window.setTimeout(() => setTransitioning(false), initial ? 0 : LANDING_POST_SWAP_SETTLE_MS);
-      if (!initial) {
-        const remainingSpin = Math.max(0, LANDING_DICE_MIN_SPIN_MS - (Date.now() - startedAt));
-        window.setTimeout(() => setDiceSpinning(false), remainingSpin);
-      }
     }
   }, []);
 
@@ -135,19 +118,21 @@ function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterP
     return () => onLandingStatsChange?.(null);
   }, [stats, onLandingStatsChange]);
 
+  useEffect(() => () => onFooterPostActionsChange?.(null), [onFooterPostActionsChange]);
+
   useEffect(() => {
     if (!landingPost) {
       onFooterPostActionsChange?.(null);
-      return undefined;
+      return;
     }
     onFooterPostActionsChange?.({
       key: `landing:${landingPost.id}`,
       post: landingPost,
       onPostChange: setLandingPost,
-      pdfHref: landingPdfHref
+      pdfHref: landingPdfHref,
+      transitioning
     });
-    return () => onFooterPostActionsChange?.(null);
-  }, [landingPost, landingPdfHref, onFooterPostActionsChange]);
+  }, [landingPost, landingPdfHref, onFooterPostActionsChange, transitioning]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -159,25 +144,27 @@ function LandingView({ user, onAuthPostIdChange, onLandingStatsChange, onFooterP
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
-  const shuffleDisabled = transitioning || loading || diceSpinning;
+  const shuffleDisabled = transitioning || loading;
+  const activateTextShuffle = useCallback(() => {
+    if (shuffleDisabled) return;
+    loadLanding(false);
+  }, [loadLanding, shuffleDisabled]);
 
   return (
     <main className="stage landing-stage">
       <div className={`piece-wrap ${transitioning ? "transitioning" : ""} ${landingPost?.super_likes_count > 0 ? "has-super-like" : ""}`}>
-        <PieceCol
-          piece={piece}
-          animKey={animKey}
-          titleAction={landingPost ? (
-            <PostPromotionMenu post={landingPost} author={landingPost.owner} user={user} />
-          ) : null}
-          titlePrefix={(
-            <TitleShuffleButton
-              onShuffle={() => loadLanding(false)}
-              disabled={shuffleDisabled}
-              spinning={diceSpinning}
-            />
-          )}
-        />
+        {piece ? (
+          <PieceCol
+            piece={piece}
+            animKey={animKey}
+            titleAction={landingPost ? (
+              <PostPromotionMenu post={landingPost} author={landingPost.owner} user={user} />
+            ) : null}
+            onTextDoubleActivate={landingPost ? activateTextShuffle : null}
+          />
+        ) : (
+          <LandingEmptyState loading={loading} />
+        )}
         {error ? <div className="inline-error">{error}</div> : null}
       </div>
       <AuthErrorModal open={authErrorOpen} errorKind={authErrorKind} onClose={() => setAuthErrorOpen(false)} />

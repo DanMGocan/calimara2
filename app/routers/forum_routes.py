@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from .. import ai_queue, auth, crud, models, rich_text, schemas
+from .. import ai_queue, auth, crud, models, profile_media, rich_text, schemas
 from ..database import get_db
 from ..utils import get_avatar_url
 
@@ -28,11 +28,15 @@ FORUM_SECTIONS = [
 def _author_payload(db: Session, user: Optional[models.User]) -> Optional[dict]:
     if not user:
         return None
+    profile_photo_url = None
+    if getattr(user, "is_premium", False) and getattr(user, "profile_photo_storage_key", None):
+        profile_photo_url = profile_media.public_media_url(user.username, "profil")
     return {
         "id": user.id,
         "username": user.username,
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
-        "avatar_url": get_avatar_url(user, size=96),
+        "avatar_url": profile_photo_url or get_avatar_url(user, size=96),
+        "profile_photo_url": profile_photo_url,
         "is_premium": getattr(user, "is_premium", False),
         "premium_tier": getattr(user, "premium_tier", "free") or "free",
         "gologani_balance": getattr(user, "gologani_balance", 0) or 0,
@@ -44,7 +48,8 @@ def _author_payload(db: Session, user: Optional[models.User]) -> Optional[dict]:
 def _reply_count(db: Session, thread_id: int) -> int:
     return db.query(func.count(models.ForumReply.id)).filter(
         models.ForumReply.thread_id == thread_id,
-        models.ForumReply.moderation_status == "approved",
+        models.ForumReply.moderation_status.in_(crud.PUBLIC_FORUM_STATUSES),
+        crud.not_human_rejected_condition("forum_reply", models.ForumReply.id),
     ).scalar() or 0
 
 
@@ -77,6 +82,12 @@ def _reply_payload(db: Session, reply: models.ForumReply) -> dict:
         "created_at": reply.created_at,
         "updated_at": reply.updated_at,
     }
+
+
+def _report_title(prefix: str, title: str, content: str = "") -> str:
+    plain = rich_text.rich_text_to_plain_text(content or "").strip()
+    suffix = f": {plain[:120]}" if plain else ""
+    return f"{prefix}: {title}{suffix}"
 
 
 def _thread_detail_payload(
@@ -144,7 +155,7 @@ def get_forum_thread_api(
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     thread = crud.get_forum_thread_by_slug(db, slug)
-    if not thread or not crud.can_view_forum_thread(current_user, thread):
+    if not thread or not crud.can_view_forum_thread(current_user, thread, db=db):
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
     return _thread_detail_payload(db, thread, current_user)
 
@@ -172,6 +183,67 @@ def create_forum_reply_api(
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
     ai_queue.enqueue_forum_reply_moderation_job(db, reply)
     return _reply_payload(db, reply)
+
+
+@router.post("/api/forum/discutii/{thread_id}/raportari", response_model=schemas.PostReport, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+def report_forum_thread_api(
+    thread_id: int,
+    report: schemas.PostReportCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    thread = crud.get_forum_thread(db, thread_id)
+    if not thread or not crud.can_view_forum_thread(current_user, thread, db=db):
+        raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
+    if thread.moderation_status != "approved":
+        raise HTTPException(status_code=400, detail="Discuția nu este disponibilă pentru raportare")
+    db_report = crud.create_content_report(
+        db,
+        content_type="forum_thread",
+        content_id=thread.id,
+        title=_report_title("Discuție forum", thread.title, thread.content),
+        author_username=thread.author.username if thread.author else None,
+        reporter_user_id=current_user.id,
+        report=report,
+        reported_content=thread.content,
+        target_url=f"/discutii/{thread.slug}",
+    )
+    if not db_report:
+        raise HTTPException(status_code=409, detail="Ai raportat deja această discuție pentru acest motiv")
+    return crud.post_report_payload(db_report)
+
+
+@router.post("/api/forum/raspunsuri/{reply_id}/raportari", response_model=schemas.PostReport, status_code=status.HTTP_201_CREATED)
+@limiter.limit("10/minute")
+def report_forum_reply_api(
+    reply_id: int,
+    report: schemas.PostReportCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    reply = crud.get_forum_reply(db, reply_id)
+    thread = reply.thread if reply else None
+    if not reply or not thread or not crud.can_view_forum_thread(current_user, thread, db=db):
+        raise HTTPException(status_code=404, detail="Răspunsul nu a fost găsit")
+    if reply.moderation_status != "approved":
+        raise HTTPException(status_code=400, detail="Răspunsul nu este disponibil pentru raportare")
+    db_report = crud.create_content_report(
+        db,
+        content_type="forum_reply",
+        content_id=reply.id,
+        title=_report_title("Răspuns forum", thread.title, reply.content),
+        author_username=reply.author.username if reply.author else None,
+        reporter_user_id=current_user.id,
+        report=report,
+        reported_content=reply.content,
+        target_url=f"/discutii/{thread.slug}#reply-{reply.id}",
+    )
+    if not db_report:
+        raise HTTPException(status_code=409, detail="Ai raportat deja acest răspuns pentru acest motiv")
+    return crud.post_report_payload(db_report)
 
 
 @router.delete("/api/forum/discutii/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

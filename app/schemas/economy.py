@@ -17,6 +17,21 @@ class ShopItemBase(BaseModel):
     is_active: bool = True
     sort_order: int = 0
 
+    @field_validator("slug", mode="before")
+    @classmethod
+    def normalize_slug(cls, value: str) -> str:
+        return _trim_required_string(value, 120, "Slugul")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return _trim_required_string(value, 180, "Numele")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 2000, "Descrierea")
+
 
 
 class ShopItemCreate(ShopItemBase):
@@ -33,6 +48,21 @@ class ShopItemUpdate(BaseModel):
     asset_url: Optional[str] = Field(None, max_length=500)
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
+
+    @field_validator("slug", mode="before")
+    @classmethod
+    def normalize_slug(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 120, "Slugul")
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 180, "Numele")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        return _trim_optional_string(value, 2000, "Descrierea")
 
 
 
@@ -91,10 +121,34 @@ class GologaniTransactionOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class GologaniRewardSettingUpdate(BaseModel):
+    amount: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.amount is None and self.is_active is None:
+            raise ValueError("Setați suma sau starea recompensei.")
+        return self
+
+
+class GologaniRewardSettingOut(BaseModel):
+    event_type: str
+    label: str
+    description: Optional[str] = None
+    amount: int
+    is_active: bool
+    sort_order: int
+    updated_by: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
 # ===================================
 # FORUM SCHEMAS
 # ===================================
 
 ForumSection = Literal["anunturi", "general", "poezie", "proza_scurta"]
 ForumModerationStatus = Literal["pending", "approved", "flagged", "rejected"]
-

@@ -26,6 +26,10 @@ function navigateToAuthReturn(destination) {
   window.location.href = destination || mainPath("/");
 }
 
+function referralCodeFromLocation() {
+  return new URLSearchParams(window.location.search).get("ref")?.trim() || "";
+}
+
 export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
   const formRef = useRef(null);
   const [email, setEmail] = useState("");
@@ -89,7 +93,12 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
     setStatus("");
     setStatusKind("error");
     try {
-      const response = await registerWithPassword({ email, password });
+      const referralCode = referralCodeFromLocation();
+      const response = await registerWithPassword({
+        email,
+        password,
+        ...(referralCode ? { referral_code: referralCode } : {})
+      });
       setActivationEmail(response.email || email);
       setActivationCode("");
       setStatus(response.message || "Ți-am trimis un cod de activare pe email.");

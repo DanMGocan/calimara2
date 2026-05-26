@@ -79,7 +79,7 @@ class AchievementTests(unittest.TestCase):
         notification = self.db.query(models.Notification).filter_by(user_id=author.id).one()
         self.assertEqual(notification.type, "achievement_unlocked")
         self.assertIn("Piciorul lui Hermes", notification.title)
-        self.assertEqual(notification.link, f"/{post.slug}")
+        self.assertEqual(notification.link, f"//{author.username}.calimara.ro/{post.slug}")
 
     def test_hermes_does_not_award_after_first_public_hour(self):
         author = self.user("slow_author")

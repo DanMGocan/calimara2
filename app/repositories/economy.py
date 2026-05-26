@@ -1,16 +1,69 @@
 from ._shared import *
 from .posts import get_post
+from .referrals import apply_referral_reward_for_earning
+from sqlalchemy.exc import SQLAlchemyError
 
-GOLOGANI_REWARDS = {
-    "post_approved": 25,
-    "comment_approved": 8,
-    "like_given": 1,
-    "like_received": 2,
-    "super_like_given": 5,
-    "super_like_received": 15,
-    "forum_thread_approved": 15,
-    "forum_reply_approved": 8,
-}
+DEFAULT_GOLOGANI_REWARD_SETTINGS = [
+    {
+        "event_type": "post_approved",
+        "label": "Text aprobat",
+        "description": "Autorul primește recompensa când o postare devine aprobată.",
+        "amount": 25,
+        "sort_order": 10,
+    },
+    {
+        "event_type": "comment_approved",
+        "label": "Comentariu aprobat",
+        "description": "Autorul primește recompensa când un comentariu devine aprobat.",
+        "amount": 8,
+        "sort_order": 20,
+    },
+    {
+        "event_type": "like_given",
+        "label": "Apreciere oferită",
+        "description": "Cititorul primește recompensa când apreciază textul altcuiva.",
+        "amount": 1,
+        "sort_order": 30,
+    },
+    {
+        "event_type": "like_received",
+        "label": "Apreciere primită",
+        "description": "Autorul primește recompensa când textul lui primește o apreciere.",
+        "amount": 2,
+        "sort_order": 40,
+    },
+    {
+        "event_type": "super_like_given",
+        "label": "Super-apreciere oferită",
+        "description": "Cititorul primește recompensa când oferă Super-apreciez.",
+        "amount": 5,
+        "sort_order": 50,
+    },
+    {
+        "event_type": "super_like_received",
+        "label": "Super-apreciere primită",
+        "description": "Autorul primește recompensa când textul lui primește Super-apreciez.",
+        "amount": 15,
+        "sort_order": 60,
+    },
+    {
+        "event_type": "forum_thread_approved",
+        "label": "Discuție forum aprobată",
+        "description": "Autorul primește recompensa când o discuție de forum devine aprobată.",
+        "amount": 15,
+        "sort_order": 70,
+    },
+    {
+        "event_type": "forum_reply_approved",
+        "label": "Răspuns forum aprobat",
+        "description": "Autorul primește recompensa când un răspuns de forum devine aprobat.",
+        "amount": 8,
+        "sort_order": 80,
+    },
+]
+
+GOLOGANI_REWARDS = {item["event_type"]: item["amount"] for item in DEFAULT_GOLOGANI_REWARD_SETTINGS}
+GOLOGANI_REWARD_DEFAULTS = {item["event_type"]: item for item in DEFAULT_GOLOGANI_REWARD_SETTINGS}
 
 DEFAULT_SHOP_ITEMS = [
     {
@@ -46,6 +99,9 @@ class ShopItemInactiveError(EconomyError):
 class ShopItemDuplicateSlugError(EconomyError):
     pass
 
+class GologaniRewardSettingNotFoundError(EconomyError):
+    pass
+
 class InventoryDuplicateError(EconomyError):
     pass
 
@@ -54,6 +110,76 @@ class InventoryItemNotFoundError(EconomyError):
 
 def _normalize_balance(user: models.User) -> int:
     return int(user.gologani_balance or 0)
+
+def seed_default_gologani_reward_settings(db: Session) -> None:
+    changed = False
+    for setting_data in DEFAULT_GOLOGANI_REWARD_SETTINGS:
+        existing = (
+            db.query(models.GologaniRewardSetting)
+            .filter(models.GologaniRewardSetting.event_type == setting_data["event_type"])
+            .first()
+        )
+        if existing:
+            for key in ("label", "description", "sort_order"):
+                if getattr(existing, key) != setting_data[key]:
+                    setattr(existing, key, setting_data[key])
+                    changed = True
+            continue
+        db.add(models.GologaniRewardSetting(**setting_data))
+        changed = True
+    if changed:
+        db.commit()
+
+def list_gologani_reward_settings(db: Session) -> List[models.GologaniRewardSetting]:
+    seed_default_gologani_reward_settings(db)
+    return (
+        db.query(models.GologaniRewardSetting)
+        .order_by(models.GologaniRewardSetting.sort_order.asc(), models.GologaniRewardSetting.event_type.asc())
+        .all()
+    )
+
+def get_gologani_reward_setting(db: Session, event_type: str) -> Optional[models.GologaniRewardSetting]:
+    return (
+        db.query(models.GologaniRewardSetting)
+        .filter(models.GologaniRewardSetting.event_type == event_type)
+        .first()
+    )
+
+def update_gologani_reward_setting(
+    db: Session,
+    event_type: str,
+    data: schemas.GologaniRewardSettingUpdate,
+    *,
+    updated_by: Optional[int] = None,
+) -> models.GologaniRewardSetting:
+    defaults = GOLOGANI_REWARD_DEFAULTS.get(event_type)
+    setting = get_gologani_reward_setting(db, event_type)
+    if not setting and defaults:
+        setting = models.GologaniRewardSetting(**defaults)
+        db.add(setting)
+        db.flush()
+    if not setting:
+        raise GologaniRewardSettingNotFoundError()
+    updates = data.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(setting, key, value)
+    setting.updated_by = updated_by
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+def get_gologani_reward_amount(db: Session, event_type: str) -> int:
+    default_amount = int(GOLOGANI_REWARDS.get(event_type, 0))
+    try:
+        setting = get_gologani_reward_setting(db, event_type)
+    except SQLAlchemyError:
+        db.rollback()
+        return default_amount
+    if not setting:
+        return default_amount
+    if not setting.is_active:
+        return 0
+    return max(0, int(setting.amount or 0))
 
 def grant_gologani(
     db: Session,
@@ -75,6 +201,8 @@ def grant_gologani(
         .first()
     )
     if existing:
+        if existing.amount > 0:
+            apply_referral_reward_for_earning(db, existing.user_id)
         return existing
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -102,11 +230,13 @@ def grant_gologani(
             .first()
         )
     db.refresh(transaction)
+    if transaction.amount > 0:
+        apply_referral_reward_for_earning(db, user.id)
     return transaction
 
 def award_content_approved(db: Session, content_type: str, content) -> Optional[models.GologaniTransaction]:
     reward_key = f"{content_type}_approved"
-    amount = GOLOGANI_REWARDS.get(reward_key)
+    amount = get_gologani_reward_amount(db, reward_key)
     if not amount:
         return None
     if getattr(content, "moderation_status", None) != "approved":
@@ -148,7 +278,7 @@ def award_like_created(db: Session, like: models.Like) -> None:
     grant_gologani(
         db,
         user_id=like.user_id,
-        amount=GOLOGANI_REWARDS["like_given"],
+        amount=get_gologani_reward_amount(db, "like_given"),
         event_type="like_given",
         source_type="like",
         source_id=like.id,
@@ -158,7 +288,7 @@ def award_like_created(db: Session, like: models.Like) -> None:
     grant_gologani(
         db,
         user_id=post.user_id,
-        amount=GOLOGANI_REWARDS["like_received"],
+        amount=get_gologani_reward_amount(db, "like_received"),
         event_type="like_received",
         source_type="like",
         source_id=like.id,
@@ -173,7 +303,7 @@ def award_super_like_created(db: Session, super_like: models.SuperLike) -> None:
     grant_gologani(
         db,
         user_id=super_like.user_id,
-        amount=GOLOGANI_REWARDS["super_like_given"],
+        amount=get_gologani_reward_amount(db, "super_like_given"),
         event_type="super_like_given",
         source_type="super_like",
         source_id=super_like.id,
@@ -183,7 +313,7 @@ def award_super_like_created(db: Session, super_like: models.SuperLike) -> None:
     grant_gologani(
         db,
         user_id=post.user_id,
-        amount=GOLOGANI_REWARDS["super_like_received"],
+        amount=get_gologani_reward_amount(db, "super_like_received"),
         event_type="super_like_received",
         source_type="super_like",
         source_id=super_like.id,

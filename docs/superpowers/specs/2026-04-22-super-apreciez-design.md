@@ -5,16 +5,18 @@
 
 ## Summary
 
-Add a scarce "super-like" reaction called **Super-apreciez** to Calimara. Every registered user gets a small weekly quota of super-apreciez which they can spend on other users' posts. Posts that have received at least one super-apreciez are visually distinguished with a gold accent under the title. Users who want more super-apreciez per week can pay for a **Premium** subscription via Stripe.
+Add a scarce "super-like" reaction called **Super-apreciez** to Calimara. Every registered user gets a small monthly quota of super-apreciez which they can spend on other users' posts. Posts that have received at least one super-apreciez are visually distinguished with a gold accent under the title. Users who want more super-apreciez per month can pay for a **Premium** subscription via Stripe.
 
 ## Feature rules (locked)
 
-- **Free users:** weekly quota = **1** super-apreciez.
-- **Premium users:** weekly quota = **3** super-apreciez.
-- **Weekly reset:** every Monday 00:00 UTC, the wallet is **hard reset** to the user's quota. Unused super-apreciez from the previous week are lost. Max a user can hold at any time = their weekly quota.
+- **Free users:** monthly quota = **1** super-apreciez.
+- **Trubadur / tier 1:** monthly quota = **3** super-apreciez.
+- **Cronicar / tier 2:** monthly quota = **4** super-apreciez.
+- **Rapsod / tier 3:** monthly quota = **5** super-apreciez.
+- **Monthly reset:** every first day of the calendar month at 00:00 UTC, the wallet is **hard reset** to the user's quota. Unused super-apreciez from the previous month are lost. Max a user can hold at any time = their monthly quota.
 - **No self-super-apreciez:** a user cannot super-apreciez their own post.
 - **One per user per post:** a user cannot super-apreciez the same post more than once (enforced by a DB unique constraint).
-- **Toggle semantics:** clicking a second time within the same ISO week *undoes* the super-apreciez and returns the credit. Undoing in a later week does nothing to quota (the credit has already reset away).
+- **Toggle semantics:** clicking a second time within the same calendar month *undoes* the super-apreciez and returns the credit. Undoing in a later month does nothing to quota (the credit has already reset away).
 - **Golden border:** any post with `super_likes_count >= 1` is rendered with a gold accent beneath the title in all contexts (detail page, feed cards, category pages, search, collections).
 - **Premium tier:** €3.99/month recurring, Stripe-hosted checkout. Billing management via the Stripe-hosted Customer Portal. No one-off super-apreciez purchases.
 
@@ -24,7 +26,7 @@ Add a scarce "super-like" reaction called **Super-apreciez** to Calimara. Every 
 Remaining quota is computed on demand as:
 
 ```
-weekly_quota(user) - count(SuperLike where user_id=u and created_at >= start_of_iso_week_utc())
+monthly_quota(user) - count(SuperLike where user_id=u and created_at is inside the current calendar month UTC)
 ```
 
 No `super_like_wallet` table, no cron job, no counter drift. The `SuperLike` rows are the single source of truth.
@@ -46,7 +48,7 @@ super_likes
   user_id         FK users.id  ON DELETE CASCADE     -- always set, never anonymous
   created_at      TIMESTAMP DEFAULT now()
   UNIQUE (user_id, post_id)                          -- enforces "one per user per post"
-  INDEX (user_id, created_at)                        -- fast weekly-count lookups
+  INDEX (user_id, created_at)                        -- fast monthly-count lookups
   INDEX (post_id)                                    -- fast count aggregation
 ```
 
@@ -76,9 +78,9 @@ Exists solely for webhook idempotency — replayed events are no-ops.
 - `@property is_premium` — `premium_until is not None and premium_until > utcnow()`
 - `super_likes_given` relationship
 
-### Week boundary
+### Month boundary
 
-ISO week in **UTC, Monday 00:00**. Romania is UTC+2 / UTC+3 (DST); this maps to 02:00 / 03:00 Romania time — i.e., well inside "Monday morning." Avoids DST transition bugs entirely.
+Calendar month in **UTC, day 1 at 00:00**. Romania is UTC+2 / UTC+3 (DST), so the reset happens safely after local midnight and avoids DST transition bugs.
 
 ## API
 
@@ -93,22 +95,23 @@ POST /api/posts/{post_id}/super-likes
   404:    "Postarea nu a fost găsită."
   409:    "Ai super-apreciat deja această postare."
   403 (error code `quota_exhausted`):
-          "Ai epuizat super-aprecierile pentru această săptămână."
+          "Ai epuizat super-aprecierile pentru această lună."
 
 DELETE /api/posts/{post_id}/super-likes
   Auth:   required
-  204:    Success (row removed, quota returned if same ISO week)
+  204:    Success (row removed, quota returned if same calendar month)
   401:    as above
   404:    no existing super-like from this user on this post
 
 GET /api/users/me/super-likes/quota
   Auth:   required
   200: {
-    "weekly_quota": 3,
-    "used_this_week": 2,
-    "remaining": 1,
-    "week_resets_at": "2026-04-27T00:00:00Z",
-    "is_premium": true
+    "monthly_quota": 4,
+    "used_this_month": 2,
+    "remaining": 2,
+    "month_resets_at": "2026-06-01T00:00:00Z",
+    "is_premium": true,
+    "premium_tier": "cronicar"
   }
 ```
 
@@ -129,7 +132,7 @@ All inside a single transaction:
 2. Load post; 404 if missing.
 3. Reject if `post.user_id == user.id` (self).
 4. Reject if a `SuperLike(user_id, post_id)` row already exists.
-5. Count `SuperLike` rows for this user with `created_at >= start_of_iso_week_utc()`; reject if `>= weekly_quota(user)`.
+5. Count `SuperLike` rows for this user in the current calendar month UTC; reject if `>= monthly_quota(user)`.
 6. Insert. The `UNIQUE (user_id, post_id)` constraint is the last-line race-condition guard.
 
 ### Stripe endpoints (new `app/routers/premium_routes.py`)
@@ -212,9 +215,9 @@ Location: `frontend/src/components/ui/super-like-button.tsx`, sibling of the exi
 - Disabled states with tooltips:
   - **not logged in** — "Autentifică-te pentru a super-aprecia"
   - **own post** — "Nu îți poți super-aprecia propria postare"
-  - **no quota left, free user** — "Ai folosit super-aprecierea săptămâna aceasta. Următoarea: luni. Upgrade la Premium pentru 3 pe săptămână."
-  - **no quota left, premium** — "Ai folosit toate super-aprecierile săptămâna aceasta. Următoarele: luni."
-- Tooltip on hover when enabled: "Îți mai rămân {N} super-aprecieri săptămâna aceasta."
+  - **no quota left, free user** — "Ai folosit super-aprecierea luna aceasta. Următoarea: luna viitoare. Upgrade la Premium pentru 3 pe lună."
+  - **no quota left, premium** — "Ai folosit toate super-aprecierile luna aceasta. Următoarele: luna viitoare."
+- Tooltip on hover when enabled: "Îți mai rămân {N} super-aprecieri luna aceasta."
 
 ### Golden border
 
@@ -224,7 +227,7 @@ Location: `frontend/src/components/ui/super-like-button.tsx`, sibling of the exi
 
 ### `<PremiumPage />` — route `/premium`
 
-- "Ce primești cu Premium" section: "3 super-aprecieri pe săptămână" (vs 1), small golden star as flavor.
+- "Ce primești cu Premium" section: "3 / 4 / 5 super-aprecieri pe lună" by tier, small golden star as flavor.
 - Price: **3.99 € / lună**.
 - Single CTA button: "Devino Premium" → `startCheckout()`.
 - If user is already premium: shows "Ești Premium până la {premium_until}" and a "Gestionează abonamentul" button → `openCustomerPortal()`.
@@ -249,8 +252,8 @@ Location: `frontend/src/components/ui/super-like-button.tsx`, sibling of the exi
 
 ## Success criteria
 
-- A free user can super-apreciez one post per ISO week, not their own, not the same post twice. Undoing within the same week restores their quota.
-- A premium user can super-apreciez three posts per ISO week, same rules.
+- A free user can super-apreciez one post per calendar month, not their own, not the same post twice. Undoing within the same month restores their quota.
+- Premium users can super-apreciez 3 / 4 / 5 posts per calendar month for Trubadur / Cronicar / Rapsod, same rules.
 - A post that has received at least one super-apreciez shows a gold accent under its title on every page it appears.
 - A free user can click "Devino Premium", complete Stripe Checkout with a test card, and within ~2 seconds see their quota go from 1 to 3 (after the webhook fires).
 - A premium user can click "Gestionează abonamentul" and cancel via the Stripe Customer Portal. Their `premium_until` remains set to the end of the billing period they already paid for; `is_premium` remains true until that date passes.

@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     email: EmailStr
     google_id: Optional[str] = None
     facebook_id: Optional[str] = None
+    is_system: bool = False
     subtitle: Optional[str] = None # User motto
     avatar_seed: Optional[str] = None # DiceBear avatar seed
     cover_seed: Optional[str] = None # DiceBear cover seed
@@ -35,6 +36,7 @@ class UserSetup(BaseModel):
     subtitle: Optional[str] = None
     avatar_seed: str
     cover_seed: Optional[str] = None
+    accept_terms_and_privacy: bool = False
 
     @field_validator("subtitle")
     @classmethod
@@ -88,6 +90,7 @@ class FacebookUserInfo(BaseModel):
 class PasswordRegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=10, max_length=128)
+    referral_code: Optional[str] = Field(default=None, max_length=64)
 
 
 class PasswordLoginRequest(BaseModel):
@@ -109,6 +112,17 @@ class PasswordResetConfirmRequest(BaseModel):
     email: EmailStr
     code: str = Field(..., min_length=4, max_length=32)
     password: str = Field(..., min_length=10, max_length=128)
+
+
+class InvitationPasswordLoginRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=10, max_length=128)
 
 
 class UserInDB(UserBase):

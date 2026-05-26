@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date as date_type
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint, select
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, select, text
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -38,6 +38,8 @@ class Club(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        CheckConstraint("speciality IN ('poezie', 'proza_scurta')", name="ck_clubs_speciality"),
+        CheckConstraint("join_policy IN ('open', 'private', 'closed')", name="ck_clubs_join_policy"),
         UniqueConstraint("owner_id", name="uq_clubs_owner"),
     )
 
@@ -72,6 +74,7 @@ class ClubMember(Base):
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="club_memberships")
 
     __table_args__ = (
+        CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_club_members_role"),
         UniqueConstraint("club_id", "user_id", name="uq_club_member"),
     )
 
@@ -80,6 +83,18 @@ class ClubMember(Base):
 
 class ClubJoinRequest(Base):
     __tablename__ = "club_join_requests"
+    __table_args__ = (
+        CheckConstraint("direction IN ('application', 'invitation')", name="ck_club_join_requests_direction"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_club_join_requests_status"),
+        Index(
+            "uq_cjr_pending",
+            "club_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+            sqlite_where=text("status = 'pending'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     club_id: Mapped[int] = mapped_column(Integer, ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -141,4 +156,3 @@ class ClubAchievement(Base):
     __table_args__ = (
         UniqueConstraint("club_id", "key", name="uq_club_achievement"),
     )
-

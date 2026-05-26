@@ -55,6 +55,7 @@ class FeaturedPost(Base):
 class UserAward(Base):
     __tablename__ = "user_awards"
     __table_args__ = (
+        CheckConstraint("award_type IN ('writing', 'community', 'milestone', 'special')", name="ck_user_awards_award_type"),
         UniqueConstraint("user_id", "achievement_key", "dedupe_key", name="uq_user_awards_achievement_dedupe"),
     )
 

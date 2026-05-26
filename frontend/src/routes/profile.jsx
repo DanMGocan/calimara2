@@ -1,19 +1,23 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { FaCoins, FaShirt } from "react-icons/fa6";
-import { FiAward, FiBookOpen, FiCheck, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMapPin, FiMessageCircle, FiSettings, FiStar, FiUserCheck, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
+import { FiAward, FiBookOpen, FiCheck, FiEdit3, FiExternalLink, FiHeadphones, FiHeart, FiMail, FiMapPin, FiMessageCircle, FiPlay, FiSearch, FiSend, FiSettings, FiStar, FiUserCheck, FiUserMinus, FiUserPlus, FiUsers, FiX } from "react-icons/fi";
 import { SiYoutube } from "react-icons/si";
 import { acceptFriendRequest, deleteFriendRequest, removeFriend, sendFriendRequest } from "../api/friends.js";
 import { fetchFollowers, fetchFollowing, followUser, unfollowUser } from "../api/follows.js";
+import { sendMessage } from "../api/messages.js";
 import { fetchAllWorks, fetchBlog } from "../api/public.js";
-import { promoteAuthor, unpromoteAuthor } from "../api/users.js";
+import { fetchPromotions, promoteAuthor, promotePost, searchPromotions, unpromoteAuthor, unpromotePost } from "../api/users.js";
+import { addDiacritics } from "../api/writing.js";
 import { useAuthModal } from "../app/auth-modal.jsx";
-import { ALL_WORKS_SORT_OPTIONS, PROFILE_LINK_MISSING_MESSAGE } from "../app/constants.js";
+import { ALL_WORKS_SORT_OPTIONS, PRIVATE_MESSAGE_CHARACTER_LIMIT, PROFILE_LINK_MISSING_MESSAGE } from "../app/constants.js";
 import { AuthorLink, EquippedStrip, PostCard, RichTextContent } from "../app/content.jsx";
-import { categoryLabel, formatNumber, usernameHandle } from "../app/format.js";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress, useDiacriticsQuota } from "../app/diacritics.jsx";
+import { categoryLabel, formatNumber, htmlToText, usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, PageShell, StatusPanel } from "../app/layout.jsx";
 import { authorPath, blogUrl, mainPath, profileAvatarUrl, profileCoverUrl } from "../app/paths.js";
 import { SOCIAL_PROFILE_LINKS, SUPPORT_PROFILE_LINKS, profileLinks, profileTierBadge, safeExternalUrl } from "../app/profile-links.jsx";
+import { profileSeo, usePageSeo } from "../app/seo.js";
 
 function ExternalProfileLinks({ links, className = "", children }) {
   if (!links.length && !children) return null;
@@ -81,6 +85,7 @@ function ProfileCountLink({ Icon, href, value, label }) {
   );
 }
 function PromoteAuthorButton({ owner, user, initialPromoted }) {
+  const { openAuthModal } = useAuthModal();
   const [promoted, setPromoted] = useState(Boolean(initialPromoted));
   const [busy, setBusy] = useState(false);
 
@@ -89,7 +94,21 @@ function PromoteAuthorButton({ owner, user, initialPromoted }) {
     setBusy(false);
   }, [owner?.id, user?.id, initialPromoted]);
 
-  if (!owner || !user || owner.id === user.id) return null;
+  if (!owner || owner.id === user?.id) return null;
+
+  if (!user) {
+    return (
+      <button
+        className="profile-link-btn profile-promote-author"
+        type="button"
+        onClick={() => openAuthModal?.()}
+        aria-label="Autentifică-te pentru a promova autorul pe profilul tău"
+        title="Autentifică-te pentru a promova autorul pe profilul tău"
+      >
+        <FiStar aria-hidden="true" />
+      </button>
+    );
+  }
 
   const toggle = async () => {
     if (busy) return;
@@ -116,8 +135,8 @@ function PromoteAuthorButton({ owner, user, initialPromoted }) {
       onClick={toggle}
       disabled={busy}
       aria-pressed={promoted}
-      aria-label={promoted ? "Elimină autorul din promovări" : "Promovează autorul pe Călimara mea"}
-      title={promoted ? "Elimină autorul din promovări" : "Promovează autorul pe Călimara mea"}
+      aria-label={promoted ? "Elimină promovarea autorului de pe profilul tău" : "Promovează autorul pe profilul tău"}
+      title={promoted ? "Elimină promovarea autorului de pe profilul tău" : "Promovează autorul pe profilul tău"}
     >
       <FiStar aria-hidden="true" />
     </button>
@@ -177,6 +196,7 @@ function ProfileFollowButton({ owner, user, initialFollowing, onFollowingChange,
   );
 }
 function ProfileFriendActions({ owner, user, initialStatus, initialFriendshipId, onUserRefresh }) {
+  const { openAuthModal } = useAuthModal();
   const [status, setStatus] = useState(initialStatus || "none");
   const [friendshipId, setFriendshipId] = useState(initialFriendshipId || null);
   const [busy, setBusy] = useState("");
@@ -187,7 +207,15 @@ function ProfileFriendActions({ owner, user, initialStatus, initialFriendshipId,
     setBusy("");
   }, [owner?.id, user?.id, initialStatus, initialFriendshipId]);
 
-  if (!owner || !user || owner.id === user.id) return null;
+  if (!owner || owner.id === user?.id) return null;
+
+  if (!user) {
+    return (
+      <button className="profile-link-btn profile-friend-action" type="button" onClick={() => openAuthModal?.()} aria-label="Autentifică-te pentru prietenie" title="Autentifică-te pentru prietenie">
+        <FiUserPlus aria-hidden="true" />
+      </button>
+    );
+  }
 
   const syncFromResponse = (response) => {
     setStatus(response?.status || "none");
@@ -253,11 +281,203 @@ function ProfileFriendActions({ owner, user, initialStatus, initialFriendshipId,
     </button>
   );
 }
-function ProfileHero({ data, postCount, user, onUserRefresh }) {
+
+function ProfileMessageModal({ owner, user, open, onClose }) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [autoDiacritics, setAutoDiacritics] = useState(false);
+  const [diacriticsReview, setDiacriticsReview] = useState(null);
+  const {
+    diacriticsProgress,
+    startDiacriticsProgress,
+    finishDiacriticsProgress,
+    failDiacriticsProgress
+  } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
+
+  useEffect(() => {
+    if (!open) return;
+    setMessage("");
+    setStatus("");
+    setError("");
+    setSubmitting(false);
+    setAutoDiacritics(false);
+    setDiacriticsReview(null);
+  }, [open, owner?.id, user?.id]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open || !owner) return null;
+
+  const submit = async (event, { skipDiacritics = false } = {}) => {
+    event?.preventDefault();
+    const content = message.trim();
+    if (!content || submitting) return;
+    setSubmitting(true);
+    setStatus("");
+    setError("");
+    try {
+      if (!skipDiacritics && user && autoDiacritics && !diacriticsReview) {
+        startDiacriticsProgress({ content });
+        const converted = await addDiacritics({ kind: "private_message", content });
+        finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
+        setMessage(converted.content ?? message);
+        setDiacriticsReview({ originalContent: message, changed: converted.changed });
+        setSubmitting(false);
+        return;
+      }
+      await sendMessage({ recipient_username: owner.username, content });
+      setMessage("");
+      setDiacriticsReview(null);
+      setStatus("Mesajul a fost trimis.");
+    } catch (requestError) {
+      failDiacriticsProgress();
+      setError(requestError.message || "Nu am putut trimite mesajul.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <DiacriticsProgressOverlay {...diacriticsProgress} />
+      <div className="access-modal-scrim" role="presentation" onClick={onClose}>
+        <section className="access-modal profile-message-modal" role="dialog" aria-modal="true" aria-labelledby="profile-message-title" onClick={(event) => event.stopPropagation()}>
+          <button className="access-modal-close" type="button" aria-label="Închide" onClick={onClose}>x</button>
+          <h2 id="profile-message-title" className="access-modal-title">Mesaj către {usernameHandle(owner.username)}</h2>
+          <form className="profile-message-form" onSubmit={submit}>
+            <div className="profile-message-recipient">
+              <img className="message-avatar profile-picture" src={profileAvatarUrl(owner, 56)} alt="" aria-hidden="true" />
+              <span>{usernameHandle(owner.username)}</span>
+            </div>
+            <label className="cal-label" htmlFor="profile-private-message">Mesaj</label>
+            <textarea
+              id="profile-private-message"
+              className="cal-textarea message-modal-textarea"
+              value={message}
+              onChange={(event) => {
+                setMessage(event.target.value);
+                setDiacriticsReview(null);
+              }}
+              maxLength={PRIVATE_MESSAGE_CHARACTER_LIMIT}
+              rows={5}
+              required
+            />
+            <div className="message-diacritics-block">
+              <DiacriticsControl
+                user={user}
+                enabled={autoDiacritics}
+                disabled={Boolean(diacriticsReview)}
+                label="Adaugă automat diacritice în mesaj?"
+                quota={diacriticsQuota}
+                quotaLoading={diacriticsQuotaLoading}
+                quotaError={diacriticsQuotaError}
+                onChange={(checked) => {
+                  setAutoDiacritics(checked);
+                  setDiacriticsReview(null);
+                }}
+              />
+              <DiacriticsReviewPanel
+                active={Boolean(diacriticsReview)}
+                changed={Boolean(diacriticsReview?.changed)}
+                onReset={diacriticsReview ? () => {
+                  setMessage(diacriticsReview.originalContent);
+                  setDiacriticsReview(null);
+                } : null}
+              />
+            </div>
+            <div className="message-composer-foot">
+              <span>{message.trim().length}/{PRIVATE_MESSAGE_CHARACTER_LIMIT}</span>
+              <button className="cal-btn primary" type="submit" disabled={submitting || !message.trim()}>
+                <FiSend aria-hidden="true" />
+                {diacriticsSubmitLabel({
+                  submitting,
+                  reviewing: Boolean(diacriticsReview),
+                  enabled: Boolean(user && autoDiacritics),
+                  submitLabel: "Trimite"
+                })}
+              </button>
+              {user && autoDiacritics && !diacriticsReview ? (
+                <button className="cal-btn" type="button" onClick={() => submit(null, { skipDiacritics: true })} disabled={submitting || !message.trim()}>
+                  Trimite fără Diacritice
+                </button>
+              ) : null}
+            </div>
+            {status ? <div className="inline-status">{status}</div> : null}
+            {error ? <div className="inline-error">{error}</div> : null}
+          </form>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function ProfileMessageButton({ owner, user, onOpen }) {
+  const { openAuthModal } = useAuthModal();
+  if (!owner || owner.id === user?.id) return null;
+  const loggedIn = Boolean(user);
+  return (
+    <button
+      className="profile-link-btn profile-message-action"
+      type="button"
+      onClick={() => (loggedIn ? onOpen() : openAuthModal?.())}
+      aria-label={loggedIn ? "Trimite mesaj privat" : "Autentifică-te pentru mesaj privat"}
+      title={loggedIn ? "Trimite mesaj privat" : "Autentifică-te pentru mesaj privat"}
+    >
+      <FiMail aria-hidden="true" />
+    </button>
+  );
+}
+
+function ProfileAudioPlayButton({ owner, user, readyAudioCount, onStartAuthorListening }) {
+  const loggedIn = Boolean(user);
+  const hasAudio = Number(readyAudioCount || 0) > 0;
+  const canListen = Boolean(user?.has_audio_access);
+  let title = owner?.username ? `Ascultă textele audio ale lui ${usernameHandle(owner.username)}` : "Play";
+  if (!loggedIn) title = "Autentifică-te și activează Cronicar sau Rapsod pentru Play";
+  else if (!canListen) title = "Necesită abonament Cronicar sau Rapsod";
+  else if (!hasAudio) title = "Autorul nu are audio disponibil";
+  const disabled = !loggedIn || !canListen || !hasAudio;
+
+  return (
+    <button
+      className="profile-write-btn profile-audio-play-btn"
+      type="button"
+      onClick={() => {
+        if (!disabled && owner?.username) onStartAuthorListening?.(owner.username);
+      }}
+      disabled={disabled}
+      aria-label={title}
+      title={title}
+    >
+      <FiPlay aria-hidden="true" />
+      <span>Ascultă opere de acest autor</span>
+    </button>
+  );
+}
+
+function ProfileHero({ data, postCount, user, onUserRefresh, onStartAuthorListening }) {
   const owner = data?.blog_owner;
   const [followerCount, setFollowerCount] = useState(data?.follower_count || 0);
+  const [messageModalOpen, setMessageModalOpen] = useState(false);
   useEffect(() => {
     setFollowerCount(data?.follower_count || 0);
+    setMessageModalOpen(false);
   }, [owner?.id, data?.follower_count]);
   if (!owner) return null;
   const profileIconLinks = profileLinks(owner, [...SOCIAL_PROFILE_LINKS, ...SUPPORT_PROFILE_LINKS]);
@@ -280,25 +500,28 @@ function ProfileHero({ data, postCount, user, onUserRefresh }) {
           </div>
         </div>
       </div>
-      <ExternalProfileLinks links={profileIconLinks} className="profile-icon-row">
+      <ExternalProfileLinks links={profileIconLinks} className="profile-icon-row profile-social-row">
         {isOwnProfile ? (
           <a className="profile-link-btn profile-settings-btn" href={authorPath(user, "/profil")} aria-label="Setări profil" title="Setări profil">
             <FiSettings aria-hidden="true" />
           </a>
-        ) : (
-          <>
-            <ProfileFollowButton
-              owner={owner}
-              user={user}
-              initialFollowing={data.viewer_following}
-              onFollowingChange={(nextFollowing) => setFollowerCount((current) => Math.max(0, current + (nextFollowing ? 1 : -1)))}
-              onUserRefresh={onUserRefresh}
-            />
-            <ProfileFriendActions owner={owner} user={user} initialStatus={data.viewer_friendship_status} initialFriendshipId={data.viewer_friendship_id} onUserRefresh={onUserRefresh} />
-            <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
-          </>
-        )}
+        ) : null}
       </ExternalProfileLinks>
+      {!isOwnProfile ? (
+        <div className="profile-link-row profile-action-row" aria-label="Acțiuni sociale">
+          <ProfileFollowButton
+            owner={owner}
+            user={user}
+            initialFollowing={data.viewer_following}
+            onFollowingChange={(nextFollowing) => setFollowerCount((current) => Math.max(0, current + (nextFollowing ? 1 : -1)))}
+            onUserRefresh={onUserRefresh}
+          />
+          <ProfileFriendActions owner={owner} user={user} initialStatus={data.viewer_friendship_status} initialFriendshipId={data.viewer_friendship_id} onUserRefresh={onUserRefresh} />
+          <PromoteAuthorButton owner={owner} user={user} initialPromoted={data.viewer_promoted_author} />
+          <ProfileMessageButton owner={owner} user={user} onOpen={() => setMessageModalOpen(true)} />
+        </div>
+      ) : null}
+      <ProfileMessageModal owner={owner} user={user} open={messageModalOpen} onClose={() => setMessageModalOpen(false)} />
       {owner.subtitle ? (
         <blockquote className="profile-motto">
           <span className="profile-motto-mark">„</span>
@@ -332,6 +555,9 @@ function ProfileHero({ data, postCount, user, onUserRefresh }) {
         <ProfileStatLink Icon={FiBookOpen} href={`${blogUrl(owner.username)}/toate-operele`} label="Toate operele" />
         <ProfileStatLink Icon={FaShirt} href={`${blogUrl(owner.username)}/inventar`} label="Inventar" />
       </div>
+      <div className="profile-audio-row" aria-label="Audio autor">
+        <ProfileAudioPlayButton owner={owner} user={user} readyAudioCount={data.ready_audio_count} onStartAuthorListening={onStartAuthorListening} />
+      </div>
       {playlistUrl ? (
         <a className="profile-playlist-link" href={playlistUrl} target="_blank" rel="noreferrer">
           <SiYoutube aria-hidden="true" />
@@ -353,7 +579,10 @@ function ProfileHighlights({ data }) {
         </div>
         <div className="profile-chip-list">
           {awards.slice(0, 4).map((award) => (
-            <span className="profile-chip" key={award.id} title={award.award_description || award.award_title}><FiAward aria-hidden="true" />{award.award_title}</span>
+            <span className="profile-chip" key={award.id} title={award.award_description || award.award_title}>
+              <FiAward aria-hidden="true" />
+              <span className="profile-chip-label">{award.award_title}</span>
+            </span>
           ))}
         </div>
       </div>
@@ -375,7 +604,7 @@ function ProfilePromotions({ data }) {
       <div className="profile-promotion-sections">
         {ownPosts.length ? (
           <div className="profile-promotion-block">
-            <div className="profile-promotion-label">Postari proprii promovate</div>
+            <div className="profile-promotion-label">Postări proprii promovate</div>
             <div className="profile-promotion-grid">
               {ownPosts.map((post) => <PostCard key={`own-${post.id}`} post={post} />)}
             </div>
@@ -383,7 +612,7 @@ function ProfilePromotions({ data }) {
         ) : null}
         {authors.length ? (
           <div className="profile-promotion-block">
-            <div className="profile-promotion-label">Autori pe care ii promovez</div>
+            <div className="profile-promotion-label">Autori pe care îi promovez</div>
             <div className="profile-chip-list">
               {authors.map((entry) => (
                 <a className="profile-chip" key={entry.user.username} href={blogUrl(entry.user.username)}>
@@ -396,7 +625,7 @@ function ProfilePromotions({ data }) {
         ) : null}
         {otherPosts.length ? (
           <div className="profile-promotion-block">
-            <div className="profile-promotion-label">Lucrarile altor autori pe care le promovez</div>
+            <div className="profile-promotion-label">Lucrările altor autori pe care le promovez</div>
             <div className="profile-promotion-grid compact">
               {otherPosts.map((post) => <PostCard key={`other-${post.id}`} post={post} />)}
             </div>
@@ -406,6 +635,279 @@ function ProfilePromotions({ data }) {
     </section>
   );
 }
+function promotedAuthorEntries(authors = []) {
+  return authors.map((entry, index) => (
+    entry?.user ? entry : { user: entry, position: entry?.position ?? index + 1 }
+  )).filter((entry) => entry.user);
+}
+
+function applyPromotionPayload(data, promotions) {
+  if (!data || !promotions) return data;
+  const authorEntries = promotedAuthorEntries(promotions.authors || []);
+  return {
+    ...data,
+    promotion_limits: promotions.limits || data.promotion_limits,
+    featured_posts: promotions.own_posts || [],
+    promoted_own_posts: promotions.own_posts || [],
+    promoted_authors: authorEntries,
+    best_friends: authorEntries,
+    promoted_external_posts: promotions.other_posts || []
+  };
+}
+
+function promotionPostUrl(post, owner) {
+  const username = post?.owner?.username || owner?.username;
+  return username && post?.slug ? `${blogUrl(username)}/${post.slug}` : "#";
+}
+
+function PromotionEditorItem({ item, kind, owner, promoted, busy, disabled, onToggle }) {
+  const isAuthor = kind === "author";
+  const title = isAuthor ? usernameHandle(item.username) : item.title;
+  const meta = isAuthor ? htmlToText(item.subtitle || "") : item.owner?.username ? usernameHandle(item.owner.username) : owner?.username ? usernameHandle(owner.username) : "";
+  const href = isAuthor ? blogUrl(item.username) : promotionPostUrl(item, owner);
+  return (
+    <div className="promotion-item">
+      <a className="promotion-item-main" href={href}>
+        {isAuthor ? <img className="promotion-avatar" src={profileAvatarUrl(item, 64)} alt="" aria-hidden="true" /> : <FiBookOpen aria-hidden="true" />}
+        <span>
+          <strong>{title}</strong>
+          {meta ? <small>{meta}</small> : null}
+        </span>
+      </a>
+      <button className={`cal-btn ${promoted ? "" : "primary"}`.trim()} type="button" onClick={onToggle} disabled={busy || disabled}>
+        <FiStar aria-hidden="true" />
+        {promoted ? "Elimină" : "Promovează"}
+      </button>
+    </div>
+  );
+}
+
+function PromotionEditorGroup({ title, Icon, items, kind, owner, empty, busyKey, promotedIds, limitReached, onToggle }) {
+  return (
+    <div className="promotion-group">
+      <div className="promotion-group-head">
+        <Icon aria-hidden="true" />
+        <span>{title}</span>
+      </div>
+      {items.length ? (
+        <div className="promotion-item-list">
+          {items.map((item) => {
+            const promoted = promotedIds.has(item.id);
+            return (
+              <PromotionEditorItem
+                key={`${kind}-${item.id}`}
+                item={item}
+                kind={kind}
+                owner={owner}
+                promoted={promoted}
+                busy={busyKey === `${kind}-${item.id}`}
+                disabled={!promoted && limitReached}
+                onToggle={() => onToggle(kind, item, promoted)}
+              />
+            );
+          })}
+        </div>
+      ) : <p className="auth-sub">{empty}</p>}
+    </div>
+  );
+}
+
+function PromotionResultList({ title, Icon, items, kind, owner, empty, busyKey, promotedIds, limitReached, onToggle }) {
+  return (
+    <div className="promotion-result-section">
+      <div className="promotion-group-head">
+        <Icon aria-hidden="true" />
+        <span>{title}</span>
+      </div>
+      {items.length ? (
+        <div className="promotion-item-list">
+          {items.map((item) => {
+            const promoted = promotedIds.has(item.id);
+            return (
+              <PromotionEditorItem
+                key={`result-${kind}-${item.id}`}
+                item={item}
+                kind={kind}
+                owner={owner}
+                promoted={promoted}
+                busy={busyKey === `${kind}-${item.id}`}
+                disabled={!promoted && limitReached}
+                onToggle={() => onToggle(kind, item, promoted)}
+              />
+            );
+          })}
+        </div>
+      ) : <p className="auth-sub">{empty}</p>}
+    </div>
+  );
+}
+
+function ProfilePromotionEditor({ owner, onPromotionsChange }) {
+  const [promotions, setPromotions] = useState(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState({ authors: [], other_posts: [] });
+  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
+  const [busyKey, setBusyKey] = useState("");
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setStatus("");
+    fetchPromotions()
+      .then((promotionData) => {
+        if (cancelled) return;
+        setPromotions(promotionData);
+        onPromotionsChange?.(promotionData);
+      })
+      .catch((requestError) => {
+        if (!cancelled) setStatus(requestError.message || "Nu am putut încărca promovările.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [owner.username, onPromotionsChange]);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) {
+      setResults({ authors: [], other_posts: [] });
+      setSearching(false);
+      return undefined;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      searchPromotions(term)
+        .then((data) => {
+          if (!cancelled) {
+            setResults({
+              authors: data.authors || [],
+              other_posts: data.other_posts || []
+            });
+          }
+        })
+        .catch((requestError) => {
+          if (!cancelled) setStatus(requestError.message || "Nu am putut căuta promovări.");
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  const limits = promotions?.limits || { own_posts: 2, authors: 3, other_posts: 3 };
+  const authorIds = new Set((promotions?.authors || []).map((item) => item.id));
+  const otherPostIds = new Set((promotions?.other_posts || []).map((item) => item.id));
+
+  const toggle = async (kind, item, promoted) => {
+    const key = `${kind}-${item.id}`;
+    setBusyKey(key);
+    setStatus("");
+    try {
+      const response = kind === "author"
+        ? (promoted ? await unpromoteAuthor(item.id) : await promoteAuthor(item.id))
+        : (promoted ? await unpromotePost(item.id) : await promotePost(item.id));
+      setPromotions(response.promotions);
+      onPromotionsChange?.(response.promotions);
+      setStatus(promoted ? "Promovarea a fost eliminată." : "Promovarea a fost salvată.");
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut actualiza promovarea.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  return (
+    <section className="profile-promotions profile-promotion-editor" aria-label="Editează promovările">
+      <div className="profile-panel-heading">
+        <FiStar aria-hidden="true" />
+        <div className="piece-card-kicker">editează promovările</div>
+      </div>
+      <p className="auth-sub promotion-editor-note">
+        Îți poți promova până la {formatNumber(limits.own_posts)} texte proprii. Pentru a le selecta, te rog alege-le din <a href={authorPath(owner, "/panou")}>„Panou”</a>. Aici poți căuta până la {formatNumber(limits.authors)} autori și {formatNumber(limits.other_posts)} texte ale altor autori pentru Călimara mea.
+      </p>
+      {loading ? <p className="auth-sub">Se încarcă opțiunile de promovare.</p> : null}
+      {promotions ? (
+        <div className="promotion-editor-grid">
+          <PromotionEditorGroup
+            title={`Autori promovați (${promotions.authors.length}/${limits.authors})`}
+            Icon={FiUsers}
+            items={promotions.authors || []}
+            kind="author"
+            owner={owner}
+            empty="Nu ai autori promovați."
+            busyKey={busyKey}
+            promotedIds={authorIds}
+            limitReached={false}
+            onToggle={toggle}
+          />
+          <PromotionEditorGroup
+            title={`Texte promovate de la alți autori (${promotions.other_posts.length}/${limits.other_posts})`}
+            Icon={FiBookOpen}
+            items={promotions.other_posts || []}
+            kind="other-post"
+            owner={owner}
+            empty="Nu ai texte externe promovate."
+            busyKey={busyKey}
+            promotedIds={otherPostIds}
+            limitReached={false}
+            onToggle={toggle}
+          />
+          <div className="promotion-group promotion-search-group">
+            <label className="promotion-group-head" htmlFor="profile-promotion-search">
+              <FiSearch aria-hidden="true" />
+              <span>Caută autori sau texte</span>
+            </label>
+            <input
+              id="profile-promotion-search"
+              className="cal-input"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="nume autor sau titlu"
+            />
+            <div className="promotion-search-results">
+              <PromotionResultList
+                title="Autori găsiți"
+                Icon={FiUsers}
+                items={results.authors || []}
+                kind="author"
+                owner={owner}
+                empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun autor găsit."}
+                busyKey={busyKey}
+                promotedIds={authorIds}
+                limitReached={(promotions.authors?.length || 0) >= limits.authors}
+                onToggle={toggle}
+              />
+              <PromotionResultList
+                title="Texte găsite"
+                Icon={FiBookOpen}
+                items={results.other_posts || []}
+                kind="other-post"
+                owner={owner}
+                empty={query.trim().length < 2 ? "Scrie cel puțin 2 caractere." : searching ? "Se caută." : "Niciun text găsit."}
+                busyKey={busyKey}
+                promotedIds={otherPostIds}
+                limitReached={(promotions.other_posts?.length || 0) >= limits.other_posts}
+                onToggle={toggle}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {status ? <div className={status.includes("Nu am putut") || status.includes("Poți") ? "inline-error" : "inline-status"}>{status}</div> : null}
+    </section>
+  );
+}
+
 function ProfileSeriesList({ series }) {
   if (!series?.length) return null;
   return (
@@ -426,35 +928,37 @@ function ProfileSeriesList({ series }) {
     </section>
   );
 }
-function BlogView({ username, user, onUserRefresh }) {
+function BlogView({ username, user, onUserRefresh, onStartAuthorListening }) {
   const { data, error, loading } = useAsync(() => fetchBlog(username), [username]);
-  const promotedOwnIds = new Set((data?.promoted_own_posts || data?.featured_posts || []).map((post) => post.id));
-  const posts = data ? [...(data.latest_posts || []), ...(data.all_posts || [])] : [];
-  const uniquePosts = posts.filter((post, index, all) => !promotedOwnIds.has(post.id) && all.findIndex((item) => item.id === post.id) === index);
-  const totalPostCount = (data?.category_counts || []).reduce((sum, item) => sum + Number(item.count || 0), 0) || uniquePosts.length;
+  const [profileData, setProfileData] = useState(null);
+
+  useEffect(() => {
+    setProfileData(data);
+  }, [data]);
+
+  const handlePromotionsChange = useCallback((promotions) => {
+    setProfileData((current) => applyPromotionPayload(current, promotions));
+  }, []);
+
+  const displayData = profileData || data;
+  const owner = displayData?.blog_owner;
+  const isOwnProfile = Boolean(user?.username && owner?.username && user.username.toLowerCase() === owner.username.toLowerCase());
+  const totalPostCount = (displayData?.category_counts || []).reduce((sum, item) => sum + Number(item.count || 0), 0);
+  usePageSeo(displayData ? profileSeo(displayData.blog_owner, { postCount: totalPostCount }) : null, [displayData?.blog_owner?.id, displayData?.blog_owner?.updated_at, totalPostCount]);
   return (
-    <PageShell kicker="profil" title={data ? null : usernameHandle(username)}>
+    <PageShell kicker="profil" title={displayData ? null : usernameHandle(username)}>
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca blogul">{error}</StatusPanel> : null}
-      {data ? (
+      {displayData ? (
         <>
-          <ProfileHero data={data} postCount={totalPostCount} user={user} onUserRefresh={onUserRefresh} />
-          <EquippedStrip items={data.blog_owner?.equipped_items} />
-          <ProfilePromotions data={data} />
-          <ProfileHighlights data={data} />
-          <ProfileSeriesList series={data.series} />
+          <ProfileHero data={displayData} postCount={totalPostCount} user={user} onUserRefresh={onUserRefresh} onStartAuthorListening={onStartAuthorListening} />
+          <EquippedStrip items={displayData.blog_owner?.equipped_items} />
+          {isOwnProfile ? <ProfilePromotionEditor owner={owner} onPromotionsChange={handlePromotionsChange} /> : null}
+          <ProfilePromotions data={displayData} />
+          <ProfileHighlights data={displayData} />
+          <ProfileSeriesList series={displayData.series} />
         </>
       ) : null}
-      {uniquePosts.length ? (
-        <div className="list-grid">
-          {uniquePosts.map((post, index) => (
-            <Fragment key={post.id}>
-              <PostCard post={{ ...post, owner: data.blog_owner }} />
-              {index === 1 ? <AdSlot placement="inline" /> : null}
-            </Fragment>
-          ))}
-        </div>
-      ) : !loading && !error ? <StatusPanel title="Nu există texte încă" /> : null}
     </PageShell>
   );
 }
@@ -479,6 +983,7 @@ function AllWorksView({ username }) {
       return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
     });
   }, [data?.posts, category, sortBy]);
+  usePageSeo(owner ? profileSeo(owner, { allWorks: true, postCount: data?.posts?.length || 0 }) : null, [owner?.id, owner?.updated_at, data?.posts?.length]);
 
   return (
     <PageShell
@@ -564,9 +1069,9 @@ function FollowListView({ username, kind }) {
   );
 }
 
-export default function ProfileRoute({ route, user, onUserRefresh }) {
+export default function ProfileRoute({ route, user, onUserRefresh, onStartAuthorListening }) {
   if (route.name === "allWorks") return <AllWorksView username={route.username} />;
   if (route.name === "followers") return <FollowListView username={route.username} kind="followers" />;
   if (route.name === "following") return <FollowListView username={route.username} kind="following" />;
-  return <BlogView username={route.username} user={user} onUserRefresh={onUserRefresh} />;
+  return <BlogView username={route.username} user={user} onUserRefresh={onUserRefresh} onStartAuthorListening={onStartAuthorListening} />;
 }

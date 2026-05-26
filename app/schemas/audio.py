@@ -17,6 +17,9 @@ class PostAudioStatus(BaseModel):
     title: Optional[str] = None
     author_username: Optional[str] = None
     message: Optional[str] = None
+    author_audio_can_upload: bool = False
+    author_audio_status: Optional[str] = None
+    author_audio_message: Optional[str] = None
 
 
 
@@ -25,12 +28,16 @@ class AudioTrack(BaseModel):
     post_id: int
     title: str
     slug: str
+    author_id: Optional[int] = None
     author_username: str
     category: Optional[str] = None
     source: str
     playback_url: str
     content_type: Optional[str] = None
     duration_seconds: Optional[float] = None
+    viewer_following: bool = False
+    viewer_friendship_status: str = "none"
+    viewer_friendship_id: Optional[int] = None
 
 
 
@@ -38,6 +45,67 @@ class SeriesAudioPlaylist(BaseModel):
     series_id: int
     title: str
     tracks: List[AudioTrack]
+
+
+class AudioPlaylistCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, 120, "Titlul")
+
+
+class AudioPlaylistUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, 120, "Titlul")
+
+
+class AudioPlaylistAddPostRequest(BaseModel):
+    post_id: int = Field(..., ge=1)
+
+
+class AudioPlaylistSummary(BaseModel):
+    id: int
+    owner_id: int
+    title: str
+    item_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class AudioPlaylistItem(BaseModel):
+    id: int
+    playlist_id: int
+    post_id: int
+    position: int
+    title: str
+    slug: str
+    author_id: Optional[int] = None
+    author_username: str
+    category: Optional[str] = None
+    audio_available: bool = False
+    audio_id: Optional[int] = None
+    playback_url: Optional[str] = None
+    created_at: datetime
+
+
+class AudioPlaylistDetail(AudioPlaylistSummary):
+    items: List[AudioPlaylistItem] = Field(default_factory=list)
+
+
+class AudioPlaylistList(BaseModel):
+    playlists: List[AudioPlaylistSummary] = Field(default_factory=list)
+
+
+class AudioPlaylistPlayback(BaseModel):
+    playlist_id: int
+    title: str
+    tracks: List[AudioTrack] = Field(default_factory=list)
 
 
 

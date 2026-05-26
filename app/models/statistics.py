@@ -56,6 +56,9 @@ class AudioListenEvent(Base):
 
 class DailyStat(Base):
     __tablename__ = "daily_stats"
+    __table_args__ = (
+        UniqueConstraint("stat_date", "content_type", "content_key", name="unique_daily_stat"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     stat_date: Mapped[date_type] = mapped_column(Date, nullable=False)

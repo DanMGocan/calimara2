@@ -14,9 +14,16 @@ class SuperLike(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class SuperLikeQuota(BaseModel):
+    premium_tier: str
+    monthly_quota: int
+    used_this_month: int
+    remaining: int
+    period_start: datetime
+    period_end: datetime
+    month_resets_at: datetime
+    # Compatibility aliases retained for older API clients.
     weekly_quota: int
     used_this_week: int
-    remaining: int
     week_resets_at: datetime
     is_premium: bool
 
@@ -24,4 +31,3 @@ class SuperLikeQuota(BaseModel):
 # ===================================
 # PREMIUM / STRIPE SCHEMAS
 # ===================================
-

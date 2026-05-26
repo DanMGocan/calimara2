@@ -70,6 +70,8 @@ class PremiumPlanTests(unittest.TestCase):
             plans = stripe_service.list_premium_plans()
 
         plan_by_key = {plan["key"]: plan for plan in plans}
+        self.assertEqual([plan["key"] for plan in plans], ["free", "trubadur", "cronicar", "rapsod"])
+        self.assertEqual(plan_by_key["free"]["price"], "0 €")
         self.assertEqual(plan_by_key["trubadur"]["price"], "3,99 €")
         self.assertEqual(plan_by_key["cronicar"]["price"], "7,99 €")
         self.assertEqual(plan_by_key["rapsod"]["price"], "12,99 €")

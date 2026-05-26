@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { expectHeading, loginByApi, users } from "./helpers.js";
 
+function userBlogUrl(username) {
+  const url = new URL("/", process.env.E2E_BASE_URL || "http://localhost:18173");
+  url.hostname = `${username}.${url.hostname}`;
+  return url.toString();
+}
+
 test("users directory loads metrics and seeded users", async ({ page }) => {
   await loginByApi(page, users.author);
   await page.goto("/utilizatori");
@@ -24,6 +30,38 @@ test("messages page opens deterministic conversation", async ({ page }) => {
   await expectHeading(page, "Conversații");
   await expect(page.getByText("e2e_reader")).toBeVisible();
   await expect(page.getByText("Mesaj E2E necitit")).toBeVisible();
+
+  await page.getByRole("button", { name: /@e2e_reader/ }).click();
+  await expect(page.getByText("Conversație privată")).toBeVisible();
+  await expect(page.locator(".message-bubble", { hasText: "Mesaj E2E necitit" })).toBeVisible();
+
+  await page.getByLabel("Scrie un mesaj").fill("Răspuns E2E privat");
+  await page.locator(".message-reply-form").getByRole("button", { name: /Trimite/ }).click();
+  await expect(page.locator(".message-bubble", { hasText: "Răspuns E2E privat" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Mesaj nou" }).click();
+  await expect(page.getByRole("dialog", { name: "Mesaj nou" })).toBeVisible();
+  await page.locator(".message-modal").getByLabel("Destinatar").fill("e2e_target");
+  await page.getByRole("button", { name: /Alege @e2e_target/ }).click();
+  await page.locator(".message-modal").getByRole("textbox", { name: "Mesaj", exact: true }).fill("Mesaj nou E2E");
+  await page.locator(".message-modal").getByRole("button", { name: /Trimite/ }).click();
+  await expect(page.getByRole("dialog", { name: "Mesaj nou" })).toHaveCount(0);
+  await expect(page.locator(".messages-list").getByRole("button", { name: /@e2e_target/ })).toBeVisible();
+  await expect(page.locator(".message-chat-user").getByText("@e2e_target", { exact: true })).toBeVisible();
+  await expect(page.locator(".message-bubble", { hasText: "Mesaj nou E2E" })).toBeVisible();
+});
+
+test("public profile separates action rows and sends private message", async ({ page }) => {
+  const profileUrl = userBlogUrl(users.reader.username);
+  await loginByApi(page, users.author, { loginBaseUrl: profileUrl, returnTo: profileUrl });
+  await expect(page.locator(".profile-social-row")).toBeVisible();
+  await expect(page.locator(".profile-action-row")).toBeVisible();
+
+  await page.locator(".profile-action-row").getByRole("button", { name: "Trimite mesaj privat" }).click();
+  await expect(page.getByRole("dialog", { name: /Mesaj către @e2e_reader/ })).toBeVisible();
+  await page.locator(".profile-message-modal").getByRole("textbox", { name: "Mesaj", exact: true }).fill("Mesaj din profil E2E");
+  await page.locator(".profile-message-modal").getByRole("button", { name: /Trimite/ }).click();
+  await expect(page.getByText("Mesajul a fost trimis.")).toBeVisible();
 });
 
 test("forum list and thread detail render seeded discussion", async ({ page }) => {

@@ -1,16 +1,19 @@
-import { useEffect, useState } from "react";
-import { FiArrowDown, FiArrowUp, FiChevronLeft, FiChevronRight, FiEdit3, FiEye, FiHeadphones, FiPlus, FiTrash2, FiX } from "react-icons/fi";
-import { audioDownloadUrl, fetchAudioConversionQuota, requestTtsConversions } from "../api/audio.js";
+import { useEffect, useRef, useState } from "react";
+import { FiArrowDown, FiArrowUp, FiChevronLeft, FiChevronRight, FiEdit3, FiEye, FiHeadphones, FiPlus, FiStar, FiTrash2, FiUpload, FiX } from "react-icons/fi";
+import { audioDownloadUrl, fetchAudioConversionQuota, requestTtsConversions, uploadPostAudioRecording } from "../api/audio.js";
 import { createSeries, deleteSeries, fetchManagedSeries, fetchMySeries, addPostToSeries, removePostFromSeries, reorderSeriesPosts, updateSeries } from "../api/series.js";
 import { deletePost, deletePostDraft, fetchArchive, fetchPostDrafts } from "../api/posts.js";
-import { TITLE_CHARACTER_LIMIT } from "../app/constants.js";
-import { CompactAudioPlayer, postHref } from "../app/content.jsx";
+import { fetchPromotions, promotePost, unpromotePost } from "../api/users.js";
+import { fetchDiacriticsQuota } from "../api/writing.js";
+import { MODERATING_STATUSES, TEXT_MODERATION_MESSAGE, TITLE_CHARACTER_LIMIT } from "../app/constants.js";
+import { CompactAudioPlayer, ModerationOverlay, postHref } from "../app/content.jsx";
 import { audioStatusLabel, categoryLabel, formatDateTime, formatNumber, htmlToText, usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AuthRequired, PageShell } from "../app/layout.jsx";
 import { authorPath, mainPath } from "../app/paths.js";
 
 const DASHBOARD_PAGE_SIZE = 25;
+const AUTHOR_AUDIO_ACCEPT = "audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/webm,audio/mp4,audio/x-m4a";
 
 function dashboardOffset(page) {
   return (Math.max(1, page) - 1) * DASHBOARD_PAGE_SIZE;
@@ -45,8 +48,11 @@ function DashboardView({ user }) {
   const [draftRefreshKey, setDraftRefreshKey] = useState(0);
   const [status, setStatus] = useState(null);
   const [audioBusyId, setAudioBusyId] = useState(null);
+  const [authorAudioBusyId, setAuthorAudioBusyId] = useState(null);
   const [deletingPostId, setDeletingPostId] = useState(null);
   const [draftBusyId, setDraftBusyId] = useState(null);
+  const [promotionState, setPromotionState] = useState(null);
+  const [promotionBusyId, setPromotionBusyId] = useState(null);
 
   const { data, error, loading } = useAsync(
     () => (user ? fetchArchive({ limit: DASHBOARD_PAGE_SIZE, offset: dashboardOffset(postPage) }) : Promise.resolve({ posts: [], total: 0 })),
@@ -60,14 +66,27 @@ function DashboardView({ user }) {
     () => (user ? fetchAudioConversionQuota() : Promise.resolve(null)),
     [user?.id, postRefreshKey]
   );
+  const diacriticsQuotaState = useAsync(
+    () => (user ? fetchDiacriticsQuota() : Promise.resolve(null)),
+    [user?.id, user?.premium_tier, user?.premium_until]
+  );
+  const promotionsState = useAsync(
+    () => (user ? fetchPromotions() : Promise.resolve(null)),
+    [user?.id, postRefreshKey]
+  );
 
-  const posts = data?.posts ?? [];
+  const posts = (data?.posts ?? []).filter((post) => post.moderation_status !== "rejected");
   const drafts = draftState.data?.drafts ?? [];
   const postTotal = data?.total ?? posts.length;
   const draftTotal = draftState.data?.total ?? drafts.length;
   const quota = quotaState.data;
+  const diacriticsQuota = diacriticsQuotaState.data;
   const canRequestAudio = Boolean(quota?.can_request);
   const remaining = Number(quota?.remaining ?? 0);
+  const promotionSnapshot = promotionState || promotionsState.data;
+  const promotionLimits = promotionSnapshot?.limits || { own_posts: 2 };
+  const promotedOwnPosts = promotionSnapshot?.own_posts || [];
+  const promotedOwnPostIds = new Set(promotedOwnPosts.map((post) => post.id));
 
   useEffect(() => {
     const maxPage = pageCountFor(postTotal);
@@ -79,7 +98,39 @@ function DashboardView({ user }) {
     if (draftPage > maxPage) setDraftPage(maxPage);
   }, [draftPage, draftTotal]);
 
+  useEffect(() => {
+    if (promotionsState.data) setPromotionState(promotionsState.data);
+  }, [promotionsState.data]);
+
+  useEffect(() => {
+    setPromotionState(null);
+  }, [user?.id]);
+
   if (!user) return <AuthRequired />;
+
+  const togglePostPromotion = async (post) => {
+    if (promotionBusyId || deletingPostId === post.id) return;
+    if (post.moderation_status !== "approved") {
+      setStatus({ kind: "error", text: "Poți promova doar texte aprobate." });
+      return;
+    }
+    const promoted = promotedOwnPostIds.has(post.id);
+    if (!promoted && promotedOwnPosts.length >= Number(promotionLimits.own_posts || 2)) {
+      setStatus({ kind: "error", text: `Poți promova cel mult ${formatNumber(promotionLimits.own_posts || 2)} texte proprii.` });
+      return;
+    }
+    setPromotionBusyId(post.id);
+    setStatus(null);
+    try {
+      const response = promoted ? await unpromotePost(post.id) : await promotePost(post.id);
+      setPromotionState(response.promotions);
+      setStatus({ kind: "info", text: promoted ? "Textul a fost scos din promovări." : "Textul a fost adăugat în promovări." });
+    } catch (requestError) {
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut actualiza promovarea." });
+    } finally {
+      setPromotionBusyId(null);
+    }
+  };
 
   const convertPostToAudio = async (post) => {
     const characterCount = Number(post.audio_tts_character_count ?? 0);
@@ -104,7 +155,7 @@ function DashboardView({ user }) {
 
   const removePost = async (post) => {
     if (deletingPostId) return;
-    if (!window.confirm(`Stergi definitiv "${post.title}"?`)) return;
+    if (!window.confirm(`Ștergi definitiv "${post.title}"?`)) return;
     setDeletingPostId(post.id);
     setStatus(null);
     try {
@@ -119,6 +170,21 @@ function DashboardView({ user }) {
       setStatus({ kind: "error", text: requestError.message || "Nu am putut șterge postarea." });
     } finally {
       setDeletingPostId(null);
+    }
+  };
+
+  const uploadAuthorAudio = async (post, file) => {
+    if (!file || authorAudioBusyId || !post.author_audio_can_upload) return;
+    setAuthorAudioBusyId(post.id);
+    setStatus(null);
+    try {
+      await uploadPostAudioRecording(post.id, file);
+      setStatus({ kind: "info", text: `Lectura pentru „${post.title}” a fost încărcată și intră la verificare.` });
+      setPostRefreshKey((key) => key + 1);
+    } catch (requestError) {
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut încărca înregistrarea audio." });
+    } finally {
+      setAuthorAudioBusyId(null);
     }
   };
 
@@ -146,7 +212,7 @@ function DashboardView({ user }) {
       <div className="dashboard-action-row">
         <a className="dashboard-write-btn" href={authorPath(user, "/scrie")}>
           <FiPlus aria-hidden="true" />
-          <span>Postare noua</span>
+          <span>Postare nouă</span>
         </a>
       </div>
 
@@ -160,13 +226,32 @@ function DashboardView({ user }) {
               {formatNumber(quota.used)} / {formatNumber(quota.limit)} caractere folosite
               {quota.period_end ? ` până la ${formatDateTime(quota.period_end)}` : ""}.
               {" "}Disponibil: {formatNumber(remaining)} caractere.
+              {" "}{user.has_author_audio_access ? "Poți încărca și lecturi de autor pentru textele aprobate." : "Încărcarea lecturilor de autor este disponibilă pentru Rapsod."}
             </p>
           ) : (
-            <p>Generarea audio manuală este disponibilă pentru Cronicar și Rapsod.</p>
+            <p>Generarea audio manuală include o cotă lunară de pornire pentru fiecare cont. Încărcarea lecturilor de autor este disponibilă pentru Rapsod.</p>
           )}
         </div>
       </section>
+      <section className="dashboard-audio-summary" aria-label="Diacritice">
+        <div>
+          <div className="piece-card-kicker">Diacritice</div>
+          {diacriticsQuotaState.loading ? (
+            <p>Se încarcă limita pentru Diacritice...</p>
+          ) : diacriticsQuota ? (
+            <p>
+              {formatNumber(diacriticsQuota.used)} / {formatNumber(diacriticsQuota.limit)} caractere folosite
+              {diacriticsQuota.period_end ? ` până la ${formatDateTime(diacriticsQuota.period_end)}` : ""}.
+              {" "}Disponibil: {formatNumber(diacriticsQuota.remaining)} caractere.
+            </p>
+          ) : (
+            <p>Diacriticele sunt disponibile după autentificare.</p>
+          )}
+        </div>
+      </section>
+      {diacriticsQuotaState.error ? <div className="inline-error">{diacriticsQuotaState.error}</div> : null}
       {quotaState.error ? <div className="inline-error">{quotaState.error}</div> : null}
+      {promotionsState.error ? <div className="inline-error">{promotionsState.error}</div> : null}
       {status?.text ? <div className={status.kind === "error" ? "inline-error" : "inline-status"}>{status.text}</div> : null}
 
       <SeriesManagerPanel posts={posts} user={user} />
@@ -175,7 +260,7 @@ function DashboardView({ user }) {
         <div className="dashboard-posts-head">
           <div className="dashboard-tabs" role="tablist" aria-label="Tip texte">
             <button className={activeTab === "posts" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "posts"} onClick={() => setActiveTab("posts")}>
-              Postari
+              Postări
             </button>
             <button className={activeTab === "drafts" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "drafts"} onClick={() => setActiveTab("drafts")}>
               Ciorne
@@ -200,8 +285,16 @@ function DashboardView({ user }) {
                     canRequestAudio={canRequestAudio}
                     remaining={remaining}
                     busy={audioBusyId === post.id}
+                    authorAudioBusy={authorAudioBusyId === post.id}
                     deleting={deletingPostId === post.id}
+                    promoted={promotedOwnPostIds.has(post.id)}
+                    promotionBusy={promotionBusyId === post.id}
+                    promotionLoading={promotionsState.loading && !promotionSnapshot}
+                    promotionLimit={promotionLimits.own_posts || 2}
+                    promotionLimitReached={promotedOwnPosts.length >= Number(promotionLimits.own_posts || 2)}
                     onConvert={() => convertPostToAudio(post)}
+                    onAuthorAudioUpload={(file) => uploadAuthorAudio(post, file)}
+                    onTogglePromotion={() => togglePostPromotion(post)}
                     onDelete={() => removePost(post)}
                   />
                 ))}
@@ -253,7 +346,7 @@ function SeriesCreateModal({ open, busy, form, onChange, onClose, onSubmit }) {
           <FiX aria-hidden="true" />
         </button>
         <div className="piece-card-kicker">serii</div>
-        <h2 id="series-create-title" className="access-modal-title">Creeaza serie</h2>
+        <h2 id="series-create-title" className="access-modal-title">Creează serie</h2>
         <form className="series-create-modal-form" onSubmit={onSubmit}>
           <label className="auth-field">
             Titlu serie
@@ -265,7 +358,7 @@ function SeriesCreateModal({ open, busy, form, onChange, onClose, onSubmit }) {
             />
           </label>
           <label className="auth-field">
-            Descriere optionala
+            Descriere opțională
             <textarea
               className="cal-input"
               value={form.description}
@@ -277,7 +370,7 @@ function SeriesCreateModal({ open, busy, form, onChange, onClose, onSubmit }) {
           <div className="button-row">
             <button className="cal-btn primary" type="submit" disabled={busy === "create" || !form.title.trim()}>
               <FiPlus aria-hidden="true" />
-              {busy === "create" ? "Se creează..." : "Creeaza"}
+              {busy === "create" ? "Se creează..." : "Creează"}
             </button>
             <button className="cal-btn" type="button" onClick={onClose}>Închide</button>
           </div>
@@ -374,7 +467,7 @@ function SeriesManagerPanel({ posts, user }) {
 
   const deleteSelectedSeries = async () => {
     if (!activeSeriesId || busy) return;
-    if (!window.confirm(`Stergi definitiv seria "${selectedSeries?.title || activeSeriesId}"?`)) return;
+    if (!window.confirm(`Ștergi definitiv seria "${selectedSeries?.title || activeSeriesId}"?`)) return;
     setBusy("delete");
     setStatus("");
     try {
@@ -443,13 +536,13 @@ function SeriesManagerPanel({ posts, user }) {
       <div className="draft-panel-head">
         <div>
           <div className="piece-card-kicker">serii</div>
-          <h2>Serii si volume</h2>
+          <h2>Serii și volume</h2>
         </div>
         <div className="series-head-actions">
           {selectedSeries?.slug ? <a className="cal-btn" href={mainPath(`/serii/${selectedSeries.slug}`)}>Vezi seria</a> : null}
           <button className="cal-btn primary" type="button" onClick={() => setCreateOpen(true)}>
             <FiPlus aria-hidden="true" />
-            Creeaza
+            Creează
           </button>
         </div>
       </div>
@@ -525,7 +618,7 @@ function SeriesManagerPanel({ posts, user }) {
                     <div>
                       <span className="piece-card-kicker">{formatNumber(index + 1)} · {categoryLabel(entry.post?.category)}</span>
                       <h3><a href={entry.post ? postHref(entry.post) : "#"}>{entry.post?.title || "Postare"}</a></h3>
-                      {entry.post?.moderation_status ? <span className="piece-card-status">{entry.post.moderation_status}</span> : null}
+                      {entry.post?.moderation_status ? <span className={`piece-card-status status-${entry.post.moderation_status}`.trim()}>{entry.post.moderation_status}</span> : null}
                     </div>
                     <div className="series-entry-actions">
                       <button className="icon-btn" type="button" aria-label="Mută în sus" onClick={() => moveEntry(index, -1)} disabled={index === 0 || busy === "reorder"}>
@@ -549,22 +642,100 @@ function SeriesManagerPanel({ posts, user }) {
   );
 }
 
-function DashboardPostCard({ post, user, canRequestAudio, remaining, busy, deleting, onConvert, onDelete }) {
+function AuthorAudioUploadButton({ post, busy, disabled, onUpload }) {
+  const inputRef = useRef(null);
+  const canUpload = Boolean(post.author_audio_can_upload);
+  const uploadDisabled = disabled || busy || !canUpload;
+  const status = post.author_audio_status || "missing";
+  const label = busy
+    ? "Se încarcă..."
+    : status === "ready"
+      ? "Înlocuiește lectura"
+      : status === "missing"
+        ? "Încarcă lectura"
+        : "Încarcă din nou";
+
+  const pickFile = () => {
+    if (!uploadDisabled) inputRef.current?.click();
+  };
+
+  const handleChange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) onUpload(file);
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        className="visually-hidden"
+        type="file"
+        accept={AUTHOR_AUDIO_ACCEPT}
+        disabled={uploadDisabled}
+        onChange={handleChange}
+      />
+      <button
+        className="cal-btn"
+        type="button"
+        onClick={pickFile}
+        disabled={uploadDisabled}
+        title={canUpload ? undefined : "Disponibil pentru Rapsod după aprobarea postării"}
+      >
+        <FiUpload aria-hidden="true" />
+        {label}
+      </button>
+    </>
+  );
+}
+
+function DashboardPostCard({
+  post,
+  user,
+  canRequestAudio,
+  remaining,
+  busy,
+  authorAudioBusy,
+  deleting,
+  promoted,
+  promotionBusy,
+  promotionLoading,
+  promotionLimit,
+  promotionLimitReached,
+  onConvert,
+  onAuthorAudioUpload,
+  onTogglePromotion,
+  onDelete
+}) {
   const href = postHref(post);
   const editHref = `${authorPath(user, "/scrie")}?post=${encodeURIComponent(post.id)}`;
   const characterCount = Number(post.audio_tts_character_count ?? 0);
   const audioReady = Boolean(post.audio_available && post.audio_playback_url);
   const convertDisabled = busy || deleting || !canRequestAudio || !post.audio_can_request || characterCount > remaining;
+  const showAuthorAudio = Boolean(user?.has_author_audio_access);
+  const showAuthorAudioStatus = showAuthorAudio && post.author_audio_message;
+  const moderationOverlayText = MODERATING_STATUSES.has(post.moderation_status) ? TEXT_MODERATION_MESSAGE : "";
+  const canPromote = post.moderation_status === "approved";
+  const promoteDisabled = promotionBusy || promotionLoading || deleting || !canPromote || (!promoted && promotionLimitReached);
+  const promoteTitle = !canPromote
+    ? "Poți promova doar textele aprobate"
+    : !promoted && promotionLimitReached
+      ? `Poți promova cel mult ${formatNumber(promotionLimit)} texte proprii`
+      : promoted
+        ? "Elimină textul din Călimara mea"
+        : "Promovează textul în Călimara mea";
 
   return (
-    <article className="dashboard-post-card dashboard-owned-post-card">
+    <article className={`dashboard-post-card dashboard-owned-post-card ${moderationOverlayText ? "has-moderation-overlay" : ""}`.trim()}>
       <div className="dashboard-post-main">
         <div className="piece-card-kicker-row">
           <span className="piece-card-kicker">{categoryLabel(post.category)}</span>
-          <span className="piece-card-status">{post.moderation_status}</span>
         </div>
         <h2 className="piece-card-title"><a href={href}>{post.title}</a></h2>
-        <p className="piece-card-excerpt">{htmlToText(post.content)}</p>
+        <div className={`piece-card-excerpt-wrap ${moderationOverlayText ? "has-moderation-overlay" : ""}`.trim()}>
+          <p className="piece-card-excerpt">{htmlToText(post.content)}</p>
+          {moderationOverlayText ? <ModerationOverlay className="piece-card-moderation-overlay">{moderationOverlayText}</ModerationOverlay> : null}
+        </div>
         <div className="piece-card-meta">
           <span>{formatNumber(characterCount)} caractere</span>
           <span>{audioStatusLabel(post.audio_status)}</span>
@@ -572,6 +743,11 @@ function DashboardPostCard({ post, user, canRequestAudio, remaining, busy, delet
         </div>
         {audioReady ? (
           <CompactAudioPlayer className="compact" src={post.audio_playback_url} downloadUrl={post.audio_id ? audioDownloadUrl(post.audio_id) : post.audio_playback_url} />
+        ) : null}
+        {showAuthorAudioStatus ? (
+          <p className={`author-audio-status ${post.author_audio_status || "missing"}`.trim()}>
+            {post.author_audio_message}
+          </p>
         ) : null}
       </div>
       <div className="dashboard-card-actions">
@@ -581,16 +757,34 @@ function DashboardPostCard({ post, user, canRequestAudio, remaining, busy, delet
         </a>
         <a className="cal-btn" href={editHref}>
           <FiEdit3 aria-hidden="true" />
-          Editeaza
+          Editează
         </a>
+        <button
+          className={`cal-btn dashboard-promote-btn ${promoted ? "is-promoted" : ""}`.trim()}
+          type="button"
+          onClick={onTogglePromotion}
+          disabled={promoteDisabled}
+          title={promoteTitle}
+        >
+          <FiStar aria-hidden="true" />
+          {promotionBusy ? "Se actualizează..." : promoted ? "Elimină promovarea" : "Promovează în Călimara mea"}
+        </button>
         <button className="cal-btn danger" type="button" onClick={onDelete} disabled={deleting}>
           <FiTrash2 aria-hidden="true" />
-          {deleting ? "Se șterge..." : "Sterge"}
+          {deleting ? "Se șterge..." : "Șterge"}
         </button>
         <button className="cal-btn" type="button" onClick={onConvert} disabled={convertDisabled}>
           <FiHeadphones aria-hidden="true" />
-          {busy ? "Se trimite..." : "Converteste in Audio"}
+          {busy ? "Se trimite..." : "Convertește în Audio"}
         </button>
+        {showAuthorAudio ? (
+          <AuthorAudioUploadButton
+            post={post}
+            busy={authorAudioBusy}
+            disabled={deleting}
+            onUpload={onAuthorAudioUpload}
+          />
+        ) : null}
       </div>
     </article>
   );
@@ -614,11 +808,11 @@ function DashboardDraftCard({ draft, user, busy, onDiscard }) {
       <div className="dashboard-card-actions">
         <a className="cal-btn primary" href={href}>
           <FiEdit3 aria-hidden="true" />
-          Editeaza
+          Editează
         </a>
         <button className="cal-btn danger" type="button" onClick={onDiscard} disabled={busy}>
           <FiTrash2 aria-hidden="true" />
-          {busy ? "Se șterge..." : "Sterge"}
+          {busy ? "Se șterge..." : "Șterge"}
         </button>
       </div>
     </article>

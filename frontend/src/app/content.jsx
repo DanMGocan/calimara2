@@ -1,5 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FaPause, FaPlay } from "react-icons/fa";
+import { recordAudioListenSeconds } from "../api/audio.js";
 import { POEMS, STORIES } from "../content.js";
+import { MODERATING_STATUSES, TEXT_MODERATION_MESSAGE } from "./constants.js";
 import { categoryLabel, formatAudioTime, formatDateTime, htmlToText, moderationLabel, slotLabel, hasHtml, usernameHandle } from "./format.js";
 import { blogUrl } from "./paths.js";
 import { profileTierBadge } from "./profile-links.jsx";
@@ -28,8 +31,39 @@ export function RichTextContent({ html, className = "" }) {
     </div>
   );
 }
+
+const LISTEN_RECORD_MODES = new Set(["poezie", "proza_scurta", "toate"]);
+
+function listenRecordEventId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `inline-listen-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeListenRecordMode(mode) {
+  return LISTEN_RECORD_MODES.has(mode) ? mode : "toate";
+}
+
+function sendListenSecondsKeepalive(payload) {
+  try {
+    fetch("/api/audio/asculta/secunde", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(() => {});
+  } catch {
+    // The page is unloading; there is no useful UI recovery path here.
+  }
+}
+
 export function CompactAudioPlayer({
   src,
+  audioId = null,
+  listenMode = "toate",
   downloadUrl,
   className = "",
   showDownload = true,
@@ -37,11 +71,15 @@ export function CompactAudioPlayer({
   disabledTitle = ""
 }) {
   const audioRef = useRef(null);
+  const pendingListenSecondsRef = useRef(0);
+  const lastAudioTimeRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState("");
   const disabled = !src;
+  const recordingEnabled = Boolean(src && audioId);
+  const normalizedListenMode = normalizeListenRecordMode(listenMode);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -49,12 +87,93 @@ export function CompactAudioPlayer({
     setCurrentTime(0);
     setDuration(0);
     setError("");
+    pendingListenSecondsRef.current = 0;
+    lastAudioTimeRef.current = 0;
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
       if (src) audio.load();
     }
-  }, [src]);
+  }, [audioId, src]);
+
+  const capturePlayedDelta = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const current = audio.currentTime;
+    const last = lastAudioTimeRef.current;
+    if (recordingEnabled && Number.isFinite(current) && Number.isFinite(last)) {
+      const delta = current - last;
+      if (delta > 0) {
+        pendingListenSecondsRef.current += delta;
+      }
+    }
+    lastAudioTimeRef.current = Number.isFinite(current) ? current : 0;
+  }, [recordingEnabled]);
+
+  const flushListenSeconds = useCallback((keepalive = false) => {
+    capturePlayedDelta();
+    const numericAudioId = Number(audioId);
+    let seconds = Math.floor(pendingListenSecondsRef.current);
+    if (!recordingEnabled || !Number.isFinite(numericAudioId) || numericAudioId <= 0 || seconds <= 0) {
+      return Promise.resolve();
+    }
+
+    pendingListenSecondsRef.current -= seconds;
+    const payloads = [];
+    while (seconds > 0) {
+      const batchSeconds = Math.min(60, seconds);
+      payloads.push({
+        event_id: listenRecordEventId(),
+        audio_id: numericAudioId,
+        seconds: batchSeconds,
+        mode: normalizedListenMode
+      });
+      seconds -= batchSeconds;
+    }
+
+    if (keepalive) {
+      payloads.forEach(sendListenSecondsKeepalive);
+      return Promise.resolve();
+    }
+
+    return Promise.all(
+      payloads.map((payload) => (
+        recordAudioListenSeconds({
+          eventId: payload.event_id,
+          audioId: payload.audio_id,
+          seconds: payload.seconds,
+          mode: payload.mode
+        }).catch(() => {})
+      ))
+    );
+  }, [audioId, capturePlayedDelta, normalizedListenMode, recordingEnabled]);
+
+  useEffect(() => {
+    if (!recordingEnabled) return undefined;
+    const interval = window.setInterval(() => {
+      if (!audioRef.current?.paused) void flushListenSeconds();
+    }, 10000);
+    return () => window.clearInterval(interval);
+  }, [flushListenSeconds, recordingEnabled]);
+
+  useEffect(() => {
+    if (!recordingEnabled) return undefined;
+    const onPageHide = () => {
+      void flushListenSeconds(true);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void flushListenSeconds(true);
+      }
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      void flushListenSeconds(true);
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [flushListenSeconds, recordingEnabled]);
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
@@ -75,6 +194,8 @@ export function CompactAudioPlayer({
     const audio = audioRef.current;
     setDuration(audio && Number.isFinite(audio.duration) ? audio.duration : 0);
   };
+  const timeLabel = `${formatAudioTime(currentTime)} / ${formatAudioTime(duration)}`;
+  const actionLabel = playing ? "Pauză" : "Redă";
 
   return (
     <div
@@ -89,10 +210,22 @@ export function CompactAudioPlayer({
         src={src || undefined}
         onLoadedMetadata={syncDuration}
         onDurationChange={syncDuration}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+          capturePlayedDelta();
+        }}
+        onPlay={() => {
+          lastAudioTimeRef.current = audioRef.current?.currentTime || 0;
+          setPlaying(true);
+        }}
+        onPause={() => {
+          capturePlayedDelta();
+          void flushListenSeconds();
+          setPlaying(false);
+        }}
         onEnded={() => {
+          capturePlayedDelta();
+          void flushListenSeconds();
           setPlaying(false);
           setCurrentTime(duration);
         }}
@@ -104,12 +237,12 @@ export function CompactAudioPlayer({
       >
         Browserul tău nu poate reda acest fișier audio.
       </audio>
-      <button className="compact-audio-play" type="button" onClick={togglePlayback} disabled={disabled} aria-label={playing ? "Pauză audio" : "Redă audio"}>
-        {playing ? "Pauză" : "Redă"}
+      <button className="compact-audio-play" type="button" onClick={togglePlayback} disabled={disabled} aria-label={`${actionLabel} audio (${timeLabel})`}>
+        <span className="compact-audio-action-label" aria-hidden="true">
+          {playing ? <FaPause className="compact-audio-play-icon" /> : <FaPlay className="compact-audio-play-icon" />}
+        </span>
+        <span className="compact-audio-time" aria-hidden="true">{timeLabel}</span>
       </button>
-      <span className="compact-audio-time" aria-label="Timp audio">
-        {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
-      </span>
       {showDownload && src ? (
         <a className="compact-audio-download" href={downloadUrl || src} download>
           {downloadLabel}
@@ -205,10 +338,12 @@ function ExplanatoryNoteBubble({ note }) {
       <button
         className="piece-note-trigger"
         type="button"
+        aria-label="Notă explicativă"
         aria-expanded={open}
+        title="Notă explicativă"
         onClick={() => setOpen((current) => !current)}
       >
-        Notă explicativă
+        ?
       </button>
       {open ? <span className="piece-note-bubble" role="tooltip">{cleanNote}</span> : null}
     </span>
@@ -245,9 +380,54 @@ export function RevealText({ text, keySeed }) {
     </div>
   );
 }
-export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = null, readerFooter = null }) {
+
+const TEXT_DOUBLE_TAP_MAX_MS = 420;
+const TEXT_DOUBLE_TAP_MAX_DISTANCE = 28;
+const TEXT_TAP_MOVE_TOLERANCE = 10;
+const TEXT_HINT_DISMISSED_STORAGE_KEY = "calimara.reader.textGestureHintDismissed";
+
+function pointerDistance(first, second) {
+  if (!first || !second) return Number.POSITIVE_INFINITY;
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function isInteractiveGestureTarget(target, root) {
+  if (typeof Element === "undefined" || !(target instanceof Element)) return false;
+  const interactive = target.closest("a, button, input, textarea, select, summary, [role='button'], [contenteditable='true']");
+  return Boolean(interactive && root.contains(interactive));
+}
+
+function hasDismissedTextHint() {
+  try {
+    return typeof window !== "undefined" && window.sessionStorage.getItem(TEXT_HINT_DISMISSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markTextHintDismissed() {
+  try {
+    window.sessionStorage.setItem(TEXT_HINT_DISMISSED_STORAGE_KEY, "1");
+  } catch {
+    // Session storage can be unavailable in restricted browser modes.
+  }
+}
+
+export function ModerationOverlay({ children = TEXT_MODERATION_MESSAGE, className = "" }) {
+  return (
+    <div className={`piece-moderation-overlay ${className}`.trim()} role="status" aria-live="polite">
+      <p>{children}</p>
+    </div>
+  );
+}
+
+export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = null, readerFooter = null, moderationOverlayText = "", onTextDoubleActivate = null, showTextGestureHint = true }) {
   const scrollRef = useRef(null);
   const bodyRef = useRef(null);
+  const tapRef = useRef({ down: null, lastTap: null });
+  const textActivationRef = useRef(0);
+  const [textHintDismissed, setTextHintDismissed] = useState(hasDismissedTextHint);
+  const [textHintDismissing, setTextHintDismissing] = useState(false);
   const [scrollState, setScrollState] = useState({
     atTop: true,
     atBottom: true,
@@ -312,13 +492,83 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
     syncScrollState(event.currentTarget);
   };
 
+  const activateTextGesture = useCallback(() => {
+    if (!onTextDoubleActivate) return;
+    const now = Date.now();
+    if (now - textActivationRef.current < TEXT_DOUBLE_TAP_MAX_MS) return;
+    textActivationRef.current = now;
+    onTextDoubleActivate();
+  }, [onTextDoubleActivate]);
+
+  const triggerTextDoubleActivate = useCallback((event) => {
+    if (!onTextDoubleActivate) return;
+    if (isInteractiveGestureTarget(event.target, event.currentTarget)) return;
+    event.preventDefault();
+    activateTextGesture();
+  }, [activateTextGesture, onTextDoubleActivate]);
+
+  const onTextPointerDown = (event) => {
+    if (!onTextDoubleActivate) return;
+    if (event.pointerType === "mouse" || event.button !== 0 || event.isPrimary === false) return;
+    if (isInteractiveGestureTarget(event.target, event.currentTarget)) return;
+    tapRef.current.down = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      time: Date.now()
+    };
+  };
+
+  const onTextPointerUp = (event) => {
+    if (!onTextDoubleActivate) return;
+    if (event.pointerType === "mouse" || event.isPrimary === false) return;
+    if (isInteractiveGestureTarget(event.target, event.currentTarget)) return;
+
+    const down = tapRef.current.down;
+    tapRef.current.down = null;
+    if (!down || down.id !== event.pointerId) return;
+
+    const currentTap = { x: event.clientX, y: event.clientY, time: Date.now() };
+    if (currentTap.time - down.time > TEXT_DOUBLE_TAP_MAX_MS) return;
+    if (pointerDistance(down, currentTap) > TEXT_TAP_MOVE_TOLERANCE) return;
+
+    const previousTap = tapRef.current.lastTap;
+    if (
+      previousTap &&
+      currentTap.time - previousTap.time <= TEXT_DOUBLE_TAP_MAX_MS &&
+      pointerDistance(previousTap, currentTap) <= TEXT_DOUBLE_TAP_MAX_DISTANCE
+    ) {
+      event.preventDefault();
+      tapRef.current.lastTap = null;
+      activateTextGesture();
+      return;
+    }
+
+    tapRef.current.lastTap = currentTap;
+  };
+
+  const onTextPointerCancel = () => {
+    tapRef.current.down = null;
+  };
+
+  const dismissTextHint = () => {
+    markTextHintDismissed();
+    setTextHintDismissing(true);
+  };
+
   const titleContent = piece.postUrl && piece.postUrl !== "#" ? (
     <a href={piece.postUrl}>{piece.title}</a>
   ) : piece.title;
+  const hasTitleActions = Boolean(titleAction || piece.explanatoryNote);
   const titleNode = (
     <h1 className="piece-title">
       {titleContent}
-      {titleAction ? <span className="piece-title-action">{titleAction}</span> : null}
+      {hasTitleActions ? (
+        <span className="piece-title-actions">
+          {titleAction ? <span className="piece-title-action">{titleAction}</span> : null}
+          {piece.explanatoryNote ? <ExplanatoryNoteBubble note={piece.explanatoryNote} /> : null}
+        </span>
+      ) : null}
     </h1>
   );
   const titleHeading = titlePrefix ? (
@@ -327,6 +577,7 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
       {titleNode}
     </div>
   ) : titleNode;
+  const showAuthorTextHint = onTextDoubleActivate && showTextGestureHint && !textHintDismissed;
 
   return (
     <div className="piece-col">
@@ -350,28 +601,56 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
             <span className="piece-year">{piece.year}</span>
           </>
         ) : null}
-        {piece.explanatoryNote ? (
-          <>
-            <span className="piece-meta-dot" />
-            <ExplanatoryNoteBubble note={piece.explanatoryNote} />
-          </>
-        ) : null}
       </div>
       <div className="piece-scroll-wrap">
         <div ref={scrollRef} className={`piece-scroll ${scrollState.atTop ? "at-top" : ""} ${scrollState.atBottom ? "at-bottom" : ""}`} onScroll={onScroll}>
           <div ref={bodyRef} className="piece-body-inner">
-            {hasHtml(piece.contentHtml) ? (
-              <RichTextContent html={piece.contentHtml} className="piece-rich-text" />
-            ) : (
-              <RevealText text={piece.body || ""} keySeed={animKey} />
-            )}
-            <div className="piece-end">
-              <span>fin</span>
-              <span className="piece-end-mark">· · ·</span>
+            {showAuthorTextHint ? (
+              <div
+                className={`piece-text-hint ${textHintDismissing ? "is-dismissing" : ""}`.trim()}
+                onTransitionEnd={(event) => {
+                  if (event.currentTarget !== event.target) return;
+                  if (event.propertyName !== "max-height") return;
+                  if (textHintDismissing) setTextHintDismissed(true);
+                }}
+              >
+                <span className="piece-next-hint">
+                  <span className="piece-next-hint-copy">Dublu click sau dublu tap ca să treci la postarea următoare.</span>
+                  <button
+                    className="piece-next-hint-dismiss"
+                    type="button"
+                    aria-label="Ascunde indiciul de dublu click"
+                    title="Ascunde"
+                    onClick={dismissTextHint}
+                  >
+                    x
+                  </button>
+                </span>
+              </div>
+            ) : null}
+            <div
+              className={`piece-text-gesture-zone ${onTextDoubleActivate ? "can-double-activate" : ""}`.trim()}
+              data-reader-text-zone={onTextDoubleActivate ? "landing-shuffle" : undefined}
+              onDoubleClick={triggerTextDoubleActivate}
+              onPointerDown={onTextPointerDown}
+              onPointerUp={onTextPointerUp}
+              onPointerCancel={onTextPointerCancel}
+              onPointerLeave={onTextPointerCancel}
+            >
+              {hasHtml(piece.contentHtml) ? (
+                <RichTextContent html={piece.contentHtml} className="piece-rich-text" />
+              ) : (
+                <RevealText text={piece.body || ""} keySeed={animKey} />
+              )}
+              <div className="piece-end">
+                <span>fin</span>
+                <span className="piece-end-mark">· · ·</span>
+              </div>
             </div>
             {readerFooter ? <div className="piece-reader-footer">{readerFooter}</div> : null}
           </div>
         </div>
+        {moderationOverlayText ? <ModerationOverlay>{moderationOverlayText}</ModerationOverlay> : null}
         <div className={`scroll-hint-wrap ${scrollState.hasOverflow ? "" : "hidden"}`} aria-hidden="true">
           <div className="scroll-hint">
             <span className="scroll-hint-label">
@@ -388,16 +667,22 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
   );
 }
 export function PostCard({ post }) {
+  if (post.moderation_status === "rejected") return null;
+  const href = postHref(post);
+  const excerpt = htmlToText(post.content);
   const moderationText = moderationLabel(post.moderation_status);
   const moderationClass = post.moderation_status ? `status-${post.moderation_status}` : "";
   const moderationTitle = post.moderation_reason
     ? `${moderationText}: ${post.moderation_reason}`
     : moderationText;
+  const moderationOverlayText = MODERATING_STATUSES.has(post.moderation_status)
+    ? TEXT_MODERATION_MESSAGE
+    : "";
   return (
     <article className={`piece-card ${post.super_likes_count > 0 ? "has-super-like" : ""}`}>
       <div className="piece-card-kicker-row">
         <span className="piece-card-kicker">{post.category_name ?? categoryLabel(post.category)}</span>
-        {moderationText ? (
+        {moderationText && !moderationOverlayText ? (
           <span className={`piece-card-status ${moderationClass}`} title={moderationTitle}>
             {moderationText}
           </span>
@@ -406,7 +691,14 @@ export function PostCard({ post }) {
       <h2 className="piece-card-title">
         <PostTitleLink post={post}>{post.title}</PostTitleLink>
       </h2>
-      <p className="piece-card-excerpt">{htmlToText(post.content)}</p>
+      <div className={`piece-card-excerpt-wrap ${moderationOverlayText ? "has-moderation-overlay" : ""}`.trim()}>
+        {href && href !== "#" ? (
+          <a className="piece-card-excerpt piece-card-excerpt-link" href={href}>{excerpt}</a>
+        ) : (
+          <p className="piece-card-excerpt">{excerpt}</p>
+        )}
+        {moderationOverlayText ? <ModerationOverlay className="piece-card-moderation-overlay" /> : null}
+      </div>
       <div className="piece-card-meta">
         {post.owner?.username ? <AuthorLink user={post.owner} /> : null}
         {post.created_at ? <span>{formatDateTime(post.created_at)}</span> : null}

@@ -618,7 +618,7 @@ function BoardPanel({ club, user, reloadClub }) {
       {canPost && composerOpen ? (
         <form id="club-thread-form" className="club-thread-form" onSubmit={createThread}>
           <input className="cal-input" value={threadForm.title} placeholder="Titlul firului" maxLength={160} onChange={(event) => setThreadForm((current) => ({ ...current, title: event.target.value }))} />
-          <textarea className="cal-textarea compact" value={threadForm.content} placeholder="Mesajul de deschidere" onChange={(event) => setThreadForm((current) => ({ ...current, content: event.target.value }))} />
+          <textarea className="cal-textarea compact" value={threadForm.content} placeholder="Mesajul de deschidere" maxLength={4000} onChange={(event) => setThreadForm((current) => ({ ...current, content: event.target.value }))} />
           <button className="cal-btn primary" type="submit" disabled={busyKey === "thread" || !threadForm.title.trim() || !threadForm.content.trim()}>
             <FiPlus aria-hidden="true" />Deschide discuție
           </button>
@@ -661,7 +661,7 @@ function BoardPanel({ club, user, reloadClub }) {
             ) : null}
             {canPost ? (
               <div className="club-reply-form">
-                <textarea className="cal-textarea compact" value={replyForms[message.id] || ""} placeholder="Răspunde în fir" onChange={(event) => setReplyForms((current) => ({ ...current, [message.id]: event.target.value }))} />
+                <textarea className="cal-textarea compact" value={replyForms[message.id] || ""} placeholder="Răspunde în fir" maxLength={4000} onChange={(event) => setReplyForms((current) => ({ ...current, [message.id]: event.target.value }))} />
                 <button className="cal-btn" type="button" disabled={busyKey === `reply-${message.id}` || !(replyForms[message.id] || "").trim()} onClick={() => createReply(message)}>
                   <FiSend aria-hidden="true" />Răspunde
                 </button>

@@ -7,6 +7,8 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
+from . import email_service
+from .mistral_context import validate_chat_context, validate_text_context
 from .rich_text import rich_text_to_plain_text
 
 load_dotenv()
@@ -18,6 +20,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
 MODERATION_CLASSIFIER_MODEL = os.getenv("MODERATION_CLASSIFIER_MODEL", "mistral-moderation-2603")
 MODERATION_REVIEW_MODEL = os.getenv("MODERATION_REVIEW_MODEL", "mistral-small-latest")
+MODERATION_REVIEW_MAX_TOKENS = int(os.getenv("MODERATION_REVIEW_MAX_TOKENS", "600"))
 MODERATION_THRESHOLD = float(os.getenv("MODERATION_THRESHOLD", "0.2"))
 ROMANIAN_CONTEXT_AWARE = os.getenv("ROMANIAN_CONTEXT_AWARE", "True").lower() == "true"
 
@@ -141,6 +144,12 @@ def classify_content(text: str) -> Dict:
     Pass 1: Run text through Mistral Moderation 2 classifier.
     Returns dict with 'category_scores', 'categories', and 'flagged' keys.
     """
+    validate_text_context(
+        model=MODERATION_CLASSIFIER_MODEL,
+        texts=[text],
+        max_output_tokens=0,
+        purpose="Moderare automată",
+    )
     response = client.classifiers.moderate(
         model=MODERATION_CLASSIFIER_MODEL,
         inputs=[text]
@@ -184,7 +193,7 @@ def classify_content(text: str) -> Dict:
 
 # --- Pass 2: Mistral Small 4 LLM review ---
 
-ROMANIAN_REVIEW_PROMPT = """Ești un moderator de conținut pentru Calimara, o platformă românească de microblogging pentru scriitori și poeți.
+ROMANIAN_REVIEW_PROMPT = """Ești un moderator de conținut pentru Călimara, o platformă românească de microblogging pentru scriitori și poeți.
 
 Un sistem automat de moderare a semnalizat următorul text. Sarcina ta este să decizi dacă textul este SIGUR pentru publicare sau dacă trebuie RESPINS.
 
@@ -221,12 +230,20 @@ def review_content_with_llm(text: str, flagged_categories: Dict, romanian_signal
         f"Text de evaluat:\n{text}"
     )
 
+    messages = [
+        {"role": "system", "content": ROMANIAN_REVIEW_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+    validate_chat_context(
+        model=MODERATION_REVIEW_MODEL,
+        messages=messages,
+        max_output_tokens=MODERATION_REVIEW_MAX_TOKENS,
+        purpose="Revizie moderare Mistral Small",
+    )
     response = client.chat.complete(
         model=MODERATION_REVIEW_MODEL,
-        messages=[
-            {"role": "system", "content": ROMANIAN_REVIEW_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+        messages=messages,
+        max_tokens=MODERATION_REVIEW_MAX_TOKENS,
         temperature=0.0,
         response_format={"type": "json_object"},
     )
@@ -448,8 +465,36 @@ def log_moderation_decision(
             logger.error(f"Database rollback failed: {rollback_error}")
 
 
+def _queue_moderation_service_alert(
+    db: Session,
+    *,
+    content_type: str,
+    content_id: int,
+    user_id: Optional[int],
+    result: ModerationResult,
+) -> None:
+    reason = result.reason or ""
+    if not (
+        reason.startswith("Moderation error")
+        or reason.startswith("Mistral API not configured")
+    ):
+        return
+    email_service.queue_system_alert_email(
+        db,
+        service="AI moderation",
+        summary="Moderarea automată a fost degradată și a trimis conținutul la revizie manuală.",
+        error_message=reason,
+        context={
+            "content_type": content_type,
+            "content_id": content_id,
+            "user_id": user_id,
+        },
+    )
+
+
 def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
     result = moderate_comment(content)
+    _queue_moderation_service_alert(db, content_type="comment", content_id=comment_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "comment", comment_id, user_id, result)
     except Exception as e:
@@ -459,6 +504,7 @@ def moderate_comment_with_logging(content: str, comment_id: int, user_id: Option
 
 def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
     result = moderate_post(title, content)
+    _queue_moderation_service_alert(db, content_type="post", content_id=post_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "post", post_id, user_id, result)
     except Exception as e:
@@ -468,6 +514,7 @@ def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: 
 
 def moderate_forum_thread_with_logging(title: str, content: str, thread_id: int, user_id: int, db: Session) -> ModerationResult:
     result = moderate_forum_thread(title, content)
+    _queue_moderation_service_alert(db, content_type="forum_thread", content_id=thread_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "forum_thread", thread_id, user_id, result)
     except Exception as e:
@@ -477,6 +524,7 @@ def moderate_forum_thread_with_logging(title: str, content: str, thread_id: int,
 
 def moderate_forum_reply_with_logging(content: str, reply_id: int, user_id: int, db: Session) -> ModerationResult:
     result = moderate_forum_reply(content)
+    _queue_moderation_service_alert(db, content_type="forum_reply", content_id=reply_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "forum_reply", reply_id, user_id, result)
     except Exception as e:
@@ -493,6 +541,7 @@ def moderate_theatre_entry_with_logging(
     character_name: Optional[str] = None,
 ) -> ModerationResult:
     result = moderate_theatre_entry(entry_type, content, character_name)
+    _queue_moderation_service_alert(db, content_type="theatre_entry", content_id=entry_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "theatre_entry", entry_id, user_id, result)
     except Exception as e:
@@ -508,6 +557,7 @@ def moderate_stafeta_segment_with_logging(
     title: Optional[str] = None,
 ) -> ModerationResult:
     result = moderate_stafeta_segment(content, title)
+    _queue_moderation_service_alert(db, content_type="stafeta_segment", content_id=segment_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "stafeta_segment", segment_id, user_id, result)
     except Exception as e:

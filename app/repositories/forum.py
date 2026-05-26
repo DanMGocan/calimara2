@@ -6,6 +6,7 @@ from .slugs import generate_slug
 from .users import get_user_by_id
 
 FORUM_SECTIONS = ("anunturi", "general", "poezie", "proza_scurta")
+PUBLIC_FORUM_STATUSES = ("approved", "pending", "flagged")
 
 def is_forum_section(section: str) -> bool:
     return section in FORUM_SECTIONS
@@ -53,9 +54,13 @@ def get_forum_thread_by_slug(db: Session, slug: str) -> Optional[models.ForumThr
         .first()
     )
 
-def can_view_forum_thread(user: Optional[models.User], thread: models.ForumThread) -> bool:
+def can_view_forum_thread(user: Optional[models.User], thread: models.ForumThread, db: Optional[Session] = None) -> bool:
+    if thread.moderation_status == "rejected":
+        return False
+    if db is not None and content_has_human_rejection(db, "forum_thread", thread.id):
+        return False
     return (
-        thread.moderation_status == "approved"
+        thread.moderation_status in PUBLIC_FORUM_STATUSES
         or bool(user and thread.author_id == user.id)
         or bool(user and user.is_admin)
         or bool(user and user.is_moderator)
@@ -74,7 +79,10 @@ def list_forum_threads(
     query = (
         db.query(models.ForumThread)
         .options(joinedload(models.ForumThread.author))
-        .filter(models.ForumThread.moderation_status == "approved")
+        .filter(
+            models.ForumThread.moderation_status.in_(PUBLIC_FORUM_STATUSES),
+            not_human_rejected_condition("forum_thread", models.ForumThread.id),
+        )
     )
     if section and is_forum_section(section):
         query = query.filter(models.ForumThread.section == section)
@@ -122,14 +130,18 @@ def list_forum_replies_for_thread(
     query = (
         db.query(models.ForumReply)
         .options(joinedload(models.ForumReply.author))
-        .filter(models.ForumReply.thread_id == thread_id)
+        .filter(
+            models.ForumReply.thread_id == thread_id,
+            models.ForumReply.moderation_status != "rejected",
+            not_human_rejected_condition("forum_reply", models.ForumReply.id),
+        )
     )
     if viewer is None:
-        query = query.filter(models.ForumReply.moderation_status == "approved")
+        query = query.filter(models.ForumReply.moderation_status.in_(PUBLIC_FORUM_STATUSES))
     elif not can_moderate_forum(viewer):
         query = query.filter(
             or_(
-                models.ForumReply.moderation_status == "approved",
+                models.ForumReply.moderation_status.in_(PUBLIC_FORUM_STATUSES),
                 models.ForumReply.author_id == viewer.id,
             )
         )
@@ -141,7 +153,7 @@ def create_forum_reply(
     thread: models.ForumThread,
     data: schemas.ForumReplyCreate,
 ) -> tuple[Optional[models.ForumReply], Optional[str]]:
-    if not can_view_forum_thread(author, thread):
+    if not can_view_forum_thread(author, thread, db=db):
         return None, "not_found"
     if thread.moderation_status != "approved":
         return None, "thread_not_approved"

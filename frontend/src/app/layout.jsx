@@ -1,14 +1,16 @@
 import { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createSiteFeedback } from "../api/feedback.js";
-import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from "../api/notifications.js";
+import { deleteNotification, fetchNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "../api/notifications.js";
 import { BsPen } from "react-icons/bs";
 import { FaCoins, FaFacebookF } from "react-icons/fa6";
-import { FiBell, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiRepeat, FiUserPlus } from "react-icons/fi";
+import { FiBell, FiCheck, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiTrash2, FiUserPlus, FiX } from "react-icons/fi";
+import { IoMdPaperPlane } from "react-icons/io";
 import { IoShirtOutline } from "react-icons/io5";
 import { LiaBugSolid } from "react-icons/lia";
 import { MdOutlineFeedback } from "react-icons/md";
 import { PiMaskSad } from "react-icons/pi";
 import { RiTeamLine } from "react-icons/ri";
+import { SiEuropeanunion } from "react-icons/si";
 import { useAuthModal } from "./auth-modal.jsx";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
@@ -127,6 +129,7 @@ export function NavBar({
   onProfileNotifications,
   profilePanelOpen = false,
   notificationCount = 0,
+  messageCount = 0,
   onOpenAudioPlayer,
   audioPlayerDisabled = true,
   audioPlayerTitle = "Player audio",
@@ -134,6 +137,18 @@ export function NavBar({
 }) {
   const { openAuthModal } = useAuthModal();
   const unreadNotifications = Math.max(0, Number(notificationCount) || 0);
+  const unreadMessages = Math.max(0, Number(messageCount) || 0);
+  const audioRequiresAuth = !loggedIn;
+  const audioButtonDisabled = Boolean(audioPlayerDisabled);
+  const audioButtonInteractive = !audioRequiresAuth && !audioButtonDisabled;
+  const audioTooltipId = "nav-audio-auth-tooltip";
+  const handleAudioPlayerClick = (event) => {
+    if (!audioButtonInteractive) {
+      event.preventDefault();
+      return;
+    }
+    onOpenAudioPlayer?.();
+  };
   return (
     <nav className="nav">
       <div className="nav-left">
@@ -172,6 +187,11 @@ export function NavBar({
         {loggedIn && user ? (
           <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje" className="mobile-menu-only">
             <FiMail aria-hidden="true" />
+            {unreadMessages > 0 ? (
+              <span className="profile-notification-badge" aria-label={`${unreadMessages} mesaje necitite`}>
+                {unreadMessages > 9 ? "9+" : unreadMessages}
+              </span>
+            ) : null}
           </NavIconLink>
         ) : null}
         {loggedIn && user ? (
@@ -196,7 +216,7 @@ export function NavBar({
         ) : null}
         {loggedIn ? (
           <NavIconLink href={mainPath("/stafeta")} label="Ștafeta" className="mobile-menu-only">
-            <FiRepeat aria-hidden="true" />
+            <IoMdPaperPlane aria-hidden="true" />
           </NavIconLink>
         ) : null}
         {loggedIn && user ? (
@@ -216,22 +236,33 @@ export function NavBar({
         ) : null}
       </div>
       <div className="nav-right">
-        {loggedIn ? (
+        <span className={`nav-audio-wrap ${audioRequiresAuth ? "requires-auth" : ""}`.trim()}>
           <button
-            className="nav-audio-player"
+            className={`nav-audio-player ${audioRequiresAuth ? "is-disabled" : ""}`.trim()}
             type="button"
-            onClick={onOpenAudioPlayer}
-            disabled={audioPlayerDisabled}
-            title={audioPlayerTitle}
+            onClick={handleAudioPlayerClick}
+            disabled={!audioRequiresAuth && audioButtonDisabled}
+            aria-disabled={audioRequiresAuth ? "true" : undefined}
+            title={audioRequiresAuth ? undefined : audioPlayerTitle}
             aria-label="Player audio"
             aria-haspopup="dialog"
             aria-expanded={audioPlayerOpen || undefined}
             aria-controls="landing-listen-player"
+            aria-describedby={audioRequiresAuth ? audioTooltipId : undefined}
           >
             <FiPlay aria-hidden="true" />
             <span>Player audio</span>
           </button>
-        ) : null}
+          {audioRequiresAuth ? (
+            <span className="nav-audio-tooltip" id={audioTooltipId} role="tooltip">
+              Pentru a utiliza player-ul audio, vă rugăm să vă{" "}
+              <button className="nav-audio-tooltip-link" type="button" onClick={() => openAuthModal?.()}>
+                conectați
+              </button>
+              .
+            </span>
+          ) : null}
+        </span>
         <button className={`icon-btn burger ${menuOpen ? "open" : ""}`} onClick={onMenu} aria-label="Meniu" type="button" aria-expanded={menuOpen}>
           <span />
           <span />
@@ -263,11 +294,13 @@ export function NotificationPanel({ open, user, notificationCount = 0, onNotific
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [busyNotification, setBusyNotification] = useState("");
 
   const loadNotifications = () => {
     if (!user) return;
     setLoading(true);
     setStatus("");
+    setBusyNotification("");
     fetchNotifications()
       .then((data) => setItems(Array.isArray(data.notifications) ? data.notifications : []))
       .catch((error) => setStatus(error.message || "Nu am putut încărca notificările."))
@@ -298,7 +331,7 @@ export function NotificationPanel({ open, user, notificationCount = 0, onNotific
 
   if (!user) return null;
 
-  const markOne = async (notification) => {
+  const openNotification = async (notification) => {
     try {
       if (!notification.is_read) {
         await markNotificationRead(notification.id);
@@ -313,6 +346,34 @@ export function NotificationPanel({ open, user, notificationCount = 0, onNotific
       onClose();
     } catch (error) {
       setStatus(error.message || "Nu am putut marca notificarea.");
+    }
+  };
+
+  const updateNotificationState = async (notification, action) => {
+    const busyKey = `${action}:${notification.id}`;
+    if (busyNotification) return;
+    setBusyNotification(busyKey);
+    setStatus("");
+    try {
+      if (action === "read") {
+        await markNotificationRead(notification.id);
+        setItems((current) => current.map((item) => (
+          item.id === notification.id ? { ...item, is_read: true } : item
+        )));
+      } else if (action === "unread") {
+        await markNotificationUnread(notification.id);
+        setItems((current) => current.map((item) => (
+          item.id === notification.id ? { ...item, is_read: false } : item
+        )));
+      } else if (action === "delete") {
+        await deleteNotification(notification.id);
+        setItems((current) => current.filter((item) => item.id !== notification.id));
+      }
+      await onNotificationsRefresh?.();
+    } catch (error) {
+      setStatus(error.message || "Nu am putut actualiza notificarea.");
+    } finally {
+      setBusyNotification("");
     }
   };
 
@@ -362,16 +423,55 @@ export function NotificationPanel({ open, user, notificationCount = 0, onNotific
         {!loading && !status && items.length ? (
           <div className="menu-notification-list">
             {items.map((notification) => (
-              <button
+              <article
                 key={notification.id}
-                className={`menu-notification ${notification.is_read ? "" : "unread"}`.trim()}
-                type="button"
-                onClick={() => markOne(notification)}
+                className={`menu-notification ${notification.is_read ? "read" : "unread"}`.trim()}
               >
-                <span className="menu-notification-title">{notification.title}</span>
-                {notification.message ? <span className="menu-notification-message">{notification.message}</span> : null}
-                {notification.created_at ? <span className="menu-notification-date">{formatDateTime(notification.created_at)}</span> : null}
-              </button>
+                <button
+                  className="menu-notification-main"
+                  type="button"
+                  onClick={() => openNotification(notification)}
+                >
+                  <span className="menu-notification-title">{notification.title}</span>
+                  {notification.message ? <span className="menu-notification-message">{notification.message}</span> : null}
+                  {notification.created_at ? <span className="menu-notification-date">{formatDateTime(notification.created_at)}</span> : null}
+                </button>
+                <span className="menu-notification-controls" aria-label="Acțiuni notificare">
+                  {notification.is_read ? (
+                    <button
+                      className="menu-notification-control unread-action"
+                      type="button"
+                      onClick={() => updateNotificationState(notification, "unread")}
+                      disabled={Boolean(busyNotification)}
+                      aria-label="Marchează ca necitită"
+                      title="Marchează ca necitită"
+                    >
+                      <FiX aria-hidden="true" />
+                    </button>
+                  ) : (
+                    <button
+                      className="menu-notification-control read-action"
+                      type="button"
+                      onClick={() => updateNotificationState(notification, "read")}
+                      disabled={Boolean(busyNotification)}
+                      aria-label="Marchează ca citită"
+                      title="Marchează ca citită"
+                    >
+                      <FiCheck aria-hidden="true" />
+                    </button>
+                  )}
+                  <button
+                    className="menu-notification-control delete-action"
+                    type="button"
+                    onClick={() => updateNotificationState(notification, "delete")}
+                    disabled={Boolean(busyNotification)}
+                    aria-label="Șterge notificarea"
+                    title="Șterge notificarea"
+                  >
+                    <FiTrash2 aria-hidden="true" />
+                  </button>
+                </span>
+              </article>
             ))}
           </div>
         ) : null}
@@ -409,6 +509,7 @@ export function SideMenu({ open, onClose, user }) {
         ["Călimara mea", "profilul tău public", blogUrl(user.username)],
         ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
         ["Panou", "textele tale", authorPath(user, "/panou")],
+        ...(user.has_author_audio_access ? [["Playlisturi", "audio salvat", mainPath("/playlisturi")]] : []),
         ["Prieteni", "cereri și listă", mainPath("/prieteni")],
         ...adminItems,
         ["Mesaje", "conversații", authorPath(user, "/mesaje")],
@@ -482,8 +583,9 @@ export function SideMenu({ open, onClose, user }) {
 }
 const SITE_FEEDBACK_ENTRIES = {
   feedback: { kind: "feedback", label: "Sugestii", Icon: MdOutlineFeedback },
-  bug: { kind: "bug", label: "Gandaci", Icon: LiaBugSolid }
+  bug: { kind: "bug", label: "Gândaci", Icon: LiaBugSolid }
 };
+const EU_FOOTER_MESSAGE = "Dezvoltat și hostat, cu dragoste, în Uniunea Europeană";
 
 function feedbackClientContext() {
   if (typeof window === "undefined") return {};
@@ -607,9 +709,9 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
   );
 }
 
-export function Footer({ user, authLoaded = false, landingStats = null, showLandingInfo = false }) {
+export function Footer({ user, authLoaded = false, platformStats = null }) {
   const [feedbackEntry, setFeedbackEntry] = useState(null);
-  const stats = showLandingInfo ? landingStats : null;
+  const stats = platformStats;
   const openFeedback = (entry) => setFeedbackEntry(entry);
   return (
     <>
@@ -633,19 +735,31 @@ export function Footer({ user, authLoaded = false, landingStats = null, showLand
             </div>
           ) : null}
           <div className="foot-actions" aria-label="Informații și acțiuni călimara.ro">
-            <a className="footer-icon-btn footer-help-btn" href={mainPath("/ce-este-calimara")} aria-label="Ce este calimara.ro?" title="Ce este calimara.ro?">?</a>
             <button className="footer-icon-btn footer-feedback-btn" type="button" aria-label="Sugestii" title="Sugestii" onClick={() => openFeedback(SITE_FEEDBACK_ENTRIES.feedback)}>
               <MdOutlineFeedback aria-hidden="true" />
             </button>
-            <button className="footer-icon-btn footer-feedback-btn" type="button" aria-label="Gandaci" title="Gandaci" onClick={() => openFeedback(SITE_FEEDBACK_ENTRIES.bug)}>
+            <button className="footer-icon-btn footer-feedback-btn" type="button" aria-label="Gândaci" title="Gândaci" onClick={() => openFeedback(SITE_FEEDBACK_ENTRIES.bug)}>
               <LiaBugSolid aria-hidden="true" />
             </button>
-            <a href="https://facebook.com" className="footer-icon-btn social-facebook" aria-label="Facebook" title="Facebook">
+            <a className="footer-icon-btn footer-help-btn" href={mainPath("/ce-este-calimara")} aria-label="Ce este calimara.ro?" title="Ce este calimara.ro?">?</a>
+            <a href="https://www.facebook.com/calimararo" className="footer-icon-btn social-facebook" aria-label="Facebook" title="Facebook">
               <FaFacebookF aria-hidden="true" />
             </a>
             <a href="mailto:contact@calimara.ro" className="footer-icon-btn social-email" aria-label="Contact" title="Contact">
               <FiMail aria-hidden="true" />
             </a>
+            <button
+              className="footer-icon-btn footer-eu-btn"
+              type="button"
+              aria-label={EU_FOOTER_MESSAGE}
+              aria-describedby="footer-eu-tooltip"
+              onClick={(event) => event.currentTarget.focus()}
+            >
+              <SiEuropeanunion aria-hidden="true" />
+              <span id="footer-eu-tooltip" className="footer-eu-tooltip" role="tooltip">
+                {EU_FOOTER_MESSAGE}
+              </span>
+            </button>
           </div>
         </div>
       </footer>

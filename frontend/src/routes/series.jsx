@@ -5,11 +5,13 @@ import { categoryLabel } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AdSlot, PageShell, StatusPanel } from "../app/layout.jsx";
 import { blogUrl } from "../app/paths.js";
+import { seriesSeo, usePageSeo } from "../app/seo.js";
 
 function SeriesView({ slug }) {
   const { data, error, loading } = useAsync(() => fetchSeries(slug), [slug]);
   const posts = data?.posts?.map((entry) => entry.post).filter(Boolean) ?? [];
   const pdfHref = data?.slug ? seriesPdfUrl(data.slug) : "#";
+  usePageSeo(data ? seriesSeo(data) : null, [data?.id, data?.updated_at, posts.length]);
 
   return (
     <PageShell

@@ -12,6 +12,7 @@ import {
   endTheatreScene,
   fetchTheatrePlay,
   fetchTheatrePlays,
+  fetchMyTheatreInvitations,
   fetchTheatreRequests,
   inviteToTheatrePlay,
   overrideTheatreTurn,
@@ -22,12 +23,13 @@ import {
 } from "../api/theatre.js";
 import { searchUsers } from "../api/users.js";
 import { AuthorLink, RichTextContent } from "../app/content.jsx";
-import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress } from "../app/diacritics.jsx";
+import { DiacriticsControl, DiacriticsProgressOverlay, DiacriticsReviewPanel, diacriticsSubmitLabel, useDiacriticsProgress, useDiacriticsQuota } from "../app/diacritics.jsx";
 import { formatDateTime, usernameHandle } from "../app/format.js";
 import { useAsync } from "../app/hooks.js";
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
 import { mainPath } from "../app/paths.js";
 import { RichTextEditor } from "../app/editor.jsx";
+import { theatrePlaySeo, usePageSeo } from "../app/seo.js";
 
 const EMPTY_CHARACTER = { name: "", description: "", assigned_username: "" };
 const CHARACTER_INVITE_HELPER = "Invită un utilizator să joace acest personaj sau lasă rolul liber. Utilizatorii pot aplica să îl joace.";
@@ -111,7 +113,32 @@ function TheatreHelpModal({ open, onClose }) {
 
 function TheatreListView({ user }) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [handledInvitationIds, setHandledInvitationIds] = useState(() => new Set());
+  const [invitationBusy, setInvitationBusy] = useState("");
+  const [invitationError, setInvitationError] = useState("");
   const { data, error, loading } = useAsync(fetchTheatrePlays, []);
+  const {
+    data: invitationsData,
+    error: invitationsError,
+    loading: invitationsLoading
+  } = useAsync(() => user ? fetchMyTheatreInvitations() : Promise.resolve({ items: [] }), [user?.id]);
+  useEffect(() => {
+    setHandledInvitationIds(new Set());
+  }, [user?.id]);
+  const invitationItems = (invitationsData?.items || []).filter((item) => !handledInvitationIds.has(item.request.id));
+  const respondToInvitation = async (item, action) => {
+    if (invitationBusy) return;
+    setInvitationBusy(`${item.request.id}:${action}`);
+    setInvitationError("");
+    try {
+      await respondTheatreRequest(item.play.id, item.request.id, { action });
+      setHandledInvitationIds((current) => new Set([...current, item.request.id]));
+    } catch (requestError) {
+      setInvitationError(requestError.message || "Nu am putut răspunde invitației.");
+    } finally {
+      setInvitationBusy("");
+    }
+  };
   return (
     <PageShell
       kicker="teatru"
@@ -135,6 +162,29 @@ function TheatreListView({ user }) {
       <TheatreHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       {loading ? <StatusPanel title="Se încarcă" /> : null}
       {error ? <StatusPanel title="Nu am putut încărca piesele">{error.message || String(error)}</StatusPanel> : null}
+      {user && invitationsLoading ? <StatusPanel title="Se verifică invitațiile" /> : null}
+      {user && invitationsError ? <StatusPanel title="Nu am putut încărca invitațiile">{invitationsError.message || String(invitationsError)}</StatusPanel> : null}
+      {user && invitationItems.length ? (
+        <section className="theatre-panel wide theatre-invitations-panel">
+          <h2>Invitațiile tale</h2>
+          <div className="theatre-request-list">
+            {invitationItems.map((item) => (
+              <article className="theatre-request" key={item.request.id}>
+                <div>
+                  <strong>{item.play.title}</strong>
+                  <span>{item.request.character?.name || "personaj fără nume"}</span>
+                </div>
+                <div className="theatre-inline-actions">
+                  <a className="cal-btn" href={mainPath(`/teatru/${item.play.slug}`)}>Deschide</a>
+                  <button className="cal-btn primary" type="button" disabled={Boolean(invitationBusy)} onClick={() => respondToInvitation(item, "approve")}>Acceptă</button>
+                  <button className="cal-btn danger" type="button" disabled={Boolean(invitationBusy)} onClick={() => respondToInvitation(item, "reject")}>Refuză</button>
+                </div>
+              </article>
+            ))}
+          </div>
+          {invitationError ? <div className="inline-error">{invitationError}</div> : null}
+        </section>
+      ) : null}
       {data?.plays?.length ? (
         <div className="list-grid theatre-list">
           {data.plays.map((play, index) => (
@@ -229,7 +279,7 @@ function TheatreCreateView({ user }) {
   const [editingCharacterIndex, setEditingCharacterIndex] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [directSubmitting, setDirectSubmitting] = useState(false);
-  const [autoDiacritics, setAutoDiacritics] = useState(Boolean(user?.is_premium));
+  const [autoDiacritics, setAutoDiacritics] = useState(false);
   const [diacriticsReview, setDiacriticsReview] = useState(null);
   const [error, setError] = useState("");
   const {
@@ -238,11 +288,17 @@ function TheatreCreateView({ user }) {
     finishDiacriticsProgress,
     failDiacriticsProgress
   } = useDiacriticsProgress();
+  const {
+    diacriticsQuota,
+    diacriticsQuotaLoading,
+    diacriticsQuotaError,
+    applyDiacriticsQuota
+  } = useDiacriticsQuota(user);
 
   useEffect(() => {
-    setAutoDiacritics(Boolean(user?.is_premium));
+    setAutoDiacritics(false);
     setDiacriticsReview(null);
-  }, [user?.id, user?.is_premium]);
+  }, [user?.id]);
 
   if (!user) return <AuthRequired />;
 
@@ -306,7 +362,7 @@ function TheatreCreateView({ user }) {
     setDirectSubmitting(skipDiacritics);
     setError("");
     try {
-      if (!skipDiacritics && user.is_premium && autoDiacritics && !diacriticsReview) {
+      if (!skipDiacritics && user && autoDiacritics && !diacriticsReview) {
         startDiacriticsProgress({
           title,
           content: [description, ...cleanCharacters.map((character) => character.description)].join("\n\n")
@@ -321,6 +377,7 @@ function TheatreCreateView({ user }) {
           }))
         });
         finishDiacriticsProgress();
+        applyDiacriticsQuota(converted.quota);
         const convertedDescriptions = new Map((converted.characters || []).map((item) => [item.index, item.description]));
         setTitle(converted.title ?? title);
         setDescription(converted.description ?? description);
@@ -356,7 +413,7 @@ function TheatreCreateView({ user }) {
     event.preventDefault();
     await submitPlay();
   };
-  const canContinueDirectly = Boolean(user?.is_premium && autoDiacritics && !diacriticsReview);
+  const canContinueDirectly = Boolean(user && autoDiacritics && !diacriticsReview);
 
   return (
     <PageShell kicker="teatru" title="Piesă nouă" sub="Definește distribuția inițială și invită actori dacă vrei.">
@@ -463,6 +520,9 @@ function TheatreCreateView({ user }) {
             enabled={autoDiacritics}
             disabled={Boolean(diacriticsReview)}
             label="Adaugă diacritice"
+            quota={diacriticsQuota}
+            quotaLoading={diacriticsQuotaLoading}
+            quotaError={diacriticsQuotaError}
             onChange={(checked) => {
               setAutoDiacritics(checked);
               setDiacriticsReview(null);
@@ -472,13 +532,13 @@ function TheatreCreateView({ user }) {
             {diacriticsSubmitLabel({
               submitting,
               reviewing: Boolean(diacriticsReview),
-              enabled: Boolean(user.is_premium && autoDiacritics && !directSubmitting),
+              enabled: Boolean(user && autoDiacritics && !directSubmitting),
               submitLabel: "Pasul următor"
             })}
           </button>
           {canContinueDirectly ? (
             <button className="cal-btn" type="button" onClick={() => submitPlay({ skipDiacritics: true })} disabled={submitting || !title.trim()}>
-              {directSubmitting ? "Se creează..." : "Pasul următor direct"}
+              {directSubmitting ? "Se creează..." : "Pasul următor fără Diacritice"}
             </button>
           ) : null}
           {error ? <span className="inline-error">{error}</span> : null}
@@ -901,6 +961,7 @@ function TheatrePlayView({ slug, user }) {
 
   const isCreator = Boolean(user && play?.creator_id === user.id);
   const pdfHref = play?.slug ? theatrePdfUrl(play.slug) : "#";
+  usePageSeo(play ? theatrePlaySeo(play) : null, [play?.id, play?.updated_at, play?.status]);
 
   return (
     <PageShell kicker="teatru colaborativ" title={play?.title || "Piesă"} sub={play?.description || "Piesă colaborativă."}>

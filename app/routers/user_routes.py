@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, aliased
 
-from .. import models, schemas, auth, crud, profile_media, rich_text
+from .. import models, schemas, auth, crud, local_auth, profile_media, rich_text
 from ..categories import get_category_name
 from ..database import get_db
 from ..utils import default_cover_seed, get_avatar_url, get_cover_url, validate_social_url, validate_youtube_playlist_url
@@ -195,6 +195,8 @@ def _site_feedback_payload(item: models.SiteFeedback) -> dict:
         "admin_note": item.admin_note,
         "resolved_by": item.resolved_by,
         "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+        "support_conversation_id": item.support_conversation_id,
+        "support_started_at": item.support_started_at.isoformat() if item.support_started_at else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
@@ -435,6 +437,28 @@ def update_email_preferences(
     return get_email_preferences(current_user)
 
 
+@router.put("/api/utilizator/parola")
+def update_current_user_password(
+    data: schemas.PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    if not current_user.password_hash or not local_auth.verify_password(data.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Parola curentă nu este corectă.")
+    try:
+        current_user.password_hash = local_auth.password_hash(data.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    now = utcnow_naive()
+    current_user.password_updated_at = now
+    if not current_user.email_verified_at:
+        current_user.email_verified_at = now
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "Parola a fost actualizată."}
+
+
 @router.put("/api/utilizator/linkuri-sociale", response_model=schemas.UserInDB)
 def update_user_social_links(
     social_update: schemas.SocialLinksUpdate,
@@ -602,12 +626,14 @@ def _user_directory_payload(
     follower_count: int,
 ) -> dict:
     friendship = crud.get_friendship_between(db, current_user.id, user.id)
+    profile_photo_url = _media_url_if_visible(user, "profil")
     return {
         "id": user.id,
         "username": user.username,
         "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
         "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
-        "avatar_url": get_avatar_url(user, size=96),
+        "avatar_url": profile_photo_url or get_avatar_url(user, size=96),
+        "profile_photo_url": profile_photo_url,
         "is_premium": getattr(user, "is_premium", False),
         "premium_tier": getattr(user, "premium_tier", "free") or "free",
         "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -691,6 +717,7 @@ def list_users_directory(
         .filter(
             models.User.id != current_user.id,
             models.User.is_suspended == False,
+            models.User.is_system == False,
         )
     )
 
@@ -791,16 +818,20 @@ def search_users(
         models.User.username.ilike(f"%{term}%"),
         models.User.id != current_user.id,
         models.User.is_suspended == False,
+        models.User.is_system == False,
     ).order_by(models.User.username.asc()).limit(10).all()
 
     results = []
     for user in users:
         friendship = crud.get_friendship_between(db, current_user.id, user.id)
+        profile_photo_url = _media_url_if_visible(user, "profil")
         results.append({
             "id": user.id,
             "username": user.username,
             "subtitle": rich_text.rich_text_to_plain_text(user.subtitle),
             "avatar_seed": user.avatar_seed or f"{user.username}-shapes",
+            "avatar_url": profile_photo_url or get_avatar_url(user, size=96),
+            "profile_photo_url": profile_photo_url,
             "friendship_status": crud.get_friendship_status_for_viewer(db, current_user.id, user.id),
             "friendship_id": friendship.id if friendship else None,
         })

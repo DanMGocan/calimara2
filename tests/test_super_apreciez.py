@@ -12,7 +12,7 @@ os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 
 from app import crud, models
-from app.week_util import end_of_iso_week_utc, start_of_iso_week_utc, utcnow_naive
+from app.week_util import end_of_iso_week_utc, end_of_month_utc, start_of_iso_week_utc, start_of_month_utc, utcnow_naive
 
 
 class SuperLikeModelTests(unittest.TestCase):
@@ -122,6 +122,32 @@ class WeekBoundaryTests(unittest.TestCase):
             )
 
 
+class MonthBoundaryTests(unittest.TestCase):
+    def test_start_of_month_returns_first_day_utc(self):
+        mid_month = datetime(2026, 5, 21, 12, 34, 56, tzinfo=timezone.utc)
+        with patch("app.week_util._now", return_value=mid_month):
+            self.assertEqual(
+                start_of_month_utc(),
+                datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_end_of_month_rolls_to_next_month(self):
+        mid_month = datetime(2026, 5, 21, 12, 34, 56, tzinfo=timezone.utc)
+        with patch("app.week_util._now", return_value=mid_month):
+            self.assertEqual(
+                end_of_month_utc(),
+                datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+    def test_end_of_december_rolls_to_next_year(self):
+        december = datetime(2026, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        with patch("app.week_util._now", return_value=december):
+            self.assertEqual(
+                end_of_month_utc(),
+                datetime(2027, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            )
+
+
 class SuperLikeCrudTests(unittest.TestCase):
     def setUp(self):
         self.engine = create_engine(
@@ -140,10 +166,11 @@ class SuperLikeCrudTests(unittest.TestCase):
         models.Base.metadata.drop_all(self.engine)
         self.engine.dispose()
 
-    def _user(self, name, premium=False):
+    def _user(self, name, premium=False, premium_tier="trubadur"):
         u = models.User(username=name, email=f"{name}@x.t", google_id=f"g-{name}")
         if premium:
             u.premium_until = utcnow_naive() + timedelta(days=30)
+            u.premium_tier = premium_tier
         self.db.add(u)
         self.db.commit()
         self.db.refresh(u)
@@ -177,20 +204,36 @@ class SuperLikeCrudTests(unittest.TestCase):
         with self.assertRaises(crud.SuperLikePostNotFoundError):
             crud.create_super_like(self.db, user=bob, post_id=9999)
 
-    def test_free_user_weekly_quota_one(self):
+    def test_free_user_monthly_quota_one(self):
         alice = self._user("alice"); bob = self._user("bob")
         p1 = self._post(alice, "p1"); p2 = self._post(alice, "p2")
         crud.create_super_like(self.db, user=bob, post_id=p1.id)
         with self.assertRaises(crud.SuperLikeQuotaError):
             crud.create_super_like(self.db, user=bob, post_id=p2.id)
 
-    def test_premium_user_weekly_quota_three(self):
-        alice = self._user("alice"); bob = self._user("bob", premium=True)
+    def test_trubadur_monthly_quota_three(self):
+        alice = self._user("alice"); bob = self._user("bob", premium=True, premium_tier="trubadur")
         posts = [self._post(alice, f"p{i}") for i in range(4)]
         for p in posts[:3]:
             crud.create_super_like(self.db, user=bob, post_id=p.id)
         with self.assertRaises(crud.SuperLikeQuotaError):
             crud.create_super_like(self.db, user=bob, post_id=posts[3].id)
+
+    def test_cronicar_monthly_quota_four(self):
+        alice = self._user("alice"); bob = self._user("bob", premium=True, premium_tier="cronicar")
+        posts = [self._post(alice, f"p{i}") for i in range(5)]
+        for p in posts[:4]:
+            crud.create_super_like(self.db, user=bob, post_id=p.id)
+        with self.assertRaises(crud.SuperLikeQuotaError):
+            crud.create_super_like(self.db, user=bob, post_id=posts[4].id)
+
+    def test_rapsod_monthly_quota_five(self):
+        alice = self._user("alice"); bob = self._user("bob", premium=True, premium_tier="rapsod")
+        posts = [self._post(alice, f"p{i}") for i in range(6)]
+        for p in posts[:5]:
+            crud.create_super_like(self.db, user=bob, post_id=p.id)
+        with self.assertRaises(crud.SuperLikeQuotaError):
+            crud.create_super_like(self.db, user=bob, post_id=posts[5].id)
 
     def test_delete_super_like_removes_row(self):
         alice = self._user("alice"); bob = self._user("bob"); post = self._post(alice, "p1")
@@ -202,11 +245,37 @@ class SuperLikeCrudTests(unittest.TestCase):
         alice = self._user("alice"); bob = self._user("bob"); post = self._post(alice, "p1")
         self.assertFalse(crud.delete_super_like(self.db, user=bob, post_id=post.id))
 
-    def test_get_user_weekly_count(self):
+    def test_get_user_monthly_count(self):
         alice = self._user("alice"); bob = self._user("bob")
         p1 = self._post(alice, "p1")
         crud.create_super_like(self.db, user=bob, post_id=p1.id)
-        self.assertEqual(crud.get_user_weekly_super_like_count(self.db, bob.id), 1)
+        self.assertEqual(crud.get_user_monthly_super_like_count(self.db, bob.id), 1)
+
+    def test_monthly_count_ignores_previous_month(self):
+        alice = self._user("alice"); bob = self._user("bob")
+        old_post = self._post(alice, "old")
+        current_post = self._post(alice, "current")
+        self.db.add_all([
+            models.SuperLike(post_id=old_post.id, user_id=bob.id, created_at=datetime(2026, 4, 30, 23, 59, 59)),
+            models.SuperLike(post_id=current_post.id, user_id=bob.id, created_at=datetime(2026, 5, 1, 0, 0, 0)),
+        ])
+        self.db.commit()
+        with patch("app.week_util._now", return_value=datetime(2026, 5, 21, 12, 0, 0, tzinfo=timezone.utc)):
+            self.assertEqual(crud.get_user_monthly_super_like_count(self.db, bob.id), 1)
+
+    def test_quota_payload_exposes_monthly_fields_and_legacy_aliases(self):
+        bob = self._user("bob", premium=True, premium_tier="cronicar")
+        with patch("app.week_util._now", return_value=datetime(2026, 5, 21, 12, 0, 0, tzinfo=timezone.utc)):
+            payload = crud.super_like_quota_payload(self.db, bob)
+        self.assertEqual(payload["premium_tier"], "cronicar")
+        self.assertEqual(payload["monthly_quota"], 4)
+        self.assertEqual(payload["used_this_month"], 0)
+        self.assertEqual(payload["remaining"], 4)
+        self.assertEqual(payload["period_start"], datetime(2026, 5, 1, 0, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual(payload["period_end"], datetime(2026, 6, 1, 0, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual(payload["weekly_quota"], payload["monthly_quota"])
+        self.assertEqual(payload["used_this_week"], payload["used_this_month"])
+        self.assertEqual(payload["week_resets_at"], payload["month_resets_at"])
 
     def test_user_super_liked_post_check(self):
         alice = self._user("alice"); bob = self._user("bob"); post = self._post(alice, "p1")

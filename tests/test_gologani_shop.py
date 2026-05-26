@@ -83,6 +83,116 @@ class GologaniShopTests(unittest.TestCase):
         self.assertEqual(author.gologani_balance, 25)
         self.assertEqual(self.db.query(models.GologaniTransaction).count(), 1)
 
+    def test_reward_amounts_are_admin_configurable(self):
+        author = self.user("config_author")
+        post = self.post(author)
+        post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(post)
+
+        crud.update_gologani_reward_setting(
+            self.db,
+            "post_approved",
+            schemas.GologaniRewardSettingUpdate(amount=40),
+        )
+        crud.award_content_approved(self.db, "post", post)
+        self.db.refresh(author)
+
+        transaction = self.db.query(models.GologaniTransaction).one()
+        self.assertEqual(author.gologani_balance, 40)
+        self.assertEqual(transaction.amount, 40)
+
+        disabled_post = self.post(author, "Disabled")
+        disabled_post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(disabled_post)
+        crud.update_gologani_reward_setting(
+            self.db,
+            "post_approved",
+            schemas.GologaniRewardSettingUpdate(is_active=False),
+        )
+        crud.award_content_approved(self.db, "post", disabled_post)
+        self.db.refresh(author)
+
+        self.assertEqual(author.gologani_balance, 40)
+        self.assertEqual(self.db.query(models.GologaniTransaction).count(), 1)
+
+    def test_referral_reward_unlocks_trubadur_when_referred_user_earns_600(self):
+        referrer = self.user("referrer")
+        referred = self.user("referred")
+        code = crud.ensure_referral_code(self.db, referrer)
+        crud.apply_referral_to_user(self.db, referred, code)
+
+        crud.grant_gologani(
+            self.db,
+            user_id=referred.id,
+            amount=599,
+            event_type="test_referral_progress",
+            idempotency_key="referral-progress-599",
+        )
+        self.db.refresh(referrer)
+        self.db.refresh(referred)
+        self.assertIsNone(referrer.premium_until)
+        self.assertIsNone(referred.referral_rewarded_at)
+
+        crud.grant_gologani(
+            self.db,
+            user_id=referred.id,
+            amount=1,
+            event_type="test_referral_progress",
+            idempotency_key="referral-progress-600",
+        )
+        self.db.refresh(referrer)
+        self.db.refresh(referred)
+
+        self.assertEqual(referrer.premium_tier, "trubadur")
+        self.assertTrue(referrer.is_premium)
+        self.assertIsNotNone(referred.referral_rewarded_at)
+        self.assertEqual(referred.referral_reward_qualified_gologani, 600)
+        notification = self.db.query(models.Notification).filter(models.Notification.type == "referral_reward").one()
+        self.assertEqual(notification.link, "/invitatii")
+
+        premium_until = referrer.premium_until
+        crud.grant_gologani(
+            self.db,
+            user_id=referred.id,
+            amount=25,
+            event_type="test_referral_progress",
+            idempotency_key="referral-progress-after-reward",
+        )
+        self.db.refresh(referrer)
+        self.assertEqual(referrer.premium_until, premium_until)
+        self.assertEqual(self.db.query(models.Notification).filter(models.Notification.type == "referral_reward").count(), 1)
+
+    def test_referral_summary_includes_post_balance_and_reward_progress(self):
+        referrer = self.user("summary_referrer")
+        referred = self.user("summary_referred")
+        code = crud.ensure_referral_code(self.db, referrer)
+        crud.apply_referral_to_user(self.db, referred, code)
+        approved = self.post(referred, "Approved")
+        approved.moderation_status = "approved"
+        self.post(referred, "Pending")
+        self.db.commit()
+
+        crud.grant_gologani(
+            self.db,
+            user_id=referred.id,
+            amount=35,
+            event_type="test_referral_summary",
+            idempotency_key="referral-summary-35",
+        )
+
+        summary = crud.referral_summary(self.db, referrer)
+        self.assertEqual(summary["referred_count"], 1)
+        self.assertEqual(summary["pending_count"], 1)
+        item = summary["referrals"][0]
+        self.assertEqual(item["username"], "summary_referred")
+        self.assertEqual(item["post_count"], 1)
+        self.assertEqual(item["gologani_balance"], 35)
+        self.assertEqual(item["earned_gologani"], 35)
+        self.assertEqual(item["remaining_gologani"], 565)
+        self.assertEqual(item["progress_percent"], 6)
+
     def test_forum_reward_uses_approval_transition(self):
         author = self.user("forum_author")
         approved = SimpleNamespace(
@@ -115,7 +225,8 @@ class GologaniShopTests(unittest.TestCase):
         self_like_post = self.post(author, "Self")
         self_like_post.moderation_status = "approved"
         self.db.commit()
-        crud.create_like(self.db, self_like_post.id, user_id=author.id)
+        with self.assertRaises(crud.LikeSelfError):
+            crud.create_like(self.db, self_like_post.id, user_id=author.id)
         crud.create_super_like(self.db, reader, post.id)
 
         self.db.refresh(author)

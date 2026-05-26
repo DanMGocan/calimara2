@@ -28,3 +28,17 @@ def start_of_iso_week_utc() -> datetime:
 def end_of_iso_week_utc() -> datetime:
     """Return the next Monday 00:00:00 UTC (exclusive upper bound of the current ISO week)."""
     return start_of_iso_week_utc() + timedelta(days=7)
+
+
+def start_of_month_utc() -> datetime:
+    """Return the first day 00:00:00 UTC of the calendar month containing _now()."""
+    now = _now()
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def end_of_month_utc() -> datetime:
+    """Return the first day 00:00:00 UTC of the next calendar month."""
+    start = start_of_month_utc()
+    if start.month == 12:
+        return start.replace(year=start.year + 1, month=1)
+    return start.replace(month=start.month + 1)

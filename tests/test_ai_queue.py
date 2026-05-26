@@ -70,11 +70,14 @@ class AIQueueTests(unittest.TestCase):
 
     def test_post_publish_job_approves_post_and_enqueues_followups(self):
         user = self.make_user()
+        follower = self.make_user("postfollower")
         post = crud.create_user_post(
             self.db,
             schemas.PostCreate(title="Poem", content="Un text pentru coadă.", category="proza_scurta", ai_critic=True),
             user_id=user.id,
         )
+        crud.create_follow(self.db, follower.id, user.id)
+        self.db.commit()
         ai_queue.enqueue_post_publish_job(self.db, post, ai_critic_requested=True)
         approved = SimpleNamespace(
             status=moderation.ModerationStatus.APPROVED,
@@ -83,25 +86,29 @@ class AIQueueTests(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"AUDIO_ENABLED": "True"}), patch.object(
-            ai_queue.category_classifier, "classify_post", return_value="poezie"
-        ) as classify_post, patch.object(ai_queue.moderation, "moderate_post_with_logging", return_value=approved):
+            ai_queue.moderation, "moderate_post_with_logging", return_value=approved
+        ):
             processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
 
         self.assertEqual(processed, 1)
         self.db.refresh(post)
         self.assertEqual(post.moderation_status, "approved")
         self.assertEqual(post.category, "proza_scurta")
-        classify_post.assert_not_called()
         self.assertTrue(post.ai_critic_requested)
         self.assertEqual(self.db.query(models.PostAudio).filter_by(post_id=post.id, source="tts").count(), 0)
         queued_types = {
             job.job_type
             for job in self.db.query(models.AIJob).filter(models.AIJob.status == "pending").all()
         }
-        self.assertIn(ai_queue.JOB_THEME_ANALYSIS, queued_types)
         self.assertIn(ai_queue.JOB_AI_CRITIC, queued_types)
         self.assertNotIn(ai_queue.JOB_TTS_AUDIO, queued_types)
         self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="post").count(), 1)
+        follower_notification = self.db.query(models.Notification).filter_by(
+            user_id=follower.id,
+            type="followed_user_new_post",
+        ).one()
+        self.assertEqual(follower_notification.link, f"//{user.username}.calimara.ro/{post.slug}")
+        self.assertEqual(follower_notification.extra_data["post_id"], post.id)
 
     def test_tts_generation_failure_keeps_ai_job_retryable(self):
         user = self.make_user()
@@ -129,11 +136,14 @@ class AIQueueTests(unittest.TestCase):
         self.assertEqual(processed, 1)
         self.db.refresh(audio)
         job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
-        self.assertEqual(audio.status, "failed")
+        self.assertEqual(audio.status, "pending")
         self.assertEqual(audio.error_message, "provider down")
         self.assertEqual(job.status, "pending")
         self.assertEqual(job.attempts, 1)
         self.assertIn("provider down", job.error_message)
+        payload = ai_queue.audio_service.post_audio_status_payload(self.db, post.id, user)
+        self.assertEqual(payload["status"], "pending")
+        self.assertEqual(payload["message"], "Generarea audio se reîncearcă.")
 
     def test_tts_generation_second_failure_waits_before_third_attempt(self):
         user = self.make_user()
@@ -168,10 +178,78 @@ class AIQueueTests(unittest.TestCase):
             ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
 
         job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.db.refresh(audio)
         self.assertEqual(job.status, "pending")
         self.assertEqual(job.attempts, 2)
+        self.assertEqual(audio.status, "pending")
         self.assertGreaterEqual(job.run_after, before_retry + timedelta(seconds=890))
         self.assertLessEqual(job.run_after, utcnow_naive() + timedelta(seconds=910))
+
+    def test_tts_generation_final_failure_marks_audio_failed(self):
+        user = self.make_user()
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Poem", content="Un text pentru audio.", category="poezie", ai_critic=False),
+            user_id=user.id,
+        )
+        post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(post)
+        audio = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            requester_user_id=user.id,
+            source="tts",
+            status="pending",
+            tts_character_count=25,
+        )
+        job = crud.enqueue_ai_job(
+            self.db,
+            job_type=ai_queue.JOB_TTS_AUDIO,
+            target_type="audio",
+            target_id=audio.id,
+            max_attempts=1,
+        )
+
+        with patch.object(ai_queue.audio_service, "synthesize_text", side_effect=RuntimeError("provider down")):
+            processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        self.assertEqual(processed, 1)
+        self.db.refresh(audio)
+        job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.assertEqual(audio.status, "failed")
+        self.assertEqual(audio.error_message, "provider down")
+        self.assertEqual(job.status, "failed")
+        payload = ai_queue.audio_service.post_audio_status_payload(self.db, post.id, user)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["message"], "Generarea audio a eșuat.")
+
+    def test_cancelled_author_audio_job_is_skipped(self):
+        user = self.make_user()
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Poem", content="Un text pentru audio.", category="poezie", ai_critic=False),
+            user_id=user.id,
+        )
+        post.moderation_status = "approved"
+        self.db.commit()
+        self.db.refresh(post)
+        audio = crud.create_post_audio(
+            self.db,
+            post_id=post.id,
+            requester_user_id=user.id,
+            source="author",
+            status="cancelled",
+        )
+        job = ai_queue.enqueue_author_audio_moderation_job(self.db, audio)
+
+        with patch.object(ai_queue.audio_service, "process_author_recording") as process_author:
+            processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        job = self.db.query(models.AIJob).filter(models.AIJob.id == job.id).one()
+        self.assertEqual(processed, 1)
+        self.assertEqual(job.status, "completed")
+        process_author.assert_not_called()
 
     def test_failed_flush_rolls_job_back_to_retry_without_sticking_processing(self):
         job = crud.enqueue_ai_job(
@@ -245,6 +323,38 @@ class AIQueueTests(unittest.TestCase):
         self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="comment").count(), 1)
         self.assertEqual(crud.get_unread_notification_count(self.db, target.id), 1)
 
+    def test_flagged_comment_notification_uses_author_post_link(self):
+        author = self.make_user("commentauthor")
+        commenter = self.make_user("commenter")
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Text", content="Conținut", category="proza_scurta", ai_critic=False),
+            user_id=author.id,
+        )
+        post.moderation_status = "approved"
+        self.db.commit()
+        comment = crud.create_comment(
+            self.db,
+            schemas.CommentCreate(content="Comentariu problematic"),
+            post_id=post.id,
+            user_id=commenter.id,
+        )
+        ai_queue.enqueue_comment_moderation_job(self.db, comment)
+        flagged = SimpleNamespace(
+            status=moderation.ModerationStatus.FLAGGED,
+            toxicity_score=0.9,
+            reason="manual",
+        )
+
+        with patch.object(ai_queue.moderation, "moderate_comment_with_logging", return_value=flagged):
+            ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        notification = self.db.query(models.Notification).filter_by(
+            user_id=commenter.id,
+            type="moderation_queue",
+        ).one()
+        self.assertEqual(notification.link, f"//{author.username}.calimara.ro/{post.slug}")
+
     def test_final_moderation_failures_are_flagged_not_auto_approved(self):
         user = self.make_user()
         post = crud.create_user_post(
@@ -304,10 +414,6 @@ class AIQueueTests(unittest.TestCase):
         self.db.commit()
 
         with patch.object(
-            ai_queue.category_classifier,
-            "classify_post",
-            return_value="poezie",
-        ), patch.object(
             ai_queue.moderation,
             "moderate_post_with_logging",
             side_effect=RuntimeError("moderation provider down"),
@@ -338,7 +444,7 @@ class AIQueueTests(unittest.TestCase):
         self.assertEqual({job.status for job in failed_jobs}, {"failed"})
         self.assertEqual(self.db.query(models.GologaniTransaction).count(), 0)
         queued_followups = self.db.query(models.AIJob).filter(
-            models.AIJob.job_type.in_([ai_queue.JOB_THEME_ANALYSIS, ai_queue.JOB_AI_CRITIC])
+            models.AIJob.job_type == ai_queue.JOB_AI_CRITIC
         ).count()
         self.assertEqual(queued_followups, 0)
 

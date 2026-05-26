@@ -1,4 +1,5 @@
 import os
+import ipaddress
 import urllib.parse
 from urllib.parse import parse_qs
 
@@ -57,9 +58,63 @@ def get_cover_url(user_or_seed, size=1600):
     return f"https://api.dicebear.com/7.x/shapes/svg?{query}"
 
 
+def author_public_url(user_or_username, path: str = "") -> str | None:
+    username = getattr(user_or_username, "username", None) or str(user_or_username or "").strip()
+    if not username:
+        return None
+    suffix = SUBDOMAIN_SUFFIX if SUBDOMAIN_SUFFIX.startswith(".") else f".{SUBDOMAIN_SUFFIX}"
+    normalized_path = ""
+    if path:
+        normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"//{username}{suffix}{normalized_path}"
+
+
+def post_public_url(user_or_username, slug: str | None, anchor: str | None = None) -> str | None:
+    if not slug:
+        return None
+    normalized_slug = str(slug).strip("/")
+    if not normalized_slug:
+        return None
+    path = f"/{normalized_slug}"
+    if anchor:
+        path = f"{path}#{str(anchor).lstrip('#')}"
+    return author_public_url(user_or_username, path)
+
+
+def _valid_ip(value: str | None) -> str | None:
+    candidate = str(value or "").strip().strip('"')
+    if not candidate:
+        return None
+    if candidate.startswith("[") and "]" in candidate:
+        candidate = candidate[1:].split("]", 1)[0]
+    elif candidate.count(":") == 1 and "." in candidate:
+        candidate = candidate.rsplit(":", 1)[0]
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return None
+
+
 def get_client_ip(request: Request):
-    """Dependency to get client IP for anonymous likes"""
-    return request.client.host
+    """Return the real client IP, preferring trusted proxy headers."""
+    cf_ip = _valid_ip(request.headers.get("cf-connecting-ip"))
+    if cf_ip:
+        return cf_ip
+
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        for item in forwarded.split(","):
+            forwarded_ip = _valid_ip(item)
+            if forwarded_ip:
+                return forwarded_ip
+
+    real_ip = _valid_ip(request.headers.get("x-real-ip"))
+    if real_ip:
+        return real_ip
+
+    if request.client:
+        return _valid_ip(request.client.host) or request.client.host
+    return "0.0.0.0"
 
 
 def normalize_external_url(url: str | None) -> str | None:

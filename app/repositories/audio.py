@@ -1,11 +1,17 @@
+import calendar
+
 from ._shared import *
 
 AUDIO_TTS_MONTHLY_QUOTAS = {
+    "free": 1_000,
+    "trubadur": 50_000,
     "cronicar": 100_000,
-    "rapsod": 250_000,
+    "rapsod": 200_000,
 }
 
 AUDIO_LISTEN_MODES = {"poezie", "proza_scurta", "toate"}
+TTS_AUDIO_JOB_TYPE = "tts_audio_generation"
+ACTIVE_TTS_JOB_STATUSES = ("pending", "processing")
 
 # ===================================
 # USER CRUD FUNCTIONS
@@ -43,6 +49,18 @@ def get_latest_audio_for_post(db: Session, post_id: int) -> Optional[models.Post
         .first()
     )
 
+def get_latest_author_audio_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
+    return (
+        db.query(models.PostAudio)
+        .filter(
+            models.PostAudio.post_id == post_id,
+            models.PostAudio.source == "author",
+            models.PostAudio.status != "cancelled",
+        )
+        .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
+        .first()
+    )
+
 def create_post_audio(
     db: Session,
     post_id: int,
@@ -55,6 +73,29 @@ def create_post_audio(
     db.commit()
     db.refresh(audio)
     return audio
+
+def cancel_non_ready_author_audio_for_post(
+    db: Session, post_id: int, exclude_audio_id: Optional[int] = None
+) -> int:
+    query = db.query(models.PostAudio).filter(
+        models.PostAudio.post_id == post_id,
+        models.PostAudio.source == "author",
+        models.PostAudio.status.in_(["pending", "processing", "flagged", "failed"]),
+    )
+    if exclude_audio_id is not None:
+        query = query.filter(models.PostAudio.id != exclude_audio_id)
+    updated = query.update(
+        {
+            "status": "cancelled",
+            "moderation_status": "cancelled",
+            "moderation_reason": "Înregistrarea a fost înlocuită de autor",
+            "updated_at": func.now(),
+        },
+        synchronize_session=False,
+    )
+    if updated:
+        db.commit()
+    return updated
 
 def update_post_audio(db: Session, audio_id: int, **fields) -> Optional[models.PostAudio]:
     audio = db.query(models.PostAudio).filter(models.PostAudio.id == audio_id).first()
@@ -82,6 +123,14 @@ def get_pending_tts_audio_jobs(db: Session, limit: int = 10) -> List[models.Post
     )
 
 def get_active_or_ready_tts_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
+    active_retry_job_exists = exists().where(
+        and_(
+            models.AIJob.job_type == TTS_AUDIO_JOB_TYPE,
+            models.AIJob.target_type == "audio",
+            models.AIJob.target_id == models.PostAudio.id,
+            models.AIJob.status.in_(ACTIVE_TTS_JOB_STATUSES),
+        )
+    )
     return (
         db.query(models.PostAudio)
         .filter(
@@ -93,11 +142,24 @@ def get_active_or_ready_tts_for_post(db: Session, post_id: int) -> Optional[mode
                     models.PostAudio.status.in_(["pending", "processing"]),
                     models.PostAudio.requester_user_id.isnot(None),
                 ),
+                and_(
+                    models.PostAudio.status == "failed",
+                    models.PostAudio.requester_user_id.isnot(None),
+                    active_retry_job_exists,
+                ),
             ),
         )
         .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
         .first()
     )
+
+def has_active_tts_audio_job(db: Session, audio_id: int) -> bool:
+    return db.query(models.AIJob.id).filter(
+        models.AIJob.job_type == TTS_AUDIO_JOB_TYPE,
+        models.AIJob.target_type == "audio",
+        models.AIJob.target_id == audio_id,
+        models.AIJob.status.in_(ACTIVE_TTS_JOB_STATUSES),
+    ).first() is not None
 
 def cancel_legacy_pending_tts_for_post(db: Session, post_id: int) -> int:
     updated = (
@@ -138,17 +200,44 @@ def enqueue_tts_audio_for_post(db: Session, post: models.Post) -> Optional[model
         return existing
     return create_post_audio(db, post_id=post.id, source="tts", status="pending")
 
+def _add_months(value: datetime, months: int) -> datetime:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def _naive(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.replace(tzinfo=None)
+
+
 def audio_tts_quota_limit_for_user(user: models.User) -> int:
-    if not user or not user.is_premium:
+    if not user:
         return 0
-    return AUDIO_TTS_MONTHLY_QUOTAS.get(user.premium_tier, 0)
+    tier = user.premium_tier if user.is_premium else "free"
+    return AUDIO_TTS_MONTHLY_QUOTAS.get(tier or "free", AUDIO_TTS_MONTHLY_QUOTAS["free"])
 
 def audio_tts_quota_period_for_user(user: models.User) -> tuple[Optional[datetime], Optional[datetime]]:
-    if not user or not user.is_premium or not user.premium_until:
+    if not user:
         return None, None
-    period_end = user.premium_until
-    period_start = user.premium_period_start or (period_end - timedelta(days=30))
-    return period_start, period_end
+    now = utcnow_naive()
+    if user.is_premium and user.premium_until:
+        period_end = _naive(user.premium_until)
+        period_start = _naive(user.premium_period_start) if user.premium_period_start else period_end - timedelta(days=30)
+        return period_start, period_end
+
+    anchor = _naive(user.created_at) if user.created_at else now
+    if now < anchor:
+        return anchor, _add_months(anchor, 1)
+    elapsed_months = (now.year - anchor.year) * 12 + (now.month - anchor.month)
+    period_start = _add_months(anchor, elapsed_months)
+    if period_start > now:
+        elapsed_months -= 1
+        period_start = _add_months(anchor, elapsed_months)
+    return period_start, _add_months(anchor, elapsed_months + 1)
 
 def get_user_audio_tts_character_usage(
     db: Session,
@@ -214,6 +303,202 @@ def get_random_ready_audio_for_listen_mode(
     return get_random_ready_audio(db, category=category)
 
 
+def get_ready_audio_post_count_for_author(db: Session, author_id: int) -> int:
+    return (
+        db.query(models.Post.id)
+        .join(models.PostAudio, models.PostAudio.post_id == models.Post.id)
+        .filter(
+            models.Post.user_id == author_id,
+            models.Post.moderation_status == "approved",
+            models.PostAudio.status == "ready",
+        )
+        .distinct()
+        .count()
+    )
+
+
+def get_random_ready_audio_for_author_listen_mode(
+    db: Session,
+    author_id: int,
+    mode: str,
+) -> Optional[models.PostAudio]:
+    if mode not in AUDIO_LISTEN_MODES:
+        return None
+    ready_audio_exists = (
+        db.query(models.PostAudio.id)
+        .filter(
+            models.PostAudio.post_id == models.Post.id,
+            models.PostAudio.status == "ready",
+        )
+        .exists()
+    )
+    query = (
+        db.query(models.Post.id)
+        .filter(
+            models.Post.user_id == author_id,
+            models.Post.moderation_status == "approved",
+            ready_audio_exists,
+        )
+    )
+    if mode != "toate":
+        query = query.filter(models.Post.category == mode)
+    row = query.order_by(func.random()).limit(1).first()
+    return get_best_audio_for_post(db, row[0]) if row else None
+
+
+def list_audio_playlists(
+    db: Session,
+    owner_id: int,
+    post_id: Optional[int] = None,
+) -> List[models.AudioPlaylist]:
+    query = (
+        db.query(models.AudioPlaylist)
+        .options(joinedload(models.AudioPlaylist.items))
+        .filter(models.AudioPlaylist.owner_id == owner_id)
+    )
+    if post_id is not None:
+        query = query.filter(
+            db.query(models.AudioPlaylistItem.id)
+            .filter(
+                models.AudioPlaylistItem.playlist_id == models.AudioPlaylist.id,
+                models.AudioPlaylistItem.post_id == post_id,
+            )
+            .exists()
+        )
+    return query.order_by(models.AudioPlaylist.created_at.desc(), models.AudioPlaylist.id.desc()).all()
+
+
+def get_audio_playlist(db: Session, playlist_id: int) -> Optional[models.AudioPlaylist]:
+    return (
+        db.query(models.AudioPlaylist)
+        .options(
+            joinedload(models.AudioPlaylist.owner),
+            joinedload(models.AudioPlaylist.items).joinedload(models.AudioPlaylistItem.post).joinedload(models.Post.owner),
+        )
+        .filter(models.AudioPlaylist.id == playlist_id)
+        .first()
+    )
+
+
+def get_audio_playlist_for_owner(
+    db: Session,
+    playlist_id: int,
+    owner_id: int,
+) -> Optional[models.AudioPlaylist]:
+    playlist = get_audio_playlist(db, playlist_id)
+    if not playlist or playlist.owner_id != owner_id:
+        return None
+    return playlist
+
+
+def create_audio_playlist(db: Session, owner_id: int, title: str) -> models.AudioPlaylist:
+    playlist = models.AudioPlaylist(owner_id=owner_id, title=title.strip())
+    db.add(playlist)
+    db.commit()
+    db.refresh(playlist)
+    return playlist
+
+
+def update_audio_playlist(
+    db: Session,
+    playlist: models.AudioPlaylist,
+    *,
+    title: str,
+) -> models.AudioPlaylist:
+    playlist.title = title.strip()
+    db.commit()
+    db.refresh(playlist)
+    return playlist
+
+
+def delete_audio_playlist(db: Session, playlist: models.AudioPlaylist) -> None:
+    db.delete(playlist)
+    db.commit()
+
+
+def get_audio_playlist_items(
+    db: Session,
+    playlist_id: int,
+) -> List[models.AudioPlaylistItem]:
+    return (
+        db.query(models.AudioPlaylistItem)
+        .options(joinedload(models.AudioPlaylistItem.post).joinedload(models.Post.owner))
+        .filter(models.AudioPlaylistItem.playlist_id == playlist_id)
+        .order_by(models.AudioPlaylistItem.position.asc(), models.AudioPlaylistItem.created_at.asc(), models.AudioPlaylistItem.id.asc())
+        .all()
+    )
+
+
+def get_audio_playlist_item(
+    db: Session,
+    playlist_id: int,
+    post_id: int,
+) -> Optional[models.AudioPlaylistItem]:
+    return (
+        db.query(models.AudioPlaylistItem)
+        .options(joinedload(models.AudioPlaylistItem.post).joinedload(models.Post.owner))
+        .filter(
+            models.AudioPlaylistItem.playlist_id == playlist_id,
+            models.AudioPlaylistItem.post_id == post_id,
+        )
+        .first()
+    )
+
+
+def add_post_to_audio_playlist(
+    db: Session,
+    playlist: models.AudioPlaylist,
+    post: models.Post,
+) -> tuple[Optional[models.AudioPlaylistItem], Optional[str]]:
+    if post.moderation_status != "approved":
+        return None, "post_unavailable"
+    if not get_best_audio_for_post(db, post.id):
+        return None, "audio_missing"
+    existing = get_audio_playlist_item(db, playlist.id, post.id)
+    if existing:
+        return existing, "already_added"
+    max_position = db.query(func.max(models.AudioPlaylistItem.position)).filter(
+        models.AudioPlaylistItem.playlist_id == playlist.id
+    ).scalar() or 0
+    item = models.AudioPlaylistItem(
+        playlist_id=playlist.id,
+        post_id=post.id,
+        position=max_position + 1,
+    )
+    db.add(item)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return get_audio_playlist_item(db, playlist.id, post.id), "already_added"
+    db.refresh(item)
+    return item, None
+
+
+def _renumber_audio_playlist_items(db: Session, items: List[models.AudioPlaylistItem]) -> None:
+    ordered = sorted(items, key=lambda item: (item.position, item.created_at or datetime.min, item.id))
+    for index, item in enumerate(ordered, start=1):
+        item.position = -index
+    db.flush()
+    for index, item in enumerate(ordered, start=1):
+        item.position = index
+
+
+def remove_post_from_audio_playlist(
+    db: Session,
+    playlist: models.AudioPlaylist,
+    post_id: int,
+) -> bool:
+    item = get_audio_playlist_item(db, playlist.id, post_id)
+    if not item:
+        return False
+    db.delete(item)
+    db.flush()
+    _renumber_audio_playlist_items(db, get_audio_playlist_items(db, playlist.id))
+    db.commit()
+    return True
+
+
 def get_audio_listen_event_by_event_id(
     db: Session, event_id: str
 ) -> Optional[models.AudioListenEvent]:
@@ -240,7 +525,7 @@ def record_audio_listen_event(
     *,
     event_id: str,
     audio: models.PostAudio,
-    listener_user_id: int,
+    listener_user_id: Optional[int],
     seconds: int,
     mode: str,
 ) -> tuple[models.AudioListenEvent, bool]:

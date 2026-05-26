@@ -69,6 +69,38 @@ class PlatformAllowedEmail(Base):
     creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
 
 
+class PlatformInvitation(Base):
+    __tablename__ = "platform_invitations"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'accepted', 'revoked')", name="ck_platform_invitations_status"),
+        CheckConstraint(
+            "premium_tier IN ('free', 'trubadur', 'cronicar', 'rapsod')",
+            name="ck_platform_invitations_premium_tier",
+        ),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    temporary_password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    premium_tier: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
+    premium_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    accepted_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    resent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    creator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by])
+    accepted_user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[accepted_user_id])
+
+
 class SiteFeedback(Base):
     __tablename__ = "site_feedback"
     __table_args__ = (
@@ -89,8 +121,11 @@ class SiteFeedback(Base):
     admin_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     resolved_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    support_conversation_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True)
+    support_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id])
     resolver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[resolved_by])
+    support_conversation: Mapped[Optional["Conversation"]] = relationship("Conversation", foreign_keys=[support_conversation_id])

@@ -7,9 +7,10 @@ POETRY_CHARACTER_LIMIT = 10000
 SHORT_STORY_CHARACTER_LIMIT = 50000
 COMMENT_CHARACTER_LIMIT = 2500
 EXPLANATORY_NOTE_CHARACTER_LIMIT = 300
-PROFILE_DESCRIPTION_CHARACTER_LIMIT = 1000
+PROFILE_DESCRIPTION_CHARACTER_LIMIT = 400
 FORUM_THREAD_CHARACTER_LIMIT = 8000
 FORUM_REPLY_CHARACTER_LIMIT = 4000
+PRIVATE_MESSAGE_CHARACTER_LIMIT = 2000
 
 PostCategory = Literal["poezie", "proza_scurta"]
 
@@ -60,6 +61,17 @@ def _trim_optional_string(value: Optional[str], limit: int, label: str) -> Optio
     return trimmed
 
 
+def _trim_required_string(value: str, limit: int, label: str) -> str:
+    if not isinstance(value, str):
+        return value
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValueError(f"{label} este obligatoriu")
+    if len(trimmed) > limit:
+        raise ValueError(f"{label} poate avea cel mult {limit} de caractere")
+    return trimmed
+
+
 def _validate_post_content_limit(category: PostCategory, content: str) -> None:
     limit = POST_CONTENT_CHARACTER_LIMITS[category]
     label = "Poezia" if category == "poezie" else "Proza scurtă"
@@ -75,6 +87,7 @@ __all__ = [
     "PROFILE_DESCRIPTION_CHARACTER_LIMIT",
     "FORUM_THREAD_CHARACTER_LIMIT",
     "FORUM_REPLY_CHARACTER_LIMIT",
+    "PRIVATE_MESSAGE_CHARACTER_LIMIT",
     "PostCategory",
     "POST_CONTENT_CHARACTER_LIMITS",
     "_visible_text_length",
@@ -83,5 +96,6 @@ __all__ = [
     "_sanitize_draft_rich_text",
     "_sanitize_optional_profile_text",
     "_trim_optional_string",
+    "_trim_required_string",
     "_validate_post_content_limit",
 ]

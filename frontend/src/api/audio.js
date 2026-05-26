@@ -25,6 +25,43 @@ export function fetchListeningRandomAudio(mode = "toate") {
   return api.get(`/api/audio/asculta/aleatoriu?mode=${encodeURIComponent(mode)}`);
 }
 
+export function fetchAuthorListeningRandomAudio(username, mode = "toate") {
+  return api.get(`/api/audio/autori/${encodeURIComponent(username)}/aleatoriu?mode=${encodeURIComponent(mode)}`);
+}
+
+export function fetchAudioPlaylists(postId = null) {
+  if (postId) return api.get(`/api/audio/playlisturi?post_id=${encodeURIComponent(postId)}`);
+  return api.get("/api/audio/playlisturi");
+}
+
+export function createAudioPlaylist(title) {
+  return api.post("/api/audio/playlisturi", { title });
+}
+
+export function updateAudioPlaylist(playlistId, title) {
+  return api.put(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}`, { title });
+}
+
+export function deleteAudioPlaylist(playlistId) {
+  return api.delete(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}`);
+}
+
+export function fetchAudioPlaylist(playlistId) {
+  return api.get(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}`);
+}
+
+export function addPostToAudioPlaylist(playlistId, postId) {
+  return api.post(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}/postari`, { post_id: postId });
+}
+
+export function removePostFromAudioPlaylist(playlistId, postId) {
+  return api.delete(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}/postari/${encodeURIComponent(postId)}`);
+}
+
+export function fetchAudioPlaylistPlayback(playlistId) {
+  return api.get(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}/lista-redare`);
+}
+
 export function recordAudioListenSeconds({ eventId, audioId, seconds, mode = "toate" }) {
   return api.post("/api/audio/asculta/secunde", {
     event_id: eventId,

@@ -13,6 +13,7 @@ class ForumAuthorRef(BaseModel):
     username: str
     avatar_seed: Optional[str] = None
     avatar_url: Optional[str] = None
+    profile_photo_url: Optional[str] = None
     is_premium: bool = False
     premium_tier: str = "free"
     gologani_balance: int = 0
@@ -27,6 +28,11 @@ class ForumThreadCreate(BaseModel):
     section: ForumSection
     title: str = Field(..., min_length=1, max_length=TITLE_CHARACTER_LIMIT)
     content: str = Field(..., min_length=1, max_length=8000)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, TITLE_CHARACTER_LIMIT, "Titlul")
 
     @field_validator("content")
     @classmethod

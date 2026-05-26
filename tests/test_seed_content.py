@@ -59,3 +59,19 @@ def test_seed_fixture_has_longer_story_and_poetry_samples():
     for slug in NEW_LONG_POEM_SLUGS:
         plain = rich_text.rich_text_to_plain_text(posts_by_slug[slug]["content"])
         assert len(plain) > 650
+
+
+def test_seed_audio_links_target_existing_seed_posts():
+    post_slugs = {row["slug"] for row in seed.POSTS}
+    audio_slugs = {row["post_slug"] for row in seed.POST_AUDIO}
+
+    assert len(seed.POST_AUDIO) == 23
+    assert audio_slugs == post_slugs
+    assert Counter(row["storage_backend"] for row in seed.POST_AUDIO) == {"s3": 23}
+
+    for row in seed.POST_AUDIO:
+        assert row["storage_backend"] == "s3"
+        assert row["status"] == "ready"
+        assert row["moderation_status"] == "approved"
+        assert row["content_type"] == "audio/mpeg"
+        assert row["storage_key"].endswith(".mp3")
