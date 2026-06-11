@@ -1,50 +1,28 @@
-import { useEffect, useRef, useState } from "react";
-import Quill from "quill";
-import { FiRefreshCcw } from "react-icons/fi";
-import "quill/dist/quill.snow.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import CharacterCount from "@tiptap/extension-character-count";
+import Underline from "@tiptap/extension-underline";
+import { FiBold, FiItalic, FiList, FiRefreshCcw, FiUnderline } from "react-icons/fi";
 import { avatarPreviewUrl } from "./app/paths.js";
 
-const SOFT_BREAK_BLOT = "softBreak";
-const SOFT_BREAK_CLASS = "cal-soft-break";
-const Delta = Quill.import("delta");
-const Parchment = Quill.import("parchment");
-
-class SoftBreakBlot extends Parchment.EmbedBlot {
-  static value() {
-    return true;
-  }
-
-  html() {
-    return "<br>";
-  }
-}
-
-SoftBreakBlot.blotName = SOFT_BREAK_BLOT;
-SoftBreakBlot.tagName = "BR";
-SoftBreakBlot.className = SOFT_BREAK_CLASS;
-Quill.register(SoftBreakBlot, true);
-
-const TOOLBAR_OPTIONS = [
-  ["bold", "italic", "underline"],
-  ["blockquote"],
-  [{ list: "ordered" }, { list: "bullet" }],
-  ["clean"]
-];
-
-const FORMATS = ["bold", "italic", "underline", "blockquote", "list", SOFT_BREAK_BLOT];
 const HTML_RE = /<[a-zA-Z][^>]*>/;
-const SOFT_BREAK_RE = new RegExp(`<br\\b[^>]*class=["'][^"']*\\b${SOFT_BREAK_CLASS}\\b[^"']*["'][^>]*>`, "gi");
 const MENTION_CONTEXT_RE = /(^|[\s([{])@([A-Za-z0-9]{0,40})$/;
 const MENTION_MIN_QUERY_LENGTH = 3;
 const INVISIBLE_TEXT_RE = /[\u200B-\u200D\uFEFF]/g;
 const SOFT_HYPHEN_RE = /\u00ad/g;
-const SAFE_FORMAT_RE = /<(strong|em|b|i|u|blockquote|ol|ul|li)\b/i;
-const CLEAN_BLOCK_RE = /<(p|blockquote|ol|ul|li)\b/i;
-const SAFE_BLOCK_TAGS = new Set(["p", "blockquote", "ol", "ul", "li"]);
-const SAFE_INLINE_TAGS = new Set(["strong", "em", "b", "i", "u", "br"]);
+const SKIPPED_PASTE_TAGS = new Set(["script", "style", "meta", "link", "img", "svg", "iframe"]);
+const SAFE_INLINE_MARK_TAGS = new Map([
+  ["strong", "strong"],
+  ["b", "strong"],
+  ["em", "em"],
+  ["i", "em"],
+  ["u", "u"]
+]);
+const PASTE_MARK_ORDER = ["strong", "em", "u"];
 const BLOCKISH_TAGS = new Set([
   "address", "article", "aside", "blockquote", "div", "figcaption", "figure", "footer", "h1", "h2", "h3",
-  "h4", "h5", "h6", "header", "main", "p", "pre", "section"
+  "h4", "h5", "h6", "header", "li", "main", "ol", "p", "pre", "section", "ul"
 ]);
 
 function escapeHtml(value) {
@@ -54,19 +32,6 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function plainTextToSoftBreakHtml(value) {
-  const normalized = normalizePastedText(value);
-  if (!normalized) return "";
-
-  return normalized
-    .split(/\n{2,}/)
-    .map((block) => {
-      const lines = block.split("\n").map((line) => escapeHtml(line));
-      return `<p>${lines.join("<br>")}</p>`;
-    })
-    .join("");
 }
 
 function normalizePastedText(value) {
@@ -98,43 +63,36 @@ function blockLines(value) {
     .filter((lines) => lines.length);
 }
 
-function plainTextToPostHtml(value, category = "poezie") {
+function plainTextToParagraphHtml(value) {
   const blocks = blockLines(value);
   if (!blocks.length) return "";
 
-  return blocks.map((lines) => {
-    if (category === "proza_scurta") {
-      return `<p>${escapeHtml(lines.join(" "))}</p>`;
-    }
-    return `<p>${lines.map((line) => escapeHtml(line)).join("<br>")}</p>`;
-  }).join("");
+  return blocks
+    .map((lines) => `<p>${lines.map((line) => escapeHtml(line)).join("<br>")}</p>`)
+    .join("");
 }
 
-function sanitizePastedHtmlNode(node) {
+function pasteHtmlNodeToText(node) {
   if (node.nodeType === Node.TEXT_NODE) {
-    return escapeHtml(normalizePastedTextFragment(node.nodeValue));
+    return normalizePastedTextFragment(node.nodeValue);
   }
   if (node.nodeType !== Node.ELEMENT_NODE) return "";
 
   const tag = node.tagName.toLowerCase();
-  if (tag === "script" || tag === "style" || tag === "meta" || tag === "link" || tag === "img") return "";
-  if (tag === "br") return "<br>";
+  if (SKIPPED_PASTE_TAGS.has(tag)) return "";
+  if (tag === "br") return "\n";
 
-  const children = Array.from(node.childNodes).map(sanitizePastedHtmlNode).join("");
+  const children = Array.from(node.childNodes).map(pasteHtmlNodeToText).join("");
   if (!children.trim()) return "";
 
-  if (SAFE_BLOCK_TAGS.has(tag) || SAFE_INLINE_TAGS.has(tag)) {
-    return `<${tag}>${children}</${tag}>`;
-  }
-
   if (BLOCKISH_TAGS.has(tag)) {
-    return CLEAN_BLOCK_RE.test(children) ? children : `<p>${children}</p>`;
+    return `${children}\n\n`;
   }
 
   return children;
 }
 
-function cleanPastedHtml(html) {
+function textFromPastedHtml(html) {
   if (!html || typeof document === "undefined") return "";
   const doc = document.implementation.createHTMLDocument("");
   doc.body.innerHTML = String(html || "")
@@ -143,149 +101,304 @@ function cleanPastedHtml(html) {
     .replace(/\u00a0/g, " ")
     .replace(/&nbsp;/gi, " ");
 
-  return Array.from(doc.body.childNodes).map(sanitizePastedHtmlNode).join("").trim();
+  return normalizePastedText(Array.from(doc.body.childNodes).map(pasteHtmlNodeToText).join(""));
 }
 
-function cleanPostEditorContent({ html = "", text = "", category = "poezie" } = {}) {
-  const plainText = normalizePastedText(text);
-  const cleanedHtml = cleanPastedHtml(html);
-  const hasSafeFormatting = SAFE_FORMAT_RE.test(cleanedHtml);
-
-  if (plainText && !hasSafeFormatting) {
-    return plainTextToPostHtml(plainText, category);
-  }
-
-  if (cleanedHtml) return cleanedHtml;
-  return plainTextToPostHtml(plainText, category);
-}
-
-function normalizeSoftBreakHtml(html) {
-  return (html || "").replace(SOFT_BREAK_RE, "<br>");
-}
-
-function normalizeHtml(html, plainText) {
-  if (!plainText) return "";
-  return normalizeSoftBreakHtml(html).trim();
-}
-
-function readEditorHtml(quill) {
-  const plainText = quill.getText().replace(/\u00a0/g, " ").trim();
-  const html = typeof quill.getSemanticHTML === "function"
-    ? quill.getSemanticHTML()
-    : quill.root.innerHTML;
-  return normalizeHtml(html, plainText);
-}
-
-function writeEditorHtml(quill, value, enterMode = "paragraph") {
-  const nextValue = (value || "").trim();
-  if (!nextValue) {
-    quill.setText("", "silent");
+function pushPasteSegment(segments, text, marks) {
+  if (!text) return;
+  const key = PASTE_MARK_ORDER.filter((mark) => marks.has(mark)).join(",");
+  const previous = segments[segments.length - 1];
+  if (previous?.key === key) {
+    previous.text += text;
     return;
   }
+  segments.push({
+    key,
+    text,
+    marks: new Set(marks)
+  });
+}
 
-  if (HTML_RE.test(nextValue)) {
-    quill.clipboard.dangerouslyPasteHTML(nextValue, "silent");
-  } else if (enterMode === "soft-break") {
-    quill.clipboard.dangerouslyPasteHTML(plainTextToSoftBreakHtml(nextValue), "silent");
-  } else {
-    quill.setText(nextValue, "silent");
+function collectPasteSegments(node, activeMarks = new Set(), segments = []) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    pushPasteSegment(segments, normalizePastedTextFragment(node.nodeValue), activeMarks);
+    return segments;
   }
-}
+  if (node.nodeType !== Node.ELEMENT_NODE) return segments;
 
-function insertHtmlAtSelection(quill, html) {
-  const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
-  const beforeLength = quill.getLength();
-  quill.history.cutoff();
-  if (range.length) {
-    quill.deleteText(range.index, range.length, Quill.sources.USER);
-  }
-  quill.clipboard.dangerouslyPasteHTML(range.index, html, Quill.sources.USER);
-  const insertedLength = Math.max(0, quill.getLength() - beforeLength + range.length);
-  quill.history.cutoff();
-  quill.setSelection(range.index + insertedLength, 0, Quill.sources.SILENT);
-}
-
-function isAfterSoftBreak(quill, index) {
-  if (index <= 0) return false;
-  const [leaf] = quill.getLeaf(index - 1);
-  return leaf?.statics?.blotName === SOFT_BREAK_BLOT;
-}
-
-function handleSoftBreakEnter(range, context) {
-  if (context.format.list || context.format.blockquote) return true;
-
-  let index = range.index;
-  this.quill.history.cutoff();
-
-  if (range.length) {
-    this.quill.deleteText(index, range.length, Quill.sources.USER);
+  const tag = node.tagName.toLowerCase();
+  if (SKIPPED_PASTE_TAGS.has(tag)) return segments;
+  if (tag === "br") {
+    pushPasteSegment(segments, "\n", activeMarks);
+    return segments;
   }
 
-  if (isAfterSoftBreak(this.quill, index)) {
-    this.quill.deleteText(index - 1, 1, Quill.sources.USER);
-    index -= 1;
-    this.quill.insertText(index, "\n", Quill.sources.USER);
-  } else {
-    this.quill.insertEmbed(index, SOFT_BREAK_BLOT, true, Quill.sources.USER);
+  const nextMarks = new Set(activeMarks);
+  const mark = SAFE_INLINE_MARK_TAGS.get(tag);
+  if (mark) nextMarks.add(mark);
+
+  Array.from(node.childNodes).forEach((child) => collectPasteSegments(child, nextMarks, segments));
+  if (BLOCKISH_TAGS.has(tag)) {
+    pushPasteSegment(segments, "\n\n", activeMarks);
+  }
+  return segments;
+}
+
+function canonicalTextMap(value) {
+  const canonical = [];
+  const indexMap = [];
+  let pendingWhitespace = null;
+  const text = String(value || "");
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (/\s/.test(char)) {
+      if (canonical.length && pendingWhitespace === null) {
+        pendingWhitespace = index;
+      }
+      continue;
+    }
+    if (pendingWhitespace !== null) {
+      canonical.push(" ");
+      indexMap.push(pendingWhitespace);
+      pendingWhitespace = null;
+    }
+    canonical.push(char);
+    indexMap.push(index);
   }
 
-  this.quill.history.cutoff();
-  this.quill.setSelection(index + 1, 0, Quill.sources.SILENT);
-  this.quill.scrollSelectionIntoView();
-  return false;
+  return {
+    text: canonical.join(""),
+    indexMap
+  };
 }
 
-function createSoftBreakMatcher() {
-  return new Delta().insert({ [SOFT_BREAK_BLOT]: true });
+function inlineMarkRangesFromHtml(html, plainText) {
+  if (!html || !plainText || typeof document === "undefined") return [];
+  const doc = document.implementation.createHTMLDocument("");
+  doc.body.innerHTML = String(html || "")
+    .replace(INVISIBLE_TEXT_RE, "")
+    .replace(SOFT_HYPHEN_RE, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/&nbsp;/gi, " ");
+
+  const reference = canonicalTextMap(plainText);
+  if (!reference.text) return [];
+
+  const segments = collectPasteSegments(doc.body);
+  const ranges = [];
+  let cursor = 0;
+
+  segments.forEach((segment) => {
+    const needle = canonicalTextMap(segment.text);
+    if (!needle.text) return;
+
+    const found = reference.text.indexOf(needle.text, cursor);
+    if (found === -1) return;
+
+    if (segment.marks.size) {
+      const start = reference.indexMap[found];
+      const end = reference.indexMap[found + needle.text.length - 1] + 1;
+      ranges.push({
+        start,
+        end,
+        marks: PASTE_MARK_ORDER.filter((mark) => segment.marks.has(mark))
+      });
+    }
+    cursor = found + needle.text.length;
+  });
+
+  return ranges;
 }
 
-function detectMention(quill) {
-  const range = quill.getSelection();
-  if (!range || range.length) return null;
+function activePasteMarksAt(index, ranges) {
+  const marks = new Set();
+  ranges.forEach((range) => {
+    if (index >= range.start && index < range.end) {
+      range.marks.forEach((mark) => marks.add(mark));
+    }
+  });
+  return PASTE_MARK_ORDER.filter((mark) => marks.has(mark));
+}
 
-  const lookBehindLength = Math.min(range.index, 80);
-  const beforeCursor = quill.getText(range.index - lookBehindLength, lookBehindLength);
+function wrapMarkedText(text, marks) {
+  return marks.reduceRight((content, mark) => `<${mark}>${content}</${mark}>`, escapeHtml(text));
+}
+
+function markedTextSliceToHtml(text, start, end, ranges) {
+  let output = "";
+  let index = start;
+
+  while (index < end) {
+    const marks = activePasteMarksAt(index, ranges);
+    const key = marks.join(",");
+    let runEnd = index + 1;
+    while (runEnd < end && activePasteMarksAt(runEnd, ranges).join(",") === key) {
+      runEnd += 1;
+    }
+    output += wrapMarkedText(text.slice(index, runEnd), marks);
+    index = runEnd;
+  }
+
+  return output;
+}
+
+function trimTextRange(text, start, end) {
+  let nextStart = start;
+  let nextEnd = end;
+  while (nextStart < nextEnd && /\s/.test(text[nextStart])) nextStart += 1;
+  while (nextEnd > nextStart && /\s/.test(text[nextEnd - 1])) nextEnd -= 1;
+  return { start: nextStart, end: nextEnd };
+}
+
+function splitLinesWithOffsets(text, start, end) {
+  const lines = [];
+  let lineStart = start;
+
+  for (let index = start; index <= end; index += 1) {
+    if (index !== end && text[index] !== "\n") continue;
+    const range = trimTextRange(text, lineStart, index);
+    if (range.end > range.start) {
+      lines.push(range);
+    }
+    lineStart = index + 1;
+  }
+
+  return lines;
+}
+
+function splitBlocksWithOffsets(text) {
+  const blocks = [];
+  let index = 0;
+
+  while (index < text.length) {
+    while (text[index] === "\n") index += 1;
+    const start = index;
+    while (index < text.length && !(text[index] === "\n" && text[index + 1] === "\n")) {
+      index += 1;
+    }
+    const range = trimTextRange(text, start, index);
+    if (range.end > range.start) {
+      blocks.push({
+        start: range.start,
+        end: range.end,
+        lines: splitLinesWithOffsets(text, range.start, range.end)
+      });
+    }
+    while (text[index] === "\n") index += 1;
+  }
+
+  return blocks;
+}
+
+function canonicalPasteHtmlFromText(text, mode = "prose", markRanges = []) {
+  const normalized = normalizePastedText(text);
+  if (!normalized) return "";
+
+  const blocks = splitBlocksWithOffsets(normalized);
+  if (!blocks.length) return "";
+
+  return blocks.map((block) => {
+    if (mode === "poetry") {
+      const lines = block.lines.map((line) => markedTextSliceToHtml(normalized, line.start, line.end, markRanges));
+      return `<p>${lines.join("<br>")}</p>`;
+    }
+
+    const lines = block.lines.map((line) => markedTextSliceToHtml(normalized, line.start, line.end, markRanges));
+    return `<p>${lines.join(" ")}</p>`;
+  }).join("");
+}
+
+function normalizePasteMode(mode) {
+  return mode === "poetry" ? "poetry" : "prose";
+}
+
+function cleanEditorContent({ html = "", text = "", pasteMode = "prose" } = {}) {
+  const normalizedText = normalizePastedText(text) || textFromPastedHtml(html);
+  if (!normalizedText) return "";
+
+  const mode = normalizePasteMode(pasteMode);
+  const markRanges = inlineMarkRangesFromHtml(html, normalizedText);
+  return canonicalPasteHtmlFromText(normalizedText, mode, markRanges);
+}
+
+function valueToEditorHtml(value) {
+  const nextValue = (value || "").trim();
+  if (!nextValue) return "";
+  return HTML_RE.test(nextValue) ? nextValue : plainTextToParagraphHtml(nextValue);
+}
+
+function readEditorText(editor) {
+  if (!editor || editor.isDestroyed || !editor.schema) return "";
+  return editor.getText({ blockSeparator: "\n\n" }).replace(/\u00a0/g, " ").trim();
+}
+
+function readEditorHtml(editor) {
+  if (!editor || editor.isDestroyed || !editor.schema) return "";
+  const plainText = readEditorText(editor);
+  if (!plainText) return "";
+  return editor.getHTML().replace(/\u00a0/g, " ").trim();
+}
+
+function detectMention(editor, wrapper) {
+  if (!editor || editor.isDestroyed || !editor.schema) return null;
+  const { selection, doc } = editor.state;
+  if (!selection.empty) return null;
+
+  const end = selection.from;
+  const lookBehindStart = Math.max(0, end - 80);
+  const beforeCursor = doc.textBetween(lookBehindStart, end, "\n", "\n");
   const match = beforeCursor.match(MENTION_CONTEXT_RE);
   if (!match) return null;
 
   const query = match[2] || "";
-  const start = range.index - query.length - 1;
-  const bounds = quill.getBounds(range.index);
-  const editorWidth = quill.root?.getBoundingClientRect?.().width || window.innerWidth || 360;
-  const menuWidth = Math.min(280, Math.max(180, editorWidth - 16), Math.max(180, (window.innerWidth || 360) - 32));
-  const left = Math.max(8, Math.min(bounds.left, Math.max(8, editorWidth - menuWidth - 8)));
+  const start = end - query.length - 1;
+  let position = null;
+
+  try {
+    const coords = editor.view.coordsAtPos(end);
+    const wrapperRect = wrapper?.getBoundingClientRect?.();
+    const editorWidth = wrapperRect?.width || window.innerWidth || 360;
+    const menuWidth = Math.min(280, Math.max(180, editorWidth - 16), Math.max(180, (window.innerWidth || 360) - 32));
+    const rawLeft = wrapperRect ? coords.left - wrapperRect.left : coords.left;
+    const rawTop = wrapperRect ? coords.bottom - wrapperRect.top + 8 : coords.bottom + 8;
+    position = {
+      left: Math.max(8, Math.min(rawLeft, Math.max(8, editorWidth - menuWidth - 8))),
+      top: Math.max(8, rawTop)
+    };
+  } catch {
+    position = null;
+  }
+
   return {
     query,
     start,
-    end: range.index,
-    position: {
-      left,
-      top: bounds.top + bounds.height + 8
-    }
+    end,
+    position
   };
 }
 
-function editorModules(enterMode) {
-  const modules = {
-    toolbar: TOOLBAR_OPTIONS
-  };
+function isAfterHardBreak(editor) {
+  const { selection } = editor.state;
+  if (!selection.empty) return false;
+  return selection.$from.nodeBefore?.type?.name === "hardBreak";
+}
 
-  if (enterMode === "soft-break") {
-    modules.clipboard = {
-      matchers: [["br", createSoftBreakMatcher]]
-    };
-    modules.keyboard = {
-      bindings: {
-        "soft break enter": {
-          key: "Enter",
-          format: { list: false, blockquote: false },
-          handler: handleSoftBreakEnter
-        }
-      }
-    };
-  }
-
-  return modules;
+function ToolbarButton({ active = false, disabled = false, label, onClick, children }) {
+  return (
+    <button
+      className={`rich-text-editor-tool ${active ? "active" : ""}`}
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      disabled={disabled}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function RichTextEditor({
@@ -297,21 +410,23 @@ export function RichTextEditor({
   maxLength,
   enterMode = "paragraph",
   mentionSearch,
-  pasteCleanup = "default",
-  cleanupCategory = "poezie",
+  pasteMode = "prose",
   showFormatCleanup = false,
   formatCleanupLabel = "Curăță formatarea",
   formatCleanupBusy = false,
   onFormatCleanup,
 }) {
-  const mountRef = useRef(null);
-  const quillRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const editorRef = useRef(null);
   const valueRef = useRef(value || "");
   const onChangeRef = useRef(onChange);
   const mentionSearchRef = useRef(mentionSearch);
   const disabledRef = useRef(disabled);
-  const cleanupCategoryRef = useRef(cleanupCategory);
+  const pasteModeRef = useRef(pasteMode);
+  const enterModeRef = useRef(enterMode);
+  const mentionStateRef = useRef(null);
   const [empty, setEmpty] = useState(!value);
+  const [, setEditorVersion] = useState(0);
   const [mentionState, setMentionState] = useState({
     open: false,
     query: "",
@@ -335,8 +450,16 @@ export function RichTextEditor({
   }, [disabled]);
 
   useEffect(() => {
-    cleanupCategoryRef.current = cleanupCategory;
-  }, [cleanupCategory]);
+    pasteModeRef.current = pasteMode;
+  }, [pasteMode]);
+
+  useEffect(() => {
+    enterModeRef.current = enterMode;
+  }, [enterMode]);
+
+  useEffect(() => {
+    mentionStateRef.current = mentionState;
+  }, [mentionState]);
 
   const closeMentionMenu = () => {
     setMentionState((current) => current.open ? {
@@ -350,13 +473,60 @@ export function RichTextEditor({
     } : current);
   };
 
-  const syncMentionMenu = (quill) => {
+  const insertMention = (user, triggerOverride) => {
+    const editor = editorRef.current;
+    const trigger = triggerOverride || mentionStateRef.current?.trigger;
+    const username = user?.username;
+    if (!editor || editor.isDestroyed || !trigger || !username) return;
+
+    editor
+      .chain()
+      .focus()
+      .deleteRange({ from: trigger.start, to: trigger.end })
+      .insertContent(`@${username} `)
+      .run();
+    closeMentionMenu();
+  };
+
+  const handleMentionNavigation = (event) => {
+    const current = mentionStateRef.current;
+    if (!current?.open) return false;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMentionMenu();
+      return true;
+    }
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const count = current.results.length;
+      if (!count) return true;
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setMentionState((state) => ({
+        ...state,
+        activeIndex: (state.activeIndex + direction + count) % count
+      }));
+      return true;
+    }
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      if (!current.results.length) return false;
+      event.preventDefault();
+      insertMention(current.results[current.activeIndex] || current.results[0], current.trigger);
+      return true;
+    }
+
+    return false;
+  };
+
+  const syncMentionMenu = (editor) => {
     if (!mentionSearchRef.current || disabledRef.current) {
       closeMentionMenu();
       return;
     }
 
-    const match = detectMention(quill);
+    const match = detectMention(editor, wrapperRef.current);
     if (!match) {
       closeMentionMenu();
       return;
@@ -376,6 +546,146 @@ export function RichTextEditor({
       };
     });
   };
+
+  const extensions = useMemo(() => [
+    StarterKit.configure({
+      code: false,
+      codeBlock: false,
+      dropcursor: false,
+      gapcursor: false,
+      heading: false,
+      horizontalRule: false,
+      link: false,
+      strike: false,
+      trailingNode: false,
+      underline: false,
+      hardBreak: {
+        keepMarks: true
+      }
+    }),
+    Underline,
+    CharacterCount.configure({
+      limit: maxLength || null
+    })
+  ], [maxLength]);
+
+  const editor = useEditor({
+    extensions,
+    content: valueToEditorHtml(valueRef.current),
+    editable: !disabled,
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        id,
+        class: "tiptap-editor",
+        "aria-multiline": "true",
+        role: "textbox"
+      },
+      handlePaste: (_view, event) => {
+        if (disabledRef.current) return false;
+        const clipboard = event.clipboardData;
+        if (!clipboard) return false;
+
+        const cleaned = cleanEditorContent({
+          html: clipboard.getData("text/html"),
+          text: clipboard.getData("text/plain"),
+          pasteMode: pasteModeRef.current
+        });
+        if (!cleaned) return false;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
+        const currentEditor = editorRef.current;
+        if (currentEditor && !currentEditor.isDestroyed) {
+          currentEditor.chain().focus().insertContent(cleaned).run();
+        }
+        return true;
+      },
+      handleKeyDown: (_view, event) => {
+        if (handleMentionNavigation(event)) return true;
+
+        const currentEditor = editorRef.current;
+        if (
+          !currentEditor
+          || currentEditor.isDestroyed
+          || disabledRef.current
+          || enterModeRef.current !== "soft-break"
+          || event.key !== "Enter"
+          || event.altKey
+          || event.ctrlKey
+          || event.metaKey
+          || currentEditor.isActive("bulletList")
+          || currentEditor.isActive("orderedList")
+          || currentEditor.isActive("blockquote")
+        ) {
+          return false;
+        }
+
+        event.preventDefault();
+        const { from, empty: selectionEmpty } = currentEditor.state.selection;
+        const chain = currentEditor.chain().focus();
+        if (!selectionEmpty) {
+          chain.deleteSelection();
+        }
+        if (selectionEmpty && !event.shiftKey && isAfterHardBreak(currentEditor)) {
+          chain.deleteRange({ from: Math.max(0, from - 1), to: from }).splitBlock().run();
+        } else {
+          chain.setHardBreak().run();
+        }
+        return true;
+      }
+    },
+    onUpdate: ({ editor: currentEditor }) => {
+      const nextValue = readEditorHtml(currentEditor);
+      valueRef.current = nextValue;
+      setEmpty(!nextValue);
+      onChangeRef.current?.(nextValue);
+      syncMentionMenu(currentEditor);
+      setEditorVersion((current) => current + 1);
+    },
+    onSelectionUpdate: ({ editor: currentEditor }) => {
+      syncMentionMenu(currentEditor);
+      setEditorVersion((current) => current + 1);
+    },
+    onBlur: () => {
+      closeMentionMenu();
+    },
+  }, [extensions, id]);
+
+  useEffect(() => {
+    editorRef.current = editor;
+    if (!editor || editor.isDestroyed) return undefined;
+    setEmpty(!readEditorHtml(editor));
+
+    return () => {
+      if (editorRef.current === editor) {
+        editorRef.current = null;
+      }
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    const nextValue = value || "";
+    valueRef.current = nextValue;
+    if (!editor || editor.isDestroyed) {
+      setEmpty(!nextValue);
+      return;
+    }
+
+    const currentValue = readEditorHtml(editor);
+    if (currentValue !== nextValue.trim()) {
+      editor.commands.setContent(valueToEditorHtml(nextValue), { emitUpdate: false });
+    }
+    setEmpty(!readEditorHtml(editor));
+  }, [editor, value]);
+
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      editor.setEditable(!disabled);
+    }
+    if (disabled) closeMentionMenu();
+  }, [disabled, editor]);
 
   useEffect(() => {
     if (!mentionState.open || !mentionSearch || mentionState.query.length < MENTION_MIN_QUERY_LENGTH) {
@@ -412,154 +722,17 @@ export function RichTextEditor({
     };
   }, [mentionSearch, mentionState.open, mentionState.query]);
 
-  const insertMention = (user) => {
-    const quill = quillRef.current;
-    const trigger = mentionState.trigger;
-    const username = user?.username;
-    if (!quill || !trigger || !username) return;
-
-    quill.focus();
-    quill.deleteText(trigger.start, Math.max(0, trigger.end - trigger.start), Quill.sources.USER);
-    const text = `@${username} `;
-    quill.insertText(trigger.start, text, Quill.sources.USER);
-    quill.setSelection(trigger.start + text.length, 0, Quill.sources.SILENT);
-    closeMentionMenu();
-  };
-
-  const handleMentionKeyDown = (event) => {
-    if (!mentionState.open) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMentionMenu();
-      return;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      const count = mentionState.results.length;
-      if (!count) return;
-      const direction = event.key === "ArrowDown" ? 1 : -1;
-      setMentionState((current) => ({
-        ...current,
-        activeIndex: (current.activeIndex + direction + count) % count
-      }));
-      return;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      if (!mentionState.results.length) return;
-      event.preventDefault();
-      insertMention(mentionState.results[mentionState.activeIndex] || mentionState.results[0]);
-    }
-  };
-
-  useEffect(() => {
-    const mount = mountRef.current;
-    if (!mount) return undefined;
-
-    const editorNode = document.createElement("div");
-    mount.innerHTML = "";
-    mount.appendChild(editorNode);
-
-    const quill = new Quill(editorNode, {
-      theme: "snow",
-      formats: FORMATS,
-      modules: editorModules(enterMode)
-    });
-    quillRef.current = quill;
-    quill.root.id = id;
-    quill.root.setAttribute("aria-multiline", "true");
-    writeEditorHtml(quill, valueRef.current, enterMode);
-    setEmpty(!readEditorHtml(quill));
-
-    const handleTextChange = () => {
-      if (maxLength && quill.getLength() > maxLength + 1) {
-        const selection = quill.getSelection();
-        quill.deleteText(maxLength, quill.getLength(), "silent");
-        if (selection) {
-          quill.setSelection(Math.min(selection.index, maxLength), 0, "silent");
-        }
-      }
-      const nextValue = readEditorHtml(quill);
-      valueRef.current = nextValue;
-      setEmpty(!nextValue);
-      onChangeRef.current?.(nextValue);
-      syncMentionMenu(quill);
-    };
-
-    const handleSelectionChange = () => {
-      syncMentionMenu(quill);
-    };
-
-    const handlePaste = (event) => {
-      if (pasteCleanup !== "post" || disabledRef.current) return;
-      const clipboard = event.clipboardData;
-      if (!clipboard) return;
-
-      const cleaned = cleanPostEditorContent({
-        html: clipboard.getData("text/html"),
-        text: clipboard.getData("text/plain"),
-        category: cleanupCategoryRef.current
-      });
-      if (!cleaned) return;
-
-      event.preventDefault();
-      insertHtmlAtSelection(quill, cleaned);
-    };
-
-    quill.on("text-change", handleTextChange);
-    quill.on("selection-change", handleSelectionChange);
-    quill.root.addEventListener("paste", handlePaste);
-    quill.enable(!disabled);
-
-    return () => {
-      quill.off("text-change", handleTextChange);
-      quill.off("selection-change", handleSelectionChange);
-      quill.root.removeEventListener("paste", handlePaste);
-      quillRef.current = null;
-      mount.innerHTML = "";
-    };
-  }, [id, maxLength, enterMode, pasteCleanup]);
-
-  useEffect(() => {
-    const quill = quillRef.current;
-    const nextValue = value || "";
-    valueRef.current = nextValue;
-    if (!quill) {
-      setEmpty(!nextValue);
-      return;
-    }
-
-    const currentValue = readEditorHtml(quill);
-    if (currentValue !== nextValue.trim()) {
-      const selection = quill.getSelection();
-      writeEditorHtml(quill, nextValue, enterMode);
-      if (selection && quill.hasFocus()) {
-        quill.setSelection(Math.min(selection.index, quill.getLength() - 1), selection.length, "silent");
-      }
-    }
-    setEmpty(!readEditorHtml(quill));
-  }, [value, enterMode]);
-
-  useEffect(() => {
-    quillRef.current?.enable(!disabled);
-    if (disabled) closeMentionMenu();
-  }, [disabled]);
-
   const cleanCurrentFormatting = () => {
-    const quill = quillRef.current;
-    if (!quill || disabled) return;
+    if (!editor || editor.isDestroyed || disabled) return;
 
-    const cleaned = cleanPostEditorContent({
-      html: readEditorHtml(quill),
-      text: quill.getText(),
-      category: cleanupCategoryRef.current
+    const cleaned = cleanEditorContent({
+      html: readEditorHtml(editor),
+      text: readEditorText(editor),
+      pasteMode: pasteModeRef.current
     });
     if (!cleaned) return;
 
-    writeEditorHtml(quill, cleaned, enterMode);
-    const nextValue = readEditorHtml(quill);
-    valueRef.current = nextValue;
-    setEmpty(!nextValue);
-    onChangeRef.current?.(nextValue);
+    editor.commands.setContent(cleaned, { emitUpdate: true });
   };
 
   const handleFormatCleanup = () => {
@@ -570,14 +743,76 @@ export function RichTextEditor({
     cleanCurrentFormatting();
   };
 
+  const runToolbarCommand = (command) => {
+    if (!editor || editor.isDestroyed || disabled) return;
+    command(editor.chain().focus()).run();
+  };
+
   return (
     <div
+      ref={wrapperRef}
       className={`rich-text-editor ${className}`.trim()}
       data-empty={empty ? "true" : "false"}
       data-disabled={disabled ? "true" : "false"}
-      onKeyDown={handleMentionKeyDown}
     >
-      <div ref={mountRef} />
+      <div className="rich-text-editor-toolbar" role="toolbar" aria-label="Formatare text">
+        <ToolbarButton
+          active={Boolean(editor?.isActive("bold"))}
+          disabled={!editor || disabled}
+          label="Aldin"
+          onClick={() => runToolbarCommand((chain) => chain.toggleBold())}
+        >
+          <FiBold aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          active={Boolean(editor?.isActive("italic"))}
+          disabled={!editor || disabled}
+          label="Italic"
+          onClick={() => runToolbarCommand((chain) => chain.toggleItalic())}
+        >
+          <FiItalic aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          active={Boolean(editor?.isActive("underline"))}
+          disabled={!editor || disabled}
+          label="Subliniat"
+          onClick={() => runToolbarCommand((chain) => chain.toggleUnderline())}
+        >
+          <FiUnderline aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          active={Boolean(editor?.isActive("blockquote"))}
+          disabled={!editor || disabled}
+          label="Citat"
+          onClick={() => runToolbarCommand((chain) => chain.toggleBlockquote())}
+        >
+          <span aria-hidden="true" className="rich-text-editor-symbol">"</span>
+        </ToolbarButton>
+        <ToolbarButton
+          active={Boolean(editor?.isActive("orderedList"))}
+          disabled={!editor || disabled}
+          label="Listă numerotată"
+          onClick={() => runToolbarCommand((chain) => chain.toggleOrderedList())}
+        >
+          <span aria-hidden="true" className="rich-text-editor-symbol">1.</span>
+        </ToolbarButton>
+        <ToolbarButton
+          active={Boolean(editor?.isActive("bulletList"))}
+          disabled={!editor || disabled}
+          label="Listă simplă"
+          onClick={() => runToolbarCommand((chain) => chain.toggleBulletList())}
+        >
+          <FiList aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          disabled={!editor || disabled}
+          label="Curăță formatarea"
+          onClick={() => runToolbarCommand((chain) => chain.unsetAllMarks().clearNodes())}
+        >
+          <FiRefreshCcw aria-hidden="true" />
+        </ToolbarButton>
+      </div>
+      <EditorContent editor={editor} />
       {showFormatCleanup ? (
         <div className="rich-text-editor-actions">
           <button className="cal-btn subtle icon-text" type="button" onClick={handleFormatCleanup} disabled={disabled || formatCleanupBusy}>

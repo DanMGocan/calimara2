@@ -7,7 +7,9 @@ const DOC_SECTIONS = [
     summary: "Călimara este o aplicație FastAPI + React pentru publicare literară, comunitate și operațiuni editoriale. Frontendul este un SPA Vite, backendul expune API-uri românești sub /api, iar PostgreSQL este definit din schema.sql.",
     bullets: [
       "run.py pornește aplicația, reconstruiește schema doar când CALIMARA_RESET_DATABASE este activ, iar serviciul systemd păstrează datele existente la restart.",
+      "Serviciul systemd setează workerii Uvicorn, pool-ul PostgreSQL, cache-ul public de 60s și pragul de slow request folosite de panoul Performanță.",
       "React decide ruta în frontend/src/app/router.jsx; backendul servește index.html pentru rutele SPA și păstrează /api pentru JSON.",
+      "Shell-ul global afișează bannerul galben de testare deasupra navigației, cu link către pagina Facebook Călimara.",
       "Frontendul încarcă Finlandica Headline din Google Fonts și o folosește prin variabilele globale --serif, --sans și --mono din frontend/src/index.css.",
       "Autentificarea folosește sesiunea calimara_sess, epoch-ul DB invalidează sesiunile vechi după reset, iar subdomeniile de autor sunt rutate prin host.",
       "schema.sql este sursa de adevăr pentru structura DB; proiectul nu folosește migrații SQL versionate în fluxul curent."
@@ -49,8 +51,8 @@ const DOC_SECTIONS = [
     title: "Publicare, editor și lectură",
     summary: "Autorii publică poezie și proză scurtă, pot salva ciorne, edita texte și gestiona arhiva proprie din /panou.",
     bullets: [
-      "Editorul folosește RichTextEditor și limitele din constants.js: titlu 120 caractere, poezie 10.000, proză scurtă 50.000.",
-      "În /scrie, lipirea textului curăță automat formatările externe; butonul Curăță formatarea cu AI trimite textul la Mistral Small pentru refacerea paragrafelor, versurilor și strofelor.",
+      "Editorul folosește RichTextEditor pe Tiptap și limitele din constants.js: titlu 120 caractere, poezie 10.000, proză scurtă 50.000.",
+      "Lipirea în editor este unificată: formatările externe sunt curățate, poezia păstrează rândurile ca versuri, iar proza transformă rândurile lipite în paragrafe curate; butonul Curăță formatarea cu AI trimite textul la Mistral Small pentru refacerea paragrafelor, versurilor și strofelor.",
       "Diacriticele sunt disponibile pentru utilizatorii autentificați cu limită lunară de caractere: Gratuit 15.000, Trubadur 60.000, Cronicar 120.000, Rapsod 180.000; la erori Mistral, cererile intră temporar în cooldown și compozitoarele oferă trimitere fără Diacritice.",
       "O postare nouă pornește cu moderation_status pending, intră în coada AI post_publish, nu apare public până la aprobare și rămâne vizibilă autorului în cititor/carduri cu overlay translucid peste text.",
       "După aprobare, postarea devine vizibilă pe landing, profil public, arhivă și subdomeniul autorului.",
@@ -239,7 +241,7 @@ const DOC_SECTIONS = [
     bullets: [
       "Un text poate fi într-o singură serie a autorului; ordinea capitolelor se poate schimba.",
       "Paginile publice ascund postările neaprobate, dar panoul autorului le poate afișa pentru editare.",
-      "Landing, profilele publice și toate-operele folosesc payloaduri publice cu statistici și acțiuni permise; footerul comun citește totalurile din /api/statistici/platforma.",
+      "Landing, profilele publice și toate-operele folosesc payloaduri publice cu statistici și acțiuni permise; profilele și toate-operele au cache public anonim de maximum 60s, iar footerul comun citește totalurile din /api/statistici/platforma.",
       "Exporturile refuză conținutul neaprobat pentru a evita publicarea accidentală."
     ]
   },
@@ -271,7 +273,9 @@ const DOC_SECTIONS = [
       "Grupul Referință include Raport QA, alimentat de /api/admin/referinta/raport-qa; intrările de raport sunt excluse din Sesizări ca să rămână separate de feedbackul utilizatorilor.",
       "Tabul Stocare listează bucketul de obiecte, marchează fișierele referențiate, permite ștergerea sigură a obiectelor Călimara nereferențiate și are Curăță pentru ștergerea obiectului împreună cu referințele cunoscute.",
       "Auditul înregistrează acțiuni administrative cu actor, țintă, motiv și metadata.",
-      "Joburi arată AIJob, retry/cancel și erori pentru investigarea workerelor."
+      "Joburi arată AIJob, retry/cancel și erori pentru investigarea workerelor.",
+      "Performanță este read-only, se actualizează la 10 secunde și citește /api/admin/performance/live pentru CPU/load/RAM/swap/disk, utilizatori activi în ultimele 15 minute, utilizatori activi 24h, workere, servicii nginx/Postgres, conexiuni DB, cache hit, cozi AI/email și configurare runtime.",
+      "Endpointul " + "/api/admin/performance/history" + " păstrează snapshoturi ușoare în admin_performance_snapshots pentru ultimele 24h; dacă tabela lipsește într-o bază veche, endpointul live rămâne disponibil și marchează istoricul ca indisponibil."
     ]
   },
   {

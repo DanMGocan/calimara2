@@ -21,7 +21,24 @@ if not DB_USER or not DB_PASSWORD:
 
 DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+engine_options = {"pool_pre_ping": True}
+if DATABASE_URL.startswith("postgresql"):
+    engine_options.update({
+        "pool_size": _env_int("DB_POOL_SIZE", 5),
+        "max_overflow": _env_int("DB_MAX_OVERFLOW", 5),
+        "pool_timeout": _env_int("DB_POOL_TIMEOUT", 10),
+        "pool_recycle": _env_int("DB_POOL_RECYCLE", 1800),
+    })
+
+engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

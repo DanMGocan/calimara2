@@ -265,23 +265,11 @@ export function postToPiece(post) {
     body: htmlToText(post.content),
     contentHtml: post.content,
     postUrl,
-    sourceUrl: authorUrl,
     explanatoryNote: post.explanatory_note || ""
   };
 }
 export function postHref(post) {
   return post?.owner ? `${blogUrl(post.owner.username)}/${post.slug}` : post?.url || "#";
-}
-function sourceUrlLabel(sourceUrl) {
-  const rawUrl = String(sourceUrl || "").trim();
-  if (!rawUrl || rawUrl === "#") return "";
-
-  try {
-    const baseUrl = typeof window !== "undefined" ? window.location.href : undefined;
-    return new URL(rawUrl, baseUrl).host || rawUrl;
-  } catch {
-    return rawUrl.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-  }
 }
 export function AuthorLink({ user, username, children, className = "author-link" }) {
   const name = user?.username || username;
@@ -304,6 +292,10 @@ export function PostTitleLink({ post, children, className = "post-title-link" })
   const href = postHref(post);
   if (!href || href === "#") return children ?? post?.title ?? null;
   return <a className={className} href={href}>{children ?? post?.title}</a>;
+}
+function authorDomainHandle(username) {
+  const name = String(username || "").trim();
+  return name ? `${usernameHandle(name)}.calimara.ro` : "";
 }
 function ExplanatoryNoteBubble({ note }) {
   const [open, setOpen] = useState(false);
@@ -354,8 +346,7 @@ export function fallbackPiece(kind) {
   const item = pool[0];
   return {
     ...item,
-    categoryLabel: kind === "poem" ? "Poezie" : "Proză scurtă",
-    sourceUrl: "#"
+    categoryLabel: kind === "poem" ? "Poezie" : "Proză scurtă"
   };
 }
 export function RevealText({ text, keySeed }) {
@@ -434,8 +425,6 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
     hasOverflow: false,
     readPercent: 100
   });
-  const sourceLabel = sourceUrlLabel(piece.sourceUrl);
-
   const syncScrollState = useCallback((node = scrollRef.current) => {
     const el = node;
     if (!el) return;
@@ -581,17 +570,10 @@ export function PieceCol({ piece, animKey, titleAction = null, titlePrefix = nul
 
   return (
     <div className="piece-col">
-      {sourceLabel ? (
-        <div className="piece-kind-row">
-          <a className="piece-kind-meta" href={piece.sourceUrl}>
-            {sourceLabel}
-          </a>
-        </div>
-      ) : null}
       {titleHeading}
       <div className="piece-meta">
         {piece.authorUrl ? (
-          <AuthorLink user={piece.authorUser} username={piece.author} className="piece-author">{piece.author}</AuthorLink>
+          <AuthorLink user={piece.authorUser} username={piece.author} className="piece-author">{authorDomainHandle(piece.author)}</AuthorLink>
         ) : (
           <span className="piece-author">{piece.author}</span>
         )}

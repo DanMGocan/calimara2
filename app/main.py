@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import time
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -47,6 +48,16 @@ if not SESSION_SECRET_KEY:
 
 HTTPS_ONLY = os.getenv("HTTPS_ONLY", "True").lower() in ("true", "1", "yes")
 ADSENSE_PUBLISHER_ID = os.getenv("ADSENSE_PUBLISHER_ID", "").strip()
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+SLOW_REQUEST_MS = _env_int("SLOW_REQUEST_MS", 750)
 
 
 def session_cookie_domain(subdomain_suffix: str) -> str | None:
@@ -107,6 +118,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception while handling %s", _request_context(request))
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+@app.middleware("http")
+async def slow_request_logger(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    if SLOW_REQUEST_MS > 0 and elapsed_ms >= SLOW_REQUEST_MS:
+        logger.warning("Slow request %sms while handling %s", elapsed_ms, _request_context(request))
+    return response
 
 # CORS Middleware — build origin regex from env-configured domain.
 _allowed_origin_hosts = [re.escape(MAIN_DOMAIN)]

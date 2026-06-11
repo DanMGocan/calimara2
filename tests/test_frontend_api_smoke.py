@@ -898,6 +898,8 @@ SMOKE_CASES = [
     SmokeCase("fetchAdminOverview", "GET", _path("/api/admin/overview"), {200}),
     SmokeCase("fetchAdminOverviewDateRange", "GET", _path("/api/admin/overview?from=2000-01-01&to=2099-12-31"), {200}),
     SmokeCase("rollupAdminMetrics", "POST", _path("/api/admin/metrics/rollup?date=2026-01-01"), {200}, _json({})),
+    SmokeCase("fetchAdminPerformanceLive", "GET", _path("/api/admin/performance/live"), {200}),
+    SmokeCase("fetchAdminPerformanceHistory", "GET", _path("/api/admin/performance/history?hours=24"), {200}),
     SmokeCase("fetchAdminUsers", "GET", _path("/api/admin/users"), {200}),
     SmokeCase("fetchAdminUser", "GET", lambda data: f"/api/admin/users/{data.peer_id}", {200}),
     SmokeCase("updateAdminUserRoles", "PUT", lambda data: f"/api/admin/users/{data.target_id}/roles", {200}, _json({"is_admin": False, "is_moderator": True, "reason": "smoke roles"})),

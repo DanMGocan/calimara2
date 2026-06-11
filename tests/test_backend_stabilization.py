@@ -996,6 +996,10 @@ class BackendStabilizationTests(unittest.TestCase):
         unit = run.build_systemd_unit()
 
         self.assertIn('Environment="CALIMARA_RESET_DATABASE=false"', unit)
+        self.assertIn('Environment="UVICORN_WORKERS=3"', unit)
+        self.assertIn('Environment="DB_POOL_SIZE=5"', unit)
+        self.assertIn('Environment="PUBLIC_API_CACHE_TTL_SECONDS=60"', unit)
+        self.assertIn('Environment="SLOW_REQUEST_MS=750"', unit)
         self.assertIn("--serve", unit)
 
     def test_run_init_database_resets_existing_schema_by_default(self):
@@ -1103,6 +1107,112 @@ class BackendStabilizationTests(unittest.TestCase):
         )
         self.assertFalse(rollup["persisted"])
         self.assertEqual(rollup["date"], (datetime.now().date() - timedelta(days=1)).isoformat())
+
+    def test_admin_performance_routes_collect_store_and_hide_secrets(self):
+        admin_user = self.make_user("performanceadmin")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        active_user = self.make_user("performanceactive")
+        day_user = self.make_user("performanceday")
+        stale_user = self.make_user("performancestale")
+        self.db.commit()
+        self.db.refresh(admin_user)
+        now = datetime.now()
+        self.db.add_all([
+            models.PageView(
+                content_type="landing",
+                content_key="home",
+                user_id=active_user.id,
+                ip_address="127.0.0.1",
+                is_bot=False,
+                is_duplicate=False,
+                created_at=now - timedelta(minutes=3),
+            ),
+            models.PageView(
+                content_type="landing",
+                content_key="home",
+                user_id=day_user.id,
+                ip_address="127.0.0.2",
+                is_bot=False,
+                is_duplicate=False,
+                created_at=now - timedelta(hours=2),
+            ),
+            models.PageView(
+                content_type="landing",
+                content_key="home",
+                user_id=stale_user.id,
+                ip_address="127.0.0.3",
+                is_bot=False,
+                is_duplicate=False,
+                created_at=now - timedelta(days=2),
+            ),
+            models.PageView(
+                content_type="landing",
+                content_key="home",
+                user_id=active_user.id,
+                ip_address="127.0.0.4",
+                is_bot=True,
+                is_duplicate=False,
+                created_at=now,
+            ),
+        ])
+        self.db.commit()
+
+        with patch.dict(os.environ, {"DB_PASSWORD": "top-secret-db-password"}):
+            live = admin_routes.admin_performance_live(
+                Response(),
+                db=self.db,
+                current_user=admin_user,
+            )
+
+        self.assertIn("host", live)
+        self.assertIn("processes", live)
+        self.assertIn("database", live)
+        self.assertIn("queues", live)
+        self.assertIn("runtime", live)
+        self.assertEqual(live["users"]["active_now"], 1)
+        self.assertEqual(live["users"]["active_window_minutes"], 15)
+        self.assertEqual(live["users"]["active_24h"], 2)
+        self.assertNotIn("top-secret-db-password", repr(live))
+        self.assertTrue(live["snapshot"]["available"])
+        self.assertTrue(live["snapshot"]["stored"])
+
+        history = admin_routes.admin_performance_history(
+            Response(),
+            hours=24,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertTrue(history["available"])
+        self.assertGreaterEqual(len(history["points"]), 1)
+        self.assertIn("metrics", history["points"][0])
+
+    def test_admin_performance_routes_degrade_without_snapshot_table(self):
+        admin_user = self.make_user("performancemissingtable")
+        admin_user.is_admin = True
+        admin_user.is_moderator = True
+        self.db.commit()
+        self.db.refresh(admin_user)
+
+        with self.engine.begin() as connection:
+            connection.exec_driver_sql("DROP TABLE admin_performance_snapshots")
+
+        live = admin_routes.admin_performance_live(
+            Response(),
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertIn("host", live)
+        self.assertFalse(live["snapshot"]["available"])
+
+        history = admin_routes.admin_performance_history(
+            Response(),
+            hours=24,
+            db=self.db,
+            current_user=admin_user,
+        )
+        self.assertFalse(history["available"])
+        self.assertEqual(history["points"], [])
 
     def test_admin_delete_user_with_posts_uses_database_cascade(self):
         admin_user = self.make_user("deleteadmin")

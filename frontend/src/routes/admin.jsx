@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPerformanceHistory, fetchAdminPerformanceLive, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
 import { createAdminShopItem, fetchAdminGologaniRewards, fetchAdminShopItems, updateAdminGologaniReward, updateAdminShopItem } from "../api/economy.js";
 import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
@@ -39,7 +39,7 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: "Operațiuni",
-    items: ["economy", "premium", "storage", "jobs", "audit"]
+    items: ["economy", "premium", "storage", "performance", "jobs", "audit"]
   }
 ];
 
@@ -180,11 +180,12 @@ function AdminPreview({ children, href }) {
 }
 
 function AdminStat({ label, value, sub }) {
+  const displayValue = typeof value === "number" ? formatNumber(value) : (value ?? 0);
   return (
     <div className="admin-stat">
       <span className="admin-stat-line">
         <span className="admin-stat-label">{label}:</span>{" "}
-        <strong className="admin-stat-value">{formatNumber(value ?? 0)}</strong>
+        <strong className="admin-stat-value">{displayValue}</strong>
         {sub ? <span className="admin-stat-sub"> ({sub})</span> : null}
       </span>
     </div>
@@ -381,6 +382,91 @@ function formatBytes(value) {
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const amount = bytes / (1024 ** index);
   return `${amount.toLocaleString("ro-RO", { maximumFractionDigits: index ? 1 : 0 })} ${units[index]}`;
+}
+function formatPercent(value) {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) return "0%";
+  return `${amount.toLocaleString("ro-RO", { maximumFractionDigits: 1 })}%`;
+}
+function formatDuration(value) {
+  const seconds = Math.max(0, Number(value || 0));
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0s";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days) return `${days}z ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m`;
+  return `${Math.floor(seconds)}s`;
+}
+function statusCount(summary = {}, status) {
+  return Number(summary.by_status?.[status] || summary[status] || 0);
+}
+function AdminKeyValueGrid({ items }) {
+  return (
+    <div className="admin-performance-kv-grid">
+      {items.map((item) => (
+        <div className="admin-performance-kv" key={item.label}>
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+          {item.sub ? <em>{item.sub}</em> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+function AdminPerformanceProcessTable({ processes = [] }) {
+  if (!processes.length) return <StatusPanel title="Nu am găsit workere active" />;
+  return (
+    <div className="admin-performance-table-wrap">
+      <table className="admin-performance-table">
+        <thead>
+          <tr>
+            <th>Rol</th>
+            <th>PID</th>
+            <th>Status</th>
+            <th>CPU</th>
+            <th>RAM</th>
+            <th>Uptime</th>
+            <th>Comandă</th>
+          </tr>
+        </thead>
+        <tbody>
+          {processes.map((process) => (
+            <tr key={`${process.role}-${process.pid}`}>
+              <td>{process.role}</td>
+              <td>{process.pid}</td>
+              <td>{process.status}</td>
+              <td>{formatPercent(process.cpu_percent)}</td>
+              <td>{formatBytes(process.rss_bytes)}</td>
+              <td>{formatDuration(process.uptime_seconds)}</td>
+              <td><span className="admin-performance-command">{process.command || process.name}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function AdminPerformanceHistory({ points = [] }) {
+  if (!points.length) return <StatusPanel title="Istoricul se va popula după primul minut" />;
+  const visiblePoints = points.slice(-24);
+  return (
+    <div className="admin-performance-history" aria-label="Istoric performanță">
+      {visiblePoints.map((point, index) => {
+        const metrics = point.metrics || {};
+        const cpu = Number(metrics.host?.cpu_percent || 0);
+        const ram = Number(metrics.host?.memory?.used_percent || 0);
+        const label = point.captured_at ? formatDateTime(point.captured_at) : `Punct ${index + 1}`;
+        return (
+          <div className="admin-performance-history-point" key={`${point.captured_at || index}-${index}`} title={`${label}: CPU ${formatPercent(cpu)}, RAM ${formatPercent(ram)}`}>
+            <span className="admin-performance-bar cpu" style={{ height: `${Math.max(4, Math.min(100, cpu))}%` }} />
+            <span className="admin-performance-bar ram" style={{ height: `${Math.max(4, Math.min(100, ram))}%` }} />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 function AdminDataRow({ kicker, badges = [], title, titleHref, meta, preview, previewHref, children, compact = false, className = "" }) {
   const extraClass = className ? ` ${className}` : "";
@@ -592,6 +678,15 @@ function AdminDashboardView({ user }) {
     error: "",
     loaded: false
   });
+  const [performanceState, setPerformanceState] = useState({
+    live: null,
+    history: [],
+    historyAvailable: false,
+    loading: false,
+    error: "",
+    loaded: false,
+    updatedAt: ""
+  });
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const [feedbackReplyState, setFeedbackReplyState] = useState({
@@ -724,6 +819,42 @@ function AdminDashboardView({ user }) {
       loadStorageObjects();
     }
   }, [activeTab, canAdmin, loadStorageObjects, storageState.loaded, storageState.loading]);
+
+  const loadPerformanceData = useCallback(async ({ quiet = false } = {}) => {
+    if (!canAdmin) return;
+    if (!quiet) {
+      setPerformanceState((current) => ({ ...current, loading: true, error: "" }));
+    }
+    try {
+      const [live, history] = await Promise.all([
+        fetchAdminPerformanceLive(),
+        fetchAdminPerformanceHistory({ hours: 24 })
+      ]);
+      setPerformanceState({
+        live,
+        history: history.points || [],
+        historyAvailable: Boolean(history.available),
+        loading: false,
+        error: "",
+        loaded: true,
+        updatedAt: live.captured_at || new Date().toISOString()
+      });
+    } catch (requestError) {
+      setPerformanceState((current) => ({
+        ...current,
+        loading: false,
+        error: requestError.message || "Nu am putut încărca performanța platformei.",
+        loaded: true
+      }));
+    }
+  }, [canAdmin]);
+
+  useEffect(() => {
+    if (!canAdmin || activeTab !== "performance") return undefined;
+    loadPerformanceData();
+    const timerId = window.setInterval(() => loadPerformanceData({ quiet: true }), 10000);
+    return () => window.clearInterval(timerId);
+  }, [activeTab, canAdmin, loadPerformanceData]);
 
   if (!user) return <AuthRequired />;
   if (!canModerate) {
@@ -1172,6 +1303,7 @@ function AdminDashboardView({ user }) {
         ["economy", "Economie", state.shop.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
         ["storage", "Stocare", storageState.objects.length],
+        ["performance", "Performanță", performanceState.live?.processes?.workers?.length || 0],
         ["jobs", "Joburi", state.jobs.length],
         ["audit", "Audit", state.audit.length]
       ]
@@ -1197,6 +1329,15 @@ function AdminDashboardView({ user }) {
   const unreadFeedbackReplyCount = Math.max(0, Number(state.submissionsUnreadReplyCount) || 0);
   const platformAccess = state.platformAccess || { open: false, allowed_count: 0, emails: [], invitation_count: 0, invitations: [] };
   const inviteBusy = busy === "platform-invitations:add";
+  const performanceLive = performanceState.live || {};
+  const performanceHost = performanceLive.host || {};
+  const performanceDatabase = performanceLive.database || {};
+  const performanceProcesses = performanceLive.processes || {};
+  const performanceQueues = performanceLive.queues || {};
+  const performanceUsers = performanceLive.users || {};
+  const performanceRuntime = performanceLive.runtime || {};
+  const performanceWorkers = performanceProcesses.workers || [];
+  const databaseConnections = performanceDatabase.connections || {};
 
   return (
     <PageShell kicker="admin" title={canAdmin ? "Admin" : "Moderare"} sub={`Conectat ca ${user.username}.`}>
@@ -1823,6 +1964,91 @@ function AdminDashboardView({ user }) {
               <button className="cal-btn" type="button" disabled={storageState.loading || Boolean(busy)} onClick={loadMoreStorageObjects}>
                 {storageState.loading ? "Se încarcă..." : "Încarcă pagina următoare"}
               </button>
+            </div>
+          ) : null}
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "performance" ? (
+        <AdminPanel
+          title="Performanță"
+          description="Monitorizare live pentru host, workere, baza de date și cozi."
+          actions={(
+            <button className="cal-btn" type="button" disabled={performanceState.loading} onClick={() => loadPerformanceData()}>
+              {performanceState.loading ? "Se actualizează..." : "Actualizează"}
+            </button>
+          )}
+        >
+          {performanceState.error ? <StatusPanel title="Performanța nu s-a putut încărca">{performanceState.error}</StatusPanel> : null}
+          {!performanceState.loaded && performanceState.loading ? <StatusPanel title="Se încarcă performanța" /> : null}
+          {performanceState.loaded && performanceLive.captured_at ? (
+            <div className="admin-performance-stack">
+              <AdminStatGrid compact>
+                <AdminStat label="CPU" value={formatPercent(performanceHost.cpu_percent)} sub={`${formatNumber(performanceHost.cpu_count || 0)} fire`} />
+                <AdminStat label="Load 1m" value={performanceHost.load_average?.one_minute ?? 0} sub="medie" />
+                <AdminStat label="RAM" value={formatPercent(performanceHost.memory?.used_percent)} sub={`${formatBytes(performanceHost.memory?.used_bytes)} / ${formatBytes(performanceHost.memory?.total_bytes)}`} />
+                <AdminStat label="Swap" value={formatPercent(performanceHost.swap?.used_percent)} sub={formatBytes(performanceHost.swap?.total_bytes)} />
+                <AdminStat label="Disk" value={formatPercent(performanceHost.disk?.used_percent)} sub={formatBytes(performanceHost.disk?.free_bytes)} />
+                <AdminStat label="Utilizatori activi" value={performanceUsers.active_now || 0} sub={`${formatNumber(performanceUsers.active_window_minutes || 15)} min`} />
+                <AdminStat label="Activi 24h" value={performanceUsers.active_24h || 0} sub="utilizatori" />
+                <AdminStat label="DB conexiuni" value={`${formatNumber(databaseConnections.active || 0)}/${formatNumber(databaseConnections.max || databaseConnections.total || 0)}`} sub={`${formatNumber(databaseConnections.idle || 0)} idle`} />
+                <AdminStat label="DB cache" value={performanceDatabase.available ? formatPercent(performanceDatabase.cache_hit_percent) : "n/a"} sub={performanceDatabase.dialect || "db"} />
+                <AdminStat label="DB size" value={performanceDatabase.available ? formatBytes(performanceDatabase.size_bytes) : "n/a"} sub={performanceDatabase.server_version || "test"} />
+              </AdminStatGrid>
+
+              <div className="admin-performance-grid">
+                <section>
+                  <h3>Workere</h3>
+                  <AdminPerformanceProcessTable processes={performanceWorkers} />
+                </section>
+                <section>
+                  <h3>Servicii</h3>
+                  <AdminKeyValueGrid
+                    items={[
+                      { label: "Nginx procese", value: formatNumber(performanceProcesses.services?.nginx?.count || 0), sub: formatBytes(performanceProcesses.services?.nginx?.rss_bytes) },
+                      { label: "Nginx CPU", value: formatPercent(performanceProcesses.services?.nginx?.cpu_percent || 0) },
+                      { label: "Postgres procese", value: formatNumber(performanceProcesses.services?.postgres?.count || 0), sub: formatBytes(performanceProcesses.services?.postgres?.rss_bytes) },
+                      { label: "Postgres CPU", value: formatPercent(performanceProcesses.services?.postgres?.cpu_percent || 0) }
+                    ]}
+                  />
+                </section>
+                <section>
+                  <h3>Cozi</h3>
+                  <AdminKeyValueGrid
+                    items={[
+                      { label: "AI due", value: formatNumber(performanceQueues.ai?.due || 0), sub: `${formatNumber(statusCount(performanceQueues.ai, "pending"))} pending` },
+                      { label: "AI processing", value: formatNumber(performanceQueues.ai?.processing || 0) },
+                      { label: "AI failed", value: formatNumber(performanceQueues.ai?.failed || 0) },
+                      { label: "Email due", value: formatNumber(performanceQueues.email?.due || 0), sub: `${formatNumber(statusCount(performanceQueues.email, "queued"))} queued` },
+                      { label: "Email sending", value: formatNumber(performanceQueues.email?.sending || 0) },
+                      { label: "Email failed", value: formatNumber(performanceQueues.email?.failed || 0) }
+                    ]}
+                  />
+                </section>
+                <section>
+                  <h3>Configurare runtime</h3>
+                  <AdminKeyValueGrid
+                    items={[
+                      { label: "Uvicorn workers", value: formatNumber(performanceRuntime.uvicorn_workers || 1) },
+                      { label: "DB pool", value: `${formatNumber(performanceRuntime.db_pool_size || 0)} + ${formatNumber(performanceRuntime.db_max_overflow || 0)}` },
+                      { label: "Pool timeout", value: `${formatNumber(performanceRuntime.db_pool_timeout || 0)}s` },
+                      { label: "Cache public", value: `${formatNumber(performanceRuntime.public_api_cache_ttl_seconds || 0)}s` },
+                      { label: "Slow request", value: `${formatNumber(performanceRuntime.slow_request_ms || 0)}ms` },
+                      { label: "Python", value: performanceRuntime.python_version || "n/a" }
+                    ]}
+                  />
+                </section>
+              </div>
+
+              <section className="admin-performance-history-block">
+                <div className="admin-performance-section-head">
+                  <h3>Istoric 24h</h3>
+                  <span>{performanceState.historyAvailable ? `${formatNumber(performanceState.history.length)} puncte` : "indisponibil"}</span>
+                </div>
+                <AdminPerformanceHistory points={performanceState.history} />
+              </section>
+
+              <p className="admin-performance-updated">Ultima citire: {formatDateTime(performanceState.updatedAt || performanceLive.captured_at)}</p>
             </div>
           ) : null}
         </AdminPanel>

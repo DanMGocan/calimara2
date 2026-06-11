@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from sqlalchemy import func, or_
 
-from .. import models, crud, auth, statistics, pdf_exporter, profile_media, rich_text
+from .. import cache, models, crud, auth, statistics, pdf_exporter, profile_media, rich_text
 from ..database import get_db
 from ..utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX, default_cover_seed, get_avatar_url, get_client_ip, get_cover_url
 from ..categories import CATEGORIES, get_category_name
@@ -21,6 +21,24 @@ router = APIRouter(tags=["api-pages"])
 
 SUPPORT_LINK_PREMIUM_TIERS = {"trubadur", "cronicar", "rapsod"}
 LIKE_SESSION_KEY = "liked_post_ids"
+
+
+def _public_cache_key(db: Session, request: Optional[Request], current_user: Optional[models.User], prefix: str, *parts):
+    if current_user:
+        return None
+    if getattr(db.get_bind().dialect, "name", "") != "postgresql":
+        return None
+    liked_ids = []
+    if request:
+        values = request.session.get(LIKE_SESSION_KEY, [])
+        if isinstance(values, list):
+            for value in values:
+                try:
+                    liked_ids.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+    client_ip = get_client_ip(request) if request else "unknown"
+    return (prefix, *parts, client_ip, tuple(sorted(set(liked_ids))))
 
 
 def _can_use_support_links(user) -> bool:
@@ -470,6 +488,11 @@ def blog_data(
 
     statistics.record_view(db, request, "blog", user.id, username, user.id, current_user)
 
+    cache_key = _public_cache_key(db, request, current_user, "blog", user.id, month or 0, year or 0)
+    cached_payload = cache.public_cache.get(cache_key) if cache_key else None
+    if cached_payload is not None:
+        return cached_payload
+
     # Promoted slots on the public profile.
     promoted_own_entries = crud.get_promoted_own_post_entries_for_user(db, user.id)
     promoted_other_entries = crud.get_promoted_other_post_entries_for_user(db, user.id)
@@ -514,7 +537,7 @@ def blog_data(
     user_series = [series for series in user_series if series["post_count"] > 0]
     viewer_friendship = crud.get_friendship_between(db, current_user.id, user.id) if current_user and current_user.id != user.id else None
 
-    return {
+    payload = {
         "blog_owner": serialize_user(user),
         "featured_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, request=request),
         "promoted_own_posts": serialize_posts_with_super_likes(db, promoted_own_posts, current_user, include_owner=True, request=request),
@@ -572,6 +595,9 @@ def blog_data(
         ],
         "series": user_series,
     }
+    if cache_key:
+        cache.public_cache.set(cache_key, payload)
+    return payload
 
 
 @router.get("/api/bloguri/{username}/toate-operele")
@@ -586,6 +612,11 @@ def blog_all_works_data(
     if not user:
         raise HTTPException(status_code=404, detail="Blogul nu a fost găsit")
 
+    cache_key = _public_cache_key(db, request, current_user, "all_works", user.id)
+    cached_payload = cache.public_cache.get(cache_key) if cache_key else None
+    if cached_payload is not None:
+        return cached_payload
+
     posts = (
         db.query(models.Post)
         .filter(
@@ -597,7 +628,7 @@ def blog_all_works_data(
     )
     category_counts = crud.get_user_post_counts_by_category(db, user.id)
 
-    return {
+    payload = {
         "blog_owner": serialize_user(user),
         "posts": serialize_posts_with_super_likes(db, posts, current_user, request=request),
         "category_counts": [
@@ -605,6 +636,9 @@ def blog_all_works_data(
             for key in CATEGORIES
         ],
     }
+    if cache_key:
+        cache.public_cache.set(cache_key, payload)
+    return payload
 
 
 @router.get("/api/bloguri/{username}/postari/{slug}")

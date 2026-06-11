@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS auth_email_codes CASCADE;
 DROP TABLE IF EXISTS platform_invitations CASCADE;
 DROP TABLE IF EXISTS platform_allowed_emails CASCADE;
 DROP TABLE IF EXISTS platform_access_settings CASCADE;
+DROP TABLE IF EXISTS admin_performance_snapshots CASCADE;
 DROP TABLE IF EXISTS admin_daily_metrics CASCADE;
 DROP TABLE IF EXISTS admin_audit_logs CASCADE;
 DROP TABLE IF EXISTS site_feedback CASCADE;
@@ -423,6 +424,8 @@ CREATE INDEX idx_posts_view_count ON posts(view_count);
 CREATE INDEX idx_posts_created_at ON posts(created_at);
 CREATE INDEX idx_posts_category_genre_views ON posts(category, genre, view_count);
 CREATE INDEX idx_posts_moderation_status ON posts(moderation_status);
+CREATE INDEX idx_posts_user_status_created ON posts(user_id, moderation_status, created_at DESC, id DESC);
+CREATE INDEX idx_posts_status_category_created ON posts(moderation_status, category, created_at DESC, id DESC);
 CREATE INDEX idx_posts_toxicity_score ON posts(toxicity_score);
 
 -- ===================================
@@ -641,6 +644,7 @@ CREATE INDEX idx_comments_user_id ON comments(user_id);
 CREATE INDEX idx_comments_approved ON comments(approved);
 CREATE INDEX idx_comments_post_approved ON comments(post_id, approved);
 CREATE INDEX idx_comments_moderation_status ON comments(moderation_status);
+CREATE INDEX idx_comments_post_status_created ON comments(post_id, moderation_status, created_at DESC, id DESC);
 CREATE INDEX idx_comments_toxicity_score ON comments(toxicity_score);
 CREATE INDEX idx_comments_is_robot ON comments(post_id, is_robot);
 
@@ -1554,6 +1558,7 @@ CREATE INDEX idx_pv_content_key ON page_views(content_type, content_key, created
 CREATE INDEX idx_pv_owner ON page_views(content_owner_id, created_at);
 CREATE INDEX idx_pv_dedup ON page_views(ip_address, content_type, content_id, created_at);
 CREATE INDEX idx_pv_bot ON page_views(is_bot, created_at);
+CREATE INDEX idx_pv_user_active_real ON page_views(user_id, created_at DESC) WHERE user_id IS NOT NULL AND is_bot = FALSE AND is_duplicate = FALSE;
 
 -- ===================================
 -- DAILY STATS TABLE (Aggregated Analytics)
@@ -1616,6 +1621,13 @@ CREATE TABLE admin_daily_metrics (
 );
 
 CREATE INDEX idx_admin_daily_metrics_date ON admin_daily_metrics(stat_date);
+
+CREATE TABLE admin_performance_snapshots (
+    id SERIAL PRIMARY KEY,
+    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    metrics JSONB DEFAULT '{}'::jsonb NOT NULL
+);
+CREATE INDEX idx_admin_performance_snapshots_captured ON admin_performance_snapshots(captured_at);
 
 -- ===================================
 -- SITE FEEDBACK AND BUG REPORTS

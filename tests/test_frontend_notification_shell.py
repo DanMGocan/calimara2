@@ -164,3 +164,33 @@ def test_footer_uses_global_platform_stats():
     assert "SiEuropeanunion" in layout_source
     assert "Dezvoltat și hostat, cu dragoste, în Uniunea Europeană" in layout_source
     assert "footer-eu-tooltip" in layout_source
+
+
+def test_site_test_banner_is_global_and_mobile_sized():
+    app_source = read_frontend("App.jsx")
+    layout_source = read_frontend("app/layout.jsx")
+    styles = read_frontend("index.css")
+    docs = read_frontend("routes/docs.jsx")
+
+    assert "SiteTestBanner" in app_source
+    assert '<div className="site-top-stack">' in app_source
+    assert "Platforma este în perioada de testare." in layout_source
+    assert "Vă rog dați un follow pe " in layout_source
+    assert ">Facebook</a>" in layout_source
+    assert "pentru a rămâne la curent cu ultimele noutăți" in layout_source
+    assert "CALIMARA_FACEBOOK_URL" in layout_source
+    assert "https://www.facebook.com/calimararo" in layout_source
+    assert "FaFacebookF" in layout_source
+    assert 'className="site-test-banner-icon-link"' in layout_source
+    assert 'className="site-test-banner-inline-link"' in layout_source
+    assert 'className="site-test-banner-link"' not in layout_source
+    assert "<span>Facebook</span>" not in layout_source
+    assert ".site-top-stack {\n  position: sticky;" in styles
+    assert ".site-test-banner {\n  width: 100%;" in styles
+    assert ".site-test-banner-icon-link {\n  flex: 0 0 auto;" in styles
+    assert ".site-test-banner-inline-link {" in styles
+    assert "background: #ffd400;" in styles
+    assert "color: #000;" in styles
+    assert "  .site-test-banner {\n    min-height: 30px;" in styles
+    assert "  .site-test-banner {\n    align-items: flex-start;" in styles
+    assert "bannerul galben de testare" in docs

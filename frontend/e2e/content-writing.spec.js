@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { expectHeading, fillRichText, loginByApi, users } from "./helpers.js";
 
-async function pasteIntoPostEditor(page, { text, html = "" }) {
-  const editor = page.locator("#post-content");
+async function pasteIntoEditor(page, selector, { text, html = "" }) {
+  const editor = page.locator(selector);
   await expect(editor).toBeVisible();
   await editor.click();
   await editor.evaluate((node, payload) => {
@@ -17,8 +17,20 @@ async function pasteIntoPostEditor(page, { text, html = "" }) {
   }, { text, html });
 }
 
+async function pasteIntoPostEditor(page, payload) {
+  return pasteIntoEditor(page, "#post-content", payload);
+}
+
 async function postEditorHtml(page) {
   return page.locator("#post-content").evaluate((node) => node.innerHTML);
+}
+
+async function postEditorText(page) {
+  return page.locator("#post-content").evaluate((node) => node.innerText || node.textContent || "");
+}
+
+function occurrenceCount(value, needle) {
+  return String(value || "").split(needle).length - 1;
 }
 
 test("writer can save a draft from the rich-text editor", async ({ page }) => {
@@ -61,6 +73,9 @@ test("post editor cleans pasted prose hard wraps", async ({ page }) => {
   });
 
   await expect(page.locator("#post-content")).toContainText("Primul rând copiat se continuă fără pauză.");
+  const text = await postEditorText(page);
+  expect(occurrenceCount(text, "Primul rând copiat")).toBe(1);
+  expect(occurrenceCount(text, "Al doilea paragraf.")).toBe(1);
   const html = await postEditorHtml(page);
   expect(html).not.toContain("<span");
   expect(html).not.toContain("style=");
@@ -75,7 +90,10 @@ test("post editor preserves pasted poetry line breaks", async ({ page }) => {
   });
 
   const html = await postEditorHtml(page);
+  const text = await postEditorText(page);
   expect(html).toContain("<br");
+  expect(occurrenceCount(text, "vers unu")).toBe(1);
+  expect(occurrenceCount(text, "strofa a doua")).toBe(1);
   await expect(page.locator("#post-content")).toContainText("vers unu");
   await expect(page.locator("#post-content")).toContainText("vers doi");
   await expect(page.locator("#post-content")).toContainText("strofa a doua");
@@ -90,9 +108,33 @@ test("post editor strips pasted styles but keeps safe emphasis", async ({ page }
   });
 
   const html = await postEditorHtml(page);
+  const text = await postEditorText(page);
+  expect(occurrenceCount(text, "Salut tare")).toBe(1);
+  expect(occurrenceCount(text, "Alt paragraf")).toBe(1);
   expect(html).toContain("<strong>tare</strong>");
   expect(html).not.toContain("<span");
   expect(html).not.toContain("style=");
+});
+
+test("forum editor uses unified prose paste cleanup", async ({ page }) => {
+  await loginByApi(page, users.author);
+  await page.goto("/discutii/nou");
+  await pasteIntoEditor(page, "#forum-content", {
+    text: "Primul rând copiat\nse continuă fără pauză.\n\nAlt paragraf cu accent.",
+    html: '<div style="font-family:Papyrus"><span>Primul <strong style="color:red">rând</strong> copiat</span><br><span>se continuă fără pauză.</span></div><div>Alt paragraf cu <em>accent</em>.</div>'
+  });
+
+  const editor = page.locator("#forum-content");
+  await expect(editor).toContainText("Primul rând copiat se continuă fără pauză.");
+  const text = await editor.evaluate((node) => node.innerText || node.textContent || "");
+  const html = await editor.evaluate((node) => node.innerHTML);
+  expect(occurrenceCount(text, "Primul rând copiat")).toBe(1);
+  expect(occurrenceCount(text, "Alt paragraf cu accent.")).toBe(1);
+  expect(html).toContain("<strong>rând</strong>");
+  expect(html).toContain("<em>accent</em>");
+  expect(html).not.toContain("<span");
+  expect(html).not.toContain("style=");
+  expect(html).not.toContain("<br");
 });
 
 test("post editor applies AI formatting result", async ({ page }) => {

@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -440,6 +441,32 @@ def test_admin_site_feedback_reply_flow_is_wired_to_system_messages():
     assert "nu închide automat sesizarea" in docs
 
 
+def test_admin_performance_panel_is_wired_to_live_metrics():
+    api_source = (ROOT / "frontend" / "src" / "api" / "admin.js").read_text(encoding="utf-8")
+    admin_source = (ROOT / "frontend" / "src" / "routes" / "admin.jsx").read_text(encoding="utf-8")
+    styles = (ROOT / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
+    docs = (ROOT / "frontend" / "src" / "routes" / "docs.jsx").read_text(encoding="utf-8")
+
+    assert "fetchAdminPerformanceLive" in api_source
+    assert 'api.get("/api/admin/performance/live")' in api_source
+    assert "fetchAdminPerformanceHistory" in api_source
+    assert "/api/admin/performance/history" in api_source
+    assert '"performance", "Performanță"' in admin_source
+    assert 'activeTab === "performance"' in admin_source
+    assert "window.setInterval" in admin_source
+    assert "10000" in admin_source
+    assert "performanceUsers.active_now" in admin_source
+    assert "performanceUsers.active_24h" in admin_source
+    assert "Utilizatori activi" in admin_source
+    assert "Activi 24h" in admin_source
+    assert "admin-performance-table" in admin_source
+    assert "admin-performance-history" in styles
+    assert "/api/admin/performance/live" in docs
+    assert "/api/admin/performance/history" in docs
+    assert "admin_performance_snapshots" in docs
+    assert "utilizatori activi 24h" in docs
+
+
 def test_admin_panel_links_operational_entities():
     admin_source = (ROOT / "frontend" / "src" / "routes" / "admin.jsx").read_text(encoding="utf-8")
     docs = (ROOT / "frontend" / "src" / "routes" / "docs.jsx").read_text(encoding="utf-8")
@@ -515,6 +542,22 @@ def test_explanatory_note_uses_title_question_button():
     assert ".title-promotion-toggle,\n.piece-note-trigger" in styles
     assert "width: 30px;" in styles
     assert "width: 32px;" in styles
+
+
+def test_piece_reader_omits_author_domain_row_above_title():
+    source = (ROOT / "frontend" / "src" / "app" / "content.jsx").read_text(encoding="utf-8")
+    styles = (ROOT / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
+
+    assert "authorDomainHandle" in source
+    assert '`${usernameHandle(name)}.calimara.ro`' in source
+    assert "authorDomainHandle(piece.author)" in source
+    assert "sourceUrlLabel" not in source
+    assert "piece-kind-meta" not in source
+    assert "piece-kind-meta" not in styles
+    assert "sourceUrl: authorUrl" not in source
+    assert 'sourceUrl: "#"' not in source
+    assert "{titleHeading}" in source
+    assert source.index("{titleHeading}") < source.index('<div className="piece-meta">')
 
 
 def test_author_blog_star_promotes_author_not_favorite():
@@ -620,3 +663,35 @@ def test_frontend_seo_metadata_wiring():
     assert "profileSeo(displayData.blog_owner" in profile_source
     assert 'data-seo="description"' in index_source
     assert 'property="og:title"' in index_source
+
+
+def test_rich_text_editor_uses_tiptap_instead_of_quill():
+    package = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
+    editor_source = (ROOT / "frontend" / "src" / "RichTextEditor.jsx").read_text(encoding="utf-8")
+    vite_config = (ROOT / "frontend" / "vite.config.js").read_text(encoding="utf-8")
+    styles = (ROOT / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
+    docs = (ROOT / "frontend" / "src" / "routes" / "docs.jsx").read_text(encoding="utf-8")
+
+    dependencies = package["dependencies"]
+    assert "quill" not in dependencies
+    assert "@tiptap/react" in dependencies
+    assert "@tiptap/starter-kit" in dependencies
+    assert "@tiptap/extension-character-count" in dependencies
+    assert "@tiptap/extension-underline" in dependencies
+    assert 'from "@tiptap/react"' in editor_source
+    assert "StarterKit.configure" in editor_source
+    assert "CharacterCount.configure" in editor_source
+    assert "handlePaste" in editor_source
+    assert 'pasteMode = "prose"' in editor_source
+    assert 'pasteMode={category === "poezie" ? "poetry" : "prose"}' in (ROOT / "frontend" / "src" / "routes" / "create.jsx").read_text(encoding="utf-8")
+    assert "cleanEditorContent" in editor_source
+    assert "canonicalPasteHtmlFromText" in editor_source
+    assert "insertContent(cleaned)" in editor_source
+    assert 'name: "editor"' in vite_config
+    assert "@tiptap" in vite_config
+    assert "prosemirror-" in vite_config
+    assert "maxSize: 900 * 1024" in vite_config
+    assert "tiptap-editor" in styles
+    assert "ql-" not in styles
+    assert "Tiptap" in docs
+    assert "Lipirea în editor este unificată" in docs

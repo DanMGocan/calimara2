@@ -5,7 +5,7 @@ import { fetchPlatformStats } from "./api/stats.js";
 import { fetchMe } from "./api/users.js";
 import { AuthLoginModal, AuthModalProvider } from "./app/auth-modal.jsx";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
-import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu } from "./app/layout.jsx";
+import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu, SiteTestBanner } from "./app/layout.jsx";
 import { ListeningOverlay, useListeningPlayer } from "./app/listening-player.jsx";
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, mainPath, subdomainUsername } from "./app/paths.js";
@@ -251,20 +251,23 @@ export function App() {
           <FloatingBackgroundShapes />
           <BackgroundQuote />
         </div>
-        <NavBar
-          loggedIn={loggedIn}
-          user={auth.user}
-          onMenu={toggleMenu}
-          menuOpen={menuOpen}
-          onProfileNotifications={openProfilePanel}
-          profilePanelOpen={profilePanelOpen}
-          notificationCount={notificationCount}
-          messageCount={messageCount}
-          onOpenAudioPlayer={listeningPlayer.openListening}
-          audioPlayerDisabled={!listeningPlayer.canListen}
-          audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
-          audioPlayerOpen={listeningPlayer.open}
-        />
+        <div className="site-top-stack">
+          <SiteTestBanner />
+          <NavBar
+            loggedIn={loggedIn}
+            user={auth.user}
+            onMenu={toggleMenu}
+            menuOpen={menuOpen}
+            onProfileNotifications={openProfilePanel}
+            profilePanelOpen={profilePanelOpen}
+            notificationCount={notificationCount}
+            messageCount={messageCount}
+            onOpenAudioPlayer={listeningPlayer.openListening}
+            audioPlayerDisabled={!listeningPlayer.canListen}
+            audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
+            audioPlayerOpen={listeningPlayer.open}
+          />
+        </div>
         <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>
           <ErrorBoundary key={`${route.name}:${route.slug || route.username || route.categoryKey || ""}`}>
             <Suspense fallback={<PageShell kicker="călimara.ro" title="Se încarcă" sub="Pregătim pagina." />}>

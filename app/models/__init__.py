@@ -17,7 +17,7 @@ from .social import Friendship, UserFollow
 from .moderation import ModerationLog
 from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
-from .admin import AdminAuditLog, AdminDailyMetric, PlatformAccessSetting, PlatformAllowedEmail, PlatformInvitation, SiteFeedback
+from .admin import AdminAuditLog, AdminDailyMetric, AdminPerformanceSnapshot, PlatformAccessSetting, PlatformAllowedEmail, PlatformInvitation, SiteFeedback
 from .email import EmailCampaign, EmailOutbox
 from .auth import AuthEmailCode
 
@@ -77,6 +77,7 @@ __all__ = [
     "DailyStat",
     "AdminAuditLog",
     "AdminDailyMetric",
+    "AdminPerformanceSnapshot",
     "PlatformAccessSetting",
     "PlatformAllowedEmail",
     "PlatformInvitation",

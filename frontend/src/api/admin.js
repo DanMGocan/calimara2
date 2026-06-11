@@ -60,6 +60,14 @@ export function fetchAdminJobs(params = {}) {
   return api.get(`/api/admin/jobs${buildQuery(params)}`);
 }
 
+export function fetchAdminPerformanceLive() {
+  return api.get("/api/admin/performance/live");
+}
+
+export function fetchAdminPerformanceHistory(params = {}) {
+  return api.get(`/api/admin/performance/history${buildQuery(params)}`);
+}
+
 export function retryAdminJob(jobId, reason) {
   return api.post(`/api/admin/jobs/${encodeURIComponent(jobId)}/retry`, { reason });
 }

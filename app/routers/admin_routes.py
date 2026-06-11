@@ -9,7 +9,7 @@ from sqlalchemy import String, and_, case, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, invitations, models, object_storage, platform_access, schemas, statistics
+from .. import admin, crud, email_service, invitations, models, object_storage, performance, platform_access, schemas, statistics
 from ..database import get_db
 from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
@@ -1242,6 +1242,30 @@ def rollup_admin_metrics(
     row = aggregate_admin_daily_metrics(db, parsed)
     _audit(db, request, current_user, action="admin_metrics_rollup", target_type="admin_daily_metric", target_id=getattr(row, "id", None), metadata={"date": parsed.isoformat()})
     return {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}, "persisted": getattr(row, "id", None) is not None}
+
+
+@router.get("/performance/live")
+def admin_performance_live(
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    metrics = performance.collect_performance_metrics(db)
+    snapshot = performance.maybe_store_performance_snapshot(db, metrics)
+    return {**metrics, "snapshot": snapshot}
+
+
+@router.get("/performance/history")
+def admin_performance_history(
+    response: Response,
+    hours: int = Query(24, ge=1, le=24),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    history = performance.performance_history(db, hours)
+    return {"hours": hours, **history}
 
 
 @router.get("/users")

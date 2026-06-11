@@ -41,6 +41,14 @@ class AdminDailyMetric(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class AdminPerformanceSnapshot(Base):
+    __tablename__ = "admin_performance_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+
 class PlatformAccessSetting(Base):
     __tablename__ = "platform_access_settings"
     __table_args__ = (

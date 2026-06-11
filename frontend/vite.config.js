@@ -17,8 +17,9 @@ export default defineConfig({
             },
             {
               name: "editor",
-              test: /node_modules[\\/](quill|parchment|quill-delta|eventemitter3)[\\/]/,
-              priority: 35
+              test: /node_modules[\\/](@tiptap|prosemirror-[^\\/]+|orderedmap|rope-sequence|w3c-keyname)[\\/]/,
+              priority: 35,
+              maxSize: 900 * 1024
             },
             {
               name: "icons",

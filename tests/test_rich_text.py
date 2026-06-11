@@ -21,7 +21,7 @@ def test_sanitize_rich_text_keeps_literary_formatting_and_strips_unsafe_html():
     assert "<a" not in sanitized
 
 
-def test_empty_quill_document_normalizes_to_blank_and_fails_required_schema():
+def test_empty_editor_document_normalizes_to_blank_and_fails_required_schema():
     assert rich_text.sanitize_rich_text("<p><br></p>") == ""
     assert rich_text.rich_text_to_plain_text("<p><br></p>") == ""
 
@@ -50,6 +50,13 @@ def test_poetry_line_breaks_are_preserved_inside_paragraphs():
     assert post.content == content
     assert rich_text.sanitize_rich_text(content) == content
     assert rich_text.rich_text_to_plain_text(content) == "vers 1\nvers 2\n\nstrofa 2"
+
+
+def test_canonical_paste_html_remains_valid_rich_text():
+    content = "<p>Primul <strong>rând</strong> curat</p><p>vers unu<br>vers doi cu <em>accent</em></p>"
+
+    assert rich_text.sanitize_rich_text(content) == content
+    assert rich_text.rich_text_to_plain_text(content) == "Primul rând curat\n\nvers unu\nvers doi cu accent"
 
 
 def test_paste_artifacts_are_removed_from_rich_text():

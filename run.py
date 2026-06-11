@@ -167,6 +167,13 @@ WorkingDirectory={PROJECT_ROOT}
 Environment="PYTHONUNBUFFERED=1"
 Environment="PATH={systemd_escape(path_env)}"
 Environment="CALIMARA_RESET_DATABASE=false"
+Environment="UVICORN_WORKERS=3"
+Environment="DB_POOL_SIZE=5"
+Environment="DB_MAX_OVERFLOW=5"
+Environment="DB_POOL_TIMEOUT=10"
+Environment="DB_POOL_RECYCLE=1800"
+Environment="PUBLIC_API_CACHE_TTL_SECONDS=60"
+Environment="SLOW_REQUEST_MS=750"
 ExecStart={python_bin} {PROJECT_ROOT / "run.py"} --serve
 Restart=always
 RestartSec=5
@@ -724,6 +731,13 @@ def start_email_worker():
     return proc
 
 
+def env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def main():
     print()
     print("  ╔═══════════════════════════════════════╗")
@@ -737,7 +751,7 @@ def main():
     print("[1/4] Checking environment...")
     check_env()
     host = os.getenv("UVICORN_HOST", "0.0.0.0")
-    port = int(os.getenv("UVICORN_PORT", "8000"))
+    port = env_int("UVICORN_PORT", 8000)
     check_port_available(host, port)
     print("  Environment: OK")
 
@@ -761,8 +775,10 @@ def main():
 
     public_url = public_base_url()
     forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1")
+    workers = max(1, env_int("UVICORN_WORKERS", 1))
     print(f"  Public URL: {public_url}")
     print(f"  Uvicorn bind: http://{host}:{port}")
+    print(f"  Uvicorn workers: {workers}")
     if host in ("127.0.0.1", "localhost"):
         print("  Expecting a local reverse proxy to serve HTTP/HTTPS for the public domain.")
     print("  Press Ctrl+C to stop.\n")
@@ -774,6 +790,7 @@ def main():
         port=port,
         proxy_headers=True,
         forwarded_allow_ips=forwarded_allow_ips,
+        workers=workers,
     )
 
 

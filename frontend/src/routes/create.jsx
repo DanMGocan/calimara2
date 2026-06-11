@@ -382,8 +382,7 @@ function CreatePostView({ user }) {
           onChange={setContent}
           maxLength={contentLimit}
           enterMode="soft-break"
-          pasteCleanup="post"
-          cleanupCategory={category}
+          pasteMode={category === "poezie" ? "poetry" : "prose"}
           showFormatCleanup
           formatCleanupLabel="Curăță formatarea cu AI"
           formatCleanupBusy={formattingWithAi}
