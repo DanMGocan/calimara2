@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync Cloudflare IP ranges into nginx real-IP config and UFW
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/calimara-cloudflare-sync

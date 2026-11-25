@@ -134,7 +134,8 @@ INTEGRATIONS: list[dict[str, Any]] = [
     {
         "key": "hetzner_s3",
         "name": "Hetzner Object Storage (S3)",
-        "purpose": "Stocarea fișierelor audio și a imaginilor de profil în afara serverului. Opțional: implicit se folosește discul acestui server.",
+        "purpose": "Backup zilnic al bazei de date (se păstrează ultimele 3) și, opțional, stocarea fișierelor audio și a imaginilor de profil în afara serverului.",
+        "active_when_configured": True,
         "env": [
             {"name": "HETZNER_S3_ENDPOINT_URL", "required": True, "secret": False, "hint": "ex. https://fsn1.your-objectstorage.com"},
             {"name": "HETZNER_S3_REGION", "required": True, "secret": False, "hint": "fsn1, nbg1 sau hel1"},
@@ -151,6 +152,8 @@ INTEGRATIONS: list[dict[str, Any]] = [
             "Comută stocarea: AUDIO_STORAGE_BACKEND=s3 și PROFILE_MEDIA_STORAGE_BACKEND=s3.",
         ],
         "notes": [
+            "Backup-ul bazei de date rulează zilnic la 03:30 în folderul backups/db/ din bucket și păstrează doar ultimele 3 copii. Poți folosi un bucket separat cu BACKUP_S3_BUCKET.",
+            "Pentru backup ajung cheile; comutarea AUDIO_STORAGE_BACKEND / PROFILE_MEDIA_STORAGE_BACKEND la s3 este opțională.",
             "Fișierele încărcate deja pe disc nu sunt mutate automat în bucket.",
         ],
     },
@@ -201,6 +204,27 @@ INTEGRATIONS: list[dict[str, Any]] = [
 ]
 
 
+BACKUP_STATUS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "last_backup.json")
+
+
+def _last_backup() -> dict[str, Any] | None:
+    """Result of the last scripts/backup_db.py run (no secrets in it)."""
+    import json
+
+    try:
+        with open(BACKUP_STATUS_FILE, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return {
+        "ok": bool(data.get("ok")),
+        "at": data.get("at"),
+        "size_bytes": data.get("size_bytes"),
+        "kept": len(data.get("kept") or []),
+        "error": data.get("error"),
+    }
+
+
 def _is_set(name: str) -> bool:
     return bool((os.getenv(name) or "").strip())
 
@@ -227,7 +251,9 @@ def _integration_status(item: dict[str, Any]) -> dict[str, Any]:
         backends.append({"name": name, "value": value if value in ("local", "s3") else "invalid"})
 
     required_ok = all(var["is_set"] for var in env if var["required"])
-    if flags:
+    if item.get("active_when_configured"):
+        switched_on = required_ok
+    elif flags:
         switched_on = any(flag["enabled"] for flag in flags)
     elif backends:
         switched_on = any(backend["value"] == "s3" for backend in backends)
@@ -260,6 +286,7 @@ def _integration_status(item: dict[str, Any]) -> dict[str, Any]:
         "flags": flags,
         "backends": backends,
         "credentials_file": credentials_file,
+        "backup": _last_backup() if item["key"] == "hetzner_s3" else None,
         "steps": list(item["steps"]),
         "notes": list(item["notes"]),
     }

@@ -54,3 +54,6 @@ temp/
 error.txt
 
 .claude
+
+# Runtime logs and backup status
+logs/

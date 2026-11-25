@@ -630,6 +630,13 @@ function AdminIntegrationRow({ item }) {
                 <em>local sau s3</em>
               </li>
             ))}
+            {item.backup ? (
+              <li>
+                <span className={`piece-card-status ${item.backup.ok ? "status-ok" : "status-rejected"}`}>{item.backup.ok ? "backup reușit" : "backup eșuat"}</span>
+                <code>{formatDateTime(item.backup.at)}</code>
+                <em>{item.backup.ok ? `${Math.round((item.backup.size_bytes || 0) / 1024)} KB · ${item.backup.kept} copii păstrate` : item.backup.error}</em>
+              </li>
+            ) : null}
             {item.credentials_file ? (
               <li>
                 <span className={`piece-card-status ${item.credentials_file.exists ? "status-ok" : "status-rejected"}`}>{item.credentials_file.exists ? "fișier găsit" : "fișier lipsă"}</span>

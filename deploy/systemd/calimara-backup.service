@@ -1,0 +1,12 @@
+[Unit]
+Description=Calimara database backup to Hetzner Object Storage (keeps newest 3)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dan
+Group=dan
+WorkingDirectory=/home/dan/calimara2
+ExecStart=/home/dan/calimara2/.venv/bin/python /home/dan/calimara2/scripts/backup_db.py
+Nice=10

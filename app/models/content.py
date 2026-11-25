@@ -64,10 +64,10 @@ class Post(Base):
 
     owner: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="posts")
     moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
-    comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post")
-    likes: Mapped[List["Like"]] = relationship("Like", back_populates="post")
+    comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="post", cascade="save-update, merge, delete", passive_deletes=True)
+    likes: Mapped[List["Like"]] = relationship("Like", back_populates="post", cascade="save-update, merge, delete", passive_deletes=True)
     super_likes: Mapped[List["SuperLike"]] = relationship("SuperLike", back_populates="post", cascade="all, delete-orphan")
-    featured_by: Mapped[List["FeaturedPost"]] = relationship("FeaturedPost", back_populates="post")
+    featured_by: Mapped[List["FeaturedPost"]] = relationship("FeaturedPost", back_populates="post", cascade="save-update, merge, delete", passive_deletes=True)
     series_entry: Mapped[Optional["SeriesPost"]] = relationship(
         "SeriesPost", back_populates="post", cascade="all, delete-orphan", uselist=False
     )

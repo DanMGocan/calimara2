@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -5,6 +6,7 @@ from uuid import uuid4
 from . import models, object_storage
 
 
+logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -85,6 +87,15 @@ def playback_url(audio: models.PostAudio) -> str:
     if audio.storage_backend == "s3":
         return _presigned_s3_url(audio.storage_key or "")
     return f"/api/audio/redare/{audio.id}"
+
+
+def safe_playback_url(audio: models.PostAudio) -> str | None:
+    """Playback URL, or None if the storage backend is unavailable (e.g. S3 not configured)."""
+    try:
+        return playback_url(audio)
+    except Exception:
+        logger.warning("Audio %s unavailable: storage backend %r not usable", audio.id, audio.storage_backend, exc_info=True)
+        return None
 
 
 def download_url(audio: models.PostAudio, filename: str) -> str:

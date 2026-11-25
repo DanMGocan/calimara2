@@ -18,7 +18,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from .error_logging import configure_error_logging
+from .error_logging import CappedFileHandler, configure_error_logging
 from . import admin, models, seo
 from .database import get_db
 from .utils import MAIN_DOMAIN, SUBDOMAIN_SUFFIX
@@ -34,7 +34,7 @@ if not logger.handlers:
 
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler = CappedFileHandler(LOG_FILE)
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(file_handler)
     logger.setLevel(logging.INFO)
@@ -233,6 +233,23 @@ def _legacy_frontend_path(path: str) -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in LEGACY_FRONTEND_PREFIXES)
 
 
+NOT_FOUND_MARKER = '<meta name="calimara-status" content="404" />'
+
+
+def _not_found_page(title: str = "Pagină negăsită"):
+    """The SPA shell with a 404 status; the frontend renders its not-found page."""
+    return _react_index_response(
+        metadata=seo.PageMetadata(
+            title=f"{title} | {seo.SITE_NAME}",
+            description="Pagina căutată nu există pe Călimara.",
+            canonical_url=seo.main_url("/"),
+            robots="noindex, nofollow",
+            not_found=True,
+        ),
+        fallback_detail=title,
+    )
+
+
 def _author_subdomain_not_found_response(request: Request, db):
     username = getattr(getattr(request, "state", None), "username", None)
     if not username:
@@ -245,7 +262,7 @@ def _author_subdomain_not_found_response(request: Request, db):
     )
     if user_exists:
         return None
-    return JSONResponse(status_code=404, content={"detail": "Autorul nu a fost găsit"})
+    return _not_found_page("Autorul nu a fost găsit")
 
 
 def _apply_no_store_headers(response):
@@ -259,17 +276,21 @@ def _react_index_response(
     request: Request | None = None,
     db=None,
     metadata: seo.PageMetadata | None = None,
+    fallback_detail: str = "Frontend build not found",
 ):
     index_path = os.path.join(FRONTEND_DIST, "index.html")
     if not os.path.isfile(index_path):
-        return JSONResponse(status_code=404, content={"detail": "Frontend build not found"})
+        return JSONResponse(status_code=404, content={"detail": fallback_detail})
     if metadata is None and request is not None and db is not None:
         metadata = seo.build_page_metadata(db, request)
     if metadata is None:
         return _apply_no_store_headers(FileResponse(index_path))
     with open(index_path, "r", encoding="utf-8") as file:
         html = file.read()
-    response = HTMLResponse(seo.render_index_html(html, metadata))
+    rendered = seo.render_index_html(html, metadata)
+    if metadata.not_found:
+        rendered = rendered.replace("</head>", f"  {NOT_FOUND_MARKER}\n  </head>", 1)
+    response = HTMLResponse(rendered, status_code=404 if metadata.not_found else 200)
     if metadata.noindex:
         response.headers["X-Robots-Tag"] = metadata.robots
     return _apply_no_store_headers(response)
@@ -311,8 +332,10 @@ if os.path.isdir(FRONTEND_DIST):
     def serve_react(full_path: str, request: Request, db=Depends(get_db)):
         """Catch-all: serve React index.html for client-side routing"""
         normalized_path = f"/{full_path.strip('/')}" if full_path else "/"
-        if normalized_path.startswith("/api/") or _legacy_frontend_path(normalized_path):
+        if normalized_path.startswith("/api/"):
             return JSONResponse(status_code=404, content={"detail": "Ruta nu a fost găsită"})
+        if _legacy_frontend_path(normalized_path):
+            return _not_found_page()
         missing_author = _author_subdomain_not_found_response(request, db)
         if missing_author is not None:
             return missing_author

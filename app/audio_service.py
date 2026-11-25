@@ -650,7 +650,7 @@ def post_audio_status_payload(
         "status": latest_status if latest else "missing",
         "source": latest.source if latest else None,
         "audio_id": audio.id if audio else None,
-        "playback_url": audio_storage.playback_url(audio) if audio else None,
+        "playback_url": audio_storage.safe_playback_url(audio) if audio else None,
         "content_type": audio.content_type if audio else None,
         "title": post.title,
         "author_username": post.owner.username if post.owner else None,
@@ -729,7 +729,7 @@ def post_audio_summary(db: Session, post: models.Post) -> dict:
         "audio_status": latest_status if latest else "missing",
         "audio_source": latest.source if latest else None,
         "audio_id": audio.id if audio else None,
-        "audio_playback_url": audio_storage.playback_url(audio) if audio else None,
+        "audio_playback_url": audio_storage.safe_playback_url(audio) if audio else None,
         "audio_tts_character_count": tts_character_count_for_post(post),
         "author_audio_status": author_audio.status if author_audio else "missing",
         "author_audio_message": author_audio_status_message(author_audio),
@@ -849,7 +849,7 @@ def audio_playlist_item_payload(db: Session, item: models.AudioPlaylistItem) -> 
         "category": post.category if post else None,
         "audio_available": bool(audio and post and post.moderation_status == "approved"),
         "audio_id": audio.id if audio else None,
-        "playback_url": audio_storage.playback_url(audio) if audio else None,
+        "playback_url": audio_storage.safe_playback_url(audio) if audio else None,
         "created_at": item.created_at,
     }
 

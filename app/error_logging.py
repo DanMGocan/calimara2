@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -6,6 +7,34 @@ from typing import Iterable
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ERROR_LOG = PROJECT_ROOT / "error.txt"
+
+
+def _max_log_bytes() -> int:
+    try:
+        return max(1, int(os.getenv("LOG_FILE_MAX_MB", "32"))) * 1024 * 1024
+    except ValueError:
+        return 32 * 1024 * 1024
+
+
+class CappedFileHandler(logging.FileHandler):
+    """Append-only log file that is emptied (overwritten) once it exceeds the size cap.
+
+    Safe with several processes writing the same file: every process appends with
+    O_APPEND, so after one of them truncates, all writes continue at the new end.
+    """
+
+    def __init__(self, filename, max_bytes: int | None = None, encoding: str = "utf-8"):
+        super().__init__(filename, mode="a", encoding=encoding)
+        self.max_bytes = max_bytes or _max_log_bytes()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            if os.path.getsize(self.baseFilename) >= self.max_bytes:
+                with open(self.baseFilename, "w", encoding=self.encoding):
+                    pass
+        except OSError:
+            pass
+        super().emit(record)
 
 
 class ErrorOnlyFilter(logging.Filter):
@@ -36,7 +65,7 @@ def configure_error_logging() -> None:
         root.addHandler(console_handler)
 
     if not _has_file_handler(root.handlers, ERROR_LOG):
-        file_handler = logging.FileHandler(ERROR_LOG, encoding="utf-8")
+        file_handler = CappedFileHandler(ERROR_LOG)
         file_handler.setLevel(logging.ERROR)
         file_handler.addFilter(ErrorOnlyFilter())
         file_handler.setFormatter(formatter)

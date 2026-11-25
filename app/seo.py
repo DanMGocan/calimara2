@@ -25,24 +25,14 @@ DEFAULT_DESCRIPTION = "Călimara este o platformă literară pentru poezie, proz
 DEFAULT_IMAGE_PATH = "/favicon.png"
 SITEMAP_LIMIT = 50_000
 
-PRIVATE_ROUTE_PREFIXES = (
-    "/panou",
-    "/profil",
-    "/scrie",
-    "/mesaje",
-    "/prieteni",
-    "/utilizatori",
-    "/cluburi",
-    "/stafeta",
-    "/magazin",
-    "/inventar",
-    "/playlisturi",
-    "/invitatii",
-    "/moderare",
-    "/docs",
-    "/autentificare",
-    "/invitatie",
-)
+# Kept in sync with frontend/src/app/router.jsx (see tests/test_not_found_pages.py).
+SUBDOMAIN_PRIVATE_PATHS = {"/panou", "/profil", "/scrie", "/mesaje", "/prieteni", "/utilizatori"}
+MAIN_PRIVATE_EXACT_PATHS = {
+    "/panou", "/profil", "/scrie", "/mesaje", "/prieteni", "/utilizatori", "/moderare", "/docs",
+    "/cluburi", "/stafeta", "/stafeta/nou", "/magazin", "/inventar", "/playlisturi", "/invitatii",
+    "/autentificare", "/autentificare/configurare", "/autentificare/raspuns",
+}
+MAIN_PRIVATE_SLUG_PREFIXES = ("/cluburi/", "/stafeta/", "/invitatie/")
 
 STATIC_PUBLIC_PAGES = {
     "/": {
@@ -93,6 +83,7 @@ class PageMetadata:
     og_type: str = "website"
     robots: str = "index, follow"
     json_ld: list[dict] = field(default_factory=list)
+    not_found: bool = False
 
     @property
     def noindex(self) -> bool:
@@ -194,9 +185,10 @@ def _static_page_metadata(path: str) -> PageMetadata:
     )
 
 
-def _noindex_metadata(path: str, *, title: str = "Pagină privată") -> PageMetadata:
+def _noindex_metadata(path: str, *, title: str = "Pagină privată", not_found: bool = False) -> PageMetadata:
     canonical = main_url(path or "/")
     return PageMetadata(
+        not_found=not_found,
         title=f"{title} | {SITE_NAME}",
         description="Această pagină nu este destinată indexării publice.",
         canonical_url=canonical,
@@ -400,13 +392,15 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
     if username:
         user = db.query(models.User).filter(models.User.username == username).first()
         if not user:
-            return _noindex_metadata(path, title="Profil inexistent")
+            return _noindex_metadata(path, title="Profil inexistent", not_found=True)
         if path == "/":
             return _profile_metadata(user)
         if path == "/toate-operele":
             return _profile_metadata(user, path="/toate-operele")
         if path in {"/urmaritori", "/urmariti", "/inventar"}:
             return _noindex_metadata(path, title="Pagină de profil")
+        if path in SUBDOMAIN_PRIVATE_PATHS:
+            return _noindex_metadata(path)
         slug = path.strip("/")
         post = (
             db.query(models.Post)
@@ -419,7 +413,9 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
         )
         if post:
             return _post_metadata(post, user)
-        return _noindex_metadata(path, title="Text inexistent")
+        # A pending/rejected post still exists for its author; only a missing slug is a 404.
+        exists = db.query(models.Post.id).filter(models.Post.slug == slug, models.Post.user_id == user.id).first()
+        return _noindex_metadata(path, title="Text inexistent", not_found=exists is None)
 
     if path in STATIC_PUBLIC_PAGES:
         return _static_page_metadata(path)
@@ -428,7 +424,7 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
         slug = path.split("/", 2)[2]
         series = db.query(models.Series).options(joinedload(models.Series.owner)).filter(models.Series.slug == slug).first()
         if not series:
-            return _noindex_metadata(path, title="Serie inexistentă")
+            return _noindex_metadata(path, title="Serie inexistentă", not_found=True)
         post_count = _approved_series_post_count(db, series.id)
         if post_count <= 0:
             return _noindex_metadata(path, title="Serie fără texte publice")
@@ -439,7 +435,7 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
         play = db.query(models.TheatrePlay).options(joinedload(models.TheatrePlay.creator)).filter(models.TheatrePlay.slug == slug).first()
         if play:
             return _theatre_metadata(play)
-        return _noindex_metadata(path, title="Piesă inexistentă")
+        return _noindex_metadata(path, title="Piesă inexistentă", not_found=True)
 
     if path.startswith("/discutii/") and path != "/discutii/nou":
         slug = path.split("/", 2)[2]
@@ -454,16 +450,20 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
         )
         if thread:
             return _forum_thread_metadata(thread)
-        return _noindex_metadata(path, title="Discuție inexistentă")
+        exists = db.query(models.ForumThread.id).filter(models.ForumThread.slug == slug).first()
+        return _noindex_metadata(path, title="Discuție inexistentă", not_found=exists is None)
 
-    if path == "/teatru/nou" or path == "/discutii/nou" or _is_private_path(path):
+    if path == "/teatru/nou" or path == "/discutii/nou" or _is_known_private_path(path):
         return _noindex_metadata(path)
 
-    return _noindex_metadata(path, title="Pagină necunoscută")
+    return _noindex_metadata(path, title="Pagină negăsită", not_found=True)
 
 
-def _is_private_path(path: str) -> bool:
-    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in PRIVATE_ROUTE_PREFIXES)
+def _is_known_private_path(path: str) -> bool:
+    """Mirror of frontend/src/app/router.jsx for main-domain pages that are not indexed."""
+    if path in MAIN_PRIVATE_EXACT_PATHS:
+        return True
+    return any(path.startswith(prefix) and len(path) > len(prefix) for prefix in MAIN_PRIVATE_SLUG_PREFIXES)
 
 
 def _approved_series_post_count(db: Session, series_id: int) -> int:

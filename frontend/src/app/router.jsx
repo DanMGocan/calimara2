@@ -46,8 +46,16 @@ const ROUTE_COMPONENTS = {
   notFound: lazy(() => import("../routes/not-found.jsx"))
 };
 
+// The server marks pages that do not exist (unknown route, missing post/author/series)
+// with a 404 status and this meta tag; show the not-found page for that initial URL.
+const SERVER_NOT_FOUND_PATH = typeof document !== "undefined"
+  && document.querySelector('meta[name="calimara-status"][content="404"]')
+  ? (window.location.pathname.replace(/\/+$/, "") || "/")
+  : null;
+
 export function routeForLocation() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (SERVER_NOT_FOUND_PATH && path === SERVER_NOT_FOUND_PATH) return { name: "notFound" };
   const userFromHost = subdomainUsername();
 
   if (userFromHost) {

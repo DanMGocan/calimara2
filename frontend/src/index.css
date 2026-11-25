@@ -12089,3 +12089,10 @@ textarea.cal-input {
 .admin-integration.is-complete {
   border-left: 4px solid rgba(30, 110, 60, 0.6);
 }
+
+.not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}

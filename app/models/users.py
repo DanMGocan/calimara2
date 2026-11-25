@@ -91,7 +91,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    posts: Mapped[List["Post"]] = relationship("Post", foreign_keys="Post.user_id", back_populates="owner")
+    posts: Mapped[List["Post"]] = relationship("Post", foreign_keys="Post.user_id", back_populates="owner", cascade="save-update, merge, delete", passive_deletes=True)
     post_drafts: Mapped[List["PostDraft"]] = relationship("PostDraft", foreign_keys="PostDraft.user_id", back_populates="owner", cascade="all, delete-orphan")
     comments: Mapped[List["Comment"]] = relationship("Comment", foreign_keys="Comment.user_id", back_populates="commenter")
     comment_reactions: Mapped[List["CommentReaction"]] = relationship("CommentReaction", back_populates="user", cascade="all, delete-orphan")
@@ -110,7 +110,8 @@ class User(Base):
     friend_of: Mapped[List["BestFriend"]] = relationship(
         "BestFriend",
         foreign_keys="BestFriend.friend_user_id", 
-        back_populates="friend"
+        back_populates="friend",
+        cascade="save-update, merge, delete", passive_deletes=True
     )
 
     # One-way follow relationships
