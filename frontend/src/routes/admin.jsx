@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminJobs, fetchAdminOverview, fetchAdminPerformanceHistory, fetchAdminPerformanceLive, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminIntegrations, fetchAdminJobs, fetchAdminOverview, fetchAdminPerformanceHistory, fetchAdminPerformanceLive, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
 import { createAdminShopItem, fetchAdminGologaniRewards, fetchAdminShopItems, updateAdminGologaniReward, updateAdminShopItem } from "../api/economy.js";
 import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
@@ -39,7 +39,7 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: "Operațiuni",
-    items: ["economy", "premium", "storage", "performance", "jobs", "audit"]
+    items: ["integrations", "economy", "premium", "storage", "performance", "jobs", "audit"]
   }
 ];
 
@@ -584,6 +584,76 @@ function SiteFeedbackReplyModal({ state, busy, onReplyChange, onClose, onSend })
     </div>
   );
 }
+const INTEGRATION_STATUS_LABELS = {
+  active: { label: "Activ", className: "status-ok" },
+  ready: { label: "Configurat, oprit", className: "status-pending" },
+  incomplete: { label: "Incomplet", className: "status-rejected" },
+  not_configured: { label: "Neconfigurat", className: "status-pending" }
+};
+function AdminIntegrationRow({ item }) {
+  const status = INTEGRATION_STATUS_LABELS[item.status] || INTEGRATION_STATUS_LABELS.not_configured;
+  return (
+    <article className="admin-row admin-integration">
+      <div className="admin-row-head">
+        <div>
+          <div className="admin-badges">
+            <span className={`piece-card-status ${status.className}`}>{status.label}</span>
+          </div>
+          <h2 className="admin-row-title">{item.name}</h2>
+          <p className="admin-integration-purpose">{item.purpose}</p>
+        </div>
+      </div>
+      <div className="admin-integration-body">
+        <div className="admin-integration-vars">
+          <h3>Variabile în .env</h3>
+          <ul>
+            {item.env.map((variable) => (
+              <li key={variable.name}>
+                <span className={`piece-card-status ${variable.is_set ? "status-ok" : variable.required ? "status-rejected" : "status-pending"}`}>
+                  {variable.is_set ? "setat" : variable.required ? "lipsește" : "opțional"}
+                </span>
+                <code>{variable.name}</code>
+                <em>{variable.hint}</em>
+              </li>
+            ))}
+            {item.flags.map((flag) => (
+              <li key={flag.name}>
+                <span className={`piece-card-status ${flag.enabled ? "status-ok" : "status-pending"}`}>{flag.enabled ? "pornit" : "oprit"}</span>
+                <code>{flag.name}</code>
+                <em>comutator: True / False</em>
+              </li>
+            ))}
+            {item.backends.map((backend) => (
+              <li key={backend.name}>
+                <span className={`piece-card-status ${backend.value === "s3" ? "status-ok" : "status-pending"}`}>{backend.value}</span>
+                <code>{backend.name}</code>
+                <em>local sau s3</em>
+              </li>
+            ))}
+            {item.credentials_file ? (
+              <li>
+                <span className={`piece-card-status ${item.credentials_file.exists ? "status-ok" : "status-rejected"}`}>{item.credentials_file.exists ? "fișier găsit" : "fișier lipsă"}</span>
+                <code>{item.credentials_file.name}</code>
+                <em>fișierul JSON al contului de serviciu</em>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+        <div className="admin-integration-steps">
+          <h3>Pași</h3>
+          <ol>
+            {item.steps.map((step, index) => <li key={index}>{step}</li>)}
+          </ol>
+          {item.notes.length ? (
+            <ul className="admin-integration-notes">
+              {item.notes.map((note, index) => <li key={index}>{note}</li>)}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
 function AdminStorageRow({ object, busy, onPreview, onDelete, onCleanup }) {
   const references = object.references || [];
   const meta = (
@@ -674,6 +744,12 @@ function AdminDashboardView({ user }) {
     objects: [],
     nextCursor: null,
     summary: null,
+    loading: false,
+    error: "",
+    loaded: false
+  });
+  const [integrationsState, setIntegrationsState] = useState({
+    data: null,
     loading: false,
     error: "",
     loaded: false
@@ -819,6 +895,28 @@ function AdminDashboardView({ user }) {
       loadStorageObjects();
     }
   }, [activeTab, canAdmin, loadStorageObjects, storageState.loaded, storageState.loading]);
+
+  const loadIntegrations = useCallback(async () => {
+    if (!canAdmin) return;
+    setIntegrationsState((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const data = await fetchAdminIntegrations();
+      setIntegrationsState({ data, loading: false, error: "", loaded: true });
+    } catch (requestError) {
+      setIntegrationsState((current) => ({
+        ...current,
+        loading: false,
+        error: requestError.message || "Nu am putut încărca integrările.",
+        loaded: true
+      }));
+    }
+  }, [canAdmin]);
+
+  useEffect(() => {
+    if (canAdmin && activeTab === "integrations" && !integrationsState.loaded && !integrationsState.loading) {
+      loadIntegrations();
+    }
+  }, [activeTab, canAdmin, loadIntegrations, integrationsState.loaded, integrationsState.loading]);
 
   const loadPerformanceData = useCallback(async ({ quiet = false } = {}) => {
     if (!canAdmin) return;
@@ -1300,6 +1398,7 @@ function AdminDashboardView({ user }) {
         ["pending", "Moderare", state.pending.length + state.flagged.length],
         ["reports", "Raportări", state.postReports.length],
         ["journal", "Jurnal", state.logs.length],
+        ["integrations", "Integrări", integrationsState.data?.summary?.incomplete || 0],
         ["economy", "Economie", state.shop.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
         ["storage", "Stocare", storageState.objects.length],
@@ -1917,6 +2016,38 @@ function AdminDashboardView({ user }) {
         </AdminPanel>
       ) : null}
 
+      {!state.loading && !state.error && canAdmin && activeTab === "integrations" ? (
+        <AdminPanel
+          title="Integrări"
+          description="Servicii externe: ce chei sunt setate și cum obții fiecare cheie. Valorile secrete nu sunt afișate niciodată."
+          actions={<button className="cal-btn" type="button" disabled={integrationsState.loading} onClick={loadIntegrations}>Reîncarcă</button>}
+        >
+          {integrationsState.error ? <StatusPanel title={integrationsState.error} /> : null}
+          {integrationsState.loading && !integrationsState.data ? <StatusPanel title="Se încarcă..." /> : null}
+          {integrationsState.data ? (
+            <>
+              <AdminStatGrid compact>
+                <AdminStat label="Active" value={integrationsState.data.summary.active} sub="integrări" />
+                <AdminStat label="Configurate, oprite" value={integrationsState.data.summary.ready} sub="integrări" />
+                <AdminStat label="Incomplete" value={integrationsState.data.summary.incomplete} sub="pornite, dar lipsesc chei" />
+                <AdminStat label="Neconfigurate" value={integrationsState.data.summary.not_configured} sub="integrări" />
+              </AdminStatGrid>
+              <div className="admin-integration-howto">
+                <p>Cum adaugi o cheie:</p>
+                <ol>
+                  <li>Conectează-te la server prin SSH și deschide fișierul: <code>nano {integrationsState.data.env_file}</code></li>
+                  <li>Completează valoarea după semnul <code>=</code>, fără ghilimele și fără spații.</li>
+                  <li>Salvează (Ctrl+O, Enter, Ctrl+X) și repornește aplicația: <code>{integrationsState.data.restart_command}</code></li>
+                  <li>Revino aici și apasă „Reîncarcă”.</li>
+                </ol>
+              </div>
+              <div className="admin-feed">
+                {integrationsState.data.integrations.map((item) => <AdminIntegrationRow key={item.key} item={item} />)}
+              </div>
+            </>
+          ) : null}
+        </AdminPanel>
+      ) : null}
       {!state.loading && !state.error && canAdmin && activeTab === "storage" ? (
         <AdminPanel
           title="Stocare obiecte"

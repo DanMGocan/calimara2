@@ -9,7 +9,7 @@ from sqlalchemy import String, and_, case, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, invitations, models, object_storage, performance, platform_access, schemas, statistics
+from .. import admin, crud, email_service, integrations_guide, invitations, models, object_storage, performance, platform_access, schemas, statistics
 from ..database import get_db
 from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
@@ -1242,6 +1242,16 @@ def rollup_admin_metrics(
     row = aggregate_admin_daily_metrics(db, parsed)
     _audit(db, request, current_user, action="admin_metrics_rollup", target_type="admin_daily_metric", target_id=getattr(row, "id", None), metadata={"date": parsed.isoformat()})
     return {"date": row.stat_date.isoformat(), "metrics": row.metrics or {}, "persisted": getattr(row, "id", None) is not None}
+
+
+@router.get("/integrations")
+def admin_integrations(
+    response: Response,
+    current_user: models.User = Depends(admin.require_admin),
+):
+    """Setup instructions and set/missing status for external integrations (never values)."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return integrations_guide.integrations_status()
 
 
 @router.get("/performance/live")

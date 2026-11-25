@@ -12013,3 +12013,76 @@ textarea.cal-input {
   .piece-kind-row { color: #555 !important; }
   .piece-author, .piece-year, .piece-meta { color: #333 !important; }
 }
+
+/* Admin → Integrări */
+.piece-card-status.status-ok {
+  border-color: rgba(30, 110, 60, 0.35);
+  background: rgba(30, 110, 60, 0.08);
+  color: #1e6e3c;
+}
+.admin-integration-purpose {
+  margin: 6px 0 0;
+  color: var(--ink-mute);
+}
+.admin-integration-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 24px;
+  margin-top: 14px;
+}
+.admin-integration-body h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.admin-integration-vars ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.admin-integration-vars li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.admin-integration-vars code,
+.admin-integration-howto code {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.admin-integration-vars em {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+.admin-integration-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.admin-integration-notes {
+  margin: 12px 0 0;
+  padding: 10px 12px 10px 28px;
+  border-left: 3px solid rgba(116, 80, 0, 0.45);
+  background: rgba(116, 80, 0, 0.06);
+  font-size: 13px;
+}
+.admin-integration-howto {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+.admin-integration-howto p { margin: 0 0 6px; font-weight: 600; }
+.admin-integration-howto ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .admin-integration-body { grid-template-columns: 1fr; }
+}

@@ -60,6 +60,10 @@ export function fetchAdminJobs(params = {}) {
   return api.get(`/api/admin/jobs${buildQuery(params)}`);
 }
 
+export function fetchAdminIntegrations() {
+  return api.get("/api/admin/integrations");
+}
+
 export function fetchAdminPerformanceLive() {
   return api.get("/api/admin/performance/live");
 }
