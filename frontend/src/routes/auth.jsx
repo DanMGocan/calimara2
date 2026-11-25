@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { FaFacebookF, FaGoogle } from "react-icons/fa";
-import { AUTH_FACEBOOK_PATH, AUTH_GOOGLE_PATH, addSetupDiacritics, completeAuthSetup, fetchInvitation, loginWithInvitationPassword } from "../api/auth.js";
+import { FaGoogle } from "react-icons/fa";
+import { AUTH_GOOGLE_PATH, addSetupDiacritics, completeAuthSetup, fetchInvitation, loginWithInvitationPassword } from "../api/auth.js";
 import { AUTH_AVATAR_OPTIONS, AUTH_COVER_OPTIONS, PROFILE_DESCRIPTION_CHARACTER_LIMIT } from "../app/constants.js";
 import { DiacriticsProgressOverlay, DiacriticsReviewPanel, useDiacriticsProgress } from "../app/diacritics.jsx";
 import { RichTextEditor } from "../app/editor.jsx";
@@ -358,9 +358,6 @@ function InvitationView({ route, user }) {
         <div className="auth-modal-action-row invite-provider-row">
           <a className="cal-btn auth-provider google" href={providerHref(AUTH_GOOGLE_PATH, returnTo)}>
             <FaGoogle aria-hidden="true" /> Google
-          </a>
-          <a className="cal-btn auth-provider facebook" href={providerHref(AUTH_FACEBOOK_PATH, returnTo)}>
-            <FaFacebookF aria-hidden="true" /> Facebook
           </a>
         </div>
         <form className="form-stack invite-password-form" onSubmit={submitPassword} autoComplete="off">

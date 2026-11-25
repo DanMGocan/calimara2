@@ -283,7 +283,9 @@ async def google_login(request: Request, return_to: str | None = None):
 @router.get("/autentificare/facebook")
 @limiter.limit("5/minute")
 async def facebook_login(request: Request, return_to: str | None = None):
-    """Initiate Facebook OAuth flow"""
+    """Initiate Facebook OAuth flow (disabled unless FACEBOOK_CLIENT_ID is configured)."""
+    if not facebook_oauth.FACEBOOK_CLIENT_ID:
+        return RedirectResponse(url=_auth_failure_url(request, "facebook"), status_code=status.HTTP_302_FOUND)
     try:
         _store_auth_return_to(request, return_to)
         auth_url = facebook_oauth.get_facebook_auth_url(request)

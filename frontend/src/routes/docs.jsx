@@ -18,16 +18,16 @@ const DOC_SECTIONS = [
   {
     id: "auth",
     title: "Conturi, acces și sesiuni",
-    summary: "Utilizatorii intră prin Google, Facebook, autentificare locală cu coduri email sau invitații admin. Platforma pornește închisă și acceptă doar emailuri din lista de acces sau invitații active până când un admin o deschide manual.",
+    summary: "Utilizatorii intră prin Google, autentificare locală cu coduri email sau invitații admin. Platforma pornește închisă și acceptă doar emailuri din lista de acces sau invitații active până când un admin o deschide manual.",
     bullets: [
       "Fluxurile OAuth păstrează return_to doar pentru domeniul principal sau subdomenii valide și trimit utilizatorii noi în configurarea profilului.",
       "Configurarea profilului/blogului cere acceptarea explicită a Termenilor și condițiilor și a Politicii de confidențialitate; backendul respinge finalizarea fără accept_terms_and_privacy.",
       "După configurarea unui cont din invitație, return_to către pagina invitației sau către rutele de autentificare este ignorat, iar utilizatorul este trimis către propriul blog.",
       "În configurarea inițială, descrierea profilului poate fi verificată cu Diacritice prin /api/autentificare/configurare/diacritice înainte ca blogul să fie creat; dacă serviciul AI cade, utilizatorul poate finaliza fără Diacritice.",
-      "Fereastra de autentificare permite intrare locală, creare cont cu email și parolă, plus Google și Facebook.",
+      "Fereastra de autentificare permite intrare locală, creare cont cu email și parolă, plus Google.",
       "Autentificarea locală trimite coduri pentru activarea contului și resetarea parolei prin EmailOutbox.",
       "Linkurile de recomandare folosesc parametrul ref și permit configurarea unui cont nou cu referrer păstrat până la finalizarea profilului.",
-      "Invitațiile admin includ un email simplu cu buton compatibil cu Gmail, link complet de rezervă, opțiuni Google/Facebook și parolă temporară; utilizatorul poate schimba parola ulterior din profil, dar nu este obligat.",
+      "Invitațiile admin includ un email simplu cu buton compatibil cu Gmail, link complet de rezervă, opțiune Google și parolă temporară; utilizatorul poate schimba parola ulterior din profil, dar nu este obligat.",
       "Panoul admin controlează deschiderea platformei, lista de emailuri permise și invitațiile; starea implicită este închisă.",
       "Rolurile principale sunt utilizator, moderator și admin; adminul include drepturi de moderare."
     ]

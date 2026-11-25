@@ -425,7 +425,7 @@ def queue_platform_invitation_email(
     body = (
         "<p>Ai primit o invitație pentru Călimara.</p>"
         f"{premium_line}"
-        "<p>Deschide linkul de mai jos ca să îți creezi contul și blogul. Pe pagina invitației poți intra cu Google, Facebook sau cu parola temporară din acest email.</p>"
+        "<p>Deschide linkul de mai jos ca să îți creezi contul și blogul. Pe pagina invitației poți intra cu Google sau cu parola temporară din acest email.</p>"
         f"{_email_action_block('Acceptă invitația', invitation_url)}"
         '<p style="font-family:Arial,sans-serif;font-size:13px;line-height:1.5;color:#5f564e;margin:0 0 18px;">'
         "Dacă butonul nu se afișează corect, copiază acest link în browser:<br>"
@@ -448,7 +448,7 @@ def queue_platform_invitation_email(
     text_lines.extend(
         [
             "Deschide linkul de mai jos ca să îți creezi contul și blogul.",
-            "Pe pagina invitației poți intra cu Google, Facebook sau cu parola temporară din acest email.",
+            "Pe pagina invitației poți intra cu Google sau cu parola temporară din acest email.",
             "",
             "Acceptă invitația:",
             invitation_url,

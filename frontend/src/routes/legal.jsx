@@ -19,7 +19,7 @@ const ABOUT_SECTIONS = [
     id: "conturi",
     title: "Conturi, acces și autentificare",
     paragraphs: [
-      "Un cont îți leagă textele, profilul public, prieteniile, mesajele, notificările, inventarul și beneficiile Premium. Autentificarea se poate face cu email și parolă, Google, Facebook sau prin invitație primită de la echipă.",
+      "Un cont îți leagă textele, profilul public, prieteniile, mesajele, notificările, inventarul și beneficiile Premium. Autentificarea se poate face cu email și parolă, Google sau prin invitație primită de la echipă.",
       "După prima autentificare, îți configurezi numele public, descrierea și imaginea de profil. Numele ales devine identitatea ta de autor în cititor, în comentarii, în forum și pe profilul public."
     ],
     items: [
@@ -357,12 +357,12 @@ const PRIVACY_SECTIONS = [
     id: "date-cont",
     title: "Date de cont și autentificare",
     paragraphs: [
-      "Pentru a crea și folosi un cont, prelucrăm datele necesare identificării contului și menținerii sesiunii. Autentificarea se poate face prin email și parolă, Google, Facebook sau prin invitație, în funcție de opțiunile active pe platformă.",
-      "Dacă intri prin Google sau Facebook, primim datele strict necesare autentificării, de regulă identificatorul furnizorului, emailul și informațiile de profil permise de acel furnizor. Setările și politicile Google sau Facebook se aplică separat folosirii contului tău la ei."
+      "Pentru a crea și folosi un cont, prelucrăm datele necesare identificării contului și menținerii sesiunii. Autentificarea se poate face prin email și parolă, Google sau prin invitație, în funcție de opțiunile active pe platformă.",
+      "Dacă intri prin Google, primim datele strict necesare autentificării, de regulă identificatorul furnizorului, emailul și informațiile de profil permise de Google. Setările și politicile Google se aplică separat folosirii contului tău la ei."
     ],
     items: [
       "Date de bază: email, nume public, nume de utilizator, parolă locală criptată, imagine de profil, copertă, descriere, locație și preferințe de profil.",
-      "Date de conectare prin Google sau Facebook: identificatori ai furnizorului, email verificat și informații minime primite la autentificare.",
+      "Date de conectare prin Google: identificatori ai furnizorului, email verificat și informații minime primite la autentificare.",
       "Date de sesiune: cookie-ul de sesiune, adresa IP, browserul, dispozitivul, momentul autentificării și informații tehnice folosite pentru securitate.",
       "Date de invitație sau recomandare: coduri, linkuri, progresul recomandărilor și recompensele acordate, unde funcția este disponibilă.",
       "Date de administrare: rolul contului, starea accesului, eventuale suspendări, istoricul unor acțiuni administrative și preferințele de email."
@@ -511,7 +511,6 @@ const PRIVACY_SECTIONS = [
     ],
     items: [
       "Google poate fi folosit pentru autentificare, reclame AdSense și instrumente de consimțământ publicitar.",
-      "Facebook poate fi folosit pentru autentificare, dacă alegi această metodă.",
       "Stripe este folosit pentru plăți, abonamente și portalul de client.",
       "Brevo sau un furnizor similar poate fi folosit pentru emailuri.",
       "Furnizorii de găzduire, stocare, securitate, generare audio, procesare text și monitorizare pot prelucra date tehnice sau conținut strict necesar funcției folosite.",

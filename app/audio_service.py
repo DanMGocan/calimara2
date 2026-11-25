@@ -546,7 +546,13 @@ def transcribe_audio(content: bytes) -> tuple[str, Optional[float]]:
     model = os.getenv("GOOGLE_STT_MODEL", "chirp_3")
     profanity_filter = os.getenv("GOOGLE_STT_PROFANITY_FILTER", "True").lower() in ("true", "1", "yes")
 
-    client = SpeechClient()
+    # Regional recognizers (e.g. "eu") must be called through their regional endpoint.
+    client_options = None
+    if location and location.strip().lower() != "global":
+        from google.api_core.client_options import ClientOptions
+
+        client_options = ClientOptions(api_endpoint=f"{location.strip().lower()}-speech.googleapis.com")
+    client = SpeechClient(client_options=client_options)
     config = cloud_speech.RecognitionConfig(
         auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
         language_codes=[language_code],

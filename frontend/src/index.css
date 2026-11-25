@@ -12086,3 +12086,6 @@ textarea.cal-input {
 @media (max-width: 760px) {
   .admin-integration-body { grid-template-columns: 1fr; }
 }
+.admin-integration.is-complete {
+  border-left: 4px solid rgba(30, 110, 60, 0.6);
+}

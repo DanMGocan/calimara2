@@ -585,7 +585,7 @@ function SiteFeedbackReplyModal({ state, busy, onReplyChange, onClose, onSend })
   );
 }
 const INTEGRATION_STATUS_LABELS = {
-  active: { label: "Activ", className: "status-ok" },
+  active: { label: "✓ Complet", className: "status-ok" },
   ready: { label: "Configurat, oprit", className: "status-pending" },
   incomplete: { label: "Incomplet", className: "status-rejected" },
   not_configured: { label: "Neconfigurat", className: "status-pending" }
@@ -593,7 +593,7 @@ const INTEGRATION_STATUS_LABELS = {
 function AdminIntegrationRow({ item }) {
   const status = INTEGRATION_STATUS_LABELS[item.status] || INTEGRATION_STATUS_LABELS.not_configured;
   return (
-    <article className="admin-row admin-integration">
+    <article className={`admin-row admin-integration${item.status === "active" ? " is-complete" : ""}`}>
       <div className="admin-row-head">
         <div>
           <div className="admin-badges">
@@ -2027,7 +2027,7 @@ function AdminDashboardView({ user }) {
           {integrationsState.data ? (
             <>
               <AdminStatGrid compact>
-                <AdminStat label="Active" value={integrationsState.data.summary.active} sub="integrări" />
+                <AdminStat label="Complete" value={integrationsState.data.summary.active} sub="configurate și pornite" />
                 <AdminStat label="Configurate, oprite" value={integrationsState.data.summary.ready} sub="integrări" />
                 <AdminStat label="Incomplete" value={integrationsState.data.summary.incomplete} sub="pornite, dar lipsesc chei" />
                 <AdminStat label="Neconfigurate" value={integrationsState.data.summary.not_configured} sub="integrări" />

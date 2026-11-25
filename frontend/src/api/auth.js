@@ -4,7 +4,6 @@ export const AUTH_LOGIN_PATH = "/autentificare";
 
 export const AUTH_GOOGLE_PATH = "/autentificare/google";
 
-export const AUTH_FACEBOOK_PATH = "/autentificare/facebook";
 
 export const AUTH_GOOGLE_CALLBACK_PATH = "/auth/google/callback";
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { FaFacebookF, FaGoogle } from "react-icons/fa";
+import { FaGoogle } from "react-icons/fa";
 import { PiCubeFill } from "react-icons/pi";
-import { AUTH_FACEBOOK_PATH, AUTH_GOOGLE_PATH, activatePasswordSignup, loginWithPassword, registerWithPassword } from "../api/auth.js";
+import { AUTH_GOOGLE_PATH, activatePasswordSignup, loginWithPassword, registerWithPassword } from "../api/auth.js";
 import { mainPath } from "./paths.js";
 
 const AuthModalContext = createContext({
@@ -131,7 +131,7 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
         <div className="piece-card-kicker">cont</div>
         <h2 id="auth-modal-title" className="auth-modal-title">Cont utilizator</h2>
         <p className="auth-modal-copy">
-          Dacă ai deja un cont, te poți loga aici cu datele tale. Dacă nu ai cont, introdu adresa de e-mail dorită și parola și apasă pe Creează cont. Alternativ, te poți loga prin Google sau Facebook.
+          Dacă ai deja un cont, te poți loga aici cu datele tale. Dacă nu ai cont, introdu adresa de e-mail dorită și parola și apasă pe Creează cont. Alternativ, te poți loga prin Google.
         </p>
         <form ref={formRef} className="auth-modal-form" onSubmit={submitLogin}>
           <input
@@ -193,9 +193,6 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
             </button>
             <a className="cal-btn auth-provider google" href={providerHref(AUTH_GOOGLE_PATH, returnTo)}>
               <FaGoogle aria-hidden="true" /> Google
-            </a>
-            <a className="cal-btn auth-provider facebook" href={providerHref(AUTH_FACEBOOK_PATH, returnTo)}>
-              <FaFacebookF aria-hidden="true" /> Facebook
             </a>
           </div>
         </form>

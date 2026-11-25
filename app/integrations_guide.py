@@ -42,25 +42,6 @@ INTEGRATIONS: list[dict[str, Any]] = [
         "notes": [],
     },
     {
-        "key": "facebook_oauth",
-        "name": "Facebook – autentificare",
-        "purpose": "Butonul „Continuă cu Facebook” la autentificare.",
-        "env": [
-            {"name": "FACEBOOK_CLIENT_ID", "required": True, "secret": False, "hint": "App ID (doar cifre)"},
-            {"name": "FACEBOOK_CLIENT_SECRET", "required": True, "secret": True, "hint": "App Secret"},
-            {"name": "FACEBOOK_REDIRECT_URI", "required": True, "secret": False, "hint": "https://calimara.ro/auth/facebook/callback (deja completat)"},
-        ],
-        "flags": [],
-        "steps": [
-            "Deschide https://developers.facebook.com → My Apps → Create App → cazul de utilizare „Authenticate and request data from users with Facebook Login”.",
-            "În aplicație: Facebook Login → Settings → „Valid OAuth Redirect URIs”: https://calimara.ro/auth/facebook/callback",
-            "App settings → Basic: App Domains = calimara.ro, Privacy Policy URL = https://calimara.ro/confidentialitate, Terms of Service URL = https://calimara.ro/termeni.",
-            "Tot în App settings → Basic copiază App ID în FACEBOOK_CLIENT_ID și App Secret (butonul „Show”) în FACEBOOK_CLIENT_SECRET.",
-            "Comută aplicația din „Development” în „Live”, altfel doar administratorii aplicației se pot autentifica.",
-        ],
-        "notes": [],
-    },
-    {
         "key": "mistral",
         "name": "Mistral AI",
         "purpose": "Moderare automată, corectare diacritice, formatare AI și critica AI pentru utilizatorii gratuiți.",
@@ -117,7 +98,7 @@ INTEGRATIONS: list[dict[str, Any]] = [
             "Setează EMAILS_ENABLED=True.",
         ],
         "notes": [
-            "Fără email, utilizatorii noi care se înregistrează cu parolă nu primesc codul de activare, iar invitațiile din tabul Acces nu ajung la destinatari. Autentificarea cu Google sau Facebook funcționează și fără email.",
+            "Fără email, utilizatorii noi care se înregistrează cu parolă nu primesc codul de activare, iar invitațiile din tabul Acces nu ajung la destinatari. Autentificarea cu Google funcționează și fără email.",
         ],
     },
     {
@@ -180,6 +161,8 @@ INTEGRATIONS: list[dict[str, Any]] = [
         "env": [
             {"name": "GOOGLE_CLOUD_PROJECT", "required": True, "secret": False, "hint": "ID-ul proiectului Google Cloud"},
             {"name": "GOOGLE_APPLICATION_CREDENTIALS", "required": True, "secret": False, "hint": "/home/dan/calimara2/keys/google-cloud.json (deja completat)"},
+            {"name": "GOOGLE_TTS_VOICE_NAME", "required": False, "secret": False, "hint": "vocea: Kore (Gemini) sau ro-RO-Chirp3-HD-Leda"},
+            {"name": "GOOGLE_TTS_MODEL_NAME", "required": False, "secret": False, "hint": "obligatoriu pentru vocile Gemini, ex. gemini-2.5-flash-tts; gol pentru Chirp3"},
         ],
         "flags": ["AUDIO_ENABLED"],
         "credentials_file_var": "GOOGLE_APPLICATION_CREDENTIALS",
