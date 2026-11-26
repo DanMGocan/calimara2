@@ -3,9 +3,9 @@
 Idempotent: prices are found by lookup_key, the portal configuration by its
 metadata tag and the webhook endpoint by URL, so re-running changes nothing.
 Products you already made in the Dashboard are adopted, not duplicated: an
-active RON price with the right amount and interval whose product name
-contains the tier name ("Trubadur", "Cronicar", "Rapsod", "cafea") gets the
-lookup_key set on it. Run it once per Stripe mode (test, live) and copy the
+active RON price with the right interval (monthly / one-time) whose product
+name contains the tier name ("Trubadur", "Cronicar", "Rapsod", "cafea") gets
+the lookup_key set on it, and its Dashboard amount is kept. Run it once per Stripe mode (test, live) and copy the
 printed lines into .env. It does not touch the database.
 
     STRIPE_API_KEY=sk_test_... python scripts/stripe_bootstrap.py
@@ -61,13 +61,18 @@ def price_interval(price):
 
 
 def adopt_dashboard_price(key: str, match: str, amount: int, interval):
-    """Find a matching active price made by hand in the Dashboard."""
+    """Find a matching active price made by hand in the Dashboard.
+
+    Matches on product name, currency and interval; the Dashboard amount wins
+    (e.g. 14,99 instead of the 15,00 default used when creating), so pricing
+    stays a Dashboard decision.
+    """
     candidates = []
     for price in stripe.Price.list(active=True, currency=CURRENCY, expand=["data.product"], limit=100).auto_paging_iter():
         product = price.product
         if not getattr(product, "active", True):
             continue
-        if price.unit_amount == amount and price_interval(price) == interval and match in fold(product.name):
+        if price_interval(price) == interval and match in fold(product.name):
             candidates.append(price)
     if len(candidates) > 1:
         sys.exit(f"Several Dashboard prices match '{match}' ({[p.id for p in candidates]}). "
@@ -80,15 +85,16 @@ def ensure_price(key, match, product_name, amount, interval):
     existing = stripe.Price.list(lookup_keys=[lk], active=True, limit=1).data
     if existing:
         price = existing[0]
-        if price.unit_amount != amount or price.currency != CURRENCY or price_interval(price) != interval:
-            sys.exit(f"Price {price.id} ({lk}) is {price.unit_amount} {price.currency} / {price_interval(price)}, "
-                     f"expected {amount} {CURRENCY} / {interval}. Prices are immutable: archive it and re-run.")
-        log(f"reuse  {key}: {price.id}")
+        if price.currency != CURRENCY or price_interval(price) != interval:
+            sys.exit(f"Price {price.id} ({lk}) is {price.currency} / {price_interval(price)}, "
+                     f"expected {CURRENCY} / {interval}. Archive it (or remove its lookup key) and re-run.")
+        log(f"reuse  {key}: {price.id} ({price.unit_amount / 100:.2f} {price.currency})")
         return price
 
     adopted = adopt_dashboard_price(key, match, amount, interval)
     if adopted:
-        log(f"adopt  {key}: {adopted.id} (product '{adopted.product.name}')")
+        log(f"adopt  {key}: {adopted.id} (product '{adopted.product.name}', "
+            f"{adopted.unit_amount / 100:.2f} {adopted.currency})")
         if not DRY_RUN:
             adopted = stripe.Price.modify(adopted.id, lookup_key=lk, metadata={"tier": key})
         return adopted
