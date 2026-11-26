@@ -324,6 +324,7 @@ Every page with readable content must include a "PDF" button that triggers `wind
 - **Global styles** in `lib/landing.css` — new pages add their CSS by `@import`-ing or extending this file; do not duplicate tokens.
 - **Cache-bust** URLs with `?v=N` when iterating on dev, but never bump gratuitously in production.
 - **Images**: `/assets/bg-sky.png`, `/assets/bg-forest.png`. Any new imagery must be monochrome PNG with transparent edges.
+- **Illustrated items & collectibles**: All shop items (clothing, artefacts, badges, frames) and editorial illustrations must follow [`design/art-style.md`](./art-style.md) (*Tuș și laviu sepia* — fine dip-pen sepia ink, translucent warm sepia washes, single `#b84a2a` ember accent, true RGBA transparent PNG).
 
 ---
 
