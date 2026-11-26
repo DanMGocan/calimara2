@@ -37,6 +37,7 @@ class AudioListenEvent(Base):
     __table_args__ = (
         CheckConstraint("seconds > 0 AND seconds <= 60", name="ck_audio_listen_events_seconds"),
         CheckConstraint("mode IN ('poezie', 'proza_scurta', 'toate')", name="ck_audio_listen_events_mode"),
+        CheckConstraint("context IN ('player', 'post')", name="ck_audio_listen_events_context"),
         UniqueConstraint("event_id", name="uq_audio_listen_events_event_id"),
         {"sqlite_autoincrement": True},
     )
@@ -49,6 +50,9 @@ class AudioListenEvent(Base):
     listener_user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    # "player" = continuous listening player (counts toward the free daily quota);
+    # "post" = the compact player on a single post (always free and unlimited).
+    context: Mapped[str] = mapped_column(String(10), nullable=False, default="post", server_default="post")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
 
 

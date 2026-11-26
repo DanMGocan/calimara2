@@ -145,6 +145,7 @@ class AudioListenSecondsRequest(BaseModel):
     audio_id: int = Field(..., ge=1)
     seconds: int = Field(..., ge=1, le=60)
     mode: Literal["poezie", "proza_scurta", "toate"] = "toate"
+    context: Literal["player", "post"] = "post"
 
 
 class AudioListenSecondsResponse(BaseModel):
@@ -155,3 +156,12 @@ class AudioListenSecondsResponse(BaseModel):
     mode: Literal["poezie", "proza_scurta", "toate"]
     total_post_seconds: int
     total_author_seconds: int
+    # Free accounts: seconds left today in the continuous player. None = unlimited / not applicable.
+    player_seconds_remaining: Optional[int] = None
+
+
+class AudioListenQuota(BaseModel):
+    unlimited: bool
+    limit_seconds: Optional[int] = None
+    used_seconds: int = 0
+    remaining_seconds: Optional[int] = None

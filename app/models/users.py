@@ -283,5 +283,11 @@ class User(Base):
         return self.is_premium and self.premium_tier in {"cronicar", "rapsod"}
 
     @property
+    def has_unlimited_listening(self) -> bool:
+        # Any paid tier listens without limit in the continuous player;
+        # free accounts get a daily allowance (see crud.FREE_PLAYER_LISTEN_SECONDS_PER_DAY).
+        return self.is_premium
+
+    @property
     def has_author_audio_access(self) -> bool:
         return self.is_premium and self.premium_tier == "rapsod"

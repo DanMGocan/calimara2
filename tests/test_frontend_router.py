@@ -270,7 +270,8 @@ def test_profile_play_button_uses_author_scoped_audio_overlay():
     assert "Ascultă opere de acest autor" in source
     assert "ready_audio_count" in source
     assert "onStartAuthorListening?.(owner.username)" in source
-    assert "Necesită abonament Cronicar sau Rapsod" in source
+    assert "20 de minute gratuite pe zi, nelimitat cu Premium" in source
+    assert "Necesită abonament Cronicar sau Rapsod" not in source
     assert "fetchAuthorListeningRandomAudio" in api_source
 
 

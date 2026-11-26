@@ -14,7 +14,7 @@ from .theatre import TheatrePlayStatus, TheatreCharacterStatus, TheatreMemberRol
 from .stafeta import StafetaWorkStatus, StafetaAssignmentStatus, StafetaAssignmentSource, StafetaModerationStatus, StafetaTargetMode, StafetaCreateTargetMode, StafetaAssignmentAction, StafetaListFilter, StafetaUserRef, StafetaParticipationUpdate, StafetaCreate, StafetaSend, StafetaAssignSpecific, StafetaAssignmentRespond, StafetaParticipantOut, StafetaAssignmentOut, StafetaSegmentOut, StafetaWorkSummary, StafetaWorkDetail, StafetaWorkList
 from .super_likes import SuperLike, SuperLikeQuota
 from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus, CoffeeOffer, CoffeeCheckoutRequest
-from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioPlaylistCreate, AudioPlaylistUpdate, AudioPlaylistAddPostRequest, AudioPlaylistSummary, AudioPlaylistItem, AudioPlaylistDetail, AudioPlaylistList, AudioPlaylistPlayback, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse
+from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioPlaylistCreate, AudioPlaylistUpdate, AudioPlaylistAddPostRequest, AudioPlaylistSummary, AudioPlaylistItem, AudioPlaylistDetail, AudioPlaylistList, AudioPlaylistPlayback, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse, AudioListenQuota
 from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackReplyCreate, SiteFeedbackOut
 from .portability import DataPortabilityProfile, DataPortabilityMedia, DataPortabilityPostMetrics, DataPortabilityAudioLink, DataPortabilityPost, DataExportManifest, DataImportCreatedPost, DataImportReport
 
@@ -229,6 +229,7 @@ __all__ = [
     "TTSConversionResponse",
     "AudioListenSecondsRequest",
     "AudioListenSecondsResponse",
+    "AudioListenQuota",
     "SiteFeedbackKind",
     "SiteFeedbackStatus",
     "SiteFeedbackCreate",

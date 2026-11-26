@@ -529,19 +529,170 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(processed.moderation_status, "flagged")
         self.assertIn("Transcript", processed.moderation_reason)
 
-    def test_random_listen_audio_requires_audio_tier(self):
+    def use_player_seconds(self, listener, audio, seconds, *, context="player", prefix="quota"):
+        index = 0
+        while seconds > 0:
+            batch = min(60, seconds)
+            audio_service.record_listen_seconds(
+                self.db,
+                listener,
+                event_id=f"{prefix}-{listener.id}-{index}",
+                audio_id=audio.id,
+                seconds=batch,
+                mode="toate",
+                context=context,
+            )
+            seconds -= batch
+            index += 1
+
+    def test_random_listen_audio_requires_login(self):
         owner = self.user("owner")
-        listener = self.user("listener", "trubadur")
         post = self.post(owner)
-        crud.create_post_audio(
-            self.db,
-            post_id=post.id,
-            source="tts",
-            status="ready",
-        )
+        crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
 
         with self.assertRaises(audio_service.AudioListenForbidden):
-            audio_service.random_listen_audio_track(self.db, listener, "poezie")
+            audio_service.random_listen_audio_track(self.db, None, "poezie")
+
+    def test_random_listen_audio_is_free_for_logged_in_users_within_daily_quota(self):
+        owner = self.user("owner")
+        free = self.user("freelistener")
+        post = self.post(owner)
+        crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        audio = audio_service.random_listen_audio_track(self.db, free, "poezie")
+
+        self.assertEqual(audio.post_id, post.id)
+        quota = audio_service.listen_quota_payload(self.db, free)
+        self.assertFalse(quota["unlimited"])
+        self.assertEqual(quota["limit_seconds"], 20 * 60)
+        self.assertEqual(quota["remaining_seconds"], 20 * 60)
+
+    def test_free_listener_is_blocked_after_twenty_player_minutes(self):
+        owner = self.user("owner")
+        free = self.user("freelistener")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        self.use_player_seconds(free, audio, 20 * 60 - 1)
+        self.assertEqual(audio_service.listen_quota_payload(self.db, free)["remaining_seconds"], 1)
+        audio_service.random_listen_audio_track(self.db, free, "poezie")
+
+        result = audio_service.record_listen_seconds(
+            self.db,
+            free,
+            event_id="quota-last-second",
+            audio_id=audio.id,
+            seconds=1,
+            mode="toate",
+            context="player",
+        )
+        self.assertEqual(result["player_seconds_remaining"], 0)
+
+        with self.assertRaises(audio_service.AudioListenQuotaExceeded):
+            audio_service.random_listen_audio_track(self.db, free, "poezie")
+        with self.assertRaises(audio_service.AudioListenQuotaExceeded):
+            audio_service.random_author_listen_audio_track(self.db, free, owner.username, "toate")
+
+    def test_single_post_listening_does_not_use_player_quota(self):
+        owner = self.user("owner")
+        free = self.user("freelistener")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        self.use_player_seconds(free, audio, 60 * 60, context="post")
+
+        quota = audio_service.listen_quota_payload(self.db, free)
+        self.assertEqual(quota["used_seconds"], 0)
+        self.assertEqual(quota["remaining_seconds"], 20 * 60)
+        self.assertIsNotNone(audio_service.random_listen_audio_track(self.db, free, "poezie"))
+
+    def test_player_quota_resets_each_day(self):
+        owner = self.user("owner")
+        free = self.user("freelistener")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        self.use_player_seconds(free, audio, 20 * 60)
+        self.db.query(models.AudioListenEvent).update(
+            {models.AudioListenEvent.created_at: utcnow_naive() - timedelta(days=1, hours=1)},
+            synchronize_session=False,
+        )
+        self.db.commit()
+
+        quota = audio_service.listen_quota_payload(self.db, free)
+        self.assertEqual(quota["remaining_seconds"], 20 * 60)
+        self.assertIsNotNone(audio_service.random_listen_audio_track(self.db, free, "poezie"))
+
+    def test_player_quota_day_starts_at_romanian_midnight(self):
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+
+        owner = self.user("owner")
+        free = self.user("freelistener")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+        self.use_player_seconds(free, audio, 120)
+        before, after = (
+            self.db.query(models.AudioListenEvent).order_by(models.AudioListenEvent.id).all()
+        )
+        local_midnight = datetime.now(ZoneInfo("Europe/Bucharest")).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        # SQLite's now() is UTC, so the stored stamps are UTC here.
+        midnight_utc = local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+        before.created_at = midnight_utc - timedelta(seconds=1)
+        after.created_at = midnight_utc
+        self.db.commit()
+
+        self.assertEqual(crud.get_player_listen_seconds_today(self.db, free.id), 60)
+
+    def test_every_paid_tier_listens_without_limit(self):
+        owner = self.user("owner")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        for tier in ("trubadur", "cronicar", "rapsod"):
+            listener = self.user(f"{tier}listener", tier)
+            self.use_player_seconds(listener, audio, 30 * 60, prefix=tier)
+
+            self.assertTrue(listener.has_unlimited_listening)
+            quota = audio_service.listen_quota_payload(self.db, listener)
+            self.assertTrue(quota["unlimited"])
+            self.assertIsNone(quota["remaining_seconds"])
+            self.assertIsNotNone(audio_service.random_listen_audio_track(self.db, listener, "poezie"))
+            self.assertIsNotNone(
+                audio_service.random_author_listen_audio_track(self.db, listener, owner.username, "toate")
+            )
+
+    def test_expired_paid_tier_falls_back_to_free_quota(self):
+        owner = self.user("owner")
+        lapsed = self.user("lapsed", "cronicar")
+        lapsed.premium_until = utcnow_naive() - timedelta(days=1)
+        self.db.commit()
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        self.use_player_seconds(lapsed, audio, 20 * 60)
+
+        self.assertFalse(lapsed.has_unlimited_listening)
+        with self.assertRaises(audio_service.AudioListenQuotaExceeded):
+            audio_service.random_listen_audio_track(self.db, lapsed, "poezie")
+
+    def test_record_listen_seconds_rejects_unknown_context(self):
+        owner = self.user("owner")
+        post = self.post(owner)
+        audio = crud.create_post_audio(self.db, post_id=post.id, source="tts", status="ready")
+
+        with self.assertRaises(audio_service.AudioListenInvalid):
+            audio_service.record_listen_seconds(
+                self.db,
+                None,
+                event_id="bad-context",
+                audio_id=audio.id,
+                seconds=5,
+                mode="toate",
+                context="radio",
+            )
 
     def test_random_listen_audio_filters_by_mode(self):
         owner = self.user("owner")
@@ -580,11 +731,10 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertEqual(payload["viewer_friendship_status"], "incoming_pending")
         self.assertIsNotNone(payload["viewer_friendship_id"])
 
-    def test_author_scoped_random_playback_requires_audio_tier_and_author_ready_audio(self):
+    def test_author_scoped_random_playback_requires_login_and_author_ready_audio(self):
         author = self.user("author")
         other_author = self.user("otherauthor")
         listener = self.user("listener", "cronicar")
-        lower_tier = self.user("lowertier", "trubadur")
         poem = self.post(author, category="poezie", slug="author-poem")
         story = self.post(author, category="proza_scurta", slug="author-story")
         other_post = self.post(other_author, category="proza_scurta", slug="other-story")
@@ -593,7 +743,7 @@ class AudioFeatureTests(unittest.TestCase):
         crud.create_post_audio(self.db, post_id=other_post.id, source="tts", status="ready")
 
         with self.assertRaises(audio_service.AudioListenForbidden):
-            audio_service.random_author_listen_audio_track(self.db, lower_tier, author.username, "toate")
+            audio_service.random_author_listen_audio_track(self.db, None, author.username, "toate")
 
         audio = audio_service.random_author_listen_audio_track(self.db, listener, author.username, "proza_scurta")
 

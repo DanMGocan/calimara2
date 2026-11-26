@@ -129,6 +129,7 @@ class UserInDB(UserBase):
     id: int
     is_premium: bool = False
     has_audio_access: bool = False
+    has_unlimited_listening: bool = False
     has_author_audio_access: bool = False
     premium_tier: str = "free"
     premium_period_start: Optional[datetime] = None

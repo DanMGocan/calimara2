@@ -62,12 +62,17 @@ export function fetchAudioPlaylistPlayback(playlistId) {
   return api.get(`/api/audio/playlisturi/${encodeURIComponent(playlistId)}/lista-redare`);
 }
 
-export function recordAudioListenSeconds({ eventId, audioId, seconds, mode = "toate" }) {
+export function fetchListeningQuota() {
+  return api.get("/api/audio/asculta/cota");
+}
+
+export function recordAudioListenSeconds({ eventId, audioId, seconds, mode = "toate", context = "post" }) {
   return api.post("/api/audio/asculta/secunde", {
     event_id: eventId,
     audio_id: audioId,
     seconds,
-    mode
+    mode,
+    context
   });
 }
 

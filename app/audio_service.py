@@ -55,6 +55,45 @@ class AudioListenNotFound(AudioListenError):
     pass
 
 
+class AudioListenQuotaExceeded(AudioListenForbidden):
+    pass
+
+
+LISTEN_LOGIN_REQUIRED_MESSAGE = "Autentifică-te pentru a asculta în playerul audio."
+LISTEN_QUOTA_EXCEEDED_MESSAGE = (
+    "Ai folosit cele 20 de minute gratuite de azi în playerul audio. "
+    "Revino mâine sau alege un abonament Premium pentru ascultare nelimitată."
+)
+
+
+def listen_quota_payload(db: Session, user: models.User) -> dict:
+    """Daily allowance of the continuous listening player for this user."""
+    if user.has_unlimited_listening:
+        return {
+            "unlimited": True,
+            "limit_seconds": None,
+            "used_seconds": 0,
+            "remaining_seconds": None,
+        }
+    limit = crud.FREE_PLAYER_LISTEN_SECONDS_PER_DAY
+    used = crud.get_player_listen_seconds_today(db, user.id)
+    return {
+        "unlimited": False,
+        "limit_seconds": limit,
+        "used_seconds": used,
+        "remaining_seconds": max(0, limit - used),
+    }
+
+
+def ensure_can_use_listening_player(db: Session, user: Optional[models.User]) -> None:
+    if not user:
+        raise AudioListenForbidden(LISTEN_LOGIN_REQUIRED_MESSAGE)
+    if user.has_unlimited_listening:
+        return
+    if listen_quota_payload(db, user)["remaining_seconds"] <= 0:
+        raise AudioListenQuotaExceeded(LISTEN_QUOTA_EXCEEDED_MESSAGE)
+
+
 def audio_enabled() -> bool:
     return os.getenv("AUDIO_ENABLED", "False").lower() in ("true", "1", "yes")
 
@@ -784,8 +823,7 @@ def random_listen_audio_track(
     user: models.User,
     mode: str,
 ) -> models.PostAudio:
-    if not user or not user.has_audio_access:
-        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
+    ensure_can_use_listening_player(db, user)
     normalized_mode = normalize_listen_mode(mode)
     audio = crud.get_random_ready_audio_for_listen_mode(db, normalized_mode)
     if not audio:
@@ -804,8 +842,7 @@ def random_author_listen_audio_track(
     username: str,
     mode: str,
 ) -> models.PostAudio:
-    if not user or not user.has_audio_access:
-        raise AudioListenForbidden("Necesită abonament Cronicar sau Rapsod.")
+    ensure_can_use_listening_player(db, user)
     normalized_mode = normalize_listen_mode(mode)
     author = crud.get_user_by_username(db, username=username)
     if not author:
@@ -897,8 +934,11 @@ def record_listen_seconds(
     audio_id: int,
     seconds: int,
     mode: str,
+    context: str = "post",
 ) -> dict:
     normalized_mode = normalize_listen_mode(mode)
+    if context not in crud.AUDIO_LISTEN_CONTEXTS:
+        raise AudioListenInvalid("Context de ascultare invalid.")
     clean_event_id = (event_id or "").strip()
     if not clean_event_id:
         raise AudioListenInvalid("Identificatorul evenimentului lipsește.")
@@ -919,6 +959,7 @@ def record_listen_seconds(
         listener_user_id=user.id if user else None,
         seconds=int(seconds),
         mode=normalized_mode,
+        context=context,
     )
     post = crud.get_post(db, event.post_id)
     owner = crud.get_user_by_id(db, event.content_owner_id)
@@ -930,4 +971,9 @@ def record_listen_seconds(
         "mode": event.mode,
         "total_post_seconds": post.seconds_listened if post else 0,
         "total_author_seconds": owner.seconds_listened if owner else 0,
+        "player_seconds_remaining": (
+            listen_quota_payload(db, user)["remaining_seconds"]
+            if user and context == "player"
+            else None
+        ),
     }

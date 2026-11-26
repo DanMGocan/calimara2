@@ -143,7 +143,7 @@ const ABOUT_SECTIONS = [
     ],
     items: [
       "Generarea audio folosește o cotă de caractere afișată în Panou și pe pagina Premium.",
-      "Cronicar și Rapsod au acces extins la audio, iar Rapsod poate încărca înregistrări de autor.",
+      "Playerul audio global oferă 20 de minute gratuite pe zi conturilor conectate; Trubadur, Cronicar și Rapsod ascultă nelimitat, iar Rapsod poate încărca înregistrări de autor.",
       "Înregistrările de autor sunt verificate înainte să devină publice.",
       "Playerul global poate reda texte aleatorii, texte ale unui autor sau texte dintr-un playlist.",
       "Playlisturile audio sunt private și disponibile pentru Rapsod.",

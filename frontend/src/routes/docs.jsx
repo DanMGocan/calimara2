@@ -134,7 +134,8 @@ const DOC_SECTIONS = [
     title: "Audio, TTS și player",
     summary: "Audio-ul are două surse: generare TTS pentru texte și înregistrări de autor, cu acces condiționat de tier premium.",
     bullets: [
-      "Cronicar și Rapsod au acces la player audio; Rapsod poate încărca înregistrări de autor.",
+      "Playerul audio global (și Play pe profil) este disponibil oricărui utilizator conectat: 20 de minute pe zi gratuit, nelimitat pentru Trubadur, Cronicar și Rapsod. Rapsod poate încărca înregistrări de autor.",
+      "Cota gratuită numără doar secundele din playerul global (audio_listen_events.context = 'player'), pe ziua curentă (miezul nopții ora României); playerul compact al postării rămâne gratuit și nelimitat.",
       "TTS calculează cote pe număr de caractere și pornește joburi asincrone: Gratuit 1.000, Trubadur 50.000, Cronicar 100.000, Rapsod 200.000 pe lună/ciclu.",
       "Generarea TTS pentru texte lungi împarte textul în bucăți sub limita Google și păstrează jobul în coadă dacă furnizorul returnează o eroare temporară; la eșec final se trimite alertă operațională.",
       "Înregistrările de autor sunt transcrise și comparate cu textul postării înainte de a deveni ready.",

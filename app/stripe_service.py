@@ -44,6 +44,7 @@ PREMIUM_TIER_DETAILS = {
             "1 super-apreciere pe lună",
             "15.000 caractere pentru Diacritice pe lună",
             "1.000 caractere pentru generare audio pe lună",
+            "20 de minute pe zi în playerul audio",
             "Publicare poezie și proză scurtă cu moderare",
             "Comentarii, aprecieri, urmăriri și prieteni",
             "Recomandări cu recompense Trubadur",
@@ -52,9 +53,10 @@ PREMIUM_TIER_DETAILS = {
     "trubadur": {
         "name": "Trubadur",
         "eyebrow": "Bronz",
-        "summary": "Super-aprecieri și funcțiile premium de bază. Ascultarea audio este publică.",
+        "summary": "Super-aprecieri, ascultare nelimitată în playerul audio și funcțiile premium de bază.",
         "benefits": [
             "3 super-aprecieri pe lună",
+            "Player audio nelimitat",
             "60.000 caractere pentru Diacritice pe lună",
             "50.000 caractere pentru generare audio pe lună",
             "Experiență fără reclame când ești conectat",

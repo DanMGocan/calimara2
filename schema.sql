@@ -601,6 +601,9 @@ CREATE TABLE audio_listen_events (
     mode VARCHAR(20) NOT NULL
         CONSTRAINT ck_audio_listen_events_mode
         CHECK (mode IN ('poezie', 'proza_scurta', 'toate')),
+    context VARCHAR(10) DEFAULT 'post' NOT NULL
+        CONSTRAINT ck_audio_listen_events_context
+        CHECK (context IN ('player', 'post')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
 
     CONSTRAINT fk_audio_listen_audio FOREIGN KEY (audio_id) REFERENCES post_audio(id) ON DELETE CASCADE,
