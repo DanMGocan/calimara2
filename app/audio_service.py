@@ -157,7 +157,7 @@ def generate_tts_audio(
             storage_key=key,
             content_type=content_type,
             byte_size=byte_size,
-            voice_name=os.getenv("GOOGLE_TTS_VOICE_NAME", "ro-RO-Chirp3-HD-Leda"),
+            voice_name=os.getenv("GOOGLE_TTS_VOICE_NAME", "Kore"),
             language_code=os.getenv("GOOGLE_TTS_LANGUAGE_CODE", "ro-RO"),
             moderation_status="approved",
             moderation_reason="Generated from approved post text",
@@ -321,6 +321,10 @@ def synthesize_text(
     audio_id: Optional[int] = None,
     post_id: Optional[int] = None,
 ) -> tuple[bytes, str]:
+    configured_model = os.getenv("GOOGLE_TTS_MODEL_NAME", "").strip()
+    if uses_gemini_api_tts(configured_model):
+        return _synthesize_with_gemini_api(text, configured_model, audio_id=audio_id, post_id=post_id)
+
     from google.api_core import exceptions as google_exceptions
     from google.api_core.client_options import ClientOptions
     from google.cloud import texttospeech
@@ -390,6 +394,183 @@ def synthesize_text(
                 time.sleep(min(2 ** (attempt - 1), 8))
         audio_parts.append(response.audio_content)
     return b"".join(audio_parts), content_type_for_tts_encoding(encoding_name)
+
+
+# Gemini TTS models served by the Cloud Text-to-Speech API. Any other "gemini-*"
+# model (e.g. gemini-3.8-flash-tts) is only served by the Gemini Enterprise Agent
+# Platform (Vertex AI) generateContent API and goes through _synthesize_with_gemini_api.
+CLOUD_TTS_GEMINI_MODELS = frozenset(
+    {
+        "gemini-2.5-flash-tts",
+        "gemini-2.5-pro-tts",
+        "gemini-2.5-flash-lite-preview-tts",
+        "gemini-3.1-flash-tts-preview",
+    }
+)
+_GEMINI_TTS_RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
+_gemini_credentials = None
+_gemini_credentials_project: Optional[str] = None
+
+
+def uses_gemini_api_tts(model_name: Optional[str]) -> bool:
+    model = (model_name or "").strip().lower()
+    return model.startswith("gemini-") and model not in CLOUD_TTS_GEMINI_MODELS
+
+
+def _gemini_api_access() -> tuple[str, str]:
+    """Return (access_token, project) from Application Default Credentials."""
+    global _gemini_credentials, _gemini_credentials_project
+    import google.auth
+    from google.auth.transport.requests import Request
+
+    if _gemini_credentials is None:
+        _gemini_credentials, _gemini_credentials_project = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+    if not _gemini_credentials.valid:
+        _gemini_credentials.refresh(Request())
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip() or _gemini_credentials_project
+    if not project:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Gemini TTS")
+    return _gemini_credentials.token, project
+
+
+def gemini_tts_endpoint(model_name: str, project: str, location: str) -> str:
+    location = (location or "global").strip().lower()
+    host = "aiplatform.googleapis.com" if location == "global" else f"aiplatform.{location}.rep.googleapis.com"
+    return (
+        f"https://{host}/v1/projects/{project}/locations/{location}"
+        f"/publishers/google/models/{model_name}:generateContent"
+    )
+
+
+def _gemini_tts_request_body(text: str, voice_name: str, style: Optional[str]) -> dict:
+    part: dict = {"text": text}
+    if style:
+        part["speechMetadata"] = {"style": style}
+    return {
+        "contents": [{"role": "user", "parts": [part]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"voice": voice_name}},
+        },
+    }
+
+
+def _gemini_tts_wav_from_response(payload: dict) -> bytes:
+    import base64
+
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        feedback = payload.get("promptFeedback") or {}
+        raise RuntimeError(f"Gemini TTS returned no audio (blockReason={feedback.get('blockReason')})")
+    candidate = candidates[0]
+    for part in (candidate.get("content") or {}).get("parts") or []:
+        inline = part.get("inlineData") or {}
+        if inline.get("data"):
+            return base64.b64decode(inline["data"])
+    raise RuntimeError(f"Gemini TTS returned no audio (finishReason={candidate.get('finishReason')})")
+
+
+def _read_wav_pcm(wav_bytes: bytes) -> tuple[bytes, int, int, int]:
+    import io
+    import wave
+
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wav:
+        return wav.readframes(wav.getnframes()), wav.getframerate(), wav.getnchannels(), wav.getsampwidth()
+
+
+def encode_pcm_to_mp3(pcm: bytes, sample_rate: int, channels: int) -> bytes:
+    import lameenc
+
+    encoder = lameenc.Encoder()
+    encoder.set_bit_rate(int(os.getenv("GOOGLE_TTS_MP3_BITRATE_KBPS", "64")))
+    encoder.set_in_sample_rate(sample_rate)
+    encoder.set_channels(channels)
+    encoder.set_quality(2)
+    return bytes(encoder.encode(pcm) + encoder.flush())
+
+
+def _synthesize_with_gemini_api(
+    text: str,
+    model_name: str,
+    *,
+    audio_id: Optional[int] = None,
+    post_id: Optional[int] = None,
+) -> tuple[bytes, str]:
+    import httpx
+
+    voice_name = os.getenv("GOOGLE_TTS_VOICE_NAME", "Kore").strip() or "Kore"
+    style = os.getenv("GOOGLE_TTS_STYLE_PROMPT", "").strip() or None
+    location = os.getenv("GOOGLE_TTS_GEMINI_LOCATION", "global")
+    timeout = float(os.getenv("GOOGLE_TTS_GEMINI_TIMEOUT_SECONDS", "180"))
+    max_attempts = max(1, int(os.getenv("GOOGLE_TTS_MAX_ATTEMPTS", "3")))
+    # Pause inserted between chunks; chunks are split on stanza/paragraph boundaries.
+    chunk_pause_seconds = float(os.getenv("GOOGLE_TTS_CHUNK_PAUSE_SECONDS", "0.6"))
+
+    chunks = split_text_for_tts(text)
+    total_chunks = len(chunks)
+    pcm_parts: list[bytes] = []
+    audio_format: Optional[tuple[int, int, int]] = None
+    for index, chunk in enumerate(chunks, start=1):
+        body = _gemini_tts_request_body(chunk, voice_name, style)
+        for attempt in range(1, max_attempts + 1):
+            logger.info(
+                "Gemini TTS chunk synthesis model=%s audio_id=%s post_id=%s chunk=%s/%s bytes=%s attempt=%s/%s",
+                model_name,
+                audio_id,
+                post_id,
+                index,
+                total_chunks,
+                _byte_len(chunk),
+                attempt,
+                max_attempts,
+            )
+            retry_reason = None
+            try:
+                token, project = _gemini_api_access()
+                response = httpx.post(
+                    gemini_tts_endpoint(model_name, project, location),
+                    json=body,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=timeout,
+                )
+            except httpx.TransportError as exc:
+                retry_reason = f"{type(exc).__name__}: {exc}"
+            else:
+                if response.status_code == 200:
+                    break
+                detail = response.text[:500]
+                if response.status_code not in _GEMINI_TTS_RETRYABLE_STATUS:
+                    raise RuntimeError(f"Gemini TTS request failed ({response.status_code}): {detail}")
+                retry_reason = f"HTTP {response.status_code}: {detail}"
+            logger.warning(
+                "Retryable Gemini TTS chunk failure audio_id=%s post_id=%s chunk=%s/%s attempt=%s/%s error=%s",
+                audio_id,
+                post_id,
+                index,
+                total_chunks,
+                attempt,
+                max_attempts,
+                retry_reason,
+            )
+            if attempt >= max_attempts:
+                raise RuntimeError(f"Gemini TTS request failed after {max_attempts} attempts: {retry_reason}")
+            time.sleep(min(2 ** (attempt - 1), 8))
+
+        pcm, sample_rate, channels, sample_width = _read_wav_pcm(_gemini_tts_wav_from_response(response.json()))
+        if sample_width != 2:
+            raise RuntimeError(f"Gemini TTS returned unsupported sample width {sample_width}")
+        if audio_format is None:
+            audio_format = (sample_rate, channels, sample_width)
+        elif audio_format != (sample_rate, channels, sample_width):
+            raise RuntimeError("Gemini TTS returned chunks with different audio formats")
+        if pcm_parts and chunk_pause_seconds > 0:
+            pcm_parts.append(b"\x00" * (int(sample_rate * chunk_pause_seconds) * channels * sample_width))
+        pcm_parts.append(pcm)
+
+    sample_rate, channels, _ = audio_format
+    return encode_pcm_to_mp3(b"".join(pcm_parts), sample_rate, channels), "audio/mpeg"
 
 
 def split_text_for_tts(text: str) -> list[str]:
