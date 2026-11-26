@@ -12256,3 +12256,101 @@ textarea.cal-input {
   gap: 12px;
   margin-top: 8px;
 }
+
+.admin-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.admin-style-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  overflow: hidden;
+}
+.admin-style-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 280px;
+  padding: 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+.admin-style-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.admin-style-stage.backdrop-checker {
+  background-color: #efeee9;
+  background-image:
+    linear-gradient(45deg, #dcdad2 25%, transparent 25%),
+    linear-gradient(-45deg, #dcdad2 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #dcdad2 75%),
+    linear-gradient(-45deg, transparent 75%, #dcdad2 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+.admin-style-stage.backdrop-paper {
+  background: var(--paper);
+}
+.admin-style-stage.backdrop-warm {
+  background: var(--paper-3);
+}
+.admin-style-stage.backdrop-dark {
+  background: #1a1a1d;
+}
+.admin-style-body {
+  flex: 1 1 auto;
+  padding: 18px 20px 14px;
+}
+.admin-style-title {
+  margin: 10px 0 6px;
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.admin-style-desc {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-mute);
+}
+.admin-style-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--hairline);
+}
+.admin-style-thumb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-style-mini {
+  margin-bottom: 0;
+  padding: 4px;
+}
+.admin-style-mini img {
+  object-fit: contain;
+}
+.admin-style-thumb-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+@media (max-width: 820px) {
+  .admin-style-grid {
+    grid-template-columns: 1fr;
+  }
+}
