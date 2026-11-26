@@ -12174,6 +12174,9 @@ textarea.cal-input {
   background: rgba(255, 255, 255, 0.78);
   overflow: hidden;
 }
+.admin-style-card.is-approved {
+  border-color: var(--accent);
+}
 .admin-style-stage {
   display: flex;
   align-items: center;

@@ -62,10 +62,11 @@ const ART_STYLE_MOCKUPS = [
   {
     id: "ink-wash",
     code: "Varianta 02",
+    approved: true,
     name: "Tuș și laviu sepia",
     medium: "Peniță și laviu · Jurnal literar",
     imageUrl: "/assets/style-mockups/manuscript-ink-wash.png",
-    description: "Hașuri fine în peniță și laviu de tuș sepia-grafit, cu un singur accent cald de teracotă (#b84a2a) pe sigiliu. Se integrează nativ în estetica monocromă a platformei Călimara."
+    description: "Hașuri fine în peniță și laviu de tuș sepia-grafit, cu un singur accent cald de teracotă (#b84a2a) pe sigiliu. Stilul oficial aprobat pentru toate ilustrațiile viitoare (vezi design/art-style.md)."
   },
   {
     id: "watercolor",
@@ -2155,13 +2156,14 @@ function AdminDashboardView({ user }) {
         >
           <div className="admin-style-grid">
             {ART_STYLE_MOCKUPS.map((mockup) => (
-              <article className="admin-style-card" key={mockup.id}>
+              <article className={`admin-style-card${mockup.approved ? " is-approved" : ""}`} key={mockup.id}>
                 <div className={`admin-style-stage backdrop-${styleBackdrop}`}>
                   <img src={mockup.imageUrl} alt={`${mockup.name} — manuscris victorian`} loading="lazy" />
                 </div>
                 <div className="admin-style-body">
                   <div className="admin-badges">
                     <span className="piece-card-status">{mockup.code}</span>
+                    {mockup.approved ? <span className="piece-card-status status-ok">Stil aprobat</span> : null}
                     <span className="piece-card-status">{mockup.medium}</span>
                   </div>
                   <h3 className="admin-style-title">{mockup.name}</h3>
