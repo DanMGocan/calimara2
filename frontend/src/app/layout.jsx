@@ -713,8 +713,6 @@ const SITE_FEEDBACK_ENTRIES = {
   bug: { kind: "bug", label: "Gândaci", Icon: LiaBugSolid }
 };
 const CALIMARA_FACEBOOK_URL = "https://www.facebook.com/calimararo";
-const PLATFORM_TEST_BANNER_PREFIX = "Platforma este în perioada de testare. Vă rog dați un follow pe ";
-const PLATFORM_TEST_BANNER_SUFFIX = " pentru a rămâne la curent cu ultimele noutăți și a afla mai multe despre lansarea oficială";
 const EU_FOOTER_MESSAGE = "Dezvoltat și hostat, cu dragoste, în Uniunea Europeană";
 
 function feedbackClientContext() {
@@ -836,21 +834,6 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
         )}
       </section>
     </div>
-  );
-}
-
-export function SiteTestBanner() {
-  return (
-    <aside className="site-test-banner" aria-label="Anunț platformă">
-      <a href={CALIMARA_FACEBOOK_URL} className="site-test-banner-icon-link" target="_blank" rel="noreferrer" aria-label="Urmărește Călimara pe Facebook">
-        <FaFacebookF aria-hidden="true" />
-      </a>
-      <span className="site-test-banner-text">
-        {PLATFORM_TEST_BANNER_PREFIX}
-        <a href={CALIMARA_FACEBOOK_URL} className="site-test-banner-inline-link" target="_blank" rel="noreferrer">Facebook</a>
-        {PLATFORM_TEST_BANNER_SUFFIX}
-      </span>
-    </aside>
   );
 }
 

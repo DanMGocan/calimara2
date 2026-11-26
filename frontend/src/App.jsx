@@ -5,7 +5,7 @@ import { fetchPlatformStats } from "./api/stats.js";
 import { fetchMe } from "./api/users.js";
 import { AuthLoginModal, AuthModalProvider } from "./app/auth-modal.jsx";
 import { AUTHOR_SUBDOMAIN_ROUTES } from "./app/constants.js";
-import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu, SiteTestBanner } from "./app/layout.jsx";
+import { AdSenseProvider, ErrorBoundary, FloatingBackgroundShapes, Footer, NavBar, NotificationPanel, PageShell, SideMenu } from "./app/layout.jsx";
 import { ListeningOverlay, useListeningPlayer } from "./app/listening-player.jsx";
 import { RouteView, routeForLocation } from "./app/router.jsx";
 import { blogUrl, canUseAuthorSubdomains, mainPath, subdomainUsername } from "./app/paths.js";
@@ -252,7 +252,6 @@ export function App() {
           <BackgroundQuote />
         </div>
         <div className="site-top-stack">
-          <SiteTestBanner />
           <NavBar
             loggedIn={loggedIn}
             user={auth.user}

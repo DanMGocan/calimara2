@@ -9,7 +9,6 @@ const DOC_SECTIONS = [
       "run.py pornește aplicația, reconstruiește schema doar când CALIMARA_RESET_DATABASE este activ, iar serviciul systemd păstrează datele existente la restart.",
       "Serviciul systemd setează workerii Uvicorn, pool-ul PostgreSQL, cache-ul public de 60s și pragul de slow request folosite de panoul Performanță.",
       "React decide ruta în frontend/src/app/router.jsx; backendul servește index.html pentru rutele SPA și păstrează /api pentru JSON.",
-      "Shell-ul global afișează bannerul galben de testare deasupra navigației, cu link către pagina Facebook Călimara.",
       "Frontendul încarcă Finlandica Headline din Google Fonts și o folosește prin variabilele globale --serif, --sans și --mono din frontend/src/index.css.",
       "Autentificarea folosește sesiunea calimara_sess, epoch-ul DB invalidează sesiunile vechi după reset, iar subdomeniile de autor sunt rutate prin host.",
       "schema.sql este sursa de adevăr pentru structura DB; proiectul nu folosește migrații SQL versionate în fluxul curent."

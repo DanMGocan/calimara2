@@ -196,69 +196,6 @@ input, textarea, select {
   width: 100%;
 }
 
-.site-test-banner {
-  width: 100%;
-  min-height: 34px;
-  padding: 7px max(18px, env(safe-area-inset-right)) 7px max(18px, env(safe-area-inset-left));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: #ffd400;
-  color: #000;
-  font-family: var(--sans);
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.25;
-  text-align: center;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
-}
-
-.site-test-banner-text {
-  min-width: 0;
-}
-
-.site-test-banner-icon-link {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid #000;
-  background: #000;
-  color: #000;
-  border-radius: 4px;
-}
-
-.site-test-banner-icon-link svg {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  color: #ffd400;
-}
-
-.site-test-banner-inline-link {
-  color: #000;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  white-space: nowrap;
-}
-
-.site-test-banner-icon-link:hover,
-.site-test-banner-icon-link:focus-visible,
-.site-test-banner-inline-link:hover,
-.site-test-banner-inline-link:focus-visible {
-  color: #000;
-  text-decoration-thickness: 2px;
-}
-
-.site-test-banner-icon-link:focus-visible,
-.site-test-banner-inline-link:focus-visible {
-  outline: 2px solid #000;
-  outline-offset: 2px;
-}
-
 /* ───────── Nav ───────── */
 .nav {
   position: relative;
@@ -9525,22 +9462,6 @@ textarea.cal-input {
     transform: none;
   }
   .nav { padding: 0 24px; }
-  .site-test-banner {
-    min-height: 30px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    gap: 9px;
-    font-size: 12px;
-    line-height: 1.2;
-  }
-  .site-test-banner-icon-link {
-    width: 20px;
-    height: 20px;
-  }
-  .site-test-banner-icon-link svg {
-    width: 11px;
-    height: 11px;
-  }
   .footer-post-actions-row,
   .site-foot { padding: 20px 24px; }
   .foot-inner {
@@ -9786,11 +9707,6 @@ textarea.cal-input {
 
   .site {
     background: rgba(255, 255, 255, 0.9);
-  }
-
-  .site-test-banner {
-    padding-left: max(12px, env(safe-area-inset-left));
-    padding-right: max(12px, env(safe-area-inset-right));
   }
 
   .bg-shape {
@@ -10768,19 +10684,6 @@ textarea.cal-input {
     width: 100vw;
     max-width: 100vw;
     overflow: hidden;
-  }
-
-  .site-test-banner {
-    align-items: flex-start;
-    gap: 7px;
-    font-size: 11px;
-    line-height: 1.15;
-  }
-
-  .site-test-banner-icon-link {
-    width: 18px;
-    height: 18px;
-    border-radius: 3px;
   }
 
   .nav-left {
