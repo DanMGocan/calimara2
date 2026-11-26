@@ -57,3 +57,13 @@ error.txt
 
 # Runtime logs and backup status
 logs/
+
+# AI agent instructions and notes (kept locally, not in the repo)
+AGENTS.md
+CLAUDE.md
+/.codex
+/docs/superpowers/
+
+# Generated test output
+frontend/playwright-report/
+frontend/test-results/
