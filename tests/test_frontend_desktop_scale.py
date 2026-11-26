@@ -15,16 +15,20 @@ def read(path: str) -> str:
     return (FRONTEND / path).read_text(encoding="utf-8")
 
 
-def test_desktop_pointers_get_ninety_percent_page_zoom():
+def test_page_zoom_is_switched_on_by_js_only_where_supported():
     styles = read("src/index.css")
+    zoom = read("src/app/zoom.js")
+    main = read("src/main.jsx")
 
     assert "--page-zoom: 1;" in styles
-    assert re.search(
-        r"@media screen and \(min-width: 1181px\) and \(hover: hover\) and \(pointer: fine\) \{\s*"
-        r":root \{ --page-zoom: 0\.9; \}",
-        styles,
-    )
     assert re.search(r"html \{[^}]*zoom: var\(--page-zoom\);", styles)
+    # The 0.9 value is no longer set by a CSS media query: browsers without currentCSSZoom
+    # (or without CSS zoom) must keep the unscaled layout.
+    assert "--page-zoom: 0.9" not in styles
+
+    assert "export const PAGE_ZOOM = 0.9;" in zoom
+    assert '"currentCSSZoom" in win.Element.prototype' in zoom
+    assert main.index("installPageZoom();") < main.index("createRoot(")
 
 
 def test_vite_compensates_viewport_units_for_page_zoom():
@@ -48,6 +52,16 @@ def test_viewport_unit_rewrite():
         "calc(100vh / var(--page-zoom, 1))": "calc(100vh / var(--page-zoom, 1))",
         "12px 1.5rem": "12px 1.5rem",
         "var(--h1vh)": "var(--h1vh)",
+        # Case-insensitive units; only lengths that are already divided are skipped.
+        "100VH": "calc(100VH / var(--page-zoom, 1))",
+        "min(100vw, calc(100vh / var(--page-zoom, 1)))": (
+            "min(calc(100vw / var(--page-zoom, 1)), calc(100vh / var(--page-zoom, 1)))"
+        ),
+        # Strings and url() arguments are never rewritten.
+        "url(/img/100vw.png) 10vh": "url(/img/100vw.png) calc(10vh / var(--page-zoom, 1))",
+        'url("/a b/50vh.png")': 'url("/a b/50vh.png")',
+        '"10vh"': '"10vh"',
+        "'5vw' 5vw": "'5vw' calc(5vw / var(--page-zoom, 1))",
     }
     script = (
         "import { divideViewportUnits } from './postcss-viewport-zoom.js';"
@@ -80,3 +94,99 @@ def test_js_positioning_divides_window_pixels_by_css_zoom():
 
     assert "const zoom = cssZoomOf(wrapper || editor.view.dom);" in editor
     assert "const rawLeft = (wrapperRect ? coords.left - wrapperRect.left : coords.left) / zoom;" in editor
+
+
+def run_node(script: str, *args: str) -> str:
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script, *args],
+        cwd=FRONTEND,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (FRONTEND / "node_modules" / "postcss").exists(),
+    reason="node or frontend dependencies are not installed",
+)
+def test_wide_media_queries_get_a_zoom_aware_twin():
+    css = (
+        "@media (min-width: 821px) and (max-width: 1536px) "
+        "{ :root { --nav-h: 58px; } .nav, html body { padding: 1px; } }\n"
+        "@media (max-width: 820px) { .nav { padding: 2px; } }\n"
+        "@media (max-height: 700px) { .stage { height: 50vh; } }\n"
+    )
+    script = (
+        "import postcss from 'postcss';"
+        "import viewportZoom from './postcss-viewport-zoom.js';"
+        "const out = await postcss([viewportZoom()]).process(process.argv[1], { from: undefined });"
+        "console.log(out.css);"
+    )
+    out = run_node(script, css)
+
+    # The original query applies only without the scale, the twin (thresholds x 0.9) only with
+    # it. :where() keeps specificity unchanged.
+    assert (
+        "@media (min-width: 821px) and (max-width: 1536px) "
+        "{ :root:where(:not(.page-zoom-active)) { --nav-h: 58px; } "
+        ":where(html:not(.page-zoom-active)) .nav, html:where(:not(.page-zoom-active)) body"
+    ) in out
+    assert (
+        "@media (min-width: 738.9px) and (max-width: 1382.4px) "
+        "{ :root:where(.page-zoom-active) { --nav-h: 58px; } "
+        ":where(html.page-zoom-active) .nav, html:where(.page-zoom-active) body"
+    ) in out
+    # Width thresholds below the scale's 1181px trigger test the same either way.
+    assert "@media (max-width: 820px) { .nav { padding: 2px; } }" in out
+    assert "738px" not in out
+    # Height queries always shift under zoom; viewport units inside are still compensated.
+    assert (
+        "@media (max-height: 630px) "
+        "{ :where(html.page-zoom-active) .stage { height: calc(50vh / var(--page-zoom, 1)); } }"
+    ) in out
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_install_page_zoom_follows_support_and_the_desktop_query():
+    script = """
+import { installPageZoom, PAGE_ZOOM_CHANGE_EVENT } from './src/app/zoom.js';
+function fakeWindow({ supported, matches }) {
+  const classes = new Set(); const style = new Map(); const listeners = []; let events = 0;
+  const query = { matches, addEventListener: (_, fn) => listeners.push(fn), removeEventListener() {} };
+  function Element() {}
+  Element.prototype = supported ? { currentCSSZoom: 1 } : {};
+  const win = {
+    Element,
+    Event: class { constructor(type) { this.type = type; } },
+    matchMedia: () => query,
+    dispatchEvent: (e) => { if (e.type === PAGE_ZOOM_CHANGE_EVENT) events += 1; },
+    document: { documentElement: {
+      classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) },
+      style: { setProperty: (k, v) => style.set(k, v), removeProperty: (k) => style.delete(k) },
+    } },
+  };
+  const state = () => ({ active: classes.has('page-zoom-active'), zoom: style.get('--page-zoom') ?? null, events });
+  return { win, query, listeners, state };
+}
+const results = {};
+let f = fakeWindow({ supported: false, matches: true });
+installPageZoom(f.win); results.unsupported = f.state();
+f = fakeWindow({ supported: true, matches: true });
+installPageZoom(f.win); results.desktop = f.state();
+f.query.matches = false; f.listeners.forEach((fn) => fn()); results.pointerRemoved = f.state();
+console.log(JSON.stringify(results));
+"""
+    results = json.loads(run_node(script))
+
+    assert results["unsupported"] == {"active": False, "zoom": None, "events": 0}
+    assert results["desktop"] == {"active": True, "zoom": "0.9", "events": 1}
+    assert results["pointerRemoved"] == {"active": False, "zoom": None, "events": 2}
+
+
+def test_background_shapes_remeasure_when_page_zoom_changes():
+    layout = read("src/app/layout.jsx")
+
+    assert "window.addEventListener(PAGE_ZOOM_CHANGE_EVENT, handleResize);" in layout
+    assert "window.removeEventListener(PAGE_ZOOM_CHANGE_EVENT, handleResize);" in layout
