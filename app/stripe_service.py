@@ -1,6 +1,8 @@
+import json
 import os
 from decimal import Decimal, InvalidOperation
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import stripe
 
@@ -99,7 +101,9 @@ CURRENCY_SYMBOLS = {
     "eur": "€",
     "usd": "$",
     "gbp": "£",
+    "ron": "lei",
 }
+FREE_TIER_PRICE_LABEL = "0 lei"
 
 
 def ensure_enabled() -> None:
@@ -183,7 +187,7 @@ def _stripe_price_display(price) -> str:
             return PRICE_UNAVAILABLE_LABEL
     except (InvalidOperation, TypeError, ValueError):
         return PRICE_UNAVAILABLE_LABEL
-    currency = str(_object_value(price, "currency", "eur") or "eur")
+    currency = str(_object_value(price, "currency", "ron") or "ron")
     return _format_major_amount(amount, currency)
 
 
@@ -195,7 +199,7 @@ def _stripe_price_cadence(price) -> str:
 
 def _stripe_price_payload_for_tier(tier: str) -> dict:
     if tier == "free":
-        return {"price": "0 €", "cadence": "/ lună", "available": True}
+        return {"price": FREE_TIER_PRICE_LABEL, "cadence": "/ lună", "available": True}
     _refresh_config_from_env_if_enabled()
     if not STRIPE_ENABLED:
         return {"price": PRICE_UNAVAILABLE_LABEL, "cadence": "", "available": False}
@@ -230,10 +234,13 @@ def list_premium_plans() -> list[dict]:
 
 
 def subscription_tier_from_event_object(data) -> str:
+    """Tier for a subscription, from its current price.
+
+    The price wins over ``metadata.tier``: the metadata is written once at
+    Checkout, but customers can switch plans in the Customer Portal, which
+    changes the price and leaves the metadata stale.
+    """
     _refresh_config_from_env_if_enabled()
-    metadata_tier = (data.get("metadata") or {}).get("tier")
-    if metadata_tier in {"trubadur", "cronicar", "rapsod"}:
-        return metadata_tier
     items = ((data.get("items") or {}).get("data") or [])
     for item in items:
         price_id = (((item or {}).get("price") or {}).get("id"))
@@ -241,8 +248,11 @@ def subscription_tier_from_event_object(data) -> str:
             return "rapsod"
         if price_id and PRICE_ID_CRONICAR and price_id == PRICE_ID_CRONICAR:
             return "cronicar"
-        if price_id and price_id == PRICE_ID_TRUBADUR:
+        if price_id and PRICE_ID_TRUBADUR and price_id == PRICE_ID_TRUBADUR:
             return "trubadur"
+    metadata_tier = (data.get("metadata") or {}).get("tier")
+    if metadata_tier in {"trubadur", "cronicar", "rapsod"}:
+        return metadata_tier
     return "trubadur"
 
 
@@ -257,20 +267,137 @@ def create_checkout_session(customer_id: str, user_id: int, tier: str = "trubadu
         success_url=SUCCESS_URL,
         cancel_url=CANCEL_URL,
         metadata={"user_id": str(user_id), "tier": tier},
-        subscription_data={"metadata": {"user_id": str(user_id), "tier": tier}},
+        subscription_data={
+            "metadata": {"user_id": str(user_id), "tier": tier},
+            # Flexible billing mode: Stripe's recommended default for new
+            # subscriptions (accurate proration on upgrades/downgrades).
+            "billing_mode": {"type": "flexible"},
+        },
     )
     return session.url
 
 
 def create_billing_portal_session(customer_id: str) -> str:
     ensure_enabled()
-    session = stripe.billing_portal.Session.create(
-        customer=customer_id,
-        return_url=PORTAL_RETURN_URL,
-    )
+    params = {"customer": customer_id, "return_url": PORTAL_RETURN_URL}
+    # Optional: pin the portal configuration created by scripts/stripe_bootstrap.py
+    # (plan switching between tiers). Without it Stripe uses the account default.
+    configuration = os.getenv("STRIPE_PORTAL_CONFIGURATION_ID", "").strip()
+    if configuration:
+        params["configuration"] = configuration
+    session = stripe.billing_portal.Session.create(**params)
     return session.url
 
 
-def verify_webhook(payload: bytes, sig_header: str):
+# ---------- "Cumpără-mi o cafea": one-time support, any quantity ----------
+
+COFFEE_KIND = "coffee"
+COFFEE_MAX_QUANTITY = 20
+
+
+def coffee_price_id() -> str:
+    return os.getenv("STRIPE_PRICE_ID_CAFEA", "").strip()
+
+
+def _coffee_success_url() -> str:
+    explicit = os.getenv("STRIPE_COFFEE_SUCCESS_URL", "").strip()
+    if explicit:
+        return explicit
+    parts = urlsplit(SUCCESS_URL)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "cafea=multumim", ""))
+
+
+def coffee_offer() -> dict:
+    """Price of one coffee, for the premium page; unavailable if not configured."""
+    unavailable = {"available": False, "price": PRICE_UNAVAILABLE_LABEL, "unit_amount": None,
+                   "currency": None, "max_quantity": COFFEE_MAX_QUANTITY}
+    _refresh_config_from_env_if_enabled()
+    price_id = coffee_price_id()
+    if not STRIPE_ENABLED or not price_id:
+        return unavailable
+    try:
+        price = stripe.Price.retrieve(price_id)
+    except Exception:
+        return unavailable
+    unit_amount = _object_value(price, "unit_amount")
+    price_text = _stripe_price_display(price)
+    if not _object_value(price, "active", True) or unit_amount is None or price_text == PRICE_UNAVAILABLE_LABEL:
+        return unavailable
+    return {
+        "available": True,
+        "price": price_text,
+        "unit_amount": int(unit_amount),
+        "currency": str(_object_value(price, "currency", "ron")),
+        "max_quantity": COFFEE_MAX_QUANTITY,
+    }
+
+
+def create_coffee_checkout_session(
+    quantity: int,
+    user_id: Optional[int] = None,
+    customer_id: Optional[str] = None,
+) -> str:
     ensure_enabled()
-    return stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
+    price_id = coffee_price_id()
+    if not price_id:
+        raise RuntimeError("STRIPE_PRICE_ID_CAFEA is required for coffee checkout.")
+    quantity = max(1, min(int(quantity), COFFEE_MAX_QUANTITY))
+    metadata = {"kind": COFFEE_KIND}
+    if user_id is not None:
+        metadata["user_id"] = str(user_id)
+    params = {
+        "mode": "payment",
+        "submit_type": "donate",
+        "locale": "ro",
+        "line_items": [{
+            "price": price_id,
+            "quantity": quantity,
+            "adjustable_quantity": {"enabled": True, "minimum": 1, "maximum": COFFEE_MAX_QUANTITY},
+        }],
+        "success_url": _coffee_success_url(),
+        "cancel_url": CANCEL_URL,
+        "metadata": metadata,
+        "payment_intent_data": {"metadata": metadata, "description": "Cumpără-mi o cafea – Călimara"},
+    }
+    if user_id is not None:
+        params["client_reference_id"] = str(user_id)
+    if customer_id:
+        params["customer"] = customer_id
+    session = stripe.checkout.Session.create(**params)
+    return session.url
+
+
+def is_paid_coffee_session(session: dict) -> bool:
+    return (
+        (session.get("metadata") or {}).get("kind") == COFFEE_KIND
+        and session.get("mode") == "payment"
+        and session.get("payment_status") == "paid"
+    )
+
+
+def coffee_quantity_from_session(session: dict) -> Optional[int]:
+    """Quantity bought; Stripe only includes line items when expanded, so this
+    may be None. Derive it from the amount when the unit price is known."""
+    amount_total = session.get("amount_total")
+    price_id = coffee_price_id()
+    if amount_total is None or not price_id:
+        return None
+    try:
+        unit = _object_value(stripe.Price.retrieve(price_id), "unit_amount")
+    except Exception:
+        return None
+    if not unit:
+        return None
+    return max(1, round(int(amount_total) / int(unit)))
+
+
+def verify_webhook(payload: bytes, sig_header: str) -> dict:
+    """Verify the Stripe signature and return the event as plain dicts.
+
+    stripe-python >= 15 returns StripeObjects that no longer support
+    ``.get()``; the webhook handlers work on dicts, so after the signature
+    check we parse the raw payload ourselves.
+    """
+    ensure_enabled()
+    stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
+    return json.loads(payload)

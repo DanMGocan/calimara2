@@ -111,6 +111,8 @@ INTEGRATIONS: list[dict[str, Any]] = [
             {"name": "STRIPE_PRICE_ID_TRUBADUR_MONTHLY", "required": True, "secret": False, "hint": "price_..."},
             {"name": "STRIPE_PRICE_ID_CRONICAR_MONTHLY", "required": False, "secret": False, "hint": "price_..."},
             {"name": "STRIPE_PRICE_ID_RAPSOD_MONTHLY", "required": False, "secret": False, "hint": "price_..."},
+            {"name": "STRIPE_PRICE_ID_CAFEA", "required": False, "secret": False, "hint": "price_... (plată unică, 12 RON / cafea)"},
+            {"name": "STRIPE_PORTAL_CONFIGURATION_ID", "required": False, "secret": False, "hint": "bpc_... (din scripts/stripe_bootstrap.py)"},
             {"name": "STRIPE_SUCCESS_URL", "required": True, "secret": False, "hint": "deja completat"},
             {"name": "STRIPE_CANCEL_URL", "required": True, "secret": False, "hint": "deja completat"},
             {"name": "STRIPE_CUSTOMER_PORTAL_RETURN_URL", "required": True, "secret": False, "hint": "deja completat"},
@@ -124,6 +126,7 @@ INTEGRATIONS: list[dict[str, Any]] = [
             "Developers → Webhooks → Add endpoint: URL https://calimara.ro/api/stripe/notificare, cu evenimentele customer.subscription.created, customer.subscription.updated, customer.subscription.deleted și invoice.payment_failed.",
             "Deschide webhook-ul creat → „Signing secret” → copiază (whsec_...) în STRIPE_WEBHOOK_SECRET.",
             "Settings → Billing → Customer portal → activează portalul (permite anularea și schimbarea cardului).",
+            "Scurtătură: STRIPE_API_KEY=sk_... python scripts/stripe_bootstrap.py --webhook-url https://calimara.ro/api/stripe/notificare preia produsele existente (sau le creează), adaugă cafeaua de 12 RON, configurează portalul și webhook-ul și afișează liniile pentru .env.",
             "Setează STRIPE_ENABLED=True.",
         ],
         "notes": [
