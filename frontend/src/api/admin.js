@@ -120,6 +120,18 @@ export function replyAdminSiteFeedback(feedbackId, data) {
   return api.post(`/api/admin/site-feedback/${encodeURIComponent(feedbackId)}/reply`, data);
 }
 
+export function fetchAdminModerationWords() {
+  return api.get("/api/admin/moderation-words");
+}
+
+export function addAdminModerationWord(data) {
+  return api.post("/api/admin/moderation-words", data);
+}
+
+export function deleteAdminModerationWord(wordId) {
+  return api.delete(`/api/admin/moderation-words/${encodeURIComponent(wordId)}`);
+}
+
 export function fetchAdminPlatformAccess() {
   return api.get("/api/admin/platform-access");
 }

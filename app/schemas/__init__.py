@@ -3,7 +3,7 @@ from .users import UserBase, UserSetup, UserProfileUpdate, GoogleUserInfo, Faceb
 from .posts import PostBase, PostCreate, PostUpdate, Post, PostDraftSave, PostDraft, PostDraftList, PostReportReason, PostReportStatus, PostReportAction, PostReportCreate, PostReportReview, PostReport, CommentReactionType, CommentBase, CommentCreate, Comment, CommentReactionRequest, CommentReactionSummary, CommentReaction, Like
 from .writing import DiacriticsKind, DiacriticsTheatreCharacter, DiacriticsTheatreCharacterResponse, DiacriticsQuota, DiacriticsRequest, DiacriticsResponse, PostFormatRequest, PostFormatResponse
 from .messages import MessageCreate, MessageToUser, MessageBase, Message, ConversationBase, Conversation, ConversationSummary
-from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminStorageObjectRequest, AdminStorageObjectDelete, AdminStorageObjectCleanup, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminPlatformAccessUpdate, AdminPlatformAllowedEmailCreate, AdminInvitationCreate, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
+from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, ModerationActionRequest, SuspendUserRequest, AdminReasonRequest, AdminStorageObjectRequest, AdminStorageObjectDelete, AdminStorageObjectCleanup, AdminRoleUpdate, AdminPremiumUpdate, AdminGologaniAdjustment, AdminPlatformAccessUpdate, AdminPlatformAllowedEmailCreate, AdminModerationWordCreate, AdminInvitationCreate, AdminEmailAudience, AdminEmailPreviewRequest, AdminEmailCampaignCreate, AdminContentUpdate
 from .notifications import NotificationResponse
 from .friends import FriendshipStatus, FriendUserRef, FriendshipOut
 from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut, GologaniRewardSettingUpdate, GologaniRewardSettingOut
@@ -89,6 +89,7 @@ __all__ = [
     "AdminGologaniAdjustment",
     "AdminPlatformAccessUpdate",
     "AdminPlatformAllowedEmailCreate",
+    "AdminModerationWordCreate",
     "AdminInvitationCreate",
     "AdminEmailAudience",
     "AdminEmailPreviewRequest",

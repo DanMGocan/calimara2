@@ -117,6 +117,11 @@ class AdminPlatformAllowedEmailCreate(BaseModel):
     note: Optional[str] = Field(None, max_length=500)
 
 
+class AdminModerationWordCreate(BaseModel):
+    word: str = Field(..., min_length=1, max_length=100)
+    category: Literal["profanity", "hate_speech"] = "profanity"
+
+
 class AdminInvitationCreate(BaseModel):
     emails: List[EmailStr] = Field(..., min_length=1, max_length=200)
     premium_tier: AdminPremiumTier = "free"
