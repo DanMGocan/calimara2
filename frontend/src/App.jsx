@@ -291,11 +291,11 @@ export function App() {
         {footerPostActions?.post ? (
           <div className={`footer-post-actions-row ${footerPostActions.transitioning ? "is-reader-switching" : ""}`.trim()}>
             <PostActionTools
-              key={footerPostActions.key}
               post={footerPostActions.post}
               user={auth.user}
               onPostChange={footerPostActions.onPostChange}
               pdfHref={footerPostActions.pdfHref}
+              switching={Boolean(footerPostActions.transitioning)}
               className={`footer-post-tools ${footerPostActions.transitioning ? "is-reader-switching" : ""}`.trim()}
             />
           </div>

@@ -173,11 +173,76 @@ function PlaylistModal({
   );
 }
 
-function MetricCount({ value }) {
+const METRIC_SCRAMBLE_TICK_MS = 55;
+const METRIC_SCRAMBLE_SETTLE_MS = 560;
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
+// Replaces every digit after the first `lockedDigits` with a random one; separators stay put.
+function scrambleDigits(text, lockedDigits = 0) {
+  let index = 0;
+  return text.replace(/\d/g, (digit) => {
+    const locked = index < lockedDigits;
+    index += 1;
+    return locked ? digit : String(Math.floor(Math.random() * 10));
+  });
+}
+
+/**
+ * Slot-machine counter: while `spinning` the digits roll randomly, and whenever
+ * the value changes (or spinning stops) they lock in left to right on the real value.
+ */
+function MetricCount({ value, spinning = false }) {
   const text = String(value ?? "");
+  const [display, setDisplay] = useState(text);
+  const settledRef = useRef(text);
+  const wasSpinningRef = useRef(false);
+
+  useEffect(() => {
+    const wasSpinning = wasSpinningRef.current;
+    wasSpinningRef.current = spinning;
+
+    if (prefersReducedMotion()) {
+      settledRef.current = text;
+      setDisplay(text);
+      return undefined;
+    }
+
+    if (spinning) {
+      setDisplay(scrambleDigits(text));
+      const timer = window.setInterval(() => setDisplay(scrambleDigits(text)), METRIC_SCRAMBLE_TICK_MS);
+      return () => window.clearInterval(timer);
+    }
+
+    if (!wasSpinning && settledRef.current === text) {
+      setDisplay(text);
+      return undefined;
+    }
+
+    settledRef.current = text;
+    const digitCount = (text.match(/\d/g) || []).length;
+    const start = performance.now();
+    setDisplay(scrambleDigits(text));
+    const timer = window.setInterval(() => {
+      const progress = (performance.now() - start) / METRIC_SCRAMBLE_SETTLE_MS;
+      if (progress >= 1) {
+        window.clearInterval(timer);
+        setDisplay(text);
+        return;
+      }
+      setDisplay(scrambleDigits(text, Math.floor(progress * (digitCount + 1))));
+    }, METRIC_SCRAMBLE_TICK_MS);
+    return () => {
+      window.clearInterval(timer);
+      setDisplay(text);
+    };
+  }, [text, spinning]);
+
   return (
-    <span className="react-count metric-count" key={text}>
-      {text}
+    <span className={`react-count metric-count ${display !== text ? "is-scrambling" : ""}`.trim()}>
+      {display}
     </span>
   );
 }
@@ -425,7 +490,7 @@ function CommentPanel({
   );
 }
 
-export function PostActionTools({ post, user, onPostChange, pdfHref = "#", className = "" }) {
+export function PostActionTools({ post, user, onPostChange, pdfHref = "#", className = "", switching = false }) {
   const { openAuthModal } = useAuthModal();
   const [postState, setPostState] = useState(post);
   const [busy, setBusy] = useState("");
@@ -857,19 +922,19 @@ export function PostActionTools({ post, user, onPostChange, pdfHref = "#", class
       <div className="piece-actions post-engagement-row" aria-label="Acțiuni text">
         <button className={`react-btn react-super ${postState.viewer_super_liked && !ownPost ? "on" : ""}`} type="button" onClick={handleSuperLike} disabled={ownPost || Boolean(postState.viewer_super_liked) || busy === "super"} aria-pressed={Boolean(postState.viewer_super_liked) && !ownPost} aria-label={`${superLikesLabel}: ${superLikesCount}${ownPost ? `. ${ownPostSuperLikeMessage}` : postState.viewer_super_liked ? ". Ai super-apreciat deja acest text." : ""}`} title={ownPost ? ownPostSuperLikeMessage : postState.viewer_super_liked ? "Ai super-apreciat deja acest text" : superLikesLabel}>
           <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
-          <MetricCount value={superLikesCount} />
+          <MetricCount value={superLikesCount} spinning={switching} />
         </button>
         <button className={`react-btn react-like ${liked ? "on" : ""}`} type="button" onClick={handleLike} disabled={ownPost || liked || busy === "like"} aria-pressed={liked} aria-label={`${likesLabel}: ${likesCount}${ownPost ? `. ${ownPostLikeMessage}` : liked ? ". Ai apreciat deja acest text." : ""}`} title={ownPost ? ownPostLikeMessage : liked ? "Ai apreciat deja acest text" : likesLabel}>
           <FaHeart className="react-symbol" aria-hidden="true" focusable="false" />
-          <MetricCount value={likesCount} />
+          <MetricCount value={likesCount} spinning={switching} />
         </button>
         <span className="react-btn react-stat" title={viewsLabel} aria-label={`${viewsLabel}: ${viewsCount}`}>
           <FiEye className="react-symbol" aria-hidden="true" focusable="false" />
-          <MetricCount value={viewsCount} />
+          <MetricCount value={viewsCount} spinning={switching} />
         </span>
         <button className="react-btn react-comments" type="button" onClick={() => setCommentOpen((open) => !open)} aria-expanded={commentOpen} aria-controls={`comments-${postState.id}`} aria-label={`${commentsLabel}: ${commentsCountLabel}`} title={commentsLabel}>
           <FiMessageCircle className="react-symbol" aria-hidden="true" focusable="false" />
-          <MetricCount value={commentsCountLabel} />
+          <MetricCount value={commentsCountLabel} spinning={switching} />
         </button>
         <a className="react-btn react-link post-pdf-download" href={pdfHref} download={filename} aria-label={downloadLabel} title={downloadLabel}>
           <FiDownload aria-hidden="true" focusable="false" />
