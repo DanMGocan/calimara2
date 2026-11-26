@@ -16,9 +16,12 @@ Therefore:
   are the integrator doing the deploy steps in section 3.
 - **Never run `python run.py`** (without `--serve` it restarts the live service).
   Never set `CALIMARA_RESET_DATABASE=true` (it rebuilds the database from `schema.sql`).
-- **Never connect to the database** from a feature branch. That rules out `scripts/seed.py`,
-  `scripts/e2e_data.py`, any `scripts/process_*`/`send_*`/`aggregate_*` job, and
-  `scripts/test_all.py` without `--skip-browser` (its browser E2E seeds the production DB).
+- Agents **may connect to and change the production database** when a task needs it
+  (the site has no real users yet). Before any write, take a backup:
+  `sudo -u postgres pg_dump -Fc calimara_db > /home/dan/backups/calimara_db-$(date +%Y%m%d-%H%M%S).dump`.
+  Run writes as the table owner (`SET ROLE calimara_user`) and mention what you changed in
+  your report. Scripts such as `scripts/seed.py`, `scripts/e2e_data.py` and the browser
+  E2E in `scripts/test_all.py` write to this database, so only run them on purpose.
 - Never copy `.env` or `keys/` into a worktree, never print secrets, never commit them.
 - Never force-push, never rewrite `main` history, never delete branches you did not create
   (the integrator may delete branches it merged).
