@@ -1358,7 +1358,7 @@ CREATE INDEX idx_shop_items_slug ON shop_items(slug);
 CREATE INDEX idx_shop_items_active_order ON shop_items(is_active, sort_order, id);
 CREATE INDEX idx_shop_items_slot ON shop_items(slot);
 
-INSERT INTO shop_items (slug, name, description, price, slot, sort_order)
+INSERT INTO shop_items (slug, name, description, price, slot, asset_url, sort_order)
 VALUES
     (
         'manuscrisul-scrisorii-a-iii-a',
@@ -1366,6 +1366,7 @@ VALUES
         'Un manuscris de vitrină pentru profilul tău.',
         120,
         'profile_badge',
+        NULL,
         10
     ),
     (
@@ -1374,7 +1375,35 @@ VALUES
         'Un costum literar pentru apariții de cenaclu.',
         250,
         'costume',
+        NULL,
         20
+    ),
+    (
+        'sicriul-de-plumb-al-lui-bacovia',
+        'Sicriul de plumb al lui Bacovia',
+        '„Dormeau adânc sicriele de plumb...” — artefact simbolist din universul lui George Bacovia.',
+        220,
+        'profile_badge',
+        '/assets/items/profile_badge/sicriul-de-plumb-al-lui-bacovia.png',
+        40
+    ),
+    (
+        'dintele-de-balena-al-lui-marin-sorescu',
+        'Dintele de balenă al lui Marin Sorescu',
+        'O relicvă gravată din burta chitului lui Iona, în spiritul lui Marin Sorescu.',
+        190,
+        'profile_badge',
+        '/assets/items/profile_badge/dintele-de-balena-al-lui-marin-sorescu.png',
+        50
+    ),
+    (
+        'portretul-veronicai-al-lui-mihai-eminescu',
+        'Portretul Veronicăi al lui Mihai Eminescu',
+        'Un medalion oval de epocă păstrând chipul Veronicăi Micle, muza lui Mihai Eminescu.',
+        240,
+        'profile_badge',
+        '/assets/items/profile_badge/portretul-veronicai-al-lui-mihai-eminescu.png',
+        60
     );
 
 -- ===================================

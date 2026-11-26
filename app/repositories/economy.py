@@ -82,6 +82,33 @@ DEFAULT_SHOP_ITEMS = [
         "slot": "costume",
         "sort_order": 20,
     },
+    {
+        "slug": "sicriul-de-plumb-al-lui-bacovia",
+        "name": "Sicriul de plumb al lui Bacovia",
+        "description": "„Dormeau adânc sicriele de plumb...” — artefact simbolist din universul lui George Bacovia.",
+        "price": 220,
+        "slot": "profile_badge",
+        "asset_url": "/assets/items/profile_badge/sicriul-de-plumb-al-lui-bacovia.png",
+        "sort_order": 40,
+    },
+    {
+        "slug": "dintele-de-balena-al-lui-marin-sorescu",
+        "name": "Dintele de balenă al lui Marin Sorescu",
+        "description": "O relicvă gravată din burta chitului lui Iona, în spiritul lui Marin Sorescu.",
+        "price": 190,
+        "slot": "profile_badge",
+        "asset_url": "/assets/items/profile_badge/dintele-de-balena-al-lui-marin-sorescu.png",
+        "sort_order": 50,
+    },
+    {
+        "slug": "portretul-veronicai-al-lui-mihai-eminescu",
+        "name": "Portretul Veronicăi al lui Mihai Eminescu",
+        "description": "Un medalion oval de epocă păstrând chipul Veronicăi Micle, muza lui Mihai Eminescu.",
+        "price": 240,
+        "slot": "profile_badge",
+        "asset_url": "/assets/items/profile_badge/portretul-veronicai-al-lui-mihai-eminescu.png",
+        "sort_order": 60,
+    },
 ]
 
 class EconomyError(Exception):

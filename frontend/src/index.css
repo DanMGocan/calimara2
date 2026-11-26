@@ -9196,6 +9196,7 @@ textarea.cal-input {
   align-items: center;
   justify-content: center;
   margin-bottom: 14px;
+  padding: 4px;
   border: 1px solid var(--hairline-strong);
   border-radius: 8px;
   background: linear-gradient(135deg, #fff 0%, #f3f2ee 55%, rgba(184, 74, 42, 0.12) 100%);
@@ -9204,7 +9205,7 @@ textarea.cal-input {
 .cosmetic-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 .cosmetic-preview span {
   font-family: var(--serif);
