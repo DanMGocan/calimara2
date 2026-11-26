@@ -5,7 +5,7 @@ import { AUTH_GOOGLE_PATH, activatePasswordSignup, loginWithPassword, registerWi
 import { mainPath } from "./paths.js";
 
 // Must match PasswordRegisterRequest.password min_length in app/schemas/users.py.
-const MIN_SIGNUP_PASSWORD_LENGTH = 10;
+const MIN_SIGNUP_PASSWORD_LENGTH = 8;
 
 const AuthModalContext = createContext({
   openAuthModal: null
@@ -139,7 +139,7 @@ export function AuthLoginModal({ open, returnTo, onClose, onAuthenticated }) {
         <div className="piece-card-kicker">cont</div>
         <h2 id="auth-modal-title" className="auth-modal-title">Cont utilizator</h2>
         <p className="auth-modal-copy">
-          Dacă ai deja un cont, te poți loga aici cu datele tale. Dacă nu ai cont, introdu adresa de e-mail dorită și o parolă de cel puțin 10 caractere și apasă pe Creează cont. Alternativ, te poți loga prin Google.
+          Dacă ai deja un cont, te poți loga aici cu datele tale. Dacă nu ai cont, introdu adresa de e-mail dorită și o parolă de cel puțin 8 caractere și apasă pe Creează cont. Alternativ, te poți loga prin Google.
         </p>
         <form ref={formRef} className="auth-modal-form" onSubmit={submitLogin}>
           <input

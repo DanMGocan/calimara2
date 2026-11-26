@@ -47,15 +47,15 @@ def test_validation_error_list_is_shown_as_text_not_object():
             {
                 "type": "string_too_short",
                 "loc": ["body", "password"],
-                "msg": "String should have at least 10 characters",
+                "msg": "String should have at least 8 characters",
                 "input": "short",
-                "ctx": {"min_length": 10},
+                "ctx": {"min_length": 8},
             }
         ]
     }
     message = _client_error_message(422, body)
     assert "[object Object]" not in message
-    assert message == "String should have at least 10 characters"
+    assert message == "String should have at least 8 characters"
 
 
 def test_string_detail_is_passed_through():
