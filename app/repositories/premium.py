@@ -37,6 +37,12 @@ def clear_stripe_subscription(db: Session, user_id: int) -> None:
     )
     db.commit()
 
+def stripe_event_already_processed(db: Session, event_id: str) -> bool:
+    return (
+        db.query(models.StripeEvent.id).filter(models.StripeEvent.id == event_id).first()
+        is not None
+    )
+
 def record_stripe_event(db: Session, event_id: str, event_type: str) -> bool:
     """Return True if this is a new event; False if already processed."""
     existing = db.query(models.StripeEvent).filter(models.StripeEvent.id == event_id).first()

@@ -1,3 +1,4 @@
+import json
 import os
 from decimal import Decimal, InvalidOperation
 from typing import Optional
@@ -99,7 +100,9 @@ CURRENCY_SYMBOLS = {
     "eur": "€",
     "usd": "$",
     "gbp": "£",
+    "ron": "lei",
 }
+FREE_TIER_PRICE_LABEL = "0 lei"
 
 
 def ensure_enabled() -> None:
@@ -183,7 +186,7 @@ def _stripe_price_display(price) -> str:
             return PRICE_UNAVAILABLE_LABEL
     except (InvalidOperation, TypeError, ValueError):
         return PRICE_UNAVAILABLE_LABEL
-    currency = str(_object_value(price, "currency", "eur") or "eur")
+    currency = str(_object_value(price, "currency", "ron") or "ron")
     return _format_major_amount(amount, currency)
 
 
@@ -195,7 +198,7 @@ def _stripe_price_cadence(price) -> str:
 
 def _stripe_price_payload_for_tier(tier: str) -> dict:
     if tier == "free":
-        return {"price": "0 €", "cadence": "/ lună", "available": True}
+        return {"price": FREE_TIER_PRICE_LABEL, "cadence": "/ lună", "available": True}
     _refresh_config_from_env_if_enabled()
     if not STRIPE_ENABLED:
         return {"price": PRICE_UNAVAILABLE_LABEL, "cadence": "", "available": False}
@@ -230,10 +233,13 @@ def list_premium_plans() -> list[dict]:
 
 
 def subscription_tier_from_event_object(data) -> str:
+    """Tier for a subscription, from its current price.
+
+    The price wins over ``metadata.tier``: the metadata is written once at
+    Checkout, but customers can switch plans in the Customer Portal, which
+    changes the price and leaves the metadata stale.
+    """
     _refresh_config_from_env_if_enabled()
-    metadata_tier = (data.get("metadata") or {}).get("tier")
-    if metadata_tier in {"trubadur", "cronicar", "rapsod"}:
-        return metadata_tier
     items = ((data.get("items") or {}).get("data") or [])
     for item in items:
         price_id = (((item or {}).get("price") or {}).get("id"))
@@ -241,8 +247,11 @@ def subscription_tier_from_event_object(data) -> str:
             return "rapsod"
         if price_id and PRICE_ID_CRONICAR and price_id == PRICE_ID_CRONICAR:
             return "cronicar"
-        if price_id and price_id == PRICE_ID_TRUBADUR:
+        if price_id and PRICE_ID_TRUBADUR and price_id == PRICE_ID_TRUBADUR:
             return "trubadur"
+    metadata_tier = (data.get("metadata") or {}).get("tier")
+    if metadata_tier in {"trubadur", "cronicar", "rapsod"}:
+        return metadata_tier
     return "trubadur"
 
 
@@ -257,7 +266,12 @@ def create_checkout_session(customer_id: str, user_id: int, tier: str = "trubadu
         success_url=SUCCESS_URL,
         cancel_url=CANCEL_URL,
         metadata={"user_id": str(user_id), "tier": tier},
-        subscription_data={"metadata": {"user_id": str(user_id), "tier": tier}},
+        subscription_data={
+            "metadata": {"user_id": str(user_id), "tier": tier},
+            # Flexible billing mode: Stripe's recommended default for new
+            # subscriptions (accurate proration on upgrades/downgrades).
+            "billing_mode": {"type": "flexible"},
+        },
     )
     return session.url
 
@@ -271,6 +285,13 @@ def create_billing_portal_session(customer_id: str) -> str:
     return session.url
 
 
-def verify_webhook(payload: bytes, sig_header: str):
+def verify_webhook(payload: bytes, sig_header: str) -> dict:
+    """Verify the Stripe signature and return the event as plain dicts.
+
+    stripe-python >= 15 returns StripeObjects that no longer support
+    ``.get()``; the webhook handlers work on dicts, so after the signature
+    check we parse the raw payload ourselves.
+    """
     ensure_enabled()
-    return stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
+    stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
+    return json.loads(payload)
