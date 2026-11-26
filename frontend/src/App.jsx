@@ -301,7 +301,15 @@ export function App() {
           </div>
         ) : null}
         <Footer user={auth.user} authLoaded={auth.loaded} platformStats={platformStats} />
-        <SideMenu open={menuOpen} onClose={() => setMenuOpen(false)} user={auth.user} />
+        <SideMenu
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          user={auth.user}
+          notificationCount={notificationCount}
+          messageCount={messageCount}
+          onNotifications={openProfilePanel}
+          onOpenAudioPlayer={listeningPlayer.canListen ? listeningPlayer.openListening : undefined}
+        />
         <NotificationPanel
           open={profilePanelOpen}
           user={auth.user}
