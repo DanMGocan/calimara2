@@ -150,7 +150,7 @@ def test_diacritics_composers_offer_raw_submit_fallback():
     }
 
     expected = {
-        "auth": "Finalizează fără Diacritice",
+        "auth": 'onClick={() => submit(null, { skipDiacritics: true })} disabled={submitting}>\n              Finalizează\n',
         "create": "Publică fără Diacritice",
         "forum": "Publică fără Diacritice",
         "messages": "Trimite fără Diacritice",
@@ -163,6 +163,12 @@ def test_diacritics_composers_offer_raw_submit_fallback():
     missing = {name: label for name, label in expected.items() if label not in sources[name]}
 
     assert missing == {}
+
+
+def test_setup_raw_submit_button_is_plain_finalize():
+    source = (ROOT / "frontend" / "src" / "routes" / "auth.jsx").read_text(encoding="utf-8")
+
+    assert "Finalizează fără Diacritice" not in source
 
 
 def test_literal_frontend_links_have_router_entries():

@@ -234,7 +234,7 @@ function AuthSetupView() {
           <button className="cal-btn primary" type="submit" disabled={submitting}>{submitLabel()}</button>
           {canReviewDescription ? (
             <button className="cal-btn" type="button" onClick={() => submit(null, { skipDiacritics: true })} disabled={submitting}>
-              Finalizează fără Diacritice
+              Finalizează
             </button>
           ) : null}
         </div>
