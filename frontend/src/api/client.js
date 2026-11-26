@@ -7,6 +7,22 @@ export class ApiError extends Error {
   }
 }
 
+// FastAPI validation errors (422) send `detail` as a list of objects; turn any
+// non-string detail into readable text instead of "[object Object]".
+export function errorDetailMessage(detail) {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => (typeof item === "string" ? item : item?.msg))
+      .filter(Boolean);
+    return parts.length ? parts.join(" ") : "";
+  }
+  if (detail && typeof detail === "object") {
+    return typeof detail.message === "string" ? detail.message : "";
+  }
+  return "";
+}
+
 export async function request(path, options = {}) {
   const headers = {
     Accept: "application/json",
@@ -39,7 +55,7 @@ export async function request(path, options = {}) {
     let message = text || `Cererea a eșuat (${response.status}).`;
     try {
       const json = JSON.parse(text);
-      message = json.detail ?? json.message ?? message;
+      message = errorDetailMessage(json.detail) || errorDetailMessage(json.message) || `Cererea a eșuat (${response.status}).`;
     } catch {
       // Keep the server response text.
     }
