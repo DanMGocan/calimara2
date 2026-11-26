@@ -2,8 +2,11 @@ import os
 import logging
 import json
 import re
+import unicodedata
+import weakref
 from typing import Dict, Tuple, Optional
 from enum import Enum
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
@@ -58,7 +61,11 @@ class ModerationResult:
         self.details = details or {}
 
 
-# --- Romanian pattern matching (additional signal for Pass 2) ---
+# --- Romanian word list ---
+# Any match sends content straight to manual review (it skips the LLM review).
+# The live list is the `moderation_words` table, editable from the admin panel.
+# These built-in lists are the seed data and the fallback when no DB session is
+# available or the table does not exist yet.
 
 ROMANIAN_PROFANITY_PATTERNS = [
     "pula", "pulă", "muie", "futut", "cacat", "căcat", "nenorocit", "jegos",
@@ -72,17 +79,153 @@ ROMANIAN_HATE_SPEECH_PATTERNS = [
 ]
 
 
+# Old Romanian keyboard layouts type cedilla ş/ţ instead of comma-below ș/ț.
+_CEDILLA_TO_COMMA = str.maketrans({"ş": "ș", "ţ": "ț"})
+
+
+def _normalize_for_matching(value: str) -> str:
+    """NFC, lowercase, ş/ţ → ș/ț and single spaces, so words and text compare alike."""
+    value = unicodedata.normalize("NFC", str(value or "")).lower().translate(_CEDILLA_TO_COMMA)
+    return " ".join(value.split())
+
+
 def _count_pattern_matches(text: str, patterns: list[str]) -> int:
-    text_lower = text.lower()
+    normalized_text = _normalize_for_matching(text)
     count = 0
     for pattern in patterns:
-        escaped = re.escape(pattern.lower())
-        count += len(re.findall(rf"(?<!\w){escaped}(?!\w)", text_lower))
+        normalized_pattern = _normalize_for_matching(pattern)
+        if not normalized_pattern:
+            continue
+        escaped = re.escape(normalized_pattern)
+        count += len(re.findall(rf"(?<!\w){escaped}(?!\w)", normalized_text))
     return count
 
 
-def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
-    profanity_count = _count_pattern_matches(text, ROMANIAN_PROFANITY_PATTERNS)
+WORD_CATEGORY_PROFANITY = "profanity"
+WORD_CATEGORY_HATE_SPEECH = "hate_speech"
+WORD_CATEGORIES = (WORD_CATEGORY_PROFANITY, WORD_CATEGORY_HATE_SPEECH)
+MODERATION_WORD_MAX_LENGTH = 100
+MODERATION_WORDS_TABLE = "moderation_words"
+
+
+def default_wordlists() -> Dict[str, list[str]]:
+    return {
+        WORD_CATEGORY_PROFANITY: list(ROMANIAN_PROFANITY_PATTERNS),
+        WORD_CATEGORY_HATE_SPEECH: list(ROMANIAN_HATE_SPEECH_PATTERNS),
+    }
+
+
+def normalize_moderation_word(word: str) -> str:
+    return _normalize_for_matching(word)
+
+
+# Engines already known to have the table (it is never dropped), so the
+# schema inspection runs once per engine instead of once per moderated item.
+_engines_with_wordlist_table: "weakref.WeakSet" = weakref.WeakSet()
+
+
+def wordlist_table_available(db: Session) -> bool:
+    from . import admin
+
+    bind = db.get_bind()
+    engine = getattr(bind, "engine", bind)
+    try:
+        if engine in _engines_with_wordlist_table:
+            return True
+    except TypeError:
+        engine = None
+    if admin.db_table_exists(db, MODERATION_WORDS_TABLE):
+        if engine is not None:
+            try:
+                _engines_with_wordlist_table.add(engine)
+            except TypeError:
+                pass
+        return True
+    admin.warn_missing_table_once(
+        MODERATION_WORDS_TABLE,
+        "moderation uses the built-in word list until the migration has created it",
+    )
+    return False
+
+
+def load_wordlists(db: Optional[Session]) -> Dict[str, list[str]]:
+    """Return the active word lists, keyed by category."""
+    if db is None or not wordlist_table_available(db):
+        return default_wordlists()
+    from .models import ModerationWord
+
+    try:
+        rows = db.query(ModerationWord.word, ModerationWord.category).all()
+    except SQLAlchemyError:
+        logger.exception("Could not load moderation word list; using the built-in list")
+        db.rollback()
+        return default_wordlists()
+    lists: Dict[str, list[str]] = {category: [] for category in WORD_CATEGORIES}
+    for word, category in rows:
+        lists.setdefault(category, []).append(word)
+    return lists
+
+
+def list_moderation_words(db: Session) -> list:
+    if not wordlist_table_available(db):
+        return []
+    from .models import ModerationWord
+
+    try:
+        return (
+            db.query(ModerationWord)
+            .order_by(ModerationWord.category.asc(), ModerationWord.word.asc())
+            .all()
+        )
+    except SQLAlchemyError:
+        logger.exception("Could not list moderation words")
+        db.rollback()
+        return []
+
+
+def add_moderation_word(db: Session, *, word: str, category: str, actor_id: Optional[int] = None):
+    if not wordlist_table_available(db):
+        raise RuntimeError("Tabelul moderation_words lipsește. Rulează migrarea.")
+    from .models import ModerationWord
+
+    normalized = normalize_moderation_word(word)
+    if not normalized or not re.search(r"\w", normalized):
+        raise ValueError("Cuvântul trebuie să conțină cel puțin o literă sau cifră.")
+    if len(normalized) > MODERATION_WORD_MAX_LENGTH:
+        raise ValueError(f"Cuvântul poate avea cel mult {MODERATION_WORD_MAX_LENGTH} de caractere.")
+    if category not in WORD_CATEGORIES:
+        raise ValueError("Categorie invalidă.")
+    if db.query(ModerationWord).filter(ModerationWord.word == normalized).first():
+        raise ValueError("Cuvântul este deja în listă.")
+    row = ModerationWord(word=normalized, category=category, created_by=actor_id)
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Cuvântul este deja în listă.")
+    db.refresh(row)
+    return row
+
+
+def remove_moderation_word(db: Session, word_id: int) -> Optional[Dict]:
+    if not wordlist_table_available(db):
+        return None
+    from .models import ModerationWord
+
+    row = db.query(ModerationWord).filter(ModerationWord.id == word_id).first()
+    if not row:
+        return None
+    snapshot = {"id": row.id, "word": row.word, "category": row.category}
+    db.delete(row)
+    db.commit()
+    return snapshot
+
+
+def contains_romanian_profanity(text: str, patterns: Optional[list[str]] = None) -> Tuple[bool, float]:
+    if patterns is None:
+        patterns = ROMANIAN_PROFANITY_PATTERNS
+    profanity_count = _count_pattern_matches(text, patterns)
     if profanity_count == 0:
         return False, 0.0
     total_words = max(1, len(text.split()))
@@ -90,17 +233,21 @@ def contains_romanian_profanity(text: str) -> Tuple[bool, float]:
     return True, severity
 
 
-def contains_romanian_hate_speech(text: str) -> Tuple[bool, float]:
-    hate_count = _count_pattern_matches(text, ROMANIAN_HATE_SPEECH_PATTERNS)
+def contains_romanian_hate_speech(text: str, patterns: Optional[list[str]] = None) -> Tuple[bool, float]:
+    if patterns is None:
+        patterns = ROMANIAN_HATE_SPEECH_PATTERNS
+    hate_count = _count_pattern_matches(text, patterns)
     if hate_count == 0:
         return False, 0.0
     severity = min(1.0, hate_count * 0.8)
     return True, severity
 
 
-def romanian_content_signals(text: str) -> Dict:
-    has_profanity, profanity_score = contains_romanian_profanity(text)
-    has_hate, hate_score = contains_romanian_hate_speech(text)
+def romanian_content_signals(text: str, wordlists: Optional[Dict[str, list[str]]] = None) -> Dict:
+    if wordlists is None:
+        wordlists = default_wordlists()
+    has_profanity, profanity_score = contains_romanian_profanity(text, wordlists.get(WORD_CATEGORY_PROFANITY, []))
+    has_hate, hate_score = contains_romanian_hate_speech(text, wordlists.get(WORD_CATEGORY_HATE_SPEECH, []))
     return {
         "profanity_detected": has_profanity,
         "profanity_score": profanity_score,
@@ -258,7 +405,7 @@ def review_content_with_llm(text: str, flagged_categories: Dict, romanian_signal
 
 # --- Core two-pass moderation pipeline ---
 
-def _moderate_text(text: str) -> ModerationResult:
+def _moderate_text(text: str, db: Optional[Session] = None) -> ModerationResult:
     """
     Two-pass moderation pipeline:
       Pass 1 (Mistral Moderation 2): fast classifier
@@ -287,7 +434,7 @@ def _moderate_text(text: str) -> ModerationResult:
         # --- Pass 1: Classifier ---
         logger.info(f"Pass 1 (classifier): analyzing text ({len(text)} chars)")
         classification = classify_content(text)
-        romanian_signals = romanian_content_signals(text)
+        romanian_signals = romanian_content_signals(text, load_wordlists(db))
         local_score = max(
             romanian_signals["profanity_score"],
             romanian_signals["hate_speech_score"],
@@ -365,31 +512,31 @@ def _moderate_text(text: str) -> ModerationResult:
 
 # --- Public API (unchanged interface) ---
 
-def moderate_comment(content: str) -> ModerationResult:
+def moderate_comment(content: str, db: Optional[Session] = None) -> ModerationResult:
     plain_content = rich_text_to_plain_text(content)
     logger.info(f"Moderating comment ({len(plain_content)} chars)")
-    return _moderate_text(plain_content)
+    return _moderate_text(plain_content, db)
 
 
-def moderate_post(title: str, content: str) -> ModerationResult:
+def moderate_post(title: str, content: str, db: Optional[Session] = None) -> ModerationResult:
     logger.info(f"Moderating post: {title[:30]}...")
     full_text = f"Titlu: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
-    return _moderate_text(full_text)
+    return _moderate_text(full_text, db)
 
 
-def moderate_forum_thread(title: str, content: str) -> ModerationResult:
+def moderate_forum_thread(title: str, content: str, db: Optional[Session] = None) -> ModerationResult:
     logger.info(f"Moderating forum thread: {title[:30]}...")
     full_text = f"Titlu discuție: {title}\n\nConținut: {rich_text_to_plain_text(content)}"
-    return _moderate_text(full_text)
+    return _moderate_text(full_text, db)
 
 
-def moderate_forum_reply(content: str) -> ModerationResult:
+def moderate_forum_reply(content: str, db: Optional[Session] = None) -> ModerationResult:
     plain_content = rich_text_to_plain_text(content)
     logger.info(f"Moderating forum reply ({len(plain_content)} chars)")
-    return _moderate_text(plain_content)
+    return _moderate_text(plain_content, db)
 
 
-def moderate_theatre_entry(entry_type: str, content: str, character_name: Optional[str] = None) -> ModerationResult:
+def moderate_theatre_entry(entry_type: str, content: str, character_name: Optional[str] = None, db: Optional[Session] = None) -> ModerationResult:
     plain_content = rich_text_to_plain_text(content)
     label = {
         "scene_opening": "Deschidere de scenă",
@@ -400,15 +547,15 @@ def moderate_theatre_entry(entry_type: str, content: str, character_name: Option
     character_part = f"\nPersonaj: {character_name}" if character_name else ""
     full_text = f"{label}{character_part}\n\nConținut:\n{plain_content}"
     logger.info(f"Moderating theatre entry ({len(plain_content)} chars)")
-    return _moderate_text(full_text)
+    return _moderate_text(full_text, db)
 
 
-def moderate_stafeta_segment(content: str, title: Optional[str] = None) -> ModerationResult:
+def moderate_stafeta_segment(content: str, title: Optional[str] = None, db: Optional[Session] = None) -> ModerationResult:
     plain_content = rich_text_to_plain_text(content)
     title_part = f"Titlu ștafetă: {title}\n\n" if title else ""
     full_text = f"{title_part}Contribuție Ștafeta:\n{plain_content}"
     logger.info(f"Moderating stafeta segment ({len(plain_content)} chars)")
-    return _moderate_text(full_text)
+    return _moderate_text(full_text, db)
 
 
 def should_auto_approve(moderation_result: ModerationResult) -> bool:
@@ -493,7 +640,7 @@ def _queue_moderation_service_alert(
 
 
 def moderate_comment_with_logging(content: str, comment_id: int, user_id: Optional[int], db: Session) -> ModerationResult:
-    result = moderate_comment(content)
+    result = moderate_comment(content, db)
     _queue_moderation_service_alert(db, content_type="comment", content_id=comment_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "comment", comment_id, user_id, result)
@@ -503,7 +650,7 @@ def moderate_comment_with_logging(content: str, comment_id: int, user_id: Option
 
 
 def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: int, db: Session) -> ModerationResult:
-    result = moderate_post(title, content)
+    result = moderate_post(title, content, db)
     _queue_moderation_service_alert(db, content_type="post", content_id=post_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "post", post_id, user_id, result)
@@ -513,7 +660,7 @@ def moderate_post_with_logging(title: str, content: str, post_id: int, user_id: 
 
 
 def moderate_forum_thread_with_logging(title: str, content: str, thread_id: int, user_id: int, db: Session) -> ModerationResult:
-    result = moderate_forum_thread(title, content)
+    result = moderate_forum_thread(title, content, db)
     _queue_moderation_service_alert(db, content_type="forum_thread", content_id=thread_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "forum_thread", thread_id, user_id, result)
@@ -523,7 +670,7 @@ def moderate_forum_thread_with_logging(title: str, content: str, thread_id: int,
 
 
 def moderate_forum_reply_with_logging(content: str, reply_id: int, user_id: int, db: Session) -> ModerationResult:
-    result = moderate_forum_reply(content)
+    result = moderate_forum_reply(content, db)
     _queue_moderation_service_alert(db, content_type="forum_reply", content_id=reply_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "forum_reply", reply_id, user_id, result)
@@ -540,7 +687,7 @@ def moderate_theatre_entry_with_logging(
     db: Session,
     character_name: Optional[str] = None,
 ) -> ModerationResult:
-    result = moderate_theatre_entry(entry_type, content, character_name)
+    result = moderate_theatre_entry(entry_type, content, character_name, db)
     _queue_moderation_service_alert(db, content_type="theatre_entry", content_id=entry_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "theatre_entry", entry_id, user_id, result)
@@ -556,7 +703,7 @@ def moderate_stafeta_segment_with_logging(
     db: Session,
     title: Optional[str] = None,
 ) -> ModerationResult:
-    result = moderate_stafeta_segment(content, title)
+    result = moderate_stafeta_segment(content, title, db)
     _queue_moderation_service_alert(db, content_type="stafeta_segment", content_id=segment_id, user_id=user_id, result=result)
     try:
         log_moderation_decision(db, "stafeta_segment", segment_id, user_id, result)

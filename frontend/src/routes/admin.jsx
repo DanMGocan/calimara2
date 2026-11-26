@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminIntegrations, fetchAdminJobs, fetchAdminOverview, fetchAdminPerformanceHistory, fetchAdminPerformanceLive, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
+import { addAdminModerationWord, addAdminPlatformAllowedEmail, cancelAdminJob, cleanupAdminStorageObject, createAdminEmailCampaign, createAdminInvitations, deleteAdminContent, deleteAdminStorageObject, deleteAdminUser, deleteAdminModerationWord, deleteAdminPlatformAllowedEmail, fetchAdminAuditLog, fetchAdminContent, fetchAdminEmailCampaigns, fetchAdminIntegrations, fetchAdminJobs, fetchAdminModerationWords, fetchAdminOverview, fetchAdminPerformanceHistory, fetchAdminPerformanceLive, fetchAdminPlatformAccess, fetchAdminQaReport, fetchAdminSiteFeedback, fetchAdminSiteFeedbackThread, fetchAdminStorageObjects, fetchAdminUsers, moderateAdminContent, presignAdminStorageObject, previewAdminEmail, processAdminEmailOutbox, reactivateAdminUser, replyAdminSiteFeedback, resendAdminInvitation, retryAdminJob, revokeAdminInvitation, rollupAdminMetrics, sendAdminNotificationTestEmail, suspendAdminUser, updateAdminContent, updateAdminPlatformAccess, updateAdminSiteFeedback, updateAdminUserPremium, updateAdminUserRoles, adjustAdminUserGologani } from "../api/admin.js";
 import { createAdminShopItem, fetchAdminGologaniRewards, fetchAdminShopItems, updateAdminGologaniReward, updateAdminShopItem } from "../api/economy.js";
 import { fetchExtendedModerationStats, fetchModerationLogs, fetchModerationQueue, fetchModerationStats, fetchPendingModerationContent, fetchPostReports, moderateContent, reviewModerationLog, reviewPostReport } from "../api/moderation.js";
 import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, formatNumber, formatScore, htmlToText, slotLabel } from "../app/format.js";
@@ -35,12 +35,17 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: "Moderare",
-    items: ["pending", "flagged", "reports", "journal"]
+    items: ["pending", "flagged", "reports", "journal", "wordlist"]
   },
   {
     label: "Operațiuni",
     items: ["integrations", "economy", "premium", "storage", "performance", "jobs", "audit"]
   }
+];
+
+const MODERATION_WORD_CATEGORIES = [
+  { key: "profanity", label: "Limbaj vulgar și insulte", kicker: "limbaj vulgar" },
+  { key: "hate_speech", label: "Discurs de ură", kicker: "discurs de ură" }
 ];
 
 const DEFAULT_STORAGE_FILTERS = {
@@ -705,6 +710,8 @@ function AdminDashboardView({ user }) {
   const [userFiltersOpen, setUserFiltersOpen] = useState(false);
   const [accessEmail, setAccessEmail] = useState("");
   const [accessNote, setAccessNote] = useState("");
+  const [moderationWord, setModerationWord] = useState("");
+  const [moderationWordCategory, setModerationWordCategory] = useState("profanity");
   const [inviteEmails, setInviteEmails] = useState("");
   const [inviteTier, setInviteTier] = useState("free");
   const [inviteDays, setInviteDays] = useState("30");
@@ -801,6 +808,7 @@ function AdminDashboardView({ user }) {
         users: [],
         content: [],
         platformAccess: null,
+        moderationWords: null,
         jobs: [],
         audit: [],
         shop: [],
@@ -814,11 +822,12 @@ function AdminDashboardView({ user }) {
         submissionsUnreadReplyCount: 0
       };
       if (canAdmin) {
-        const [overview, users, content, platformAccess, jobs, audit, shop, gologaniRewards, qaReport, submissions, emailCampaigns] = await Promise.all([
+        const [overview, users, content, platformAccess, moderationWords, jobs, audit, shop, gologaniRewards, qaReport, submissions, emailCampaigns] = await Promise.all([
           fetchAdminOverview(),
           fetchAdminUsers({ q: userSearch, ...cleanFilters(userFilters), limit: 50 }),
           fetchAdminContent({ q: contentSearch, content_type: contentType, limit: 50 }),
           fetchAdminPlatformAccess(),
+          fetchAdminModerationWords(),
           fetchAdminJobs({ limit: 50 }),
           fetchAdminAuditLog({ limit: 100 }),
           fetchAdminShopItems(),
@@ -832,6 +841,7 @@ function AdminDashboardView({ user }) {
           users: users.users || [],
           content: content.content || [],
           platformAccess,
+          moderationWords,
           jobs: jobs.jobs || [],
           audit: audit.logs || [],
           shop: Array.isArray(shop) ? shop : [],
@@ -1202,6 +1212,27 @@ function AdminDashboardView({ user }) {
       setBusy("");
     }
   };
+  const addModerationWord = async (event) => {
+    event.preventDefault();
+    const word = moderationWord.trim();
+    if (!word) return;
+    setBusy("moderation-word:add");
+    setStatus("");
+    try {
+      await addAdminModerationWord({ word, category: moderationWordCategory });
+      setModerationWord("");
+      setStatus(`„${word}” a fost adăugat în lista de cuvinte filtrate.`);
+      await loadAdminData();
+    } catch (requestError) {
+      setStatus(requestError.message || "Nu am putut adăuga cuvântul.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const removeModerationWord = (item) => {
+    if (!window.confirm(`Scoți „${item.word}” din lista de cuvinte filtrate?`)) return;
+    runAction(`moderation-word:${item.id}:delete`, () => deleteAdminModerationWord(item.id));
+  };
   const removePlatformEmail = (item) => {
     if (!window.confirm(`Ștergi ${item.email} din lista de acces?`)) return;
     runAction(`platform-access:${item.id}:delete`, () => deleteAdminPlatformAllowedEmail(item.id));
@@ -1405,6 +1436,7 @@ function AdminDashboardView({ user }) {
         ["pending", "Moderare", state.pending.length + state.flagged.length],
         ["reports", "Raportări", state.postReports.length],
         ["journal", "Jurnal", state.logs.length],
+        ["wordlist", "Cuvinte filtrate", state.moderationWords?.count || 0],
         ["integrations", "Integrări", integrationsState.data?.summary?.incomplete || 0],
         ["economy", "Economie", state.shop.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
@@ -1435,6 +1467,7 @@ function AdminDashboardView({ user }) {
   const unreadFeedbackReplyCount = Math.max(0, Number(state.submissionsUnreadReplyCount) || 0);
   const platformAccess = state.platformAccess || { open: false, allowed_count: 0, emails: [], invitation_count: 0, invitations: [] };
   const inviteBusy = busy === "platform-invitations:add";
+  const moderationWords = state.moderationWords || { available: true, count: 0, words: [] };
   const performanceLive = performanceState.live || {};
   const performanceHost = performanceLive.host || {};
   const performanceDatabase = performanceLive.database || {};
@@ -1529,6 +1562,41 @@ function AdminDashboardView({ user }) {
               <AdminStat label="Boți" value={traffic.bot_views} sub={`${traffic.bot_percentage || 0}%`} />
             </AdminStatGrid>
           </AdminPanel>
+        </div>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "wordlist" ? (
+        <div className="admin-grid">
+          <AdminPanel title="Cuvinte filtrate" description="Orice text care conține unul dintre aceste cuvinte sau expresii ajunge direct la revizie manuală, fără verificarea AI de context literar. Potrivirea se face pe cuvinte întregi, fără diferență între majuscule și minuscule; formele cu și fără diacritice se adaugă separat. Modificările se aplică imediat conținutului nou.">
+            {moderationWords.available ? (
+              <form className="admin-access-form" onSubmit={addModerationWord}>
+                <input className="cal-input" value={moderationWord} onChange={(event) => setModerationWord(event.target.value)} placeholder="Cuvânt sau expresie" maxLength="100" required />
+                <select className="cal-input" value={moderationWordCategory} onChange={(event) => setModerationWordCategory(event.target.value)}>
+                  {MODERATION_WORD_CATEGORIES.map((category) => <option key={category.key} value={category.key}>{category.label}</option>)}
+                </select>
+                <button className="cal-btn primary" type="submit" disabled={Boolean(busy) || !moderationWord.trim()}>{busy === "moderation-word:add" ? "Se adaugă..." : "Adaugă"}</button>
+              </form>
+            ) : (
+              <StatusPanel title="Lista nu poate fi editată încă">Tabelul moderation_words lipsește din baza de date. Până la rularea migrării, moderarea folosește lista implicită din cod.</StatusPanel>
+            )}
+          </AdminPanel>
+          {moderationWords.available ? MODERATION_WORD_CATEGORIES.map((category) => {
+            const words = (moderationWords.words || []).filter((item) => item.category === category.key);
+            return (
+              <AdminPanel key={category.key} title={category.label} description={`${formatNumber(words.length)} cuvinte.`}>
+                {words.length ? (
+                  <ul className="admin-word-chips">
+                    {words.map((item) => (
+                      <li key={item.id} className="admin-word-chip">
+                        <span>{item.word}</span>
+                        <button type="button" disabled={Boolean(busy)} onClick={() => removeModerationWord(item)} aria-label={`Scoate ${item.word} din listă`} title="Scoate din listă">×</button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <StatusPanel title={`Niciun cuvânt la „${category.kicker}”`} />}
+              </AdminPanel>
+            );
+          }) : null}
         </div>
       ) : null}
 

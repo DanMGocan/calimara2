@@ -14,7 +14,7 @@ from .economy import GologaniTransaction, GologaniRewardSetting, ShopItem, UserI
 from .forum import ForumThread, ForumReply
 from .messaging import Conversation, Message
 from .social import Friendship, UserFollow
-from .moderation import ModerationLog
+from .moderation import ModerationLog, ModerationWord
 from .notifications import Notification
 from .statistics import AudioListenEvent, PageView, DailyStat
 from .admin import AdminAuditLog, AdminDailyMetric, AdminPerformanceSnapshot, PlatformAccessSetting, PlatformAllowedEmail, PlatformInvitation, SiteFeedback
@@ -71,6 +71,7 @@ __all__ = [
     "Friendship",
     "UserFollow",
     "ModerationLog",
+    "ModerationWord",
     "Notification",
     "AudioListenEvent",
     "PageView",

@@ -483,7 +483,7 @@ def process_author_recording(db: Session, audio: models.PostAudio) -> models.Pos
     try:
         content = audio_storage.load_audio_bytes(audio)
         transcript, confidence = transcribe_audio(content)
-        result = moderation.moderate_comment(transcript)
+        result = moderation.moderate_comment(transcript, db)
         moderation.log_moderation_decision(db, "audio", audio.id, post.user_id, result)
         match_score = text_match_score(strip_html(post.content), transcript)
 

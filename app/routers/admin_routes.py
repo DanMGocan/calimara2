@@ -9,7 +9,7 @@ from sqlalchemy import String, and_, case, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, integrations_guide, invitations, models, object_storage, performance, platform_access, schemas, statistics
+from .. import admin, crud, email_service, integrations_guide, invitations, models, moderation, object_storage, performance, platform_access, schemas, statistics
 from ..database import get_db
 from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
@@ -2313,6 +2313,77 @@ def delete_platform_allowed_email(
         metadata=snapshot,
     )
     return _platform_access_payload(db)
+
+
+def _moderation_words_payload(db: Session) -> dict:
+    words = moderation.list_moderation_words(db)
+    return {
+        "available": moderation.wordlist_table_available(db),
+        "count": len(words),
+        "words": [
+            {
+                "id": item.id,
+                "word": item.word,
+                "category": item.category,
+                "created_by": item.created_by,
+                "created_at": _as_iso(item.created_at),
+            }
+            for item in words
+        ],
+    }
+
+
+@router.get("/moderation-words")
+def get_moderation_words(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    return _moderation_words_payload(db)
+
+
+@router.post("/moderation-words")
+def add_moderation_word(
+    data: schemas.AdminModerationWordCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    try:
+        item = moderation.add_moderation_word(db, word=data.word, category=data.category, actor_id=current_user.id)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _audit(
+        db,
+        request,
+        current_user,
+        action="moderation_word_create",
+        target_type="moderation_word",
+        target_id=item.id,
+        metadata={"word": item.word, "category": item.category},
+    )
+    return _moderation_words_payload(db)
+
+
+@router.delete("/moderation-words/{word_id}")
+def delete_moderation_word(
+    word_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(admin.require_admin),
+):
+    item = moderation.remove_moderation_word(db, word_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Cuvântul nu este în listă.")
+    _audit(
+        db,
+        request,
+        current_user,
+        action="moderation_word_delete",
+        target_type="moderation_word",
+        target_id=word_id,
+        metadata={"word": item["word"], "category": item["category"]},
+    )
+    return _moderation_words_payload(db)
 
 
 @router.get("/site-feedback")

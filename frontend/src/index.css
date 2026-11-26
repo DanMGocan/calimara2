@@ -8061,6 +8061,49 @@ textarea.cal-input {
   align-items: center;
   margin-bottom: 16px;
 }
+.admin-word-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.admin-word-chip button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-mute);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.admin-word-chip button:hover:not(:disabled),
+.admin-word-chip button:focus-visible {
+  background: var(--hairline);
+  color: var(--ink);
+}
+.admin-word-chip button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 .admin-invite-form {
   display: grid;
   gap: 10px;

@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS site_feedback CASCADE;
 DROP TABLE IF EXISTS super_likes CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS ai_jobs CASCADE;
+DROP TABLE IF EXISTS moderation_words CASCADE;
 DROP TABLE IF EXISTS moderation_logs CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS conversations CASCADE;
@@ -1485,6 +1486,31 @@ CREATE INDEX idx_modlog_toxicity ON moderation_logs(toxicity_score);
 CREATE INDEX idx_modlog_created_at ON moderation_logs(created_at);
 CREATE INDEX idx_modlog_pending_review ON moderation_logs(ai_decision, human_decision);
 CREATE INDEX idx_modlog_moderator ON moderation_logs(moderated_by);
+
+-- ===================================
+-- MODERATION WORD LIST (admin-editable; any match sends content to manual review)
+-- ===================================
+CREATE TABLE moderation_words (
+    id SERIAL PRIMARY KEY,
+    word VARCHAR(100) UNIQUE NOT NULL,
+    category VARCHAR(20) DEFAULT 'profanity' NOT NULL,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT ck_moderation_words_category CHECK (category IN ('profanity', 'hate_speech')),
+    CONSTRAINT fk_moderation_words_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+INSERT INTO moderation_words (word, category) VALUES
+    ('pula', 'profanity'), ('pulă', 'profanity'), ('muie', 'profanity'), ('futut', 'profanity'),
+    ('cacat', 'profanity'), ('căcat', 'profanity'), ('nenorocit', 'profanity'), ('jegos', 'profanity'),
+    ('curvă', 'profanity'), ('curve', 'profanity'), ('pizda', 'profanity'), ('pizdă', 'profanity'),
+    ('dracu', 'profanity'), ('mortii', 'profanity'), ('morții', 'profanity'), ('naiba', 'profanity'),
+    ('dumnezeu', 'profanity'), ('ma-ta', 'profanity'), ('mă-ta', 'profanity'), ('ma-tii', 'profanity'),
+    ('mă-tii', 'profanity'), ('idiot', 'profanity'), ('prost', 'profanity'), ('tâmpit', 'profanity'),
+    ('tampit', 'profanity'), ('retardat', 'profanity'), ('debil', 'profanity'), ('cretin', 'profanity'),
+    ('cioară', 'hate_speech'), ('jidan', 'hate_speech'), ('evreu de căcat', 'hate_speech'),
+    ('țigan împuțit', 'hate_speech'), ('tigan imputit', 'hate_speech');
 
 -- ===================================
 -- AI JOBS TABLE
