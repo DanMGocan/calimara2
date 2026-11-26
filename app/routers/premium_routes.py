@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from .. import auth, crud, models, schemas, stripe_service
+from ..achievements.service import AchievementDefinition, grant_achievement
 from ..database import get_db
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,38 @@ def open_portal(
     return schemas.PremiumPortalResponse(url=url)
 
 
+@router.get("/api/premium/cafea", response_model=schemas.CoffeeOffer)
+def coffee_offer():
+    return stripe_service.coffee_offer()
+
+
+@router.post("/api/premium/cafea", response_model=schemas.PremiumCheckoutResponse)
+def create_coffee_checkout(
+    body: schemas.CoffeeCheckoutRequest = schemas.CoffeeCheckoutRequest(),
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(auth.get_current_user),
+):
+    """Anyone can buy coffees; logged-in buyers also get the supporter trophy."""
+    customer_id = None
+    try:
+        if current_user:
+            customer_id = stripe_service.create_or_get_customer(
+                email=current_user.email,
+                user_id=current_user.id,
+                existing_customer_id=current_user.stripe_customer_id,
+            )
+            if not current_user.stripe_customer_id:
+                crud.upsert_stripe_customer_id(db, user_id=current_user.id, customer_id=customer_id)
+        url = stripe_service.create_coffee_checkout_session(
+            quantity=body.quantity,
+            user_id=current_user.id if current_user else None,
+            customer_id=customer_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return schemas.PremiumCheckoutResponse(url=url)
+
+
 @router.post("/api/stripe/notificare")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -102,6 +135,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             _apply_subscription_event(db, event)
         elif event_type == "invoice.payment_failed":
             _handle_payment_failed(db, event)
+        elif event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+            _handle_coffee_checkout(db, event)
         # Unhandled types -> 200 so Stripe does not retry.
     except Exception:
         db.rollback()
@@ -173,6 +208,41 @@ def _apply_subscription_event(db: Session, event) -> None:
         premium_until=premium_until,
         premium_tier=premium_tier,
         premium_period_start=premium_period_start,
+    )
+
+
+COFFEE_TROPHY = AchievementDefinition(
+    key="coffee_supporter",
+    title="Susținător cu cafea",
+    description="A cumpărat o cafea pentru Călimara. Mulțumim!",
+    award_type="special",
+    event_type="stripe.coffee_purchased",
+    awardee_user_id=lambda _db, event: event.actor_user_id,
+    condition=lambda _db, _event: True,
+    dedupe_key=lambda _db, _event: "coffee",
+)
+
+
+def _handle_coffee_checkout(db: Session, event) -> None:
+    session = event["data"]["object"]
+    if not stripe_service.is_paid_coffee_session(session):
+        return
+    raw_user_id = session.get("client_reference_id") or (session.get("metadata") or {}).get("user_id")
+    if not raw_user_id or not str(raw_user_id).isdigit():
+        return  # anonymous buyer: Stripe emails the receipt, nothing to store
+    user = db.get(models.User, int(raw_user_id))
+    if not user:
+        return
+    quantity = stripe_service.coffee_quantity_from_session(session)
+    # One trophy per supporter (dedupe key "coffee"); later coffees don't duplicate it.
+    grant_achievement(
+        db,
+        COFFEE_TROPHY,
+        user_id=user.id,
+        dedupe_key="coffee",
+        source_type="stripe_checkout",
+        metadata={"checkout_session": session.get("id"), "quantity": quantity},
+        notification_link="/premium",
     )
 
 

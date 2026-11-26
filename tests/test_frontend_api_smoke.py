@@ -576,6 +576,16 @@ def smoke_client(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         stripe_service,
+        "create_coffee_checkout_session",
+        lambda **kwargs: "https://stripe.test/coffee",
+    )
+    monkeypatch.setattr(
+        stripe_service,
+        "coffee_offer",
+        lambda: {"available": True, "price": "12,00 lei", "unit_amount": 1200, "currency": "ron", "max_quantity": 20},
+    )
+    monkeypatch.setattr(
+        stripe_service,
         "list_premium_plans",
         lambda: [
             {
@@ -945,6 +955,8 @@ SMOKE_CASES = [
     SmokeCase("fetchMyReferrals", "GET", _path("/api/recomandari/eu"), {200}),
     SmokeCase("startPremiumCheckout", "POST", _path("/api/premium/plata"), {200}, _json({"tier": "trubadur"})),
     SmokeCase("openPremiumPortal", "POST", _path("/api/premium/portal"), {200}, _json({})),
+    SmokeCase("fetchCoffeeOffer", "GET", _path("/api/premium/cafea"), {200}),
+    SmokeCase("startCoffeeCheckout", "POST", _path("/api/premium/cafea"), {200}, _json({"quantity": 2})),
     SmokeCase("stripeWebhookInvalidSignature", "POST", _path("/api/stripe/notificare"), {400}, _json({})),
     SmokeCase("unsubscribeEmailInvalidToken", "GET", _path("/api/email/dezabonare?token=missing&type=comment"), {400}),
     SmokeCase("fetchAudioConversionQuota", "GET", _path("/api/audio/cota-conversie"), {200}),
@@ -1134,6 +1146,7 @@ def test_public_or_internally_guarded_mutating_api_routes_are_explicitly_allowli
         ("DELETE", "/api/postari/{post_id}/super-aprecieri"),
         ("POST", "/api/premium/plata"),
         ("POST", "/api/premium/portal"),
+        ("POST", "/api/premium/cafea"),
         ("POST", "/api/stripe/notificare"),
         ("POST", "/api/audio/asculta/secunde"),
     }

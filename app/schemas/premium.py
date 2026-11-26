@@ -34,6 +34,18 @@ class PremiumPortalResponse(BaseModel):
     url: str
 
 
+class CoffeeOffer(BaseModel):
+    available: bool
+    price: str
+    unit_amount: Optional[int] = None
+    currency: Optional[str] = None
+    max_quantity: int
+
+
+class CoffeeCheckoutRequest(BaseModel):
+    quantity: int = Field(default=1, ge=1, le=20)
+
+
 
 class PremiumStatus(BaseModel):
     is_premium: bool

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FiCheckCircle, FiCopy, FiCreditCard, FiEdit3, FiGift, FiHeadphones, FiStar, FiTrendingUp, FiUsers } from "react-icons/fi";
 import { SiBuymeacoffee } from "react-icons/si";
 import { fetchAudioConversionQuota } from "../api/audio.js";
-import { fetchPremiumPlans, openPremiumPortal, startPremiumCheckout } from "../api/premium.js";
+import { fetchCoffeeOffer, fetchPremiumPlans, openPremiumPortal, startCoffeeCheckout, startPremiumCheckout } from "../api/premium.js";
 import { fetchMyReferrals } from "../api/referrals.js";
 import { fetchDiacriticsQuota } from "../api/writing.js";
 import { useAuthModal } from "../app/auth-modal.jsx";
@@ -112,7 +112,37 @@ function TierCard({ tier, user, selected, busy, onSelect, onStart }) {
   );
 }
 
-function CoffeeSupportPanel() {
+function formatMinorAmount(minor, currency) {
+  const value = (minor / 100).toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${value} ${String(currency || "ron").toLowerCase() === "ron" ? "lei" : String(currency).toUpperCase()}`;
+}
+
+function coffeeThanksFromUrl() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("cafea") === "multumim";
+}
+
+function CoffeeSupportPanel({ user }) {
+  const offerState = useAsync(fetchCoffeeOffer, []);
+  const offer = offerState.data;
+  const [quantity, setQuantity] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [thanks] = useState(coffeeThanksFromUrl);
+  const maxQuantity = offer?.max_quantity || 20;
+
+  const buy = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await startCoffeeCheckout(quantity);
+      window.location.href = response.url;
+    } catch (requestError) {
+      setError(requestError.message || "Nu am putut deschide pagina de plată.");
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="premium-coffee-panel" aria-label="Sprijină Călimara cu o cafea">
       <div>
@@ -120,15 +150,33 @@ function CoffeeSupportPanel() {
         <h2>Te-ai săturat de subscripții și abonamente?</h2>
         <p>
           Înțeleg. Așa și eu. Dacă nu mai vrei încă o subscripție, sunt fericit să îmi cumperi o cafea.
-          Nu vine cu niciun beneficiu, în afară de un mic trofeu pe site, dar ajută cu întreținerea site-ului
+          Nu vine cu niciun beneficiu, în afară de un mic trofeu pe site{user ? "" : " (dacă ești conectat)"}, dar ajută cu întreținerea site-ului
           și cu întreținerea unui stil de viață luxuriant pentru mine: ipoteca și factura la curent.
         </p>
         <span className="premium-coffee-signature">Dan</span>
+        {thanks ? <p className="premium-coffee-thanks">Mulțumesc pentru cafea! ☕</p> : null}
+        {error ? <div className="inline-error">{error}</div> : null}
       </div>
-      <a className="cal-btn primary premium-coffee-link" href={BUY_ME_A_COFFEE_URL} target="_blank" rel="noreferrer">
-        <SiBuymeacoffee aria-hidden="true" />
-        Cumpără-mi o cafea
-      </a>
+      {offer?.available ? (
+        <div className="premium-coffee-buy">
+          <div className="premium-coffee-stepper" role="group" aria-label="Număr de cafele">
+            <button className="cal-btn" type="button" aria-label="Mai puține cafele" disabled={busy || quantity <= 1} onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button>
+            <output aria-live="polite">{quantity}</output>
+            <button className="cal-btn" type="button" aria-label="Mai multe cafele" disabled={busy || quantity >= maxQuantity} onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}>+</button>
+            <span>{quantity === 1 ? "cafea" : "cafele"}</span>
+          </div>
+          <button className="cal-btn primary premium-coffee-link" type="button" disabled={busy} onClick={buy}>
+            <SiBuymeacoffee aria-hidden="true" />
+            {busy ? "Se deschide..." : `Cumpără-mi ${quantity === 1 ? "o cafea" : `${quantity} cafele`} · ${formatMinorAmount(offer.unit_amount * quantity, offer.currency)}`}
+          </button>
+          <span className="premium-coffee-meta">{offer.price} / cafea · plată unică prin Stripe</span>
+        </div>
+      ) : offerState.loading ? null : (
+        <a className="cal-btn primary premium-coffee-link" href={BUY_ME_A_COFFEE_URL} target="_blank" rel="noreferrer">
+          <SiBuymeacoffee aria-hidden="true" />
+          Cumpără-mi o cafea
+        </a>
+      )}
     </section>
   );
 }
@@ -282,7 +330,7 @@ function PremiumView({ user }) {
           </button>
         </div>
 
-        <CoffeeSupportPanel />
+        <CoffeeSupportPanel user={user} />
 
         {user ? <ReferralPanel state={referralsState} copied={copiedReferral} onCopy={copyReferralLink} /> : null}
 

@@ -13,7 +13,7 @@ from .clubs import ClubSpeciality, ClubMemberRole, ClubJoinPolicy, ClubOwnerRef,
 from .theatre import TheatrePlayStatus, TheatreCharacterStatus, TheatreMemberRole as TheatreRole, TheatreJoinDirection, TheatreJoinStatus, TheatreSceneStatus, TheatreEntryType, TheatreModerationStatus, TheatreUserRef, TheatreCharacterInput, TheatrePlayCreate, TheatrePlayUpdate, TheatreCharacterCreate, TheatreCharacterReview, TheatreCharacterAssign, TheatreJoinApply, TheatreInvite, TheatreJoinRespond, TheatreSceneCreate, TheatreReplyCreate, TheatreStageDirectionCreate, TheatreTurnOverride, TheatreSceneEnd, TheatreMemberOut, TheatreCharacterOut, TheatreJoinRequestOut, TheatreEntryOut, TheatreSceneOut, TheatrePlaySummary, TheatrePlayDetail, TheatrePendingItem
 from .stafeta import StafetaWorkStatus, StafetaAssignmentStatus, StafetaAssignmentSource, StafetaModerationStatus, StafetaTargetMode, StafetaCreateTargetMode, StafetaAssignmentAction, StafetaListFilter, StafetaUserRef, StafetaParticipationUpdate, StafetaCreate, StafetaSend, StafetaAssignSpecific, StafetaAssignmentRespond, StafetaParticipantOut, StafetaAssignmentOut, StafetaSegmentOut, StafetaWorkSummary, StafetaWorkDetail, StafetaWorkList
 from .super_likes import SuperLike, SuperLikeQuota
-from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus
+from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus, CoffeeOffer, CoffeeCheckoutRequest
 from .audio import PostAudioStatus, AudioTrack, SeriesAudioPlaylist, AudioPlaylistCreate, AudioPlaylistUpdate, AudioPlaylistAddPostRequest, AudioPlaylistSummary, AudioPlaylistItem, AudioPlaylistDetail, AudioPlaylistList, AudioPlaylistPlayback, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse
 from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackReplyCreate, SiteFeedbackOut
 from .portability import DataPortabilityProfile, DataPortabilityMedia, DataPortabilityPostMetrics, DataPortabilityAudioLink, DataPortabilityPost, DataExportManifest, DataImportCreatedPost, DataImportReport
@@ -208,6 +208,8 @@ __all__ = [
     "PremiumCheckoutResponse",
     "PremiumCheckoutRequest",
     "PremiumPortalResponse",
+    "CoffeeOffer",
+    "CoffeeCheckoutRequest",
     "PremiumStatus",
     "PostAudioStatus",
     "AudioTrack",
