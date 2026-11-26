@@ -34,11 +34,21 @@
   --serif: 'Finlandica Headline', sans-serif;
   --sans: 'Finlandica Headline', sans-serif;
   --mono: 'Finlandica Headline', sans-serif;
+
+  /* Desktop scale: the layout is sized for ~90% browser zoom on a 1920px screen, so
+     desktop pointers get the whole page scaled to 0.9 (same look as Ctrl+- once).
+     Viewport units are compensated at build time (frontend/postcss-viewport-zoom.js)
+     and JS that positions elements in px reads `currentCSSZoom` (src/app/zoom.js). */
+  --page-zoom: 1;
+}
+@media screen and (min-width: 1181px) and (hover: hover) and (pointer: fine) {
+  :root { --page-zoom: 0.9; }
 }
 
 * { box-sizing: border-box; }
 html {
   -webkit-text-size-adjust: 100%;
+  zoom: var(--page-zoom);
 }
 html, body {
   margin: 0; padding: 0;

@@ -16,6 +16,7 @@ import { useAuthModal } from "./auth-modal.jsx";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
 import { authorPath, blogUrl, mainPath } from "./paths.js";
+import { cssZoomOf } from "./zoom.js";
 
 const AdsContext = createContext({
   enabled: false,
@@ -118,12 +119,14 @@ function NavTooltip({ id, anchorRef, locked, label }) {
     const tooltip = tooltipRef.current;
     const anchor = anchorRef.current;
     if (!tooltip || !anchor) return;
+    // Work in the tooltip's own CSS px: window coordinates divided by the page zoom.
+    const zoom = cssZoomOf(tooltip);
     const rect = anchor.getBoundingClientRect();
     const width = tooltip.offsetWidth;
-    const center = rect.left + rect.width / 2;
-    const maxLeft = window.innerWidth - width - NAV_TOOLTIP_VIEWPORT_GAP;
+    const center = (rect.left + rect.width / 2) / zoom;
+    const maxLeft = window.innerWidth / zoom - width - NAV_TOOLTIP_VIEWPORT_GAP;
     const left = Math.max(NAV_TOOLTIP_VIEWPORT_GAP, Math.min(center - width / 2, maxLeft));
-    tooltip.style.top = `${Math.round(rect.bottom + 8)}px`;
+    tooltip.style.top = `${Math.round(rect.bottom / zoom + 8)}px`;
     tooltip.style.left = `${Math.round(left)}px`;
     tooltip.style.setProperty("--nav-tooltip-arrow-x", `${Math.round(center - left)}px`);
   }, [anchorRef, label, locked]);
@@ -1055,8 +1058,10 @@ export function FloatingBackgroundShapes() {
     };
 
     const syncBounds = (resetPosition = false) => {
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
+      // Shapes move in page CSS px, which are smaller than window px under the desktop zoom.
+      const zoom = cssZoomOf(document.documentElement);
+      const viewportWidth = window.innerWidth / zoom;
+      const viewportHeight = window.innerHeight / zoom;
       items.forEach((item) => {
         item.baseX = resolveViewportOffset(item.shape.left, viewportWidth);
         item.baseY = resolveViewportOffset(item.shape.top, viewportHeight);
