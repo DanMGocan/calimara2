@@ -39,7 +39,49 @@ const ADMIN_NAV_GROUPS = [
   },
   {
     label: "Operațiuni",
-    items: ["integrations", "economy", "premium", "storage", "performance", "jobs", "audit"]
+    items: ["integrations", "economy", "artStyles", "premium", "storage", "performance", "jobs", "audit"]
+  }
+];
+
+const ART_STYLE_BACKDROPS = [
+  { key: "checker", label: "Carouri (transparent)" },
+  { key: "paper", label: "Hârtie" },
+  { key: "warm", label: "Hârtie caldă" },
+  { key: "dark", label: "Închis" }
+];
+
+const ART_STYLE_MOCKUPS = [
+  {
+    id: "oil",
+    code: "Varianta 01",
+    name: "Ulei clasic (Clarobscur)",
+    medium: "Pictură în ulei · Vechi Maeștri",
+    imageUrl: "/assets/style-mockups/manuscript-oil.png",
+    description: "Tușe bogate de ulei cu lumină caldă de lumânare, umbre adânci de umbră arsă, pergament patinat și panglică grena cu sigiliu de ceară. Atmosferă solemnă de muzeu literar."
+  },
+  {
+    id: "ink-wash",
+    code: "Varianta 02",
+    name: "Tuș și laviu sepia",
+    medium: "Peniță și laviu · Jurnal literar",
+    imageUrl: "/assets/style-mockups/manuscript-ink-wash.png",
+    description: "Hașuri fine în peniță și laviu de tuș sepia-grafit, cu un singur accent cald de teracotă (#b84a2a) pe sigiliu. Se integrează nativ în estetica monocromă a platformei Călimara."
+  },
+  {
+    id: "watercolor",
+    code: "Varianta 03",
+    name: "Acuarelă botanică",
+    medium: "Acuarelă translucidă · Ediție ilustrată",
+    imageUrl: "/assets/style-mockups/manuscript-watercolor.png",
+    description: "Straturi translucide de acuarelă pe hârtie cu granulație fină, tonuri de ocru, albastru-ardezie în umbre și ornament floral delicat. Aerisit, poetic și luminos."
+  },
+  {
+    id: "gouache",
+    code: "Varianta 04",
+    name: "Guașă mată de atelier",
+    medium: "Guașă opacă · Obiect de colecție",
+    imageUrl: "/assets/style-mockups/manuscript-gouache.png",
+    description: "Tușe ferme de guașă mată, inițială aurită, șnur de piele și cataramă de alamă. Siluetă foarte clară și lizibilă atât la dimensiune mare, cât și ca miniatură în magazin."
   }
 ];
 
@@ -705,6 +747,7 @@ function AdminDashboardView({ user }) {
   const canAdmin = Boolean(user?.is_admin);
   const canModerate = Boolean(user?.is_admin || user?.is_moderator);
   const [activeTab, setActiveTab] = useState(canAdmin ? "overview" : "pending");
+  const [styleBackdrop, setStyleBackdrop] = useState("checker");
   const [userSearch, setUserSearch] = useState("");
   const [userFilters, setUserFilters] = useState(DEFAULT_USER_FILTERS);
   const [userFiltersOpen, setUserFiltersOpen] = useState(false);
@@ -1439,6 +1482,7 @@ function AdminDashboardView({ user }) {
         ["wordlist", "Cuvinte filtrate", state.moderationWords?.count || 0],
         ["integrations", "Integrări", integrationsState.data?.summary?.incomplete || 0],
         ["economy", "Economie", state.shop.length],
+        ["artStyles", "Stil vizual", ART_STYLE_MOCKUPS.length],
         ["premium", "Premium", state.overview?.cards?.active_premium_users],
         ["storage", "Stocare", storageState.objects.length],
         ["performance", "Performanță", performanceState.live?.processes?.workers?.length || 0],
@@ -2051,7 +2095,16 @@ function AdminDashboardView({ user }) {
       ) : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "economy" ? (
-        <AdminPanel title="Magazin și Gologani" description="Obiecte, inventare și balanțe." actions={<button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={createShopItem}>Obiect nou</button>}>
+        <AdminPanel
+          title="Magazin și Gologani"
+          description="Obiecte, inventare și balanțe."
+          actions={(
+            <div className="admin-controls">
+              <button className="cal-btn" type="button" onClick={() => setActiveTab("artStyles")}>Mostre stil vizual</button>
+              <button className="cal-btn primary" type="button" disabled={Boolean(busy)} onClick={createShopItem}>Obiect nou</button>
+            </div>
+          )}
+        >
           <AdminStatGrid compact>
             <AdminStat label="Obiecte active" value={state.overview?.economy?.shop_items_active} sub="magazin" />
             <AdminStat label="Inventar" value={state.overview?.economy?.inventory_items} sub="cumpărări" />
@@ -2075,6 +2128,55 @@ function AdminDashboardView({ user }) {
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => toggleShopItem(item)}>{item.is_active ? "Dezactivează" : "Activează"}</button>
                 <button className="cal-btn" disabled={Boolean(busy)} onClick={() => repriceShopItem(item)}>Preț</button>
               </AdminDataRow>
+            ))}
+          </div>
+        </AdminPanel>
+      ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "artStyles" ? (
+        <AdminPanel
+          title="Stil vizual — Magazin și artefacte"
+          description="Patru direcții picturale pentru același obiect (manuscris victorian, PNG cu fundal transparent). Schimbă fundalul de probă pentru a verifica transparența și alege stilul de bază pentru viitorul ghid vizual."
+          actions={(
+            <div className="admin-controls" role="group" aria-label="Fundal de previzualizare">
+              {ART_STYLE_BACKDROPS.map((backdrop) => (
+                <button
+                  key={backdrop.key}
+                  className={`cal-btn${styleBackdrop === backdrop.key ? " primary" : ""}`}
+                  type="button"
+                  aria-pressed={styleBackdrop === backdrop.key}
+                  onClick={() => setStyleBackdrop(backdrop.key)}
+                >
+                  {backdrop.label}
+                </button>
+              ))}
+            </div>
+          )}
+        >
+          <div className="admin-style-grid">
+            {ART_STYLE_MOCKUPS.map((mockup) => (
+              <article className="admin-style-card" key={mockup.id}>
+                <div className={`admin-style-stage backdrop-${styleBackdrop}`}>
+                  <img src={mockup.imageUrl} alt={`${mockup.name} — manuscris victorian`} loading="lazy" />
+                </div>
+                <div className="admin-style-body">
+                  <div className="admin-badges">
+                    <span className="piece-card-status">{mockup.code}</span>
+                    <span className="piece-card-status">{mockup.medium}</span>
+                  </div>
+                  <h3 className="admin-style-title">{mockup.name}</h3>
+                  <p className="admin-style-desc">{mockup.description}</p>
+                </div>
+                <div className="admin-style-foot">
+                  <div className="admin-style-thumb-group">
+                    <div className="cosmetic-preview admin-style-mini" aria-hidden="true">
+                      <img src={mockup.imageUrl} alt="" />
+                    </div>
+                    <span className="admin-style-thumb-label">Miniatură magazin (58px)</span>
+                  </div>
+                  <a className="cal-btn" href={mockup.imageUrl} target="_blank" rel="noreferrer">Deschide PNG</a>
+                </div>
+              </article>
             ))}
           </div>
         </AdminPanel>
