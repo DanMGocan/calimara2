@@ -16,7 +16,7 @@ import { useAuthModal } from "./auth-modal.jsx";
 import { ADS_ENABLED, ADSENSE_CLIENT_ID, ADSENSE_SLOTS, AD_SUPPORTED_ROUTES } from "./constants.js";
 import { formatDateTime, usernameHandle } from "./format.js";
 import { authorPath, blogUrl, mainPath } from "./paths.js";
-import { cssZoomOf } from "./zoom.js";
+import { cssZoomOf, PAGE_ZOOM_CHANGE_EVENT } from "./zoom.js";
 
 const AdsContext = createContext({
   enabled: false,
@@ -1156,6 +1156,9 @@ export function FloatingBackgroundShapes() {
     syncBounds(true);
     handleMotionPreference();
     window.addEventListener("resize", handleResize);
+    // The desktop scale can flip without a resize (mouse attached/detached), which changes
+    // how many page px the window holds.
+    window.addEventListener(PAGE_ZOOM_CHANGE_EVENT, handleResize);
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener("change", handleMotionPreference);
     } else {
@@ -1165,6 +1168,7 @@ export function FloatingBackgroundShapes() {
     return () => {
       stopAnimation();
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener(PAGE_ZOOM_CHANGE_EVENT, handleResize);
       if (mediaQuery.removeEventListener) {
         mediaQuery.removeEventListener("change", handleMotionPreference);
       } else {

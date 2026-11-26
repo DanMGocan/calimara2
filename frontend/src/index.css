@@ -37,12 +37,15 @@
 
   /* Desktop scale: the layout is sized for ~90% browser zoom on a 1920px screen, so
      desktop pointers get the whole page scaled to 0.9 (same look as Ctrl+- once).
-     Viewport units are compensated at build time (frontend/postcss-viewport-zoom.js)
-     and JS that positions elements in px reads `currentCSSZoom` (src/app/zoom.js). */
+     installPageZoom() in src/app/zoom.js sets --page-zoom and html.page-zoom-active, only in
+     browsers that support it. Viewport units and width media queries are compensated at
+     build time (frontend/postcss-viewport-zoom.js); JS that positions elements in px reads
+     `currentCSSZoom` (cssZoomOf in src/app/zoom.js). */
   --page-zoom: 1;
 }
-@media screen and (min-width: 1181px) and (hover: hover) and (pointer: fine) {
-  :root { --page-zoom: 0.9; }
+@media print {
+  /* Beats the inline --page-zoom that installPageZoom() sets, in case beforeprint is late. */
+  :root { --page-zoom: 1 !important; }
 }
 
 * { box-sizing: border-box; }
