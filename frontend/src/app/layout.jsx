@@ -4,7 +4,7 @@ import { createSiteFeedback } from "../api/feedback.js";
 import { deleteNotification, fetchNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "../api/notifications.js";
 import { BsPen } from "react-icons/bs";
 import { FaCoins, FaFacebookF } from "react-icons/fa6";
-import { FiBell, FiCheck, FiLock, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiTrash2, FiUserPlus, FiX } from "react-icons/fi";
+import { FiBell, FiCheck, FiLock, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiMonitor, FiPlay, FiTrash2, FiUserPlus, FiX } from "react-icons/fi";
 import { IoMdPaperPlane } from "react-icons/io";
 import { IoShirtOutline } from "react-icons/io5";
 import { LiaBugSolid } from "react-icons/lia";
@@ -315,6 +315,9 @@ export function NavBar({
         </NavItem>
         <NavItem href={member ? blogUrl(user.username) : undefined} label="Călimara mea" className="inkwell" locked={locked} pending={pending}>
           <BsPen aria-hidden="true" />
+        </NavItem>
+        <NavItem href={member ? authorPath(user, "/panou") : undefined} label="Panou de control" locked={locked} pending={pending}>
+          <FiMonitor aria-hidden="true" />
         </NavItem>
         <NavItem
           label="Notificări"

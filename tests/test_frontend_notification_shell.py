@@ -46,6 +46,17 @@ def test_navbar_splits_calimara_and_notifications_controls():
     assert source.index('label="Călimara mea"') < source.index('label="Notificări"')
 
 
+def test_navbar_has_dashboard_icon_after_calimara_mea():
+    source = read_frontend("app/layout.jsx")
+
+    assert "FiMonitor" in source
+    assert 'href={member ? authorPath(user, "/panou") : undefined} label="Panou de control"' in source
+    calimara = source.index('label="Călimara mea"')
+    panou = source.index('label="Panou de control"')
+    assert calimara < panou < source.index('label="Notificări"')
+    assert "<FiMonitor" in source[panou:source.index('label="Notificări"')]
+
+
 def test_notification_panel_styles_read_unread_and_item_actions():
     source = read_frontend("app/layout.jsx")
     api_source = read_frontend("api/notifications.js")
