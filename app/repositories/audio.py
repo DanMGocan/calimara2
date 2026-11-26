@@ -1,4 +1,6 @@
 import calendar
+from datetime import timezone
+from zoneinfo import ZoneInfo
 
 from ._shared import *
 
@@ -10,6 +12,9 @@ AUDIO_TTS_MONTHLY_QUOTAS = {
 }
 
 AUDIO_LISTEN_MODES = {"poezie", "proza_scurta", "toate"}
+AUDIO_LISTEN_CONTEXTS = {"player", "post"}
+FREE_PLAYER_LISTEN_SECONDS_PER_DAY = 20 * 60
+PLAYER_QUOTA_TIMEZONE = ZoneInfo("Europe/Bucharest")
 TTS_AUDIO_JOB_TYPE = "tts_audio_generation"
 ACTIVE_TTS_JOB_STATUSES = ("pending", "processing")
 
@@ -528,6 +533,7 @@ def record_audio_listen_event(
     listener_user_id: Optional[int],
     seconds: int,
     mode: str,
+    context: str = "post",
 ) -> tuple[models.AudioListenEvent, bool]:
     existing = get_audio_listen_event_by_event_id(db, event_id)
     if existing:
@@ -542,6 +548,7 @@ def record_audio_listen_event(
         listener_user_id=listener_user_id,
         seconds=seconds,
         mode=mode,
+        context=context,
     )
     db.add(event)
     db.query(models.Post).filter(models.Post.id == post.id).update(
@@ -562,3 +569,39 @@ def record_audio_listen_event(
         raise
     db.refresh(event)
     return event, True
+
+
+def _player_quota_day_start_in_db_clock(db: Session) -> datetime:
+    """Start of today (Romanian midnight), expressed in the database's clock.
+
+    audio_listen_events.created_at is stamped by the database's now(), whose
+    timezone is a server setting (Europe/Berlin in production, UTC in SQLite
+    tests). Measure that clock's offset from UTC and shift Romanian midnight
+    into it, so the quota resets at local midnight whatever the DB timezone is.
+    """
+    db_now = db.query(func.now()).scalar()
+    if isinstance(db_now, str):
+        db_now = datetime.fromisoformat(db_now)
+    if getattr(db_now, "tzinfo", None) is not None:
+        db_now = db_now.replace(tzinfo=None)
+    quarter_hours = round((db_now - utcnow_naive()) / timedelta(minutes=15))
+    db_offset = timedelta(minutes=15 * quarter_hours)
+    local_now = datetime.now(PLAYER_QUOTA_TIMEZONE)
+    local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    midnight_utc = local_midnight.astimezone(timezone.utc).replace(tzinfo=None)
+    return midnight_utc + db_offset
+
+
+def get_player_listen_seconds_today(db: Session, user_id: int) -> int:
+    """Seconds this user played today (Romanian calendar day) in the continuous player."""
+    start_of_day = _player_quota_day_start_in_db_clock(db)
+    total = (
+        db.query(func.coalesce(func.sum(models.AudioListenEvent.seconds), 0))
+        .filter(
+            models.AudioListenEvent.listener_user_id == user_id,
+            models.AudioListenEvent.context == "player",
+            models.AudioListenEvent.created_at >= start_of_day,
+        )
+        .scalar()
+    )
+    return int(total or 0)

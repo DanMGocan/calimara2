@@ -447,12 +447,10 @@ function ProfileMessageButton({ owner, user, onOpen }) {
 function ProfileAudioPlayButton({ owner, user, readyAudioCount, onStartAuthorListening }) {
   const loggedIn = Boolean(user);
   const hasAudio = Number(readyAudioCount || 0) > 0;
-  const canListen = Boolean(user?.has_audio_access);
   let title = owner?.username ? `Ascultă textele audio ale lui ${usernameHandle(owner.username)}` : "Play";
-  if (!loggedIn) title = "Autentifică-te și activează Cronicar sau Rapsod pentru Play";
-  else if (!canListen) title = "Necesită abonament Cronicar sau Rapsod";
+  if (!loggedIn) title = "Autentifică-te pentru Play: 20 de minute gratuite pe zi, nelimitat cu Premium";
   else if (!hasAudio) title = "Autorul nu are audio disponibil";
-  const disabled = !loggedIn || !canListen || !hasAudio;
+  const disabled = !loggedIn || !hasAudio;
 
   return (
     <button

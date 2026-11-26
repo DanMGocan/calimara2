@@ -966,6 +966,7 @@ SMOKE_CASES = [
     SmokeCase("requestTtsConversions", "POST", _path("/api/audio/cereri-tts"), {200}, lambda data: {"post_ids": [data.post_id]}),
     SmokeCase("fetchSeriesAudioPlaylist", "GET", lambda data: f"/api/audio/serii/{data.series_id}/lista-redare", {200}),
     SmokeCase("fetchRandomAudio", "GET", _path("/api/audio/aleatoriu?category=poezie"), {200}),
+    SmokeCase("fetchListeningQuota", "GET", _path("/api/audio/asculta/cota"), {200}),
     SmokeCase("fetchListeningRandomAudio", "GET", _path("/api/audio/asculta/aleatoriu?mode=poezie"), {200}),
     SmokeCase("fetchAuthorListeningRandomAudio", "GET", _path("/api/audio/autori/smokeauthor/aleatoriu?mode=poezie"), {200}),
     SmokeCase("fetchAudioPlaylists", "GET", _path("/api/audio/playlisturi"), {200}),

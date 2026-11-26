@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FiCheck, FiPause, FiPlay, FiSkipBack, FiSkipForward, FiUserCheck, FiUserMinus, FiUserPlus, FiX } from "react-icons/fi";
-import { fetchAudioPlaylistPlayback, fetchAuthorListeningRandomAudio, fetchListeningRandomAudio, recordAudioListenSeconds } from "../api/audio.js";
+import { fetchAudioPlaylistPlayback, fetchAuthorListeningRandomAudio, fetchListeningQuota, fetchListeningRandomAudio, recordAudioListenSeconds } from "../api/audio.js";
 import { acceptFriendRequest, deleteFriendRequest, removeFriend, sendFriendRequest } from "../api/friends.js";
 import { followUser, unfollowUser } from "../api/follows.js";
 import { usernameHandle } from "./format.js";
-import { blogUrl } from "./paths.js";
+import { blogUrl, mainPath } from "./paths.js";
 
 const LISTEN_MODES = [
   { mode: "proza_scurta", label: "doar proză", ariaLabel: "Ascultă doar proză" },
@@ -19,11 +19,19 @@ function listenSourceKey(source) {
   return "global";
 }
 
+export const FREE_LISTEN_MINUTES_PER_DAY = 20;
+export const LISTEN_QUOTA_EXCEEDED_MESSAGE = "Ai folosit cele 20 de minute gratuite de azi. Revino mâine sau alege Premium pentru ascultare nelimitată.";
+
 export function listenAccessMessage(user, authLoaded = true) {
   if (!authLoaded) return "Se verifică sesiunea...";
-  if (!user) return "Autentifică-te și activează Cronicar sau Rapsod pentru ascultare continuă.";
-  if (!user.has_audio_access) return "Necesită abonament Cronicar sau Rapsod.";
+  if (!user) return `Autentifică-te pentru playerul audio: ${FREE_LISTEN_MINUTES_PER_DAY} de minute gratuite pe zi, nelimitat cu Premium.`;
   return "";
+}
+
+function remainingMinutesLabel(seconds) {
+  const minutes = Math.max(0, Math.ceil(seconds / 60));
+  if (minutes === 1) return "1 minut rămas";
+  return minutes < 20 ? `${minutes} minute rămase` : `${minutes} de minute rămase`;
 }
 
 function listenEventId() {
@@ -138,7 +146,8 @@ export function ListeningOverlay({
   onPlay,
   onPause,
   onTimeUpdate,
-  onAudioError
+  onAudioError,
+  quotaRemainingSeconds = null
 }) {
   if (!open) return null;
   const playlistActive = activeSource?.type === "playlist";
@@ -177,6 +186,14 @@ export function ListeningOverlay({
             <span>Poți lăsa browserul în fundal sau bloca telefonul.</span>
             <span>Audio-ul continuă să ruleze.</span>
           </p>
+          {quotaRemainingSeconds !== null ? (
+            <p className="landing-player-playlist-meta" role="status">
+              {quotaRemainingSeconds > 0
+                ? `Gratuit: ${remainingMinutesLabel(quotaRemainingSeconds)} azi. `
+                : "Ai folosit minutele gratuite de azi. "}
+              <a href={mainPath("/premium")}>Premium</a> = ascultare nelimitată.
+            </p>
+          ) : null}
           {!playlistActive ? (
             <>
               <div className="landing-player-divider" aria-hidden="true" />
@@ -277,6 +294,9 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
   const lastAudioTimeRef = useRef(0);
   const shouldAutoplayRef = useRef(false);
   const suppressPauseFlushRef = useRef(false);
+  // Seconds left today in the free allowance; null = unlimited (paid tier) or not loaded yet.
+  const quotaRemainingRef = useRef(null);
+  const [quotaRemainingSeconds, setQuotaRemainingSeconds] = useState(null);
   const [listenOpen, setListenOpen] = useState(false);
   const [listenMode, setListenMode] = useState("");
   const [listenSource, setListenSource] = useState(DEFAULT_LISTEN_SOURCE);
@@ -302,6 +322,36 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
     setRelationshipMessage("");
   }, [listenTrack?.audio_id]);
 
+  const setQuotaRemaining = useCallback((seconds) => {
+    const next = seconds === null || seconds === undefined ? null : Math.max(0, Number(seconds) || 0);
+    quotaRemainingRef.current = next;
+    // Re-render only when the displayed minute changes, not on every timeupdate.
+    setQuotaRemainingSeconds((current) => {
+      if (next === null || current === null) return next;
+      return Math.ceil(current / 60) === Math.ceil(next / 60) ? current : next;
+    });
+  }, []);
+
+  const quotaExhausted = useCallback(() => (
+    quotaRemainingRef.current !== null && quotaRemainingRef.current <= 0
+  ), []);
+
+  const isFreeListener = Boolean(user && !user.has_unlimited_listening);
+  const refreshQuota = useCallback(async () => {
+    if (!isFreeListener) {
+      setQuotaRemaining(null);
+      return null;
+    }
+    try {
+      const quota = await fetchListeningQuota();
+      const remaining = quota?.unlimited ? null : quota?.remaining_seconds ?? 0;
+      setQuotaRemaining(remaining);
+      return remaining;
+    } catch {
+      return quotaRemainingRef.current;
+    }
+  }, [isFreeListener, setQuotaRemaining]);
+
   const capturePlayedDelta = useCallback(() => {
     const audio = audioRef.current;
     const track = currentTrackRef.current;
@@ -312,15 +362,23 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
       const delta = current - last;
       if (delta > 0) {
         pendingSecondsRef.current += delta;
+        if (quotaRemainingRef.current !== null) {
+          setQuotaRemaining(quotaRemainingRef.current - delta);
+        }
       }
     }
     lastAudioTimeRef.current = Number.isFinite(current) ? current : 0;
-  }, []);
+    if (quotaExhausted() && !audio.paused) {
+      shouldAutoplayRef.current = false;
+      audio.pause();
+      setListenError(LISTEN_QUOTA_EXCEEDED_MESSAGE);
+    }
+  }, [quotaExhausted, setQuotaRemaining]);
 
   const openListening = useCallback(() => {
-    if (!user?.has_audio_access) return;
+    if (!user) return;
     setListenOpen(true);
-  }, [user?.has_audio_access]);
+  }, [user]);
 
   const flushListeningSeconds = useCallback((keepalive = false) => {
     capturePlayedDelta();
@@ -337,7 +395,8 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
         event_id: listenEventId(),
         audio_id: track.audio_id,
         seconds: batchSeconds,
-        mode
+        mode,
+        context: "player"
       });
       seconds -= batchSeconds;
     }
@@ -353,11 +412,21 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
           eventId: payload.event_id,
           audioId: payload.audio_id,
           seconds: payload.seconds,
-          mode: payload.mode
-        }).catch(() => {})
+          mode: payload.mode,
+          context: payload.context
+        }).catch(() => null)
       ))
-    );
-  }, [capturePlayedDelta]);
+    ).then((results) => {
+      // The server's count wins over the local estimate (other tabs/devices count too).
+      const remaining = results
+        .map((result) => result?.player_seconds_remaining)
+        .filter((value) => typeof value === "number");
+      if (remaining.length && quotaRemainingRef.current !== null) {
+        // Responses can arrive out of order, so a server figure may only lower the estimate.
+        setQuotaRemaining(Math.min(quotaRemainingRef.current, Math.min(...remaining) - pendingSecondsRef.current));
+      }
+    });
+  }, [capturePlayedDelta, setQuotaRemaining]);
 
   const setActiveSource = useCallback((source) => {
     const nextSource = source || DEFAULT_LISTEN_SOURCE;
@@ -427,21 +496,25 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
         track = await fetchListeningRandomAudio(targetMode);
       }
       if (!track) throw new Error("Nu există audio disponibil.");
+      if (quotaExhausted()) await refreshQuota();
       setListenTrack(track);
       rememberListenTrack(track);
       setListenAutoplayNonce((nonce) => nonce + 1);
     } catch (requestError) {
       shouldAutoplayRef.current = false;
+      if (requestError?.status === 403 && quotaRemainingRef.current !== null) {
+        setQuotaRemaining(0);
+      }
       setListenTrack(null);
       setListenPlaying(false);
       setListenError(requestError.message || "Nu există audio disponibil.");
     } finally {
       setListenLoading(false);
     }
-  }, [rememberListenTrack]);
+  }, [quotaExhausted, refreshQuota, rememberListenTrack, setQuotaRemaining]);
 
   const startListening = useCallback(async (mode, source = null) => {
-    if (!user?.has_audio_access) return;
+    if (!user) return;
     const nextSource = source || (
       activeSourceRef.current?.type === "playlist" ? DEFAULT_LISTEN_SOURCE : activeSourceRef.current || DEFAULT_LISTEN_SOURCE
     );
@@ -458,7 +531,7 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
     setListenError("");
     setListenPlaying(false);
     loadListenTrack(mode);
-  }, [loadListenTrack, pauseAndResetCurrentAudio, resetListenHistory, resetPlaylistState, setActiveSource, user?.has_audio_access]);
+  }, [loadListenTrack, pauseAndResetCurrentAudio, resetListenHistory, resetPlaylistState, setActiveSource, user]);
 
   const startAuthorListening = useCallback((username) => {
     const cleanUsername = String(username || "").trim();
@@ -544,6 +617,10 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
       audio.pause();
       return;
     }
+    if (quotaExhausted() && (await refreshQuota()) === 0) {
+      setListenError(LISTEN_QUOTA_EXCEEDED_MESSAGE);
+      return;
+    }
     setListenError("");
     try {
       await audio.play();
@@ -551,7 +628,7 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
       setListenPlaying(false);
       setListenError("Audio nu poate fi redat.");
     }
-  }, [loadListenTrack]);
+  }, [loadListenTrack, quotaExhausted, refreshQuota]);
 
   const playKnownTrack = useCallback((track) => {
     if (!track) return;
@@ -706,6 +783,12 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
     if (!audio || !shouldAutoplayRef.current) return;
     lastAudioTimeRef.current = 0;
     audio.load();
+    if (quotaExhausted()) {
+      shouldAutoplayRef.current = false;
+      setListenPlaying(false);
+      setListenError(LISTEN_QUOTA_EXCEEDED_MESSAGE);
+      return;
+    }
     audio.play().catch(() => {
       setListenPlaying(false);
       setListenError("Apasă Redă pentru a porni audio.");
@@ -747,10 +830,28 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
   }, [flushListeningSeconds]);
 
   useEffect(() => {
-    if (!user?.has_audio_access && (listenOpen || listenMode)) {
+    if (!user && (listenOpen || listenMode)) {
       stopListening();
     }
-  }, [listenMode, listenOpen, stopListening, user?.has_audio_access]);
+  }, [listenMode, listenOpen, stopListening, user]);
+
+  useEffect(() => {
+    if (!isFreeListener) {
+      setQuotaRemaining(null);
+      return undefined;
+    }
+    if (!listenOpen) return undefined;
+    if (quotaRemainingRef.current === null) {
+      setQuotaRemaining(FREE_LISTEN_MINUTES_PER_DAY * 60);
+    }
+    let cancelled = false;
+    refreshQuota().then((remaining) => {
+      if (!cancelled && remaining === 0) setListenError(LISTEN_QUOTA_EXCEEDED_MESSAGE);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isFreeListener, listenOpen, refreshQuota, setQuotaRemaining, user?.id]);
 
   useEffect(() => {
     if (listenSource?.type === "playlist" && !user?.has_author_audio_access) {
@@ -758,7 +859,7 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
     }
   }, [listenSource?.type, stopListening, user?.has_author_audio_access]);
 
-  const canListen = Boolean(user?.has_audio_access);
+  const canListen = Boolean(user);
   const playlistActive = listenSource?.type === "playlist";
   const canGoPrevious = playlistActive ? playlistPosition > 0 : listenHistoryPosition.index > 0;
   const canGoNext = playlistActive ? playlistPosition >= 0 && playlistPosition < playlistCount - 1 : Boolean(listenMode);
@@ -814,7 +915,8 @@ export function useListeningPlayer(user, authLoaded = true, onUserRefresh = null
         if (!listenTrack) return;
         setListenPlaying(false);
         setListenError("Audio nu poate fi redat.");
-      }
+      },
+      quotaRemainingSeconds
     }
   };
 }

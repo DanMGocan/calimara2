@@ -123,6 +123,7 @@ def _current_user_payload(db: Session, user: models.User) -> dict:
         "is_suspended": user.is_suspended,
         "is_premium": user.is_premium,
         "has_audio_access": user.has_audio_access,
+        "has_unlimited_listening": user.has_unlimited_listening,
         "has_author_audio_access": user.has_author_audio_access,
         "premium_tier": user.premium_tier,
         "premium_period_start": user.premium_period_start.isoformat() if user.premium_period_start else None,

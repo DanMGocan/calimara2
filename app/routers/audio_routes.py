@@ -159,11 +159,19 @@ def get_series_audio_playlist(
     }
 
 
+@router.get("/api/audio/asculta/cota", response_model=schemas.AudioListenQuota)
+def get_listen_quota(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    return audio_service.listen_quota_payload(db, current_user)
+
+
 @router.get("/api/audio/asculta/aleatoriu", response_model=schemas.AudioTrack)
 def get_random_listen_audio(
     mode: str = "toate",
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     try:
         audio = audio_service.random_listen_audio_track(db, current_user, mode)
@@ -181,7 +189,7 @@ def get_random_author_listen_audio(
     username: str,
     mode: str = "toate",
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_audio_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     try:
         audio = audio_service.random_author_listen_audio_track(db, current_user, username, mode)
@@ -317,6 +325,7 @@ def record_listen_seconds(
             audio_id=body.audio_id,
             seconds=body.seconds,
             mode=body.mode,
+            context=body.context,
         )
     except audio_service.AudioListenForbidden as exc:
         raise HTTPException(status_code=403, detail=str(exc))
