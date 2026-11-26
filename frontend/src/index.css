@@ -1933,18 +1933,8 @@ main.stage-single .piece-scroll-wrap {
   border-left: 1px solid var(--hairline);
   transition: opacity 260ms cubic-bezier(0.2, 0.7, 0.2, 1), transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1), color 180ms ease, border-color 180ms ease;
 }
-.metric-count {
-  animation: metricCountEaseIn 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-@keyframes metricCountEaseIn {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.metric-count.is-scrambling {
+  opacity: 0.72;
 }
 .react-like .react-symbol {
   color: var(--accent);
@@ -2601,19 +2591,10 @@ main.stage-single .piece-scroll-wrap {
   margin: auto auto 0;
   padding: 0 0 18px;
   box-sizing: border-box;
-  transition: opacity 360ms cubic-bezier(0.2, 0.7, 0.2, 1), transform 360ms cubic-bezier(0.2, 0.7, 0.2, 1), filter 360ms cubic-bezier(0.2, 0.7, 0.2, 1);
-  will-change: opacity, transform, filter;
 }
+/* Buttons stay put while the reader swaps posts; only the counters roll (see MetricCount). */
 .footer-post-actions-row.is-reader-switching {
-  opacity: 0.28;
-  transform: translateY(6px);
-  filter: blur(0.6px);
   pointer-events: none;
-}
-.footer-post-tools.is-reader-switching .metric-count {
-  opacity: 0;
-  transform: translateY(5px);
-  animation: none;
 }
 .footer-post-actions-row .landing-post-tools {
   margin-top: 0;
@@ -4013,7 +3994,6 @@ main.stage-single .piece-scroll-wrap {
   .feedback-modal-scrim,
   .diacritics-progress-scrim,
   .post-action-floating-panels,
-  .metric-count,
   .piece-comments,
   .comment-list,
   .access-modal,
