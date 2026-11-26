@@ -191,3 +191,16 @@ def test_site_test_banner_is_removed():
     assert "site-test-banner" not in styles
     assert ".site-top-stack {\n  position: sticky;" in styles
     assert "bannerul galben de testare" not in docs
+
+
+def test_navbar_logged_out_puts_login_right_after_home():
+    source = read_frontend("app/layout.jsx")
+    styles = read_frontend("index.css")
+
+    home = source.index('label="Acasă"')
+    login = source.index('label="Autentificare"')
+    first_locked = source.index('label="Călimara mea"')
+    assert home < login < first_locked
+    assert "{member ? null : (" in source[home:login]
+    # DOM order now handles placement; the mobile-only CSS reordering is gone.
+    assert ".nav-left > .nav-action.login" not in styles
