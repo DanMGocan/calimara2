@@ -204,3 +204,34 @@ def test_navbar_logged_out_puts_login_right_after_home():
     assert "{member ? null : (" in source[home:login]
     # DOM order now handles placement; the mobile-only CSS reordering is gone.
     assert ".nav-left > .nav-action.login" not in styles
+
+
+def test_mobile_navbar_only_shows_home_and_login_or_logout():
+    source = read_frontend("app/layout.jsx")
+    styles = read_frontend("index.css")
+    mobile = styles.split("@media (max-width: 820px) {\n  :root {\n    --nav-h: 58px;", 1)[1]
+    mobile = mobile.split("\n}\n", 1)[0]
+
+    rule = "  .nav-left > .nav-action:not(.nav-home):not(.login):not(.logout),\n  .nav-audio-wrap {\n    display: none;\n  }"
+    assert rule in mobile
+    assert "mobile-menu-only" not in source
+    assert "mobile-menu-only" not in styles
+    # Logout must not be hidden on mobile any more.
+    assert 'label="Deconectare" className="danger logout">' in source
+    assert 'label="Autentificare" className="login"' in source
+    assert 'label="Acasă" className="nav-home"' in source
+
+
+def test_burger_menu_holds_every_hidden_mobile_nav_entry():
+    source = read_frontend("app/layout.jsx")
+    app = read_frontend("App.jsx")
+    menu = source[source.index("export function SideMenu("):source.index("const SITE_FEEDBACK_ENTRIES")]
+
+    for label in ("Călimara mea", "Panou", "Notificări", "Player audio", "Prieteni", "Mesaje", "Cluburi",
+                  "Teatru colaborativ", "Ștafeta", "Discuții", "Inventar", "Premium", "Deconectare", "Autentificare"):
+        assert f'label: "{label}"' in menu or f'"{label}"' in menu, label
+    assert "onClick: onNotifications" in menu
+    assert "onClick: onOpenAudioPlayer" in menu
+    assert "onNotifications={openProfilePanel}" in app
+    assert "onOpenAudioPlayer={listeningPlayer.canListen ? listeningPlayer.openListening : undefined}" in app
+    assert "notificationCount={notificationCount}" in app[app.index("<SideMenu"):]

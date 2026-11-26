@@ -9746,7 +9746,10 @@ textarea.cal-input {
     gap: 2px;
   }
 
-  .nav-action.mobile-menu-only {
+  /* Mobile: only Acasă and Autentificare/Deconectare stay in the bar;
+     every other nav icon (and the audio player) lives in the burger menu. */
+  .nav-left > .nav-action:not(.nav-home):not(.login):not(.logout),
+  .nav-audio-wrap {
     display: none;
   }
 

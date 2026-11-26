@@ -339,10 +339,10 @@ export function NavBar({
           <FiBell aria-hidden="true" />
           {member ? countBadge(unreadNotifications, "notificări necitite") : null}
         </NavItem>
-        <NavItem href={mainPath("/discutii")} label="Discuții" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/discutii")} label="Discuții" locked={locked} pending={pending}>
           <FiMessageCircle aria-hidden="true" />
         </NavItem>
-        <NavItem href={member ? authorPath(user, "/mesaje") : undefined} label="Mesaje" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={member ? authorPath(user, "/mesaje") : undefined} label="Mesaje" locked={locked} pending={pending}>
           <FiMail aria-hidden="true" />
           {member ? countBadge(unreadMessages, "mesaje necitite") : null}
         </NavItem>
@@ -350,23 +350,23 @@ export function NavBar({
           <FiUserPlus aria-hidden="true" />
           {member ? countBadge(friendRequests, "cereri de prietenie") : null}
         </NavItem>
-        <NavItem href={mainPath("/cluburi")} label="Cluburi" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/cluburi")} label="Cluburi" locked={locked} pending={pending}>
           <RiTeamLine aria-hidden="true" />
         </NavItem>
-        <NavItem href={mainPath("/teatru")} label="Teatru colaborativ" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/teatru")} label="Teatru colaborativ" locked={locked} pending={pending}>
           <PiMaskSad aria-hidden="true" />
         </NavItem>
-        <NavItem href={mainPath("/stafeta")} label="Ștafeta" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/stafeta")} label="Ștafeta" locked={locked} pending={pending}>
           <IoMdPaperPlane aria-hidden="true" />
         </NavItem>
-        <NavItem href={mainPath("/inventar")} label="Inventar" className="mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/inventar")} label="Inventar" locked={locked} pending={pending}>
           <IoShirtOutline aria-hidden="true" />
         </NavItem>
-        <NavItem href={mainPath("/premium")} label="Premium" className="premium mobile-menu-only" locked={locked} pending={pending}>
+        <NavItem href={mainPath("/premium")} label="Premium" className="premium" locked={locked} pending={pending}>
           <FaCoins aria-hidden="true" />
         </NavItem>
         {member ? (
-          <NavItem href="/api/deconectare" label="Deconectare" className="danger logout mobile-menu-only">
+          <NavItem href="/api/deconectare" label="Deconectare" className="danger logout">
             <FiLogOut aria-hidden="true" />
           </NavItem>
         ) : null}
@@ -617,7 +617,26 @@ export function NotificationPanel({ open, user, notificationCount = 0, onNotific
   );
 }
 
-export function SideMenu({ open, onClose, user }) {
+function unreadDesc(count, fallback, noun) {
+  const safe = Math.max(0, Number(count) || 0);
+  if (!safe) return fallback;
+  return `${safe > 9 ? "9+" : safe} ${noun}`;
+}
+
+const MENU_ARROW = (
+  <span className="menu-arrow" aria-hidden="true">
+    <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+      <path d="M1 5h11m0 0L9 1m3 4l-3 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  </span>
+);
+
+/*
+ * Burger menu. On mobile (≤820px) the navbar only shows Acasă and
+ * Autentificare/Deconectare, so every other nav icon (notificări, player
+ * audio, mesaje, …) must be reachable from here.
+ */
+export function SideMenu({ open, onClose, user, notificationCount = 0, messageCount = 0, onNotifications, onOpenAudioPlayer }) {
   const { openAuthModal } = useAuthModal();
   useEffect(() => {
     const onKey = (event) => {
@@ -635,31 +654,34 @@ export function SideMenu({ open, onClose, user }) {
   }, [open]);
 
   const adminItems = user?.is_admin
-    ? [["Admin", "operațiuni și moderare", mainPath("/moderare")]]
+    ? [{ label: "Admin", desc: "operațiuni și moderare", href: mainPath("/moderare") }]
     : user?.is_moderator
-      ? [["Moderare", "moderare", mainPath("/moderare")]]
+      ? [{ label: "Moderare", desc: "moderare", href: mainPath("/moderare") }]
       : [];
   const menuItems = user
     ? [
-        ["Acasă", "pagina principală", mainPath("/")],
-        ["Călimara mea", "profilul tău public", blogUrl(user.username)],
-        ["Scrie", "adaugă un text nou", authorPath(user, "/scrie")],
-        ["Panou", "textele tale", authorPath(user, "/panou")],
-        ...(user.has_author_audio_access ? [["Playlisturi", "audio salvat", mainPath("/playlisturi")]] : []),
-        ["Prieteni", "cereri și listă", mainPath("/prieteni")],
+        { label: "Acasă", desc: "pagina principală", href: mainPath("/") },
+        { label: "Călimara mea", desc: "profilul tău public", href: blogUrl(user.username) },
+        { label: "Scrie", desc: "adaugă un text nou", href: authorPath(user, "/scrie") },
+        { label: "Panou", desc: "textele tale", href: authorPath(user, "/panou") },
+        ...(onNotifications ? [{ label: "Notificări", desc: unreadDesc(notificationCount, "activitate recentă", "necitite"), onClick: onNotifications }] : []),
+        ...(onOpenAudioPlayer ? [{ label: "Player audio", desc: "ascultă texte", onClick: onOpenAudioPlayer }] : []),
+        ...(user.has_author_audio_access ? [{ label: "Playlisturi", desc: "audio salvat", href: mainPath("/playlisturi") }] : []),
+        { label: "Prieteni", desc: unreadDesc(user.incoming_friend_request_count, "cereri și listă", "cereri noi"), href: mainPath("/prieteni") },
         ...adminItems,
-        ["Mesaje", "conversații", authorPath(user, "/mesaje")],
-        ["Cluburi", "comunități", mainPath("/cluburi")],
-        ["Teatru colaborativ", "piese scrise pe rând", mainPath("/teatru")],
-        ["Ștafeta", "texte continuate pe rând", mainPath("/stafeta")],
-        ["Discuții", "forum și întrebări", mainPath("/discutii")],
-        ["Magazin", "cosmetice cu Gologani", mainPath("/magazin")],
-        ["Inventar", "obiectele tale", mainPath("/inventar")],
-        [user.is_premium ? "Premium" : "Devino Premium", "abonament și super-aprecieri", mainPath("/premium")],
-        ["Deconectare", "", "/api/deconectare", true]
+        { label: "Mesaje", desc: unreadDesc(messageCount, "conversații", "necitite"), href: authorPath(user, "/mesaje") },
+        { label: "Cluburi", desc: "comunități", href: mainPath("/cluburi") },
+        { label: "Teatru colaborativ", desc: "piese scrise pe rând", href: mainPath("/teatru") },
+        { label: "Ștafeta", desc: "texte continuate pe rând", href: mainPath("/stafeta") },
+        { label: "Discuții", desc: "forum și întrebări", href: mainPath("/discutii") },
+        { label: "Magazin", desc: "cosmetice cu Gologani", href: mainPath("/magazin") },
+        { label: "Inventar", desc: "obiectele tale", href: mainPath("/inventar") },
+        { label: user.is_premium ? "Premium" : "Devino Premium", desc: "abonament și super-aprecieri", href: mainPath("/premium") },
+        { label: "Deconectare", desc: "", href: "/api/deconectare", danger: true }
       ]
     : [
-        ["Acasă", "pagina principală", mainPath("/")]
+        { label: "Acasă", desc: "pagina principală", href: mainPath("/") },
+        { label: "Autentificare", desc: "intră în cont", onClick: () => openAuthModal?.() }
       ];
 
   return (
@@ -675,42 +697,41 @@ export function SideMenu({ open, onClose, user }) {
           </button>
         </div>
         <nav className="menu-list">
-          {menuItems.map(([label, desc, href, danger], index) => (
-            <a key={label} href={href} className={`menu-item ${danger ? "danger" : ""}`} onClick={onClose} style={{ transitionDelay: open ? `${0.1 + index * 0.035}s` : "0s" }}>
-              <span className="menu-num">{String(index + 1).padStart(2, "0")}</span>
-              <span className="menu-body">
-                <span className="menu-label">{label}</span>
-                {desc ? <span className="menu-desc">{desc}</span> : null}
-              </span>
-              <span className="menu-arrow" aria-hidden="true">
-                <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                  <path d="M1 5h11m0 0L9 1m3 4l-3 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </a>
-          ))}
-          {!user ? (
-            <button
-              className="menu-item"
-              type="button"
-              onClick={() => {
-                onClose();
-                openAuthModal?.();
-              }}
-              style={{ transitionDelay: open ? `${0.1 + menuItems.length * 0.035}s` : "0s" }}
-            >
-              <span className="menu-num">{String(menuItems.length + 1).padStart(2, "0")}</span>
-              <span className="menu-body">
-                <span className="menu-label">Autentificare</span>
-                <span className="menu-desc">intră în cont</span>
-              </span>
-              <span className="menu-arrow" aria-hidden="true">
-                <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                  <path d="M1 5h11m0 0L9 1m3 4l-3 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
-            </button>
-          ) : null}
+          {menuItems.map(({ label, desc, href, danger, onClick }, index) => {
+            const className = `menu-item ${danger ? "danger" : ""}`;
+            const style = { transitionDelay: open ? `${0.1 + index * 0.035}s` : "0s" };
+            const content = (
+              <>
+                <span className="menu-num">{String(index + 1).padStart(2, "0")}</span>
+                <span className="menu-body">
+                  <span className="menu-label">{label}</span>
+                  {desc ? <span className="menu-desc">{desc}</span> : null}
+                </span>
+                {MENU_ARROW}
+              </>
+            );
+            if (onClick) {
+              return (
+                <button
+                  key={label}
+                  className={className}
+                  type="button"
+                  style={style}
+                  onClick={() => {
+                    onClose();
+                    onClick();
+                  }}
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <a key={label} href={href} className={className} onClick={onClose} style={style}>
+                {content}
+              </a>
+            );
+          })}
         </nav>
       </aside>
     </>
