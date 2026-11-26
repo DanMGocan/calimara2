@@ -1,8 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import viewportZoom from "./postcss-viewport-zoom.js";
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    postcss: {
+      plugins: [viewportZoom()]
+    }
+  },
   build: {
     rolldownOptions: {
       output: {

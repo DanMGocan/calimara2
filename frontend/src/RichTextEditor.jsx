@@ -5,6 +5,7 @@ import CharacterCount from "@tiptap/extension-character-count";
 import Underline from "@tiptap/extension-underline";
 import { FiBold, FiItalic, FiList, FiRefreshCcw, FiUnderline } from "react-icons/fi";
 import { avatarPreviewUrl } from "./app/paths.js";
+import { cssZoomOf } from "./app/zoom.js";
 
 const HTML_RE = /<[a-zA-Z][^>]*>/;
 const MENTION_CONTEXT_RE = /(^|[\s([{])@([A-Za-z0-9]{0,40})$/;
@@ -358,10 +359,13 @@ function detectMention(editor, wrapper) {
   try {
     const coords = editor.view.coordsAtPos(end);
     const wrapperRect = wrapper?.getBoundingClientRect?.();
-    const editorWidth = wrapperRect?.width || window.innerWidth || 360;
-    const menuWidth = Math.min(280, Math.max(180, editorWidth - 16), Math.max(180, (window.innerWidth || 360) - 32));
-    const rawLeft = wrapperRect ? coords.left - wrapperRect.left : coords.left;
-    const rawTop = wrapperRect ? coords.bottom - wrapperRect.top + 8 : coords.bottom + 8;
+    // Rects are in window px; the menu's left/top are in the page's (possibly zoomed) CSS px.
+    const zoom = cssZoomOf(wrapper || editor.view.dom);
+    const viewportWidth = (window.innerWidth || 360) / zoom;
+    const editorWidth = (wrapperRect?.width || window.innerWidth || 360) / zoom;
+    const menuWidth = Math.min(280, Math.max(180, editorWidth - 16), Math.max(180, viewportWidth - 32));
+    const rawLeft = (wrapperRect ? coords.left - wrapperRect.left : coords.left) / zoom;
+    const rawTop = (wrapperRect ? coords.bottom - wrapperRect.top : coords.bottom) / zoom + 8;
     position = {
       left: Math.max(8, Math.min(rawLeft, Math.max(8, editorWidth - menuWidth - 8))),
       top: Math.max(8, rawTop)
