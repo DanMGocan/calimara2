@@ -313,6 +313,12 @@ export function NavBar({
         <NavItem href={mainPath("/")} label="Acasă" className="nav-home">
           <IconHouse className="nav-home-icon" />
         </NavItem>
+        {/* Logged-out (or session still loading): the login icon sits right after Acasă, before the greyed-out icons. */}
+        {member ? null : (
+          <NavItem label="Autentificare" className="login" onClick={() => openAuthModal?.()}>
+            <FiLogIn aria-hidden="true" />
+          </NavItem>
+        )}
         <NavItem href={member ? blogUrl(user.username) : undefined} label="Călimara mea" className="inkwell" locked={locked} pending={pending}>
           <BsPen aria-hidden="true" />
         </NavItem>
@@ -360,11 +366,7 @@ export function NavBar({
           <NavItem href="/api/deconectare" label="Deconectare" className="danger logout mobile-menu-only">
             <FiLogOut aria-hidden="true" />
           </NavItem>
-        ) : (
-          <NavItem label="Autentificare" className="login" onClick={() => openAuthModal?.()}>
-            <FiLogIn aria-hidden="true" />
-          </NavItem>
-        )}
+        ) : null}
       </div>
       <div className="nav-right">
         <span className={`nav-audio-wrap ${audioRequiresAuth ? "requires-auth" : ""}`.trim()}>

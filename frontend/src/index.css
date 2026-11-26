@@ -9739,15 +9739,6 @@ textarea.cal-input {
     display: none;
   }
 
-  /* Logged-out: keep the login icon next to Acasă so it never scrolls out of view. */
-  .nav-left > .nav-home {
-    order: -2;
-  }
-
-  .nav-left > .nav-action.login {
-    order: -1;
-  }
-
   .nav-audio-player {
     height: 42px;
     gap: 5px;
