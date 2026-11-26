@@ -110,8 +110,10 @@ export function IconHouse(props) {
 const NAV_TOOLTIP_DELAY_MS = 160;
 const NAV_LOCKED_TOOLTIP_DELAY_MS = 30;
 const NAV_TOOLTIP_VIEWPORT_GAP = 8;
+// Grace period so the pointer can travel from the icon into a locked tooltip and click its link.
+const NAV_LOCKED_TOOLTIP_HIDE_DELAY_MS = 140;
 
-function NavTooltip({ id, anchorRef, locked, label }) {
+function NavTooltip({ id, anchorRef, locked, label, onAuth, ...hoverHandlers }) {
   const tooltipRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -129,11 +131,22 @@ function NavTooltip({ id, anchorRef, locked, label }) {
   }, [anchorRef, label, locked]);
 
   return createPortal(
-    <span ref={tooltipRef} id={id} role="tooltip" className={`nav-tooltip ${locked ? "is-locked" : ""}`.trim()}>
+    <span ref={tooltipRef} id={id} role="tooltip" className={`nav-tooltip ${locked ? "is-locked" : ""}`.trim()} {...(locked ? hoverHandlers : {})}>
       {locked ? (
         <>
           <FiLock className="nav-tooltip-lock" aria-hidden="true" />
-          <span>Conectează-te pentru a folosi funcția <strong>{label}</strong></span>
+          <span>
+            <button
+              className="nav-tooltip-link"
+              type="button"
+              // Keep focus on the nav icon so its blur handler doesn't close the tooltip mid-click.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onAuth}
+            >
+              Conectează-te
+            </button>{" "}
+            pentru a folosi funcția <strong>{label}</strong>
+          </span>
         </>
       ) : label}
     </span>,
@@ -153,6 +166,15 @@ function useNavTooltip(locked) {
     window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => setOpen(true), locked ? NAV_LOCKED_TOOLTIP_DELAY_MS : NAV_TOOLTIP_DELAY_MS);
   };
+  const keepOpen = () => window.clearTimeout(timerRef.current);
+  const leave = () => {
+    if (!locked) {
+      hide();
+      return;
+    }
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setOpen(false), NAV_LOCKED_TOOLTIP_HIDE_DELAY_MS);
+  };
 
   useEffect(() => () => window.clearTimeout(timerRef.current), []);
 
@@ -169,12 +191,17 @@ function useNavTooltip(locked) {
   return {
     open,
     hide,
+    // Spread onto a locked NavTooltip so hovering the tooltip itself keeps it open.
+    tooltipHandlers: {
+      onPointerEnter: keepOpen,
+      onPointerLeave: leave
+    },
     handlers: {
       // Touch taps also emit pointer events; tooltips are for mouse hover and keyboard focus only.
       onPointerEnter: (event) => {
         if (event.pointerType === "mouse") show();
       },
-      onPointerLeave: hide,
+      onPointerLeave: leave,
       onFocus: (event) => {
         if (event.currentTarget.matches(":focus-visible")) show();
       },
@@ -194,7 +221,7 @@ function NavItem({ href, label, children, className = "", locked = false, pendin
   const { openAuthModal } = useAuthModal();
   const anchorRef = useRef(null);
   const tooltipId = useId();
-  const { open, hide, handlers } = useNavTooltip(locked);
+  const { open, hide, handlers, tooltipHandlers } = useNavTooltip(locked);
   const classes = ["icon-btn", "nav-action", locked ? "is-locked" : "", className].filter(Boolean).join(" ");
   const shared = {
     ref: anchorRef,
@@ -203,7 +230,11 @@ function NavItem({ href, label, children, className = "", locked = false, pendin
     "aria-describedby": open ? tooltipId : undefined,
     ...handlers
   };
-  const tooltip = open ? <NavTooltip id={tooltipId} anchorRef={anchorRef} locked={locked} pending={pending} label={label} /> : null;
+  const openAuth = () => {
+    hide();
+    openAuthModal?.();
+  };
+  const tooltip = open ? <NavTooltip id={tooltipId} anchorRef={anchorRef} locked={locked} label={label} onAuth={openAuth} {...tooltipHandlers} /> : null;
 
   if (pending) {
     return (
@@ -224,10 +255,7 @@ function NavItem({ href, label, children, className = "", locked = false, pendin
           type="button"
           aria-label={`${label} (conectează-te pentru a folosi funcția)`}
           aria-describedby={undefined}
-          onClick={() => {
-            hide();
-            openAuthModal?.();
-          }}
+          onClick={openAuth}
         >
           {children}
         </button>
@@ -297,10 +325,21 @@ export function NavBar({
   const unreadMessages = Math.max(0, Number(messageCount) || 0);
   const friendRequests = Math.max(0, Number(user?.incoming_friend_request_count) || 0);
   const audioRequiresAuth = !loggedIn;
+  const audioLocked = audioRequiresAuth && authLoaded;
   const audioButtonDisabled = Boolean(audioPlayerDisabled);
   const audioButtonInteractive = !audioRequiresAuth && !audioButtonDisabled;
-  const audioTooltipId = "nav-audio-auth-tooltip";
+  const audioAnchorRef = useRef(null);
+  const audioTooltipId = useId();
+  const audioTooltip = useNavTooltip(true);
+  const openAudioAuth = () => {
+    audioTooltip.hide();
+    openAuthModal?.();
+  };
   const handleAudioPlayerClick = (event) => {
+    if (audioLocked) {
+      openAudioAuth();
+      return;
+    }
     if (!audioButtonInteractive) {
       event.preventDefault();
       return;
@@ -364,31 +403,33 @@ export function NavBar({
         )}
       </div>
       <div className="nav-right">
-        <span className={`nav-audio-wrap ${audioRequiresAuth ? "requires-auth" : ""}`.trim()}>
+        <span className="nav-audio-wrap">
           <button
-            className={`nav-audio-player ${audioRequiresAuth ? "is-disabled" : ""}`.trim()}
+            ref={audioAnchorRef}
+            className={["nav-audio-player", audioRequiresAuth ? "is-disabled" : "", audioLocked ? "is-locked" : ""].filter(Boolean).join(" ")}
             type="button"
             onClick={handleAudioPlayerClick}
             disabled={!audioRequiresAuth && audioButtonDisabled}
-            aria-disabled={audioRequiresAuth ? "true" : undefined}
+            aria-disabled={audioRequiresAuth && !audioLocked ? "true" : undefined}
             title={audioRequiresAuth ? undefined : audioPlayerTitle}
-            aria-label="Player audio"
+            aria-label={audioLocked ? "Player audio (conectează-te pentru a folosi funcția)" : "Player audio"}
             aria-haspopup="dialog"
             aria-expanded={audioPlayerOpen || undefined}
             aria-controls="landing-listen-player"
-            aria-describedby={audioRequiresAuth ? audioTooltipId : undefined}
+            {...(audioLocked ? audioTooltip.handlers : {})}
           >
             <FiPlay aria-hidden="true" />
             <span>Player audio</span>
           </button>
-          {audioRequiresAuth ? (
-            <span className="nav-audio-tooltip" id={audioTooltipId} role="tooltip">
-              Pentru a utiliza player-ul audio, vă rugăm să vă{" "}
-              <button className="nav-audio-tooltip-link" type="button" onClick={() => openAuthModal?.()}>
-                conectați
-              </button>
-              .
-            </span>
+          {audioLocked && audioTooltip.open ? (
+            <NavTooltip
+              id={audioTooltipId}
+              anchorRef={audioAnchorRef}
+              locked
+              label="Player audio"
+              onAuth={openAudioAuth}
+              {...audioTooltip.tooltipHandlers}
+            />
           ) : null}
         </span>
         <button className={`icon-btn burger ${menuOpen ? "open" : ""}`} onClick={onMenu} aria-label="Meniu" type="button" aria-expanded={menuOpen}>
