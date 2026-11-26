@@ -14,10 +14,10 @@
 import { DESKTOP_SCALE_QUERY, PAGE_ZOOM, PAGE_ZOOM_ACTIVE_CLASS } from "./src/app/zoom.js";
 
 const VIEWPORT_UNIT = String.raw`[sdl]?v(?:h|w|min|max|i|b)`;
-const VIEWPORT_LENGTH_RE = new RegExp(
-  String.raw`(^|[^\w.-])(-?(?:\d+\.?\d*|\.\d+)(?:${VIEWPORT_UNIT}))(?![\w-])(?!\s*\/\s*var\(\s*--page-zoom\b)`,
-  "gi"
-);
+const VIEWPORT_LENGTH_RE = new RegExp(String.raw`(^|[^\w.-])(-?(?:\d+\.?\d*|\.\d+)(?:${VIEWPORT_UNIT}))(?![\w-])`, "gi");
+// A value that mentions --page-zoom is compensated by hand and left alone entirely, e.g.
+// `calc((100vh - 64px) / var(--page-zoom, 1))`.
+const MANUAL_ZOOM_RE = /var\(\s*--page-zoom(?![\w-])/i;
 const HAS_VIEWPORT_UNIT_RE = new RegExp(String.raw`\d(?:${VIEWPORT_UNIT})(?![\w-])`, "i");
 
 // Splits a declaration value into parts that may be rewritten and parts that must be copied
@@ -59,6 +59,7 @@ function splitProtected(value) {
 }
 
 export function divideViewportUnits(value) {
+  if (MANUAL_ZOOM_RE.test(value)) return value;
   return splitProtected(value)
     .map(({ text, rewrite }) =>
       rewrite ? text.replace(VIEWPORT_LENGTH_RE, (_, lead, length) => `${lead}calc(${length} / var(--page-zoom, 1))`) : text
@@ -73,7 +74,21 @@ const MEDIA_SIZE_RE = /\(\s*(min|max)-(width|height)\s*:\s*(\d+(?:\.\d+)?)px\s*\
 // test the same either way. Height thresholds are always affected.
 const SCALE_MIN_WIDTH = Number(/min-width:\s*(\d+)px/.exec(DESKTOP_SCALE_QUERY)[1]);
 
+// Any other size test (range syntax like `(width <= 1200px)`, em/rem thresholds) would
+// silently drift under the scale, so the build refuses it instead.
+const SIZE_FEATURE_RE = /(?<![\w-])(?:min-|max-)?(?:width|height)(?![\w-])/i;
+
+export function assertSupportedMediaParams(params) {
+  if (SIZE_FEATURE_RE.test(params.replace(MEDIA_SIZE_RE, ""))) {
+    throw new Error(
+      `postcss-viewport-zoom: unsupported size media query "@media ${params}". ` +
+        "Use (min-|max-)(width|height): <N>px so the desktop page scale can compensate it."
+    );
+  }
+}
+
 export function mediaNeedsZoomTwin(params) {
+  assertSupportedMediaParams(params);
   for (const [, , axis, px] of params.matchAll(MEDIA_SIZE_RE)) {
     if (axis.toLowerCase() === "height" || Number(px) >= SCALE_MIN_WIDTH) return true;
   }
@@ -87,6 +102,9 @@ export function scaleMediaParams(params, zoom = PAGE_ZOOM) {
   });
 }
 
+// Selectors that do not start with html/:root get a descendant prefix, so inside a twinned
+// @media they can no longer match <html> itself (e.g. a bare `*`). Start such selectors with
+// `html` or `:root` explicitly if they need to.
 export function scopeSelector(selector, active) {
   const state = active ? `.${PAGE_ZOOM_ACTIVE_CLASS}` : `:not(.${PAGE_ZOOM_ACTIVE_CLASS})`;
   const trimmed = selector.trim();
@@ -128,6 +146,9 @@ export default function viewportZoom() {
       });
       for (const atRule of twins) {
         const twin = atRule.clone({ params: scaleMediaParams(atRule.params) });
+        twin.walkAtRules(/^media$/i, (nested) => {
+          nested.params = scaleMediaParams(nested.params);
+        });
         scopeRules(atRule, false);
         scopeRules(twin, true);
         atRule.after(twin);

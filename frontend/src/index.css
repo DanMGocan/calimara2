@@ -43,6 +43,10 @@
      `currentCSSZoom` (cssZoomOf in src/app/zoom.js). */
   --page-zoom: 1;
 }
+@media print {
+  /* Beats the inline --page-zoom that installPageZoom() sets, in case beforeprint is late. */
+  :root { --page-zoom: 1 !important; }
+}
 
 * { box-sizing: border-box; }
 html {

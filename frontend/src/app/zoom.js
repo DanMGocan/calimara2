@@ -35,8 +35,10 @@ export function installPageZoom(win = typeof window === "undefined" ? undefined 
   const root = win.document.documentElement;
   const query = win.matchMedia(DESKTOP_SCALE_QUERY);
   let active = null;
+  let printing = false;
   const apply = () => {
-    const next = Boolean(query.matches);
+    // Never print at the screen scale (index.css also forces --page-zoom: 1 in print).
+    const next = Boolean(query.matches) && !printing;
     if (next === active) return;
     active = next;
     root.classList.toggle(PAGE_ZOOM_ACTIVE_CLASS, next);
@@ -44,7 +46,21 @@ export function installPageZoom(win = typeof window === "undefined" ? undefined 
     else root.style.removeProperty("--page-zoom");
     win.dispatchEvent(new win.Event(PAGE_ZOOM_CHANGE_EVENT));
   };
+  const beforePrint = () => {
+    printing = true;
+    apply();
+  };
+  const afterPrint = () => {
+    printing = false;
+    apply();
+  };
   apply();
   query.addEventListener("change", apply);
-  return () => query.removeEventListener("change", apply);
+  win.addEventListener("beforeprint", beforePrint);
+  win.addEventListener("afterprint", afterPrint);
+  return () => {
+    query.removeEventListener("change", apply);
+    win.removeEventListener("beforeprint", beforePrint);
+    win.removeEventListener("afterprint", afterPrint);
+  };
 }

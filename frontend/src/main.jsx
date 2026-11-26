@@ -4,7 +4,7 @@ import "./index.css";
 import { App } from "./App.jsx";
 import { installPageZoom } from "./app/zoom.js";
 
-// Before the first render, so the page never paints at the wrong scale.
+// Before the first React render, so no content is laid out at the unscaled size first.
 installPageZoom();
 
 createRoot(document.getElementById("root")).render(

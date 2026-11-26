@@ -52,11 +52,12 @@ def test_viewport_unit_rewrite():
         "calc(100vh / var(--page-zoom, 1))": "calc(100vh / var(--page-zoom, 1))",
         "12px 1.5rem": "12px 1.5rem",
         "var(--h1vh)": "var(--h1vh)",
-        # Case-insensitive units; only lengths that are already divided are skipped.
+        # Units match case-insensitively.
         "100VH": "calc(100VH / var(--page-zoom, 1))",
-        "min(100vw, calc(100vh / var(--page-zoom, 1)))": (
-            "min(calc(100vw / var(--page-zoom, 1)), calc(100vh / var(--page-zoom, 1)))"
-        ),
+        # A value that mentions --page-zoom is compensated by hand: never divided twice.
+        "calc((100vh - 64px) / var(--page-zoom, 1))": "calc((100vh - 64px) / var(--page-zoom, 1))",
+        # ...but a similarly named property is not --page-zoom.
+        "calc(100vh / var(--page-zoom-ratio))": "calc(calc(100vh / var(--page-zoom, 1)) / var(--page-zoom-ratio))",
         # Strings and url() arguments are never rewritten.
         "url(/img/100vw.png) 10vh": "url(/img/100vw.png) calc(10vh / var(--page-zoom, 1))",
         'url("/a b/50vh.png")': 'url("/a b/50vh.png")',
@@ -117,6 +118,8 @@ def test_wide_media_queries_get_a_zoom_aware_twin():
         "{ :root { --nav-h: 58px; } .nav, html body { padding: 1px; } }\n"
         "@media (max-width: 820px) { .nav { padding: 2px; } }\n"
         "@media (max-height: 700px) { .stage { height: 50vh; } }\n"
+        "@media (max-height: 800px) { @media (min-width: 1300px) { .x { color: red; } } }\n"
+        "@media print { .nav { display: none; } }\n"
     )
     script = (
         "import postcss from 'postcss';"
@@ -146,6 +149,47 @@ def test_wide_media_queries_get_a_zoom_aware_twin():
         "@media (max-height: 630px) "
         "{ :where(html.page-zoom-active) .stage { height: calc(50vh / var(--page-zoom, 1)); } }"
     ) in out
+    # Nested queries inside the twin are scaled too, and scoped once.
+    assert (
+        "@media (max-height: 720px) { @media (min-width: 1170px) "
+        "{ :where(html.page-zoom-active) .x { color: red; } } }"
+    ) in out
+    assert "@media (min-width: 1300px) { :where(html:not(.page-zoom-active)) .x" in out
+    assert "@media print { .nav { display: none; } }" in out
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (FRONTEND / "node_modules" / "postcss").exists(),
+    reason="node or frontend dependencies are not installed",
+)
+@pytest.mark.parametrize(
+    "query",
+    ["(width <= 1400px)", "(700px <= height)", "(max-width: 90em)", "(min-height: 40rem)"],
+)
+def test_unsupported_size_media_queries_fail_the_build(query):
+    script = (
+        "import postcss from 'postcss';"
+        "import viewportZoom from './postcss-viewport-zoom.js';"
+        "try { await postcss([viewportZoom()]).process(process.argv[1], { from: undefined }); console.log('ok'); }"
+        "catch (error) { console.log(error.message); }"
+    )
+    out = run_node(script, f"@media {query} {{ .nav {{ padding: 1px; }} }}")
+    assert "unsupported size media query" in out
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (FRONTEND / "node_modules" / "postcss").exists(),
+    reason="node or frontend dependencies are not installed",
+)
+def test_other_media_features_are_left_alone():
+    script = (
+        "import postcss from 'postcss';"
+        "import viewportZoom from './postcss-viewport-zoom.js';"
+        "const out = await postcss([viewportZoom()]).process(process.argv[1], { from: undefined });"
+        "console.log(out.css);"
+    )
+    css = "@media (hover: hover) and (min-aspect-ratio: 16/9) and (orientation: landscape) { .a { color: red; } }"
+    assert run_node(script, css).strip() == css
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
@@ -154,6 +198,7 @@ def test_install_page_zoom_follows_support_and_the_desktop_query():
 import { installPageZoom, PAGE_ZOOM_CHANGE_EVENT } from './src/app/zoom.js';
 function fakeWindow({ supported, matches }) {
   const classes = new Set(); const style = new Map(); const listeners = []; let events = 0;
+  const winListeners = {};
   const query = { matches, addEventListener: (_, fn) => listeners.push(fn), removeEventListener() {} };
   function Element() {}
   Element.prototype = supported ? { currentCSSZoom: 1 } : {};
@@ -162,6 +207,8 @@ function fakeWindow({ supported, matches }) {
     Event: class { constructor(type) { this.type = type; } },
     matchMedia: () => query,
     dispatchEvent: (e) => { if (e.type === PAGE_ZOOM_CHANGE_EVENT) events += 1; },
+    addEventListener: (type, fn) => { winListeners[type] = fn; },
+    fire: (type) => winListeners[type](),
     document: { documentElement: {
       classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) },
       style: { setProperty: (k, v) => style.set(k, v), removeProperty: (k) => style.delete(k) },
@@ -175,6 +222,8 @@ let f = fakeWindow({ supported: false, matches: true });
 installPageZoom(f.win); results.unsupported = f.state();
 f = fakeWindow({ supported: true, matches: true });
 installPageZoom(f.win); results.desktop = f.state();
+f.win.fire('beforeprint'); results.printing = f.state();
+f.win.fire('afterprint'); results.afterPrint = f.state();
 f.query.matches = false; f.listeners.forEach((fn) => fn()); results.pointerRemoved = f.state();
 console.log(JSON.stringify(results));
 """
@@ -182,7 +231,10 @@ console.log(JSON.stringify(results));
 
     assert results["unsupported"] == {"active": False, "zoom": None, "events": 0}
     assert results["desktop"] == {"active": True, "zoom": "0.9", "events": 1}
-    assert results["pointerRemoved"] == {"active": False, "zoom": None, "events": 2}
+    assert results["printing"] == {"active": False, "zoom": None, "events": 2}
+    assert results["afterPrint"] == {"active": True, "zoom": "0.9", "events": 3}
+    assert results["pointerRemoved"] == {"active": False, "zoom": None, "events": 4}
+    assert re.search(r"@media print \{\s*/\*[^*]*\*/\s*:root \{ --page-zoom: 1 !important; \}", read("src/index.css"))
 
 
 def test_background_shapes_remeasure_when_page_zoom_changes():
