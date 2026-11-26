@@ -168,7 +168,7 @@ INTEGRATIONS: list[dict[str, Any]] = [
             {"name": "GOOGLE_CLOUD_PROJECT", "required": True, "secret": False, "hint": "ID-ul proiectului Google Cloud"},
             {"name": "GOOGLE_APPLICATION_CREDENTIALS", "required": True, "secret": False, "hint": "/home/dan/calimara2/keys/google-cloud.json (deja completat)"},
             {"name": "GOOGLE_TTS_VOICE_NAME", "required": False, "secret": False, "hint": "vocea: Kore (Gemini) sau ro-RO-Chirp3-HD-Leda"},
-            {"name": "GOOGLE_TTS_MODEL_NAME", "required": False, "secret": False, "hint": "obligatoriu pentru vocile Gemini, ex. gemini-2.5-flash-tts; gol pentru Chirp3"},
+            {"name": "GOOGLE_TTS_MODEL_NAME", "required": False, "secret": False, "hint": "obligatoriu pentru vocile Gemini, ex. gemini-3.8-flash-tts (prin Agent Platform/Vertex AI, rol roles/aiplatform.user) sau gemini-2.5-flash-tts; gol pentru Chirp3"},
         ],
         "flags": ["AUDIO_ENABLED"],
         "credentials_file_var": "GOOGLE_APPLICATION_CREDENTIALS",
