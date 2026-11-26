@@ -30,6 +30,7 @@ SUBDOMAIN_PRIVATE_PATHS = {"/panou", "/profil", "/scrie", "/mesaje", "/prieteni"
 MAIN_PRIVATE_EXACT_PATHS = {
     "/panou", "/profil", "/scrie", "/mesaje", "/prieteni", "/utilizatori", "/moderare", "/docs",
     "/cluburi", "/stafeta", "/stafeta/nou", "/magazin", "/inventar", "/playlisturi", "/invitatii",
+    "/discutii", "/discutii/nou",
     "/autentificare", "/autentificare/configurare", "/autentificare/raspuns",
 }
 MAIN_PRIVATE_SLUG_PREFIXES = ("/cluburi/", "/stafeta/", "/invitatie/")
@@ -54,10 +55,6 @@ STATIC_PUBLIC_PAGES = {
     "/premium": {
         "title": f"Premium | {SITE_NAME}",
         "description": "Planurile Premium Călimara pentru autori, ascultare audio, Super-apreciez și instrumente literare.",
-    },
-    "/discutii": {
-        "title": f"Discuții literare | {SITE_NAME}",
-        "description": "Forumuri pentru poezie, proză scurtă, anunțuri și conversații între autorii Călimara.",
     },
     "/teatru": {
         "title": f"Teatru colaborativ | {SITE_NAME}",
@@ -350,39 +347,6 @@ def _theatre_metadata(play: models.TheatrePlay) -> PageMetadata:
     )
 
 
-def _forum_thread_metadata(thread: models.ForumThread) -> PageMetadata:
-    canonical = main_url(f"/discutii/{thread.slug}")
-    author = thread.author
-    description = _excerpt(
-        thread.content,
-        fallback=f"Discuție literară pe Călimara{f' pornită de @{author.username}' if author else ''}.",
-    )
-    return PageMetadata(
-        title=f"{thread.title} | Discuții | {SITE_NAME}",
-        description=description,
-        canonical_url=canonical,
-        image_url=_profile_image_url(author) if author else main_url(DEFAULT_IMAGE_PATH),
-        og_type="article",
-        json_ld=[
-            {
-                "@context": "https://schema.org",
-                "@type": "DiscussionForumPosting",
-                "headline": thread.title,
-                "text": _excerpt(thread.content, fallback="", limit=600),
-                "url": canonical,
-                "inLanguage": SITE_LANGUAGE,
-                "datePublished": _iso_datetime(thread.created_at),
-                "dateModified": _iso_datetime(thread.updated_at),
-                "author": {
-                    "@type": "Person",
-                    "name": author.username,
-                    "url": author_url(author.username, "/"),
-                } if author else None,
-            }
-        ],
-    )
-
-
 def build_page_metadata(db: Session, request: Request) -> PageMetadata:
     path = "/" + request.url.path.strip("/")
     if path == "//":
@@ -438,22 +402,14 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
         return _noindex_metadata(path, title="Piesă inexistentă", not_found=True)
 
     if path.startswith("/discutii/") and path != "/discutii/nou":
+        # Forum is members-only: never expose thread titles/content to crawlers, only 404 missing slugs.
         slug = path.split("/", 2)[2]
-        thread = (
-            db.query(models.ForumThread)
-            .options(joinedload(models.ForumThread.author))
-            .filter(
-                models.ForumThread.slug == slug,
-                models.ForumThread.moderation_status == "approved",
-            )
-            .first()
-        )
-        if thread:
-            return _forum_thread_metadata(thread)
         exists = db.query(models.ForumThread.id).filter(models.ForumThread.slug == slug).first()
-        return _noindex_metadata(path, title="Discuție inexistentă", not_found=exists is None)
+        if exists:
+            return _noindex_metadata(path)
+        return _noindex_metadata(path, title="Discuție inexistentă", not_found=True)
 
-    if path == "/teatru/nou" or path == "/discutii/nou" or _is_known_private_path(path):
+    if path == "/teatru/nou" or _is_known_private_path(path):
         return _noindex_metadata(path)
 
     return _noindex_metadata(path, title="Pagină negăsită", not_found=True)
@@ -484,7 +440,6 @@ def build_sitemap_entries(db: Session, *, limit: int = SITEMAP_LIMIT) -> list[Si
         SitemapEntry(main_url("/"), priority="1.0", changefreq="daily"),
         SitemapEntry(main_url("/ce-este-calimara"), priority="0.7", changefreq="monthly"),
         SitemapEntry(main_url("/premium"), priority="0.6", changefreq="monthly"),
-        SitemapEntry(main_url("/discutii"), priority="0.7", changefreq="daily"),
         SitemapEntry(main_url("/teatru"), priority="0.7", changefreq="daily"),
         SitemapEntry(main_url("/confidentialitate"), priority="0.3", changefreq="yearly"),
         SitemapEntry(main_url("/termeni"), priority="0.3", changefreq="yearly"),
@@ -555,18 +510,6 @@ def build_sitemap_entries(db: Session, *, limit: int = SITEMAP_LIMIT) -> list[Si
     )
     for play in theatre_rows:
         entries.append(SitemapEntry(main_url(f"/teatru/{play.slug}"), lastmod=play.updated_at, priority="0.6", changefreq="weekly"))
-        if len(entries) >= limit:
-            return entries
-
-    forum_rows = (
-        db.query(models.ForumThread)
-        .filter(models.ForumThread.moderation_status == "approved")
-        .order_by(models.ForumThread.updated_at.desc(), models.ForumThread.id.desc())
-        .limit(max(0, limit - len(entries)))
-        .all()
-    )
-    for thread in forum_rows:
-        entries.append(SitemapEntry(main_url(f"/discutii/{thread.slug}"), lastmod=thread.updated_at, priority="0.5", changefreq="weekly"))
         if len(entries) >= limit:
             return entries
 

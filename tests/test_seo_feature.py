@@ -85,7 +85,7 @@ def test_sitemap_lists_public_content_and_skips_private_routes():
         assert f"https://seoauthor.calimara.ro/{post.slug}" in sitemap
         assert "https://calimara.ro/serii/serie-publica" in sitemap
         assert "https://calimara.ro/teatru/piesa-publica" in sitemap
-        assert "https://calimara.ro/discutii/discutie-publica" in sitemap
+        assert "/discutii" not in sitemap
         assert "text-pending" not in sitemap
         assert "/cluburi" not in sitemap
         assert "/stafeta" not in sitemap

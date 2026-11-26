@@ -1,9 +1,10 @@
-import { Component, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Component, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createSiteFeedback } from "../api/feedback.js";
 import { deleteNotification, fetchNotifications, markAllNotificationsRead, markNotificationRead, markNotificationUnread } from "../api/notifications.js";
 import { BsPen } from "react-icons/bs";
 import { FaCoins, FaFacebookF } from "react-icons/fa6";
-import { FiBell, FiCheck, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiTrash2, FiUserPlus, FiX } from "react-icons/fi";
+import { FiBell, FiCheck, FiLock, FiLogIn, FiLogOut, FiMail, FiMessageCircle, FiPlay, FiTrash2, FiUserPlus, FiX } from "react-icons/fi";
 import { IoMdPaperPlane } from "react-icons/io";
 import { IoShirtOutline } from "react-icons/io5";
 import { LiaBugSolid } from "react-icons/lia";
@@ -106,18 +107,170 @@ export function IconHouse(props) {
     </svg>
   );
 }
-function NavIconLink({ href, label, children, className = "" }) {
-  return (
-    <a className={`icon-btn nav-action ${className}`.trim()} href={href} aria-label={label} title={label}>
-      {children}
-    </a>
+const NAV_TOOLTIP_DELAY_MS = 160;
+const NAV_LOCKED_TOOLTIP_DELAY_MS = 30;
+const NAV_TOOLTIP_VIEWPORT_GAP = 8;
+
+function NavTooltip({ id, anchorRef, locked, label }) {
+  const tooltipRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const tooltip = tooltipRef.current;
+    const anchor = anchorRef.current;
+    if (!tooltip || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = tooltip.offsetWidth;
+    const center = rect.left + rect.width / 2;
+    const maxLeft = window.innerWidth - width - NAV_TOOLTIP_VIEWPORT_GAP;
+    const left = Math.max(NAV_TOOLTIP_VIEWPORT_GAP, Math.min(center - width / 2, maxLeft));
+    tooltip.style.top = `${Math.round(rect.bottom + 8)}px`;
+    tooltip.style.left = `${Math.round(left)}px`;
+    tooltip.style.setProperty("--nav-tooltip-arrow-x", `${Math.round(center - left)}px`);
+  }, [anchorRef, label, locked]);
+
+  return createPortal(
+    <span ref={tooltipRef} id={id} role="tooltip" className={`nav-tooltip ${locked ? "is-locked" : ""}`.trim()}>
+      {locked ? (
+        <>
+          <FiLock className="nav-tooltip-lock" aria-hidden="true" />
+          <span>Conectează-te pentru a folosi funcția <strong>{label}</strong></span>
+        </>
+      ) : label}
+    </span>,
+    document.body
   );
 }
-function NavIconButton({ label, children, className = "", onClick, ...props }) {
+
+function useNavTooltip(locked) {
+  const [open, setOpen] = useState(false);
+  const timerRef = useRef(0);
+
+  const hide = () => {
+    window.clearTimeout(timerRef.current);
+    setOpen(false);
+  };
+  const show = () => {
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setOpen(true), locked ? NAV_LOCKED_TOOLTIP_DELAY_MS : NAV_TOOLTIP_DELAY_MS);
+  };
+
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    window.addEventListener("scroll", hide, true);
+    window.addEventListener("resize", hide);
+    return () => {
+      window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("resize", hide);
+    };
+  }, [open]);
+
+  return {
+    open,
+    hide,
+    handlers: {
+      // Touch taps also emit pointer events; tooltips are for mouse hover and keyboard focus only.
+      onPointerEnter: (event) => {
+        if (event.pointerType === "mouse") show();
+      },
+      onPointerLeave: hide,
+      onFocus: (event) => {
+        if (event.currentTarget.matches(":focus-visible")) show();
+      },
+      onBlur: hide
+    }
+  };
+}
+
+/**
+ * Nav icon with a custom hover tooltip. When `locked` (logged-out visitor on a
+ * members-only feature) the icon is greyed out, the tooltip invites the visitor
+ * to sign in, and clicking opens the auth modal instead of navigating.
+ * `pending` (session still loading) keeps the normal look but stays inert, so
+ * signed-in members don't see their icons flash grey on every page load.
+ */
+function NavItem({ href, label, children, className = "", locked = false, pending = false, onClick, ...props }) {
+  const { openAuthModal } = useAuthModal();
+  const anchorRef = useRef(null);
+  const tooltipId = useId();
+  const { open, hide, handlers } = useNavTooltip(locked);
+  const classes = ["icon-btn", "nav-action", locked ? "is-locked" : "", className].filter(Boolean).join(" ");
+  const shared = {
+    ref: anchorRef,
+    className: classes,
+    "aria-label": label,
+    "aria-describedby": open ? tooltipId : undefined,
+    ...handlers
+  };
+  const tooltip = open ? <NavTooltip id={tooltipId} anchorRef={anchorRef} locked={locked} pending={pending} label={label} /> : null;
+
+  if (pending) {
+    return (
+      <>
+        <button {...shared} type="button" aria-disabled="true">
+          {children}
+        </button>
+        {tooltip}
+      </>
+    );
+  }
+
+  if (locked) {
+    return (
+      <>
+        <button
+          {...shared}
+          type="button"
+          aria-label={`${label} (conectează-te pentru a folosi funcția)`}
+          aria-describedby={undefined}
+          onClick={() => {
+            hide();
+            openAuthModal?.();
+          }}
+        >
+          {children}
+        </button>
+        {tooltip}
+      </>
+    );
+  }
+
+  if (href) {
+    return (
+      <>
+        <a {...shared} href={href} onClick={onClick}>
+          {children}
+        </a>
+        {tooltip}
+      </>
+    );
+  }
+
   return (
-    <button className={`icon-btn nav-action ${className}`.trim()} type="button" onClick={onClick} aria-label={label} title={label} {...props}>
-      {children}
-    </button>
+    <>
+      <button
+        {...shared}
+        type="button"
+        onClick={(event) => {
+          hide();
+          onClick?.(event);
+        }}
+        {...props}
+      >
+        {children}
+      </button>
+      {tooltip}
+    </>
+  );
+}
+
+function countBadge(count, noun) {
+  if (!(count > 0)) return null;
+  return (
+    <span className="profile-notification-badge" aria-label={`${count} ${noun}`}>
+      {count > 9 ? "9+" : count}
+    </span>
   );
 }
 
@@ -133,11 +286,16 @@ export function NavBar({
   onOpenAudioPlayer,
   audioPlayerDisabled = true,
   audioPlayerTitle = "Player audio",
-  audioPlayerOpen = false
+  audioPlayerOpen = false,
+  authLoaded = true
 }) {
   const { openAuthModal } = useAuthModal();
+  const member = Boolean(loggedIn && user);
+  const pending = !member && !authLoaded;
+  const locked = !member && authLoaded;
   const unreadNotifications = Math.max(0, Number(notificationCount) || 0);
   const unreadMessages = Math.max(0, Number(messageCount) || 0);
+  const friendRequests = Math.max(0, Number(user?.incoming_friend_request_count) || 0);
   const audioRequiresAuth = !loggedIn;
   const audioButtonDisabled = Boolean(audioPlayerDisabled);
   const audioButtonInteractive = !audioRequiresAuth && !audioButtonDisabled;
@@ -152,88 +310,58 @@ export function NavBar({
   return (
     <nav className="nav">
       <div className="nav-left">
-        <a href={mainPath("/")} className="nav-home icon-btn" aria-label="Acasă" title="Acasă">
+        <NavItem href={mainPath("/")} label="Acasă" className="nav-home">
           <IconHouse className="nav-home-icon" />
-        </a>
-        {loggedIn && user ? (
-          <>
-            <NavIconLink href={blogUrl(user.username)} label="Călimara mea" className="inkwell">
-              <BsPen aria-hidden="true" />
-            </NavIconLink>
-            <NavIconButton
-              label="Notificări"
-              onClick={onProfileNotifications}
-              aria-haspopup="dialog"
-              aria-expanded={profilePanelOpen || undefined}
-              aria-controls="profile-notification-panel"
-            >
-              <FiBell aria-hidden="true" />
-              {unreadNotifications > 0 ? (
-                <span className="profile-notification-badge" aria-label={`${unreadNotifications} notificări necitite`}>
-                  {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                </span>
-              ) : null}
-            </NavIconButton>
-          </>
-        ) : null}
-        <NavIconLink href={mainPath("/discutii")} label="Discuții" className={loggedIn ? "mobile-menu-only" : ""}>
+        </NavItem>
+        <NavItem href={member ? blogUrl(user.username) : undefined} label="Călimara mea" className="inkwell" locked={locked} pending={pending}>
+          <BsPen aria-hidden="true" />
+        </NavItem>
+        <NavItem
+          label="Notificări"
+          locked={locked} pending={pending}
+          onClick={onProfileNotifications}
+          aria-haspopup="dialog"
+          aria-expanded={profilePanelOpen || undefined}
+          aria-controls="profile-notification-panel"
+        >
+          <FiBell aria-hidden="true" />
+          {member ? countBadge(unreadNotifications, "notificări necitite") : null}
+        </NavItem>
+        <NavItem href={mainPath("/discutii")} label="Discuții" className="mobile-menu-only" locked={locked} pending={pending}>
           <FiMessageCircle aria-hidden="true" />
-        </NavIconLink>
-        {!loggedIn ? (
-          <NavIconButton label="Autentificare" onClick={() => openAuthModal?.()}>
-            <FiLogIn aria-hidden="true" />
-          </NavIconButton>
-        ) : null}
-        {loggedIn && user ? (
-          <NavIconLink href={authorPath(user, "/mesaje")} label="Mesaje" className="mobile-menu-only">
-            <FiMail aria-hidden="true" />
-            {unreadMessages > 0 ? (
-              <span className="profile-notification-badge" aria-label={`${unreadMessages} mesaje necitite`}>
-                {unreadMessages > 9 ? "9+" : unreadMessages}
-              </span>
-            ) : null}
-          </NavIconLink>
-        ) : null}
-        {loggedIn && user ? (
-          <NavIconLink href={mainPath("/prieteni")} label="Prieteni">
-            <FiUserPlus aria-hidden="true" />
-            {user.incoming_friend_request_count > 0 ? (
-              <span className="profile-notification-badge" aria-label={`${user.incoming_friend_request_count} cereri de prietenie`}>
-                {user.incoming_friend_request_count > 9 ? "9+" : user.incoming_friend_request_count}
-              </span>
-            ) : null}
-          </NavIconLink>
-        ) : null}
-        {loggedIn ? (
-          <NavIconLink href={mainPath("/cluburi")} label="Cluburi" className="mobile-menu-only">
-            <RiTeamLine aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
-        {loggedIn ? (
-          <NavIconLink href={mainPath("/teatru")} label="Teatru colaborativ" className="mobile-menu-only">
-            <PiMaskSad aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
-        {loggedIn ? (
-          <NavIconLink href={mainPath("/stafeta")} label="Ștafeta" className="mobile-menu-only">
-            <IoMdPaperPlane aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
-        {loggedIn && user ? (
-          <NavIconLink href={mainPath("/inventar")} label="Inventar" className="mobile-menu-only">
-            <IoShirtOutline aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
-        {loggedIn ? (
-          <NavIconLink href={mainPath("/premium")} label="Premium" className="premium mobile-menu-only">
-            <FaCoins aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
-        {loggedIn ? (
-          <NavIconLink href="/api/deconectare" label="Deconectare" className="danger logout mobile-menu-only">
+        </NavItem>
+        <NavItem href={member ? authorPath(user, "/mesaje") : undefined} label="Mesaje" className="mobile-menu-only" locked={locked} pending={pending}>
+          <FiMail aria-hidden="true" />
+          {member ? countBadge(unreadMessages, "mesaje necitite") : null}
+        </NavItem>
+        <NavItem href={mainPath("/prieteni")} label="Prieteni" locked={locked} pending={pending}>
+          <FiUserPlus aria-hidden="true" />
+          {member ? countBadge(friendRequests, "cereri de prietenie") : null}
+        </NavItem>
+        <NavItem href={mainPath("/cluburi")} label="Cluburi" className="mobile-menu-only" locked={locked} pending={pending}>
+          <RiTeamLine aria-hidden="true" />
+        </NavItem>
+        <NavItem href={mainPath("/teatru")} label="Teatru colaborativ" className="mobile-menu-only" locked={locked} pending={pending}>
+          <PiMaskSad aria-hidden="true" />
+        </NavItem>
+        <NavItem href={mainPath("/stafeta")} label="Ștafeta" className="mobile-menu-only" locked={locked} pending={pending}>
+          <IoMdPaperPlane aria-hidden="true" />
+        </NavItem>
+        <NavItem href={mainPath("/inventar")} label="Inventar" className="mobile-menu-only" locked={locked} pending={pending}>
+          <IoShirtOutline aria-hidden="true" />
+        </NavItem>
+        <NavItem href={mainPath("/premium")} label="Premium" className="premium mobile-menu-only" locked={locked} pending={pending}>
+          <FaCoins aria-hidden="true" />
+        </NavItem>
+        {member ? (
+          <NavItem href="/api/deconectare" label="Deconectare" className="danger logout mobile-menu-only">
             <FiLogOut aria-hidden="true" />
-          </NavIconLink>
-        ) : null}
+          </NavItem>
+        ) : (
+          <NavItem label="Autentificare" className="login" onClick={() => openAuthModal?.()}>
+            <FiLogIn aria-hidden="true" />
+          </NavItem>
+        )}
       </div>
       <div className="nav-right">
         <span className={`nav-audio-wrap ${audioRequiresAuth ? "requires-auth" : ""}`.trim()}>
@@ -523,8 +651,7 @@ export function SideMenu({ open, onClose, user }) {
         ["Deconectare", "", "/api/deconectare", true]
       ]
     : [
-        ["Acasă", "pagina principală", mainPath("/")],
-        ["Discuții", "forum și întrebări", mainPath("/discutii")]
+        ["Acasă", "pagina principală", mainPath("/")]
       ];
 
   return (

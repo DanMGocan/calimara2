@@ -266,6 +266,7 @@ export function App() {
             audioPlayerDisabled={!listeningPlayer.canListen}
             audioPlayerTitle={listeningPlayer.canListen ? "Player audio" : listeningPlayer.disabledMessage}
             audioPlayerOpen={listeningPlayer.open}
+            authLoaded={auth.loaded}
           />
         </div>
         <AdSenseProvider route={route} user={auth.user} authLoaded={auth.loaded}>

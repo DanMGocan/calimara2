@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { PROTECTED_ROUTES } from "./constants.js";
-import { categoryLabel, forumSectionLabel, htmlToText, usernameHandle } from "./format.js";
+import { categoryLabel, htmlToText, usernameHandle } from "./format.js";
 import { blogUrl, mainPath, profileAvatarUrl, profileCoverUrl } from "./paths.js";
 
 const SITE_NAME = "călimara.ro";
@@ -27,8 +27,7 @@ const DATA_DRIVEN_ROUTE_NAMES = new Set([
   "allWorks",
   "post",
   "series",
-  "theatrePlay",
-  "forumThread"
+  "theatrePlay"
 ]);
 
 const STATIC_ROUTE_SEO = {
@@ -56,11 +55,6 @@ const STATIC_ROUTE_SEO = {
     title: `Premium | ${SITE_NAME}`,
     description: "Planurile Premium Călimara pentru autori, ascultare audio, Super-apreciez și instrumente literare.",
     canonicalUrl: mainPath("/premium")
-  },
-  forum: {
-    title: `Discuții literare | ${SITE_NAME}`,
-    description: "Forumuri pentru poezie, proză scurtă, anunțuri și conversații între autorii Călimara.",
-    canonicalUrl: mainPath("/discutii")
   },
   theatre: {
     title: `Teatru colaborativ | ${SITE_NAME}`,
@@ -301,30 +295,3 @@ export function theatrePlaySeo(play) {
   };
 }
 
-export function forumThreadSeo(thread) {
-  if (!thread?.slug) return null;
-  const authorLabel = thread.author?.username ? ` pornită de ${usernameHandle(thread.author.username)}` : "";
-  const description = shortDescription(thread.content, `Discuție ${forumSectionLabel(thread.section).toLowerCase()} pe Călimara${authorLabel}.`);
-  const robots = thread.moderation_status && thread.moderation_status !== "approved" ? "noindex, nofollow" : "index, follow";
-  return {
-    title: `${thread.title} | Discuții | ${SITE_NAME}`,
-    description,
-    canonicalUrl: mainPath(`/discutii/${thread.slug}`),
-    imageUrl: thread.author ? profileAvatarUrl(thread.author, 512) : DEFAULT_IMAGE,
-    ogType: "article",
-    robots,
-    jsonLd: [{
-      "@context": "https://schema.org",
-      "@type": "DiscussionForumPosting",
-      headline: thread.title,
-      text: shortDescription(thread.content, "", 600),
-      url: mainPath(`/discutii/${thread.slug}`),
-      inLanguage: "ro",
-      author: thread.author?.username ? {
-        "@type": "Person",
-        name: thread.author.username,
-        url: blogUrl(thread.author.username)
-      } : undefined
-    }]
-  };
-}

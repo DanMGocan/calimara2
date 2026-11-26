@@ -17,7 +17,9 @@ function absoluteUrl(pathOrUrl, baseUrl = defaultBaseUrl) {
 }
 
 export function notificationsButton(page) {
-  return page.getByRole("button", { name: "Notificări" });
+  // Logged-out visitors also see a locked Notificări icon (and an inert one while the session loads),
+  // so only match the live one.
+  return page.locator('.nav button[aria-label="Notificări"]:not(.is-locked):not([aria-disabled="true"])');
 }
 
 export async function loginByApi(page, user = users.author, options = {}) {

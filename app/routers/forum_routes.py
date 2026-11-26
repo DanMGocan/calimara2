@@ -116,7 +116,7 @@ def list_forum_threads_api(
     limit: int = 30,
     offset: int = 0,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     if section and not crud.is_forum_section(section):
         raise HTTPException(status_code=400, detail="Secțiune invalidă")
@@ -152,7 +152,7 @@ def create_forum_thread_api(
 def get_forum_thread_api(
     slug: str,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(auth.get_current_user),
+    current_user: models.User = Depends(auth.get_required_user),
 ):
     thread = crud.get_forum_thread_by_slug(db, slug)
     if not thread or not crud.can_view_forum_thread(current_user, thread, db=db):

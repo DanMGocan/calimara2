@@ -13,7 +13,6 @@ import { useAsync } from "../app/hooks.js";
 import { ActionRow, AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
 import { mainPath, profileAvatarUrl } from "../app/paths.js";
 import { ReportModal } from "../app/post-actions.jsx";
-import { forumThreadSeo, usePageSeo } from "../app/seo.js";
 
 function ForumAuthorPanel({ author }) {
   if (!author?.username) {
@@ -306,7 +305,6 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
     () => fetchForumThread(slug),
     [slug, refreshKey]
   );
-  usePageSeo(data ? forumThreadSeo(data) : null, [data?.id, data?.updated_at, data?.reply_count]);
 
   useEffect(() => {
     setReplyAutoDiacritics(false);
