@@ -155,6 +155,29 @@ class ModerationWordListTests(unittest.TestCase):
             self.add("  ?!  ")
         self.assertEqual(empty.exception.status_code, 400)
 
+    def test_phrase_matches_across_line_breaks_and_extra_spaces(self):
+        self.add("cuvânt   interzis", category="hate_speech")
+        self.assertEqual(
+            [item["word"] for item in admin_routes.get_moderation_words(db=self.db, current_user=self.admin_user)["words"]],
+            ["cuvânt interzis"],
+        )
+        result = self.moderate("Un cuvânt\n  interzis aici.")
+        self.assertEqual(result.status, moderation.ModerationStatus.FLAGGED)
+
+    def test_cedilla_and_comma_below_letters_match_each_other(self):
+        self.add("țigan")  # comma-below ț
+        self.assertEqual(self.moderate("Un ţigan aici.").status, moderation.ModerationStatus.FLAGGED)  # cedilla ţ
+        with self.assertRaises(HTTPException):
+            self.add("ţigan")  # same word once normalized
+
+    def test_concurrent_duplicate_insert_returns_400_not_500(self):
+        self.add("ceață")
+        with patch("sqlalchemy.orm.Query.first", return_value=None):
+            with self.assertRaises(HTTPException) as duplicate:
+                self.add("ceață")
+        self.assertEqual(duplicate.exception.status_code, 400)
+        self.assertEqual(self.db.query(models.ModerationWord).count(), 1)
+
     def test_delete_missing_word_is_404(self):
         with self.assertRaises(HTTPException) as missing:
             admin_routes.delete_moderation_word(999, request=None, db=self.db, current_user=self.admin_user)

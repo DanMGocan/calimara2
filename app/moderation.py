@@ -2,9 +2,11 @@ import os
 import logging
 import json
 import re
+import unicodedata
+import weakref
 from typing import Dict, Tuple, Optional
 from enum import Enum
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
@@ -77,12 +79,25 @@ ROMANIAN_HATE_SPEECH_PATTERNS = [
 ]
 
 
+# Old Romanian keyboard layouts type cedilla ş/ţ instead of comma-below ș/ț.
+_CEDILLA_TO_COMMA = str.maketrans({"ş": "ș", "ţ": "ț"})
+
+
+def _normalize_for_matching(value: str) -> str:
+    """NFC, lowercase, ş/ţ → ș/ț and single spaces, so words and text compare alike."""
+    value = unicodedata.normalize("NFC", str(value or "")).lower().translate(_CEDILLA_TO_COMMA)
+    return " ".join(value.split())
+
+
 def _count_pattern_matches(text: str, patterns: list[str]) -> int:
-    text_lower = text.lower()
+    normalized_text = _normalize_for_matching(text)
     count = 0
     for pattern in patterns:
-        escaped = re.escape(pattern.lower())
-        count += len(re.findall(rf"(?<!\w){escaped}(?!\w)", text_lower))
+        normalized_pattern = _normalize_for_matching(pattern)
+        if not normalized_pattern:
+            continue
+        escaped = re.escape(normalized_pattern)
+        count += len(re.findall(rf"(?<!\w){escaped}(?!\w)", normalized_text))
     return count
 
 
@@ -101,13 +116,30 @@ def default_wordlists() -> Dict[str, list[str]]:
 
 
 def normalize_moderation_word(word: str) -> str:
-    return " ".join(str(word or "").lower().split())
+    return _normalize_for_matching(word)
+
+
+# Engines already known to have the table (it is never dropped), so the
+# schema inspection runs once per engine instead of once per moderated item.
+_engines_with_wordlist_table: "weakref.WeakSet" = weakref.WeakSet()
 
 
 def wordlist_table_available(db: Session) -> bool:
     from . import admin
 
+    bind = db.get_bind()
+    engine = getattr(bind, "engine", bind)
+    try:
+        if engine in _engines_with_wordlist_table:
+            return True
+    except TypeError:
+        engine = None
     if admin.db_table_exists(db, MODERATION_WORDS_TABLE):
+        if engine is not None:
+            try:
+                _engines_with_wordlist_table.add(engine)
+            except TypeError:
+                pass
         return True
     admin.warn_missing_table_once(
         MODERATION_WORDS_TABLE,
@@ -139,11 +171,16 @@ def list_moderation_words(db: Session) -> list:
         return []
     from .models import ModerationWord
 
-    return (
-        db.query(ModerationWord)
-        .order_by(ModerationWord.category.asc(), ModerationWord.word.asc())
-        .all()
-    )
+    try:
+        return (
+            db.query(ModerationWord)
+            .order_by(ModerationWord.category.asc(), ModerationWord.word.asc())
+            .all()
+        )
+    except SQLAlchemyError:
+        logger.exception("Could not list moderation words")
+        db.rollback()
+        return []
 
 
 def add_moderation_word(db: Session, *, word: str, category: str, actor_id: Optional[int] = None):
@@ -162,7 +199,11 @@ def add_moderation_word(db: Session, *, word: str, category: str, actor_id: Opti
         raise ValueError("Cuvântul este deja în listă.")
     row = ModerationWord(word=normalized, category=category, created_by=actor_id)
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Cuvântul este deja în listă.")
     db.refresh(row)
     return row
 
