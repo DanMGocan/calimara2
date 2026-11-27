@@ -116,6 +116,7 @@ def _thread_summary_payload(
     *,
     labels: Optional[Dict[str, str]] = None,
     unread_ids: Iterable[int] = (),
+    first_unread_reply_id: Optional[int] = None,
     author_payload: Optional[dict] = None,
     reply_stats: Optional[dict] = None,
 ) -> dict:
@@ -137,13 +138,25 @@ def _thread_summary_payload(
         "moderation_status": thread.moderation_status,
         "created_at": thread.created_at,
         "updated_at": thread.updated_at,
+        "edited_at": thread.edited_at,
         "last_activity_at": thread.last_activity_at,
         "last_post": _last_post_payload(db, thread, reply_stats.get("latest_reply"), lookup=False),
         "has_new_replies": thread.id in set(unread_ids),
+        "first_unread_reply_id": first_unread_reply_id,
     }
 
 
-def _reply_payload(db: Session, reply: models.ForumReply, number: Optional[int] = None) -> dict:
+def _reply_payload(
+    db: Session,
+    reply: models.ForumReply,
+    number: Optional[int] = None,
+    *,
+    viewer: Optional[models.User] = None,
+    like_stats: Optional[dict] = None,
+    can_edit: Optional[bool] = None,
+) -> dict:
+    if like_stats is None:
+        like_stats = crud.forum_reply_like_stats(db, [reply.id], viewer=viewer).get(reply.id, {})
     return {
         "id": reply.id,
         "thread_id": reply.thread_id,
@@ -155,6 +168,11 @@ def _reply_payload(db: Session, reply: models.ForumReply, number: Optional[int] 
         "moderation_reason": reply.moderation_reason,
         "created_at": reply.created_at,
         "updated_at": reply.updated_at,
+        "edited_at": reply.edited_at,
+        "can_edit": can_edit if can_edit is not None else crud.can_edit_forum_reply(viewer, reply, db=db),
+        "like_count": like_stats.get("like_count", 0),
+        "liked_by_me": bool(like_stats.get("liked_by_me", False)),
+        "can_like": bool(viewer and reply.moderation_status == "approved" and reply.author_id != viewer.id),
     }
 
 
@@ -174,8 +192,12 @@ def _thread_detail_payload(
     current_user: Optional[models.User],
     page: Optional[int] = None,
     reply_id: Optional[int] = None,
+    unread: bool = False,
 ) -> dict:
     replies = crud.list_forum_replies_for_thread(db, thread.id, current_user)
+    first_unread_id = crud.first_unread_forum_reply_id(db, current_user, thread, replies)
+    if unread and reply_id is None and first_unread_id is not None:
+        reply_id = first_unread_id
     numbered = list(enumerate(replies, start=1))
     total = len(replies)
     pages = _page_count(total, REPLIES_PER_PAGE)
@@ -187,6 +209,8 @@ def _thread_detail_payload(
     start = (page - 1) * REPLIES_PER_PAGE
     page_items = numbered[start:start + REPLIES_PER_PAGE]
     pinned_items = [(number, reply) for number, reply in numbered if reply.is_pinned and reply.moderation_status == "approved"]
+    visible_reply_ids = list({reply.id for _num, reply in (*page_items, *pinned_items)})
+    like_stats = crud.forum_reply_like_stats(db, visible_reply_ids, viewer=current_user)
 
     section = crud.get_forum_section_by_slug(db, thread.section)
     labels = {section.slug: section.name} if section else {}
@@ -198,18 +222,45 @@ def _thread_detail_payload(
         and crud.section_posting_error(current_user, section, reply=True) is None
     )
     return {
-        **_thread_summary_payload(db, thread, labels=labels, author_payload=_author_payload(db, thread.author)),
+        **_thread_summary_payload(
+            db,
+            thread,
+            labels=labels,
+            first_unread_reply_id=first_unread_id,
+            author_payload=_author_payload(db, thread.author),
+        ),
         "content": crud.link_mentions_in_rich_text(db, thread.content),
         "moderation_reason": thread.moderation_reason,
         "section_info": _section_payload(section, user=current_user) if section else None,
-        "replies": [_reply_payload(db, reply, number) for number, reply in page_items],
-        "pinned_replies": [_reply_payload(db, reply, number) for number, reply in pinned_items],
+        "replies": [
+            _reply_payload(
+                db,
+                reply,
+                number,
+                viewer=current_user,
+                like_stats=like_stats.get(reply.id),
+            )
+            for number, reply in page_items
+        ],
+        "pinned_replies": [
+            _reply_payload(
+                db,
+                reply,
+                number,
+                viewer=current_user,
+                like_stats=like_stats.get(reply.id),
+            )
+            for number, reply in pinned_items
+        ],
         "reply_total": total,
         "reply_page": page,
         "reply_pages": pages,
         "replies_per_page": REPLIES_PER_PAGE,
         "can_moderate": is_moderator,
         "can_reply": can_reply,
+        "can_edit": crud.can_edit_forum_thread(current_user, thread, db=db),
+        "is_following": crud.is_following_forum_thread(db, current_user, thread.id),
+        "follower_count": crud.count_forum_thread_followers(db, thread.id),
     }
 
 
@@ -284,9 +335,17 @@ def list_forum_threads_api(
             last_author_id = latest.author_id if latest else thread.author_id
             if last_author_id == current_user.id:
                 unread_ids.discard(thread.id)
+    first_unread_map = crud.forum_threads_first_unread_reply_ids(db, current_user, list(unread_ids))
 
     def summary(thread):
-        return _thread_summary_payload(db, thread, labels=labels, unread_ids=unread_ids, reply_stats=reply_stats.get(thread.id, {}))
+        return _thread_summary_payload(
+            db,
+            thread,
+            labels=labels,
+            unread_ids=unread_ids,
+            first_unread_reply_id=first_unread_map.get(thread.id),
+            reply_stats=reply_stats.get(thread.id, {}),
+        )
 
     return {
         "section": _section_payload(section_obj, user=current_user) if section_obj else None,
@@ -323,16 +382,92 @@ def get_forum_thread_api(
     slug: str,
     page: Optional[int] = None,
     reply: Optional[int] = None,
+    unread: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_required_user),
 ):
     thread = crud.get_forum_thread_by_slug(db, slug)
     if not thread or not crud.can_view_forum_thread(current_user, thread, db=db):
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
-    payload = _thread_detail_payload(db, thread, current_user, page=page, reply_id=reply)
+    payload = _thread_detail_payload(db, thread, current_user, page=page, reply_id=reply, unread=unread)
     crud.mark_forum_thread_read(db, current_user, thread)
     payload["view_count"] = thread.view_count
     return payload
+
+
+EDIT_ERROR_RESPONSES = {
+    "not_found": (404, "Conținutul nu a fost găsit"),
+    "not_allowed": (403, "Nu ai permisiunea să editezi acest mesaj"),
+    "locked": (403, "Discuția este închisă"),
+    "archived": (403, "Secțiunea este arhivată"),
+    "edit_window_expired": (403, "Timpul de editare (30 de minute) a expirat"),
+}
+
+
+def _raise_edit_error(code: str) -> None:
+    status_code, detail = EDIT_ERROR_RESPONSES.get(code, (403, "Nu ai permisiunea să editezi acest mesaj"))
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+@router.put("/api/forum/discutii/{thread_id}")
+@limiter.limit("10/minute")
+def update_forum_thread_api(
+    request: Request,
+    thread_id: int,
+    data: schemas.ForumThreadUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    if not data.title.strip() or not rich_text.rich_text_to_plain_text(data.content):
+        raise HTTPException(status_code=400, detail="Titlul și conținutul sunt obligatorii")
+    thread = crud.get_forum_thread(db, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
+    updated, error = crud.update_forum_thread(db, current_user, thread, data)
+    if error:
+        _raise_edit_error(error)
+    ai_queue.enqueue_forum_thread_moderation_job(db, updated)
+    return _thread_detail_payload(db, updated, current_user)
+
+
+@router.post("/api/forum/discutii/{thread_id}/urmareste")
+@limiter.limit("30/minute")
+def follow_forum_thread_api(
+    request: Request,
+    thread_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    thread = crud.get_forum_thread(db, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
+    ok, error = crud.follow_forum_thread(db, current_user, thread)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
+    return {
+        "thread_id": thread.id,
+        "is_following": True,
+        "follower_count": crud.count_forum_thread_followers(db, thread.id),
+    }
+
+
+@router.delete("/api/forum/discutii/{thread_id}/urmareste")
+@limiter.limit("30/minute")
+def unfollow_forum_thread_api(
+    request: Request,
+    thread_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    thread = crud.get_forum_thread(db, thread_id)
+    if not thread or not crud.can_view_forum_thread(current_user, thread, db=db):
+        raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
+    crud.unfollow_forum_thread(db, current_user, thread.id)
+    return {
+        "thread_id": thread.id,
+        "is_following": False,
+        "follower_count": crud.count_forum_thread_followers(db, thread.id),
+    }
 
 
 @router.post("/api/forum/discutii/{thread_id}/raspunsuri", status_code=status.HTTP_201_CREATED)
@@ -359,7 +494,63 @@ def create_forum_reply_api(
     if error:
         raise HTTPException(status_code=404, detail="Discuția nu a fost găsită")
     ai_queue.enqueue_forum_reply_moderation_job(db, reply)
-    return _reply_payload(db, reply)
+    return _reply_payload(db, reply, viewer=current_user)
+
+
+@router.put("/api/forum/raspunsuri/{reply_id}")
+@limiter.limit("20/minute")
+def update_forum_reply_api(
+    request: Request,
+    reply_id: int,
+    data: schemas.ForumReplyUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    if not rich_text.rich_text_to_plain_text(data.content):
+        raise HTTPException(status_code=400, detail="Conținutul este obligatoriu")
+    reply = crud.get_forum_reply(db, reply_id)
+    if not reply:
+        raise HTTPException(status_code=404, detail="Răspunsul nu a fost găsit")
+    updated, error = crud.update_forum_reply(db, current_user, reply, data)
+    if error:
+        _raise_edit_error(error)
+    ai_queue.enqueue_forum_reply_moderation_job(db, updated)
+    return _reply_payload(db, updated, viewer=current_user)
+
+
+@router.post("/api/forum/raspunsuri/{reply_id}/aprecieri")
+@limiter.limit("60/minute")
+def like_forum_reply_api(
+    request: Request,
+    reply_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    reply = crud.get_forum_reply(db, reply_id)
+    if not reply:
+        raise HTTPException(status_code=404, detail="Răspunsul nu a fost găsit")
+    result, error = crud.like_forum_reply(db, current_user, reply)
+    if error == "not_found":
+        raise HTTPException(status_code=404, detail="Răspunsul nu a fost găsit")
+    if error == "self_like":
+        raise HTTPException(status_code=400, detail="Nu îți poți aprecia propriul răspuns")
+    if error == "not_available":
+        raise HTTPException(status_code=400, detail="Răspunsul nu este disponibil pentru apreciere")
+    return result
+
+
+@router.delete("/api/forum/raspunsuri/{reply_id}/aprecieri")
+@limiter.limit("60/minute")
+def unlike_forum_reply_api(
+    request: Request,
+    reply_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    reply = crud.get_forum_reply(db, reply_id)
+    if not reply or not reply.thread or not crud.can_view_forum_thread(current_user, reply.thread, db=db):
+        raise HTTPException(status_code=404, detail="Răspunsul nu a fost găsit")
+    return crud.unlike_forum_reply(db, current_user, reply)
 
 
 @router.post("/api/forum/discutii/{thread_id}/raportari", response_model=schemas.PostReport, status_code=status.HTTP_201_CREATED)
@@ -488,4 +679,4 @@ def update_forum_reply_state_api(
         raise HTTPException(status_code=409, detail="Doar răspunsurile publicate pot fi fixate")
     if error:
         raise HTTPException(status_code=400, detail="Acțiune invalidă")
-    return _reply_payload(db, updated)
+    return _reply_payload(db, updated, viewer=current_user)

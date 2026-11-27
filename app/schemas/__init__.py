@@ -7,7 +7,7 @@ from .admin import AdminPremiumTier, AdminContentType, AdminModerationStatus, Mo
 from .notifications import NotificationResponse
 from .friends import FriendshipStatus, FriendUserRef, FriendshipOut
 from .economy import ShopItemSlot, ShopItemBase, ShopItemCreate, ShopItemUpdate, ShopItemOut, InventoryItemOut, EquippedItemOut, ShopState, EquipItemRequest, GologaniTransactionOut, GologaniRewardSettingUpdate, GologaniRewardSettingOut
-from .forum import ForumSection, ForumModerationStatus, ForumAuthorRef, ForumThreadCreate, ForumReplyCreate, ForumThreadModerationAction, ForumReplyModerationAction, ForumSectionCreate, ForumSectionUpdate, ForumSectionOrder, AdminForumThreadBulkAction, ForumThreadSummary, ForumReplyOut, ForumThreadDetail
+from .forum import ForumSection, ForumModerationStatus, ForumAuthorRef, ForumThreadCreate, ForumThreadUpdate, ForumReplyCreate, ForumReplyUpdate, ForumThreadModerationAction, ForumReplyModerationAction, ForumSectionCreate, ForumSectionUpdate, ForumSectionOrder, AdminForumThreadBulkAction, ForumThreadSummary, ForumReplyOut, ForumThreadDetail
 from .series import SeriesAuthor, SeriesCreate, SeriesUpdate, SeriesSummary, SeriesPostPostRef, SeriesPostEntry, SeriesDetail, SeriesAddPostRequest, SeriesReorderRequest, SeriesMembershipRef
 from .clubs import ClubSpeciality, ClubMemberRole, ClubJoinPolicy, ClubOwnerRef, ClubMemberRef, ClubCreate, ClubUpdate, ClubFeaturedRef, ClubBoardMessageCreate, ClubJoinApplyRequest, ClubBoardAuthorRef, ClubBoardMessageOut, ClubSummary, ClubAchievementOut, ClubDetail, ClubInviteRequest, ClubJoinRespondRequest, ClubMemberRoleUpdate, ClubFeaturedSetRequest, ClubJoinRequestOut, ClubPendingItem
 from .theatre import TheatrePlayStatus, TheatreCharacterStatus, TheatreMemberRole as TheatreRole, TheatreJoinDirection, TheatreJoinStatus, TheatreSceneStatus, TheatreEntryType, TheatreModerationStatus, TheatreUserRef, TheatreCharacterInput, TheatrePlayCreate, TheatrePlayUpdate, TheatreCharacterCreate, TheatreCharacterReview, TheatreCharacterAssign, TheatreJoinApply, TheatreInvite, TheatreJoinRespond, TheatreSceneCreate, TheatreReplyCreate, TheatreStageDirectionCreate, TheatreTurnOverride, TheatreSceneEnd, TheatreMemberOut, TheatreCharacterOut, TheatreJoinRequestOut, TheatreEntryOut, TheatreSceneOut, TheatrePlaySummary, TheatrePlayDetail, TheatrePendingItem
@@ -115,7 +115,9 @@ __all__ = [
     "ForumModerationStatus",
     "ForumAuthorRef",
     "ForumThreadCreate",
+    "ForumThreadUpdate",
     "ForumReplyCreate",
+    "ForumReplyUpdate",
     "ForumThreadModerationAction",
     "ForumReplyModerationAction",
     "ForumSectionCreate",

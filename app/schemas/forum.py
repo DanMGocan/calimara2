@@ -52,6 +52,30 @@ class ForumReplyCreate(BaseModel):
         return _sanitize_required_rich_text(value)
 
 
+class ForumThreadUpdate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=TITLE_CHARACTER_LIMIT)
+    content: str = Field(..., min_length=1, max_length=8000)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        return _trim_required_string(value, TITLE_CHARACTER_LIMIT, "Titlul")
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
+
+
+class ForumReplyUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("content")
+    @classmethod
+    def sanitize_content(cls, value: str) -> str:
+        return _sanitize_required_rich_text(value)
+
+
 
 class ForumThreadModerationAction(BaseModel):
     action: Literal["lock", "unlock", "pin", "unpin", "move"]
@@ -167,6 +191,7 @@ class ForumThreadSummary(BaseModel):
     moderation_status: ForumModerationStatus
     created_at: datetime
     updated_at: datetime
+    edited_at: Optional[datetime] = None
     last_activity_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -181,6 +206,7 @@ class ForumReplyOut(BaseModel):
     moderation_status: ForumModerationStatus
     created_at: datetime
     updated_at: datetime
+    edited_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 

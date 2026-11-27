@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
-import { FaFlag, FaLock, FaThumbtack } from "react-icons/fa";
+import { FaBell, FaFlag, FaHeart, FaLock, FaRegBell, FaRegHeart, FaThumbtack } from "react-icons/fa";
 import {
   createForumReply,
   createForumThread,
   fetchForumSections,
   fetchForumThread,
   fetchForumThreads,
+  followForumThread,
+  likeForumReply,
   reportForumReply,
   reportForumThread,
+  unfollowForumThread,
+  unlikeForumReply,
+  updateForumReply,
   updateForumReplyState,
+  updateForumThread,
   updateForumThreadState
 } from "../api/forum.js";
 import { searchUsers } from "../api/users.js";
@@ -91,13 +97,19 @@ function ForumBreadcrumbs({ items }) {
   );
 }
 
-function ForumBadges({ pinned, locked, unread, archived, staffOnly }) {
+function ForumBadges({ pinned, locked, unread, unreadHref = "", archived, staffOnly }) {
   if (!pinned && !locked && !unread && !archived && !staffOnly) return null;
   return (
     <span className="forum-badges">
       {pinned ? <span className="forum-badge forum-badge-pinned"><FaThumbtack aria-hidden="true" /> fixată</span> : null}
       {locked ? <span className="forum-badge forum-badge-locked"><FaLock aria-hidden="true" /> închisă</span> : null}
-      {unread ? <span className="forum-badge forum-badge-new">nou</span> : null}
+      {unread ? (
+        unreadHref ? (
+          <a className="forum-badge forum-badge-new" href={unreadHref} title="Sari la primul răspuns necitit">nou</a>
+        ) : (
+          <span className="forum-badge forum-badge-new">nou</span>
+        )
+      ) : null}
       {staffOnly ? <span className="forum-badge">doar echipa</span> : null}
       {archived ? <span className="forum-badge forum-badge-archived">arhivată</span> : null}
     </span>
@@ -170,17 +182,75 @@ function ForumAuthorPanel({ author }) {
   );
 }
 
-function ForumMessage({ item, isThread = false, user, authLoaded = true, onReport, reportBusy = false, permalink = "", onJump, moderatorAction = null, anchorId }) {
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildQuoteHtml(item) {
+  const authorName = item?.author?.username || "anonim";
+  const label = item?.number ? `${authorName} (#${item.number}) a scris:` : `${authorName} a scris:`;
+  const plain = htmlToText(item?.content || "").replace(/\s+/g, " ").trim();
+  const excerpt = plain.length > 500 ? `${plain.slice(0, 497).trimEnd()}…` : plain;
+  return `<blockquote><p><strong>${escapeHtml(label)}</strong> ${escapeHtml(excerpt)}</p></blockquote><p></p>`;
+}
+
+function ForumMessage({
+  item,
+  isThread = false,
+  user,
+  authLoaded = true,
+  onReport,
+  reportBusy = false,
+  permalink = "",
+  onJump,
+  moderatorAction = null,
+  anchorId,
+  isFirstUnread = false,
+  canQuote = false,
+  onQuote,
+  isEditing = false,
+  editTitle = "",
+  editContent = "",
+  editBusy = false,
+  editError = "",
+  onStartEdit,
+  onCancelEdit,
+  onEditTitleChange,
+  onEditContentChange,
+  onSubmitEdit,
+  likeOverride = null,
+  likeBusy = false,
+  onToggleLike
+}) {
   const isModerating = MODERATING_STATUSES.has(item.moderation_status);
   const canReport = item.moderation_status === "approved";
   const elementId = anchorId === undefined ? (isThread ? undefined : `reply-${item.id}`) : anchorId;
+  const likeCount = likeOverride ? likeOverride.like_count : (item.like_count || 0);
+  const likedByMe = likeOverride ? likeOverride.liked_by_me : Boolean(item.liked_by_me);
+  const showFooter = !isThread && item.moderation_status === "approved" && !isEditing && (item.can_like || likeCount > 0);
+  const classes = [
+    isThread ? "forum-post" : "forum-reply",
+    item.is_pinned && !isThread ? "is-pinned" : "",
+    isFirstUnread && !isThread ? "is-first-unread" : "",
+    isModerating ? "has-moderation-overlay" : ""
+  ].filter(Boolean).join(" ");
+
   return (
-    <article className={`${isThread ? "forum-post" : "forum-reply"} ${item.is_pinned && !isThread ? "is-pinned" : ""} ${isModerating ? "has-moderation-overlay" : ""}`.replace(/\s+/g, " ").trim()} id={elementId}>
+    <article className={classes} id={elementId}>
       <ForumAuthorPanel author={item.author} />
       <div className={`forum-message-content ${canReport ? "has-report-action" : ""}`.trim()}>
         <div className="piece-card-meta forum-message-meta">
           <span>{formatDateTime(item.created_at)}</span>
+          {item.edited_at ? (
+            <span className="forum-edited-label" title={`Editat la ${formatDateTime(item.edited_at)}`}>editat</span>
+          ) : null}
           {!isThread && item.is_pinned ? <span className="forum-badge forum-badge-pinned"><FaThumbtack aria-hidden="true" /> fixat</span> : null}
+          {!isThread && isFirstUnread ? <span className="forum-badge forum-badge-new">primul necitit</span> : null}
           {!isThread && item.number ? (
             <a
               className="forum-reply-number"
@@ -191,15 +261,85 @@ function ForumMessage({ item, isThread = false, user, authLoaded = true, onRepor
               #{item.number}
             </a>
           ) : null}
+          {canQuote && !isEditing ? (
+            <button className="forum-inline-action" type="button" onClick={() => onQuote?.(item)}>
+              citează
+            </button>
+          ) : null}
+          {item.can_edit && !isEditing ? (
+            <button className="forum-inline-action" type="button" onClick={() => onStartEdit?.(item)}>
+              editează
+            </button>
+          ) : null}
           {moderatorAction}
         </div>
-        <div className={`forum-body-wrap ${isModerating ? "has-moderation-overlay" : ""}`.trim()}>
-          <RichTextContent html={item.content} className="forum-body" />
-          {isModerating ? (
-            <ModerationOverlay className="forum-moderation-overlay">{TEXT_MODERATION_MESSAGE}</ModerationOverlay>
-          ) : null}
-        </div>
-        {canReport ? (
+        {isEditing ? (
+          <form className="forum-edit-form form-stack" onSubmit={onSubmitEdit}>
+            {isThread ? (
+              <>
+                <label className="auth-field" htmlFor={`forum-edit-title-${item.id}`}>Titlu</label>
+                <input
+                  id={`forum-edit-title-${item.id}`}
+                  className="cal-input"
+                  value={editTitle}
+                  onChange={(event) => onEditTitleChange?.(event.target.value)}
+                  maxLength={TITLE_CHARACTER_LIMIT}
+                  disabled={editBusy}
+                  required
+                />
+              </>
+            ) : null}
+            <label className="auth-field" htmlFor={`forum-edit-body-${isThread ? "thread" : "reply"}-${item.id}`}>Mesaj</label>
+            <RichTextEditor
+              id={`forum-edit-body-${isThread ? "thread" : "reply"}-${item.id}`}
+              className={isThread ? "tall" : ""}
+              value={editContent}
+              onChange={onEditContentChange}
+              maxLength={isThread ? 8000 : 4000}
+              disabled={editBusy}
+              mentionSearch={searchUsers}
+            />
+            {editError ? <div className="inline-error">{editError}</div> : null}
+            <div className="forum-edit-actions">
+              <button className="cal-btn primary" type="submit" disabled={editBusy}>
+                {editBusy ? "Se salvează…" : "Salvează"}
+              </button>
+              <button className="cal-btn" type="button" disabled={editBusy} onClick={onCancelEdit}>
+                Anulează
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className={`forum-body-wrap ${isModerating ? "has-moderation-overlay" : ""}`.trim()}>
+            <RichTextContent html={item.content} className="forum-body" />
+            {isModerating ? (
+              <ModerationOverlay className="forum-moderation-overlay">{TEXT_MODERATION_MESSAGE}</ModerationOverlay>
+            ) : null}
+          </div>
+        )}
+        {showFooter ? (
+          <div className="forum-message-footer">
+            {item.can_like ? (
+              <button
+                className={`forum-like-btn ${likedByMe ? "is-liked" : ""}`.trim()}
+                type="button"
+                disabled={!authLoaded || likeBusy}
+                aria-pressed={likedByMe}
+                title={likedByMe ? "Retrage aprecierea" : "Apreciază răspunsul"}
+                onClick={() => onToggleLike?.(item)}
+              >
+                {likedByMe ? <FaHeart aria-hidden="true" /> : <FaRegHeart aria-hidden="true" />}
+                <span>{likeCount > 0 ? formatNumber(likeCount) : "Apreciază"}</span>
+              </button>
+            ) : (
+              <span className="forum-like-count" title="Aprecieri">
+                <FaRegHeart aria-hidden="true" />
+                <span>{formatNumber(likeCount)}</span>
+              </span>
+            )}
+          </div>
+        ) : null}
+        {canReport && !isEditing ? (
           <button className="forum-report-btn" type="button" disabled={!authLoaded || Boolean(reportBusy)} onClick={() => onReport?.({ type: isThread ? "forum_thread" : "forum_reply", item })} title={user ? "Raportează" : "Autentifică-te pentru raportare"} aria-label={user ? "Raportează" : "Autentifică-te pentru raportare"}>
             <FaFlag aria-hidden="true" />
           </button>
@@ -219,7 +359,12 @@ function ForumThreadRow({ thread, showSection = false }) {
         ) : null}
         <h2 className="forum-thread-title">
           <a className="post-title-link" href={threadHref(thread.slug)}>{thread.title}</a>
-          <ForumBadges pinned={thread.is_pinned} locked={thread.is_locked} unread={thread.has_new_replies} />
+          <ForumBadges
+            pinned={thread.is_pinned}
+            locked={thread.is_locked}
+            unread={thread.has_new_replies}
+            unreadHref={thread.has_new_replies && thread.first_unread_reply_id ? `${threadHref(thread.slug)}?necitite=1` : ""}
+          />
         </h2>
         <div className="piece-card-meta">
           {thread.author?.username ? <span>pornită de <AuthorLink user={thread.author} /></span> : null}
@@ -566,6 +711,18 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [page, setPage] = useState(queryPage);
   const [targetReply, setTargetReply] = useState(hashReplyId);
+  const [wantUnread, setWantUnread] = useState(() => queryParam("necitite") === "1" && !hashReplyId());
+  const [highlightedUnreadId, setHighlightedUnreadId] = useState(null);
+  const [following, setFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [editingTarget, setEditingTarget] = useState(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [likeOverrides, setLikeOverrides] = useState({});
+  const [likeBusyId, setLikeBusyId] = useState(null);
   const [replyAutoDiacritics, setReplyAutoDiacritics] = useState(false);
   const [replyReview, setReplyReview] = useState(null);
   const [reportModal, setReportModal] = useState(null);
@@ -588,10 +745,10 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
     applyDiacriticsQuota
   } = useDiacriticsQuota(user);
   const { openAuthModal } = useAuthModal();
-  // Jumping to a reply lets the server pick its page; otherwise load the requested page.
-  const fetchKey = targetReply ? `reply-${targetReply}` : `page-${page}`;
+  // Jumping to a reply lets the server pick its page; otherwise load unread or the requested page.
+  const fetchKey = targetReply ? `reply-${targetReply}` : wantUnread ? "unread" : `page-${page}`;
   const { data, error, loading } = useAsync(
-    () => fetchForumThread(slug, targetReply ? { reply: targetReply } : { page }),
+    () => fetchForumThread(slug, targetReply ? { reply: targetReply } : wantUnread ? { unread: true } : { page }),
     [slug, fetchKey, refreshKey]
   );
   const sectionsState = useAsync(
@@ -607,21 +764,36 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
     setReportEvidenceUrl("");
     setReportBusy("");
     setReportStatus("");
+    setEditingTarget(null);
+    setEditTitle("");
+    setEditContent("");
+    setEditBusy(false);
+    setEditError("");
+    setLikeOverrides({});
+    setLikeBusyId(null);
   }, [user?.id, slug]);
 
   useEffect(() => {
-    // After loading a specific reply, scroll to it and keep the URL in sync with the page it landed on.
+    // After loading a specific reply (or unread target), scroll to it and keep the URL in sync.
     if (!data) return;
+    setFollowing(Boolean(data.is_following));
+    setFollowerCount(data.follower_count || 0);
+    setLikeOverrides({});
+    if (data.first_unread_reply_id) {
+      setHighlightedUnreadId(data.first_unread_reply_id);
+    }
     if (data.reply_page && data.reply_page !== page) setPage(data.reply_page);
+    const activeReplyId = targetReply || (wantUnread ? data.first_unread_reply_id : null);
+    if (wantUnread) setWantUnread(false);
     if (typeof window !== "undefined") {
-      const url = relativeWithQuery(`/discutii/${slug}`, { pagina: data.reply_page }) + (targetReply ? `#reply-${targetReply}` : "");
+      const url = relativeWithQuery(`/discutii/${slug}`, { pagina: data.reply_page }) + (activeReplyId ? `#reply-${activeReplyId}` : "");
       try {
         window.history.replaceState(null, "", url);
       } catch {
         // Keeping the address bar in sync is a nicety; never break the page over it.
       }
-      if (targetReply) {
-        const element = document.getElementById(`reply-${targetReply}`);
+      if (activeReplyId) {
+        const element = document.getElementById(`reply-${activeReplyId}`);
         element?.scrollIntoView({ block: "center" });
       }
     }
@@ -644,8 +816,106 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
 
   const goToPage = (number) => {
     setTargetReply(null);
+    setWantUnread(false);
     setPage(number);
     if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  };
+
+  const toggleFollow = async () => {
+    if (!data || followBusy) return;
+    if (!user) {
+      openAuthModal?.({ returnTo: window.location.href });
+      return;
+    }
+    setFollowBusy(true);
+    try {
+      const result = following ? await unfollowForumThread(data.id) : await followForumThread(data.id);
+      setFollowing(Boolean(result.is_following));
+      setFollowerCount(result.follower_count ?? 0);
+    } catch (requestError) {
+      setModStatus(requestError.message || "Nu am putut actualiza urmărirea discuției.");
+    } finally {
+      setFollowBusy(false);
+    }
+  };
+
+  const handleQuote = (item) => {
+    const quoteHtml = buildQuoteHtml(item);
+    setReply((current) => {
+      const trimmed = (current || "").trim();
+      return trimmed ? `${trimmed}${quoteHtml}` : quoteHtml;
+    });
+    setReplyReview(null);
+    if (typeof document !== "undefined") {
+      document.getElementById("forum-reply-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  const startEdit = (type, item) => {
+    setEditingTarget({ type, id: item.id });
+    setEditTitle(type === "thread" ? (item.title || "") : "");
+    setEditContent(item.content || "");
+    setEditError("");
+  };
+
+  const cancelEdit = () => {
+    if (editBusy) return;
+    setEditingTarget(null);
+    setEditTitle("");
+    setEditContent("");
+    setEditError("");
+  };
+
+  const submitEdit = async (event) => {
+    event?.preventDefault();
+    if (!editingTarget || editBusy) return;
+    if (editingTarget.type === "thread" && !editTitle.trim()) {
+      setEditError("Titlul este obligatoriu.");
+      return;
+    }
+    if (!htmlToText(editContent)) {
+      setEditError("Conținutul este obligatoriu.");
+      return;
+    }
+    setEditBusy(true);
+    setEditError("");
+    try {
+      if (editingTarget.type === "thread") {
+        await updateForumThread(editingTarget.id, { title: editTitle, content: editContent });
+      } else {
+        await updateForumReply(editingTarget.id, { content: editContent });
+      }
+      setEditingTarget(null);
+      setEditTitle("");
+      setEditContent("");
+      setRefreshKey((key) => key + 1);
+    } catch (requestError) {
+      setEditError(requestError.message || "Nu am putut salva modificările.");
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const toggleReplyLike = async (item) => {
+    if (!user) {
+      openAuthModal?.({ returnTo: window.location.href });
+      return;
+    }
+    if (likeBusyId === item.id || !item.can_like) return;
+    const current = likeOverrides[item.id];
+    const isLiked = current ? current.liked_by_me : Boolean(item.liked_by_me);
+    setLikeBusyId(item.id);
+    try {
+      const result = isLiked ? await unlikeForumReply(item.id) : await likeForumReply(item.id);
+      setLikeOverrides((prev) => ({
+        ...prev,
+        [item.id]: { like_count: result.like_count, liked_by_me: Boolean(result.liked_by_me) }
+      }));
+    } catch {
+      // Ignore transient toggle failures; user can retry.
+    } finally {
+      setLikeBusyId(null);
+    }
   };
 
   const openReportModal = (target) => {
@@ -793,6 +1063,26 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
               <span>{formatNumber(data.reply_total)} răspunsuri</span>
               <span>{formatNumber(data.view_count)} vizualizări</span>
             </span>
+            <div className="forum-thread-head-actions">
+              {highlightedUnreadId ? (
+                <button className="cal-btn" type="button" onClick={() => jumpToReply(highlightedUnreadId)}>
+                  Sari la primul necitit
+                </button>
+              ) : null}
+              {user ? (
+                <button
+                  className={`cal-btn forum-follow-btn ${following ? "is-following" : ""}`.trim()}
+                  type="button"
+                  disabled={!authLoaded || followBusy}
+                  aria-pressed={following}
+                  onClick={toggleFollow}
+                >
+                  {following ? <FaBell aria-hidden="true" /> : <FaRegBell aria-hidden="true" />}
+                  <span>{following ? "Urmărești" : "Urmărește"}</span>
+                  {followerCount > 0 ? <span className="forum-follow-count">{formatNumber(followerCount)}</span> : null}
+                </button>
+              ) : null}
+            </div>
           </div>
           {data.can_moderate ? (
             <ThreadModeratorTools data={data} sections={sectionsState.data?.sections} busy={modBusy} onAction={runThreadAction} />
@@ -800,7 +1090,26 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
           {modStatus ? <div className="inline-error">{modStatus}</div> : null}
           {reportStatus ? <div className="inline-status">{reportStatus}</div> : null}
           {data.reply_page === 1 ? (
-            <ForumMessage item={data} isThread user={user} authLoaded={authLoaded} onReport={openReportModal} reportBusy={Boolean(reportBusy)} />
+            <ForumMessage
+              item={data}
+              isThread
+              user={user}
+              authLoaded={authLoaded}
+              onReport={openReportModal}
+              reportBusy={Boolean(reportBusy)}
+              canQuote={Boolean(data.can_reply && data.moderation_status === "approved")}
+              onQuote={handleQuote}
+              isEditing={editingTarget?.type === "thread" && editingTarget.id === data.id}
+              editTitle={editTitle}
+              editContent={editContent}
+              editBusy={editBusy}
+              editError={editError}
+              onStartEdit={(item) => startEdit("thread", item)}
+              onCancelEdit={cancelEdit}
+              onEditTitleChange={setEditTitle}
+              onEditContentChange={setEditContent}
+              onSubmitEdit={submitEdit}
+            />
           ) : null}
           {data.pinned_replies?.length ? (
             <section className="forum-pinned-replies" aria-label="Răspunsuri fixate">
@@ -817,6 +1126,11 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                   permalink={replyPermalink(item)}
                   onJump={jumpToReply}
                   moderatorAction={replyPinAction(item)}
+                  canQuote={Boolean(data.can_reply && item.moderation_status === "approved")}
+                  onQuote={handleQuote}
+                  likeOverride={likeOverrides[item.id] || null}
+                  likeBusy={likeBusyId === item.id}
+                  onToggleLike={toggleReplyLike}
                 />
               ))}
             </section>
@@ -836,6 +1150,20 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                     permalink={replyPermalink(item)}
                     onJump={jumpToReply}
                     moderatorAction={replyPinAction(item)}
+                    isFirstUnread={highlightedUnreadId === item.id}
+                    canQuote={Boolean(data.can_reply && item.moderation_status === "approved")}
+                    onQuote={handleQuote}
+                    isEditing={editingTarget?.type === "reply" && editingTarget.id === item.id}
+                    editContent={editContent}
+                    editBusy={editBusy}
+                    editError={editError}
+                    onStartEdit={(replyItem) => startEdit("reply", replyItem)}
+                    onCancelEdit={cancelEdit}
+                    onEditContentChange={setEditContent}
+                    onSubmitEdit={submitEdit}
+                    likeOverride={likeOverrides[item.id] || null}
+                    likeBusy={likeBusyId === item.id}
+                    onToggleLike={toggleReplyLike}
                   />
                 ))}
               </div>
@@ -847,7 +1175,7 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
           ) : data.section_info?.is_archived && !data.can_moderate ? (
             <StatusPanel title="Secțiune arhivată">Discuțiile din această secțiune nu mai primesc răspunsuri.</StatusPanel>
           ) : data.moderation_status !== "approved" ? null : user ? (
-            <form className="form-stack" onSubmit={submitReply}>
+            <form id="forum-reply-form" className="form-stack" onSubmit={submitReply}>
               <label className="auth-field" htmlFor="forum-reply">Răspuns</label>
               <RichTextEditor id="forum-reply" value={reply} onChange={setReply} maxLength={4000} mentionSearch={searchUsers} />
               <DiacriticsControl

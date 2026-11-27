@@ -9,8 +9,8 @@ export function fetchForumSections() {
   return api.get("/api/forum/sectiuni");
 }
 
-export function fetchForumThread(slug, { page, reply } = {}) {
-  const query = buildQuery({ page, reply });
+export function fetchForumThread(slug, { page, reply, unread } = {}) {
+  const query = buildQuery({ page, reply, unread: unread ? 1 : undefined });
   return api.get(`/api/forum/discutii/${encodeURIComponent(slug)}${query}`);
 }
 
@@ -18,8 +18,32 @@ export function createForumThread(data) {
   return api.post("/api/forum/discutii", data);
 }
 
+export function updateForumThread(threadId, data) {
+  return api.put(`/api/forum/discutii/${encodeURIComponent(threadId)}`, data);
+}
+
 export function createForumReply(threadId, data) {
   return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/raspunsuri`, data);
+}
+
+export function updateForumReply(replyId, data) {
+  return api.put(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}`, data);
+}
+
+export function followForumThread(threadId) {
+  return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/urmareste`, {});
+}
+
+export function unfollowForumThread(threadId) {
+  return api.delete(`/api/forum/discutii/${encodeURIComponent(threadId)}/urmareste`);
+}
+
+export function likeForumReply(replyId) {
+  return api.post(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}/aprecieri`, {});
+}
+
+export function unlikeForumReply(replyId) {
+  return api.delete(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}/aprecieri`);
 }
 
 export function reportForumThread(threadId, data) {
