@@ -23,6 +23,18 @@ class PostAudioStatus(BaseModel):
 
 
 
+class PostAudioDeleteResponse(BaseModel):
+    removed: int
+    audio_available: bool
+    audio_status: Optional[str] = None
+    audio_source: Optional[str] = None
+    audio_id: Optional[int] = None
+    audio_playback_url: Optional[str] = None
+    audio_tts_character_count: int = 0
+    author_audio_status: Optional[str] = None
+    author_audio_message: Optional[str] = None
+
+
 class AudioTrack(BaseModel):
     audio_id: int
     post_id: int

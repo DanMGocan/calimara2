@@ -146,6 +146,8 @@ class PostAudio(Base):
     moderation_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Set when the author deleted this audio; the row stays so TTS quota still counts it.
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 

@@ -49,7 +49,7 @@ def get_best_audio_for_post(db: Session, post_id: int) -> Optional[models.PostAu
 def get_latest_audio_for_post(db: Session, post_id: int) -> Optional[models.PostAudio]:
     return (
         db.query(models.PostAudio)
-        .filter(models.PostAudio.post_id == post_id)
+        .filter(models.PostAudio.post_id == post_id, models.PostAudio.deleted_at.is_(None))
         .order_by(models.PostAudio.updated_at.desc(), models.PostAudio.id.desc())
         .first()
     )
@@ -257,7 +257,11 @@ def get_user_audio_tts_character_usage(
             models.PostAudio.requester_user_id == user_id,
             models.PostAudio.quota_period_start == period_start,
             models.PostAudio.quota_period_end == period_end,
-            models.PostAudio.status.in_(["pending", "processing", "ready"]),
+            or_(
+                models.PostAudio.status.in_(["pending", "processing", "ready"]),
+                # Audio the author deleted still used up quota that month.
+                models.PostAudio.deleted_at.isnot(None),
+            ),
         )
         .scalar()
     )

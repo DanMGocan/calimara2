@@ -505,6 +505,7 @@ CREATE TABLE post_audio (
     moderation_status VARCHAR(20),
     moderation_reason TEXT,
     error_message TEXT,
+    deleted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

@@ -387,3 +387,19 @@ async def upload_author_recording(
         requester_user_id=current_user.id,
     )
     return audio_service.post_audio_status_payload(db, post_id, current_user)
+
+
+@router.delete("/api/postari/{post_id}/audio", response_model=schemas.PostAudioDeleteResponse)
+def delete_post_audio(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_required_user),
+):
+    post = crud.get_post(db, post_id)
+    if not post or post.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Postarea nu a fost găsită")
+    try:
+        removed = audio_service.delete_post_audio_for_author(db, post)
+    except audio_service.AudioDeleteBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"removed": removed, **audio_service.post_audio_summary(db, post)}
