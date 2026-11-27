@@ -27,7 +27,7 @@ def storage_backend() -> str:
 
 
 def local_audio_dir() -> Path:
-    configured = os.getenv("AUDIO_LOCAL_DIR", "temp/audio")
+    configured = os.getenv("AUDIO_LOCAL_DIR", "media/audio")
     path = Path(configured)
     if not path.is_absolute():
         path = PROJECT_ROOT / path
