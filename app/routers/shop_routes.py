@@ -6,6 +6,18 @@ from ..database import get_db
 
 router = APIRouter(tags=["shop"])
 
+# Magazinul și inventarul sunt vizibile, dar încă în dezvoltare: cumpărarea,
+# echiparea și dezechiparea sunt blocate. Pune False ca să le redeschizi.
+SHOP_ACTIONS_LOCKED = True
+SHOP_LOCKED_DETAIL = (
+    "În dezvoltare. Tu continuă să aduni gologani și noi ne asigurăm că ai pe ce îi cheltui!"
+)
+
+
+def require_shop_open() -> None:
+    if SHOP_ACTIONS_LOCKED:
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=SHOP_LOCKED_DETAIL)
+
 
 def _audit_shop_item_change(
     db: Session,
@@ -116,7 +128,11 @@ def get_my_shop_state_api(
     return _shop_state(db, current_user)
 
 
-@router.post("/api/magazin/obiecte/{item_id}/cumpara", response_model=schemas.ShopState)
+@router.post(
+    "/api/magazin/obiecte/{item_id}/cumpara",
+    response_model=schemas.ShopState,
+    dependencies=[Depends(require_shop_open)],
+)
 def purchase_shop_item_api(
     item_id: int,
     db: Session = Depends(get_db),
@@ -135,7 +151,11 @@ def purchase_shop_item_api(
     return _shop_state(db, current_user)
 
 
-@router.post("/api/inventar/echipeaza", response_model=schemas.ShopState)
+@router.post(
+    "/api/inventar/echipeaza",
+    response_model=schemas.ShopState,
+    dependencies=[Depends(require_shop_open)],
+)
 def equip_inventory_item_api(
     data: schemas.EquipItemRequest,
     db: Session = Depends(get_db),
@@ -148,7 +168,11 @@ def equip_inventory_item_api(
     return _shop_state(db, current_user)
 
 
-@router.delete("/api/inventar/echipate/{slot}", response_model=schemas.ShopState)
+@router.delete(
+    "/api/inventar/echipate/{slot}",
+    response_model=schemas.ShopState,
+    dependencies=[Depends(require_shop_open)],
+)
 def unequip_slot_api(
     slot: str,
     db: Session = Depends(get_db),

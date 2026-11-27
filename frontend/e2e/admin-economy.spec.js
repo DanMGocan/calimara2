@@ -7,10 +7,13 @@ test("shop and inventory render seeded gologani state", async ({ page }) => {
   await expectHeading(page, "Magazin");
   await expect(page.getByText("Insignă E2E")).toBeVisible();
   await expect(page.getByText("Costum E2E")).toBeVisible();
+  await expect(page.getByText("În dezvoltare.")).toBeVisible();
 
   await page.goto("/inventar");
   await expectHeading(page, "Inventar");
-  await expect(page.getByRole("heading", { name: "Insignă E2E" })).toBeVisible();
+  // Items sit under the inert "În dezvoltare" overlay, so they are out of the a11y tree.
+  await expect(page.getByText("Insignă E2E")).toBeVisible();
+  await expect(page.getByText("În dezvoltare.")).toBeVisible();
 });
 
 test("premium page is reachable for authenticated users", async ({ page }) => {

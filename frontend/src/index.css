@@ -9263,6 +9263,51 @@ textarea.cal-input {
   color: var(--ink-soft);
   font-weight: 500;
 }
+.dev-overlay-wrap {
+  position: relative;
+  min-height: 320px;
+}
+.dev-overlay-content {
+  filter: blur(2px) grayscale(0.4);
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+}
+.dev-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 16px 16px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.dev-overlay-card {
+  position: sticky;
+  top: 96px;
+  max-width: 460px;
+  padding: 24px 28px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 12px 32px rgba(15, 15, 16, 0.08);
+  text-align: center;
+}
+.dev-overlay-text {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.dev-overlay-text strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--accent);
+}
 .inventory-section {
   display: flex;
   flex-direction: column;
