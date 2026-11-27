@@ -258,6 +258,37 @@ def subscription_tier_from_event_object(data) -> str:
     return "trubadur"
 
 
+def _terms_url() -> str:
+    scheme = (os.getenv("PUBLIC_SCHEME") or "https").strip() or "https"
+    domain = (os.getenv("MAIN_DOMAIN") or "calimara.ro").strip() or "calimara.ro"
+    return f"{scheme}://{domain}/termeni"
+
+
+def terms_consent_params(kind: str) -> dict:
+    """Checkout must show a required "I accept the terms" checkbox.
+
+    Off unless STRIPE_REQUIRE_TERMS is true: Stripe rejects the session until a
+    terms of service URL is saved in Dashboard > Settings > Public details.
+    """
+    if os.getenv("STRIPE_REQUIRE_TERMS", "false").strip().lower() not in ("true", "1", "yes"):
+        return {}
+    if kind == "subscription":
+        message = (
+            f"Accept [Termenii și condițiile]({_terms_url()}) și cer ca Premium să înceapă imediat. "
+            "Abonamentul se reînnoiește lunar până îl anulezi. Poți cere rambursarea integrală "
+            "a primei plăți în 14 zile."
+        )
+    else:
+        message = (
+            f"Accept [Termenii și condițiile]({_terms_url()}). "
+            "Poți cere rambursarea integrală în 14 zile de la plată."
+        )
+    return {
+        "consent_collection": {"terms_of_service": "required"},
+        "custom_text": {"terms_of_service_acceptance": {"message": message}},
+    }
+
+
 def create_checkout_session(customer_id: str, user_id: int, tier: str = "trubadur") -> str:
     ensure_enabled()
     price_id = price_id_for_tier(tier)
@@ -275,6 +306,7 @@ def create_checkout_session(customer_id: str, user_id: int, tier: str = "trubadu
             # subscriptions (accurate proration on upgrades/downgrades).
             "billing_mode": {"type": "flexible"},
         },
+        **terms_consent_params("subscription"),
     )
     return session.url
 
@@ -365,6 +397,7 @@ def create_coffee_checkout_session(
         params["client_reference_id"] = str(user_id)
     if customer_id:
         params["customer"] = customer_id
+    params.update(terms_consent_params("coffee"))
     session = stripe.checkout.Session.create(**params)
     return session.url
 
