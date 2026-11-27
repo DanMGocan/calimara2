@@ -10,6 +10,7 @@ import bleach
 from sqlalchemy.orm import Session, joinedload
 
 from . import audio_storage, crud, models, moderation
+from .week_util import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,10 @@ class TTSGenerationFailed(RuntimeError):
 
 class AudioListenError(Exception):
     pass
+
+
+class AudioDeleteBusy(Exception):
+    """Audio for this post is still being generated or checked."""
 
 
 class AudioListenForbidden(AudioListenError):
@@ -954,6 +959,42 @@ def post_audio_summary(db: Session, post: models.Post) -> dict:
         "author_audio_status": author_audio.status if author_audio else "missing",
         "author_audio_message": author_audio_status_message(author_audio),
     }
+
+
+def _audio_delete_is_blocked(db: Session, audio: models.PostAudio) -> bool:
+    if audio.status in {"pending", "processing"}:
+        # Legacy queue rows with no requester never run; they are not real work.
+        return not (audio.source == "tts" and audio.requester_user_id is None)
+    return _tts_audio_is_retrying(db, audio)
+
+
+def delete_post_audio_for_author(db: Session, post: models.Post) -> int:
+    """Delete every audio version of the author's post. Returns how many were removed.
+
+    The files are deleted from storage after the commit (app/media_cleanup.py).
+    Ready TTS audio keeps its row, marked deleted, so it still counts toward
+    that month's TTS quota; everything else is removed outright.
+    """
+    rows = (
+        db.query(models.PostAudio)
+        .filter(models.PostAudio.post_id == post.id, models.PostAudio.deleted_at.is_(None))
+        .all()
+    )
+    if any(_audio_delete_is_blocked(db, audio) for audio in rows):
+        raise AudioDeleteBusy("Audio în curs de generare sau verificare. Încearcă din nou după ce se termină.")
+    removed = 0
+    now = utcnow_naive()
+    for audio in rows:
+        if audio.source == "tts" and audio.status == "ready":
+            audio.status = "cancelled"
+            audio.deleted_at = now
+            audio.storage_backend = None
+            audio.storage_key = None
+        else:
+            db.delete(audio)
+        removed += 1
+    db.commit()
+    return removed
 
 
 def audio_track_payload(

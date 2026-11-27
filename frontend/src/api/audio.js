@@ -84,6 +84,10 @@ export function audioDownloadUrl(audioId) {
   return `/api/audio/descarcare/${encodeURIComponent(audioId)}`;
 }
 
+export function deletePostAudio(postId) {
+  return api.delete(`/api/postari/${encodeURIComponent(postId)}/audio`);
+}
+
 export function uploadPostAudioRecording(postId, file) {
   const form = new FormData();
   form.append("file", file);

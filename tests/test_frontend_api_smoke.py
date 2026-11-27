@@ -981,6 +981,7 @@ SMOKE_CASES = [
     SmokeCase("uploadPostAudioRecording", "POST", lambda data: f"/api/postari/{data.post_id}/inregistrare-audio", {200}, files=lambda _data: {"file": ("author.mp3", b"ID3 smoke recording", "audio/mpeg")}),
     SmokeCase("audioStreamUrl", "GET", lambda data: f"/api/audio/redare/{data.audio_id}", {200}),
     SmokeCase("audioDownloadUrl", "GET", lambda data: f"/api/audio/descarcare/{data.audio_id}", {200}),
+    SmokeCase("deletePostAudio", "DELETE", _path("/api/postari/999999/audio"), {404}),
     SmokeCase(
         "uploadPostAudioRecordingWav",
         "POST",

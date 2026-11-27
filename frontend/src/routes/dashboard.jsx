@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FiArrowDown, FiArrowUp, FiChevronLeft, FiChevronRight, FiEdit3, FiEye, FiHeadphones, FiPlus, FiStar, FiTrash2, FiUpload, FiX } from "react-icons/fi";
-import { audioDownloadUrl, fetchAudioConversionQuota, requestTtsConversions, uploadPostAudioRecording } from "../api/audio.js";
+import { audioDownloadUrl, deletePostAudio, fetchAudioConversionQuota, requestTtsConversions, uploadPostAudioRecording } from "../api/audio.js";
 import { createSeries, deleteSeries, fetchManagedSeries, fetchMySeries, addPostToSeries, removePostFromSeries, reorderSeriesPosts, updateSeries } from "../api/series.js";
 import { deletePost, deletePostDraft, fetchArchive, fetchPostDrafts } from "../api/posts.js";
 import { fetchPromotions, promotePost, unpromotePost } from "../api/users.js";
@@ -13,6 +13,7 @@ import { AuthRequired, PageShell } from "../app/layout.jsx";
 import { authorPath, mainPath } from "../app/paths.js";
 
 const DASHBOARD_PAGE_SIZE = 25;
+const AUDIO_IN_PROGRESS = new Set(["pending", "processing"]);
 const AUTHOR_AUDIO_ACCEPT = "audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/ogg,audio/webm,audio/mp4,audio/x-m4a";
 
 function dashboardOffset(page) {
@@ -49,6 +50,7 @@ function DashboardView({ user }) {
   const [status, setStatus] = useState(null);
   const [audioBusyId, setAudioBusyId] = useState(null);
   const [authorAudioBusyId, setAuthorAudioBusyId] = useState(null);
+  const [audioDeletingId, setAudioDeletingId] = useState(null);
   const [deletingPostId, setDeletingPostId] = useState(null);
   const [draftBusyId, setDraftBusyId] = useState(null);
   const [promotionState, setPromotionState] = useState(null);
@@ -173,6 +175,22 @@ function DashboardView({ user }) {
     }
   };
 
+  const removePostAudio = async (post) => {
+    if (audioDeletingId) return;
+    if (!window.confirm(`Ștergi definitiv tot audio-ul pentru „${post.title}”? Fișierele sunt șterse de pe server, iar caracterele folosite luna aceasta nu se recuperează.`)) return;
+    setAudioDeletingId(post.id);
+    setStatus(null);
+    try {
+      await deletePostAudio(post.id);
+      setStatus({ kind: "info", text: `Audio-ul pentru „${post.title}” a fost șters.` });
+      setPostRefreshKey((key) => key + 1);
+    } catch (requestError) {
+      setStatus({ kind: "error", text: requestError.message || "Nu am putut șterge audio-ul." });
+    } finally {
+      setAudioDeletingId(null);
+    }
+  };
+
   const uploadAuthorAudio = async (post, file) => {
     if (!file || authorAudioBusyId || !post.author_audio_can_upload) return;
     setAuthorAudioBusyId(post.id);
@@ -287,6 +305,7 @@ function DashboardView({ user }) {
                     busy={audioBusyId === post.id}
                     authorAudioBusy={authorAudioBusyId === post.id}
                     deleting={deletingPostId === post.id}
+                    audioDeleting={audioDeletingId === post.id}
                     promoted={promotedOwnPostIds.has(post.id)}
                     promotionBusy={promotionBusyId === post.id}
                     promotionLoading={promotionsState.loading && !promotionSnapshot}
@@ -296,6 +315,7 @@ function DashboardView({ user }) {
                     onAuthorAudioUpload={(file) => uploadAuthorAudio(post, file)}
                     onTogglePromotion={() => togglePostPromotion(post)}
                     onDelete={() => removePost(post)}
+                    onDeleteAudio={() => removePostAudio(post)}
                   />
                 ))}
               </div>
@@ -705,7 +725,9 @@ function DashboardPostCard({
   onConvert,
   onAuthorAudioUpload,
   onTogglePromotion,
-  onDelete
+  onDelete,
+  audioDeleting,
+  onDeleteAudio
 }) {
   const href = postHref(post);
   const editHref = `${authorPath(user, "/scrie")}?post=${encodeURIComponent(post.id)}`;
@@ -713,6 +735,11 @@ function DashboardPostCard({
   const audioReady = Boolean(post.audio_available && post.audio_playback_url);
   const convertDisabled = busy || deleting || !canRequestAudio || !post.audio_can_request || characterCount > remaining;
   const showAuthorAudio = Boolean(user?.has_author_audio_access);
+  const authorAudioStatus = post.author_audio_status || "missing";
+  const hasAudio = Boolean(post.audio_available)
+    || post.audio_status === "failed"
+    || !["missing", "cancelled"].includes(authorAudioStatus);
+  const audioInProgress = AUDIO_IN_PROGRESS.has(post.audio_status) || AUDIO_IN_PROGRESS.has(authorAudioStatus);
   const showAuthorAudioStatus = showAuthorAudio && post.author_audio_message;
   const moderationOverlayText = MODERATING_STATUSES.has(post.moderation_status) ? TEXT_MODERATION_MESSAGE : "";
   const canPromote = post.moderation_status === "approved";
@@ -777,6 +804,18 @@ function DashboardPostCard({
           <FiHeadphones aria-hidden="true" />
           {busy ? "Se trimite..." : "Convertește în Audio"}
         </button>
+        {hasAudio ? (
+          <button
+            className="cal-btn danger"
+            type="button"
+            onClick={onDeleteAudio}
+            disabled={audioDeleting || deleting || audioInProgress}
+            title={audioInProgress ? "Așteaptă să se termine generarea sau verificarea audio" : "Șterge definitiv fișierele audio ale acestui text"}
+          >
+            <FiTrash2 aria-hidden="true" />
+            {audioDeleting ? "Se șterge audio..." : "Șterge audio"}
+          </button>
+        ) : null}
         {showAuthorAudio ? (
           <AuthorAudioUploadButton
             post={post}
