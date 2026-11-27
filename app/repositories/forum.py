@@ -254,6 +254,39 @@ def forum_section_stats(db: Session, slugs: List[str]) -> Dict[str, Dict[str, An
     return stats
 
 
+def forum_thread_reply_stats(db: Session, thread_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Public reply count and latest public reply per thread, in two queries for the whole list."""
+    stats: Dict[int, Dict[str, Any]] = {thread_id: {"reply_count": 0, "latest_reply": None} for thread_id in thread_ids}
+    if not thread_ids:
+        return stats
+    public_reply = and_(
+        models.ForumReply.thread_id.in_(thread_ids),
+        models.ForumReply.moderation_status.in_(PUBLIC_FORUM_STATUSES),
+        not_human_rejected_condition("forum_reply", models.ForumReply.id),
+    )
+    rows = (
+        db.query(models.ForumReply.thread_id, func.count(models.ForumReply.id), func.max(models.ForumReply.id))
+        .filter(public_reply)
+        .group_by(models.ForumReply.thread_id)
+        .all()
+    )
+    latest_ids = {}
+    for thread_id, count, latest_id in rows:
+        stats[thread_id]["reply_count"] = int(count or 0)
+        if latest_id is not None:
+            latest_ids[latest_id] = thread_id
+    if latest_ids:
+        replies = (
+            db.query(models.ForumReply)
+            .options(joinedload(models.ForumReply.author))
+            .filter(models.ForumReply.id.in_(list(latest_ids)))
+            .all()
+        )
+        for reply in replies:
+            stats[latest_ids[reply.id]]["latest_reply"] = reply
+    return stats
+
+
 def latest_public_forum_reply(db: Session, thread_id: int) -> Optional[models.ForumReply]:
     return (
         db.query(models.ForumReply)
@@ -676,7 +709,12 @@ def mark_forum_thread_read(db: Session, user: Optional[models.User], thread: mod
     db.add(models.ForumThreadRead(thread_id=thread.id, user_id=user.id, last_read_at=seen_activity))
     if thread.author_id != user.id:
         db.query(models.ForumThread).filter(models.ForumThread.id == thread.id).update(
-            {models.ForumThread.view_count: models.ForumThread.view_count + 1}, synchronize_session=False
+            # Keep updated_at as is: a view is not an edit (the column has onupdate=now()).
+            {
+                models.ForumThread.view_count: models.ForumThread.view_count + 1,
+                models.ForumThread.updated_at: models.ForumThread.updated_at,
+            },
+            synchronize_session=False,
         )
     try:
         db.commit()

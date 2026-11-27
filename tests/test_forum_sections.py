@@ -313,6 +313,43 @@ class ForumSectionsTests(unittest.TestCase):
         listing = forum_routes.list_forum_threads_api(section="general", db=self.db, current_user=self.member)
         self.assertFalse(listing["threads"][0]["has_new_replies"])
 
+    def test_anonymous_sections_list_hides_thread_details(self):
+        self.thread(title="Doar pentru membri")
+        payload = forum_routes.list_forum_sections_api(db=self.db, current_user=None)
+        for section in payload["sections"]:
+            self.assertNotIn("last_thread", section)
+            self.assertFalse(section["can_post"])
+
+    def test_first_view_does_not_touch_updated_at(self):
+        thread = self.thread(author=self.member)
+        before = thread.updated_at
+        forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=self.other)
+        self.db.refresh(thread)
+        self.assertEqual(thread.view_count, 1)
+        self.assertEqual(thread.updated_at, before)
+
+    def test_own_latest_reply_is_not_new_to_its_author(self):
+        thread = self.thread(author=self.member)
+        forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=self.other)
+        self.reply(thread, author=self.other)
+        thread.last_activity_at = thread.last_activity_at + timedelta(minutes=5)
+        self.db.commit()
+        listing = forum_routes.list_forum_threads_api(section="general", db=self.db, current_user=self.other)
+        self.assertFalse(listing["threads"][0]["has_new_replies"])
+        self.assertEqual(listing["threads"][0]["last_post"]["author"]["username"], "cititor")
+
+    def test_reply_stats_batch_counts_public_replies_only(self):
+        thread = self.thread()
+        self.reply(thread)
+        self.reply(thread)
+        rejected = self.reply(thread, approve=False)
+        rejected.moderation_status = "rejected"
+        self.db.commit()
+        stats = crud.forum_thread_reply_stats(self.db, [thread.id])
+        self.assertEqual(stats[thread.id]["reply_count"], 2)
+        admin_listing = forum_admin_routes.admin_list_forum_threads(db=self.db, current_user=self.admin)
+        self.assertEqual(admin_listing["threads"][0]["reply_count"], 2)
+
     # admin routes ----------------------------------------------------------
 
     def test_admin_section_routes_and_audit_log(self):

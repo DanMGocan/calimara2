@@ -3,7 +3,6 @@ import math
 from typing import Dict, Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -60,14 +59,6 @@ def _author_payload(db: Session, user: Optional[models.User]) -> Optional[dict]:
     }
 
 
-def _reply_count(db: Session, thread_id: int) -> int:
-    return db.query(func.count(models.ForumReply.id)).filter(
-        models.ForumReply.thread_id == thread_id,
-        models.ForumReply.moderation_status.in_(crud.PUBLIC_FORUM_STATUSES),
-        crud.not_human_rejected_condition("forum_reply", models.ForumReply.id),
-    ).scalar() or 0
-
-
 def _section_payload(
     section: models.ForumSection,
     user: Optional[models.User] = None,
@@ -88,7 +79,7 @@ def _section_payload(
         "is_archived": bool(section.is_archived),
         "can_post": crud.section_posting_error(user, section) is None if user else False,
     }
-    if stats is not None:
+    if stats is not None and user is not None:
         last_thread = stats.get("last_thread")
         payload.update(
             {
@@ -100,9 +91,10 @@ def _section_payload(
     return payload
 
 
-def _last_post_payload(db: Session, thread: models.ForumThread) -> dict:
+def _last_post_payload(db: Session, thread: models.ForumThread, reply: Optional[models.ForumReply] = None, *, lookup: bool = True) -> dict:
     """Who posted last in a thread and when (the latest public reply, or the opening post)."""
-    reply = crud.latest_public_forum_reply(db, thread.id)
+    if reply is None and lookup:
+        reply = crud.latest_public_forum_reply(db, thread.id)
     if reply:
         return {"author": _author_ref(reply.author), "created_at": reply.created_at, "reply_id": reply.id}
     return {"author": _author_ref(thread.author), "created_at": thread.created_at, "reply_id": None}
@@ -125,8 +117,11 @@ def _thread_summary_payload(
     labels: Optional[Dict[str, str]] = None,
     unread_ids: Iterable[int] = (),
     author_payload: Optional[dict] = None,
+    reply_stats: Optional[dict] = None,
 ) -> dict:
     labels = labels if labels is not None else crud.forum_section_labels(db)
+    if reply_stats is None:
+        reply_stats = crud.forum_thread_reply_stats(db, [thread.id]).get(thread.id, {})
     return {
         "id": thread.id,
         "section": thread.section,
@@ -134,7 +129,7 @@ def _thread_summary_payload(
         "title": thread.title,
         "slug": thread.slug,
         "author": author_payload if author_payload is not None else _author_ref(thread.author),
-        "reply_count": _reply_count(db, thread.id),
+        "reply_count": reply_stats.get("reply_count", 0),
         "view_count": thread.view_count,
         "is_locked": thread.is_locked,
         "is_pinned": thread.is_pinned,
@@ -143,7 +138,7 @@ def _thread_summary_payload(
         "created_at": thread.created_at,
         "updated_at": thread.updated_at,
         "last_activity_at": thread.last_activity_at,
-        "last_post": _last_post_payload(db, thread),
+        "last_post": _last_post_payload(db, thread, reply_stats.get("latest_reply"), lookup=False),
         "has_new_replies": thread.id in set(unread_ids),
     }
 
@@ -229,7 +224,7 @@ def list_forum_sections_api(
     current_user: Optional[models.User] = Depends(auth.get_current_user),
 ):
     sections = crud.list_forum_sections(db)
-    stats = crud.forum_section_stats(db, [section.slug for section in sections])
+    stats = crud.forum_section_stats(db, [section.slug for section in sections]) if current_user else {}
     return {
         "sections": [
             _section_payload(section, current_user, stats=stats.get(section.slug, {}), db=db)
@@ -279,11 +274,24 @@ def list_forum_threads_api(
     pinned = crud.list_forum_threads(db, section=section, pinned=True, limit=100) if split_pinned else []
 
     labels = crud.forum_section_labels(db)
-    unread_ids = crud.forum_threads_with_new_replies(db, current_user, [thread.id for thread in [*pinned, *threads]])
+    listed = [*pinned, *threads]
+    reply_stats = crud.forum_thread_reply_stats(db, [thread.id for thread in listed])
+    unread_ids = crud.forum_threads_with_new_replies(db, current_user, [thread.id for thread in listed])
+    if current_user is not None:
+        # Your own latest post is not "new" to you.
+        for thread in listed:
+            latest = reply_stats.get(thread.id, {}).get("latest_reply")
+            last_author_id = latest.author_id if latest else thread.author_id
+            if last_author_id == current_user.id:
+                unread_ids.discard(thread.id)
+
+    def summary(thread):
+        return _thread_summary_payload(db, thread, labels=labels, unread_ids=unread_ids, reply_stats=reply_stats.get(thread.id, {}))
+
     return {
         "section": _section_payload(section_obj, user=current_user) if section_obj else None,
-        "pinned": [_thread_summary_payload(db, thread, labels=labels, unread_ids=unread_ids) for thread in pinned],
-        "threads": [_thread_summary_payload(db, thread, labels=labels, unread_ids=unread_ids) for thread in threads],
+        "pinned": [summary(thread) for thread in pinned],
+        "threads": [summary(thread) for thread in threads],
         "total": total,
         "page": page,
         "pages": pages,

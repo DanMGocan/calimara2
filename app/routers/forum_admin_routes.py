@@ -55,7 +55,7 @@ def _get_section_or_404(db: Session, section_id: int) -> models.ForumSection:
     return section
 
 
-def _admin_thread_payload(thread: models.ForumThread, labels: dict) -> dict:
+def _admin_thread_payload(thread: models.ForumThread, labels: dict, reply_count: int = 0) -> dict:
     return {
         "id": thread.id,
         "title": thread.title,
@@ -67,7 +67,7 @@ def _admin_thread_payload(thread: models.ForumThread, labels: dict) -> dict:
         "is_pinned": thread.is_pinned,
         "is_locked": thread.is_locked,
         "view_count": thread.view_count,
-        "reply_count": len(thread.replies),
+        "reply_count": reply_count,
         "created_at": thread.created_at,
         "last_activity_at": thread.last_activity_at,
     }
@@ -188,8 +188,12 @@ def admin_list_forum_threads(
         offset=(page - 1) * per_page,
     )
     labels = crud.forum_section_labels(db)
+    reply_stats = crud.forum_thread_reply_stats(db, [thread.id for thread in threads])
     return {
-        "threads": [_admin_thread_payload(thread, labels) for thread in threads],
+        "threads": [
+            _admin_thread_payload(thread, labels, reply_stats.get(thread.id, {}).get("reply_count", 0))
+            for thread in threads
+        ],
         "total": total,
         "page": page,
         "pages": max(1, -(-total // per_page)),

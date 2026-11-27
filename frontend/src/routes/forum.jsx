@@ -170,7 +170,7 @@ function ForumAuthorPanel({ author }) {
   );
 }
 
-function ForumMessage({ item, isThread = false, user, authLoaded = true, onReport, reportBusy = false, permalink = "", moderatorAction = null, anchorId }) {
+function ForumMessage({ item, isThread = false, user, authLoaded = true, onReport, reportBusy = false, permalink = "", onJump, moderatorAction = null, anchorId }) {
   const isModerating = MODERATING_STATUSES.has(item.moderation_status);
   const canReport = item.moderation_status === "approved";
   const elementId = anchorId === undefined ? (isThread ? undefined : `reply-${item.id}`) : anchorId;
@@ -182,7 +182,14 @@ function ForumMessage({ item, isThread = false, user, authLoaded = true, onRepor
           <span>{formatDateTime(item.created_at)}</span>
           {!isThread && item.is_pinned ? <span className="forum-badge forum-badge-pinned"><FaThumbtack aria-hidden="true" /> fixat</span> : null}
           {!isThread && item.number ? (
-            <a className="forum-reply-number" href={permalink || `#reply-${item.id}`} title="Legătură către răspuns">#{item.number}</a>
+            <a
+              className="forum-reply-number"
+              href={permalink || `#reply-${item.id}`}
+              title="Legătură către răspuns"
+              onClick={onJump ? (event) => { event.preventDefault(); onJump(item.id); } : undefined}
+            >
+              #{item.number}
+            </a>
           ) : null}
           {moderatorAction}
         </div>
@@ -547,7 +554,7 @@ function ThreadModeratorTools({ data, sections, busy, onAction }) {
         <option value="">Mută în…</option>
         {targets.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
       </select>
-      <button className="cal-btn" type="button" disabled={busy || !moveTarget} onClick={() => onAction("move", moveTarget)}>Mută</button>
+      <button className="cal-btn" type="button" disabled={busy || !moveTarget} onClick={() => { onAction("move", moveTarget); setMoveTarget(""); }}>Mută</button>
     </div>
   );
 }
@@ -619,6 +626,21 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
       }
     }
   }, [data]);
+
+  // Reply links: scroll when the reply is on this page, otherwise load the page that holds it.
+  const jumpToReply = (replyId) => {
+    const element = typeof document !== "undefined" ? document.getElementById(`reply-${replyId}`) : null;
+    if (element) {
+      element.scrollIntoView({ block: "center" });
+      try {
+        window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#reply-${replyId}`);
+      } catch {
+        // Address bar sync is optional.
+      }
+      return;
+    }
+    setTargetReply(replyId);
+  };
 
   const goToPage = (number) => {
     setTargetReply(null);
@@ -793,6 +815,7 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                   onReport={openReportModal}
                   reportBusy={Boolean(reportBusy)}
                   permalink={replyPermalink(item)}
+                  onJump={jumpToReply}
                   moderatorAction={replyPinAction(item)}
                 />
               ))}
@@ -811,6 +834,7 @@ function ForumThreadDetailView({ user, authLoaded, slug }) {
                     onReport={openReportModal}
                     reportBusy={Boolean(reportBusy)}
                     permalink={replyPermalink(item)}
+                    onJump={jumpToReply}
                     moderatorAction={replyPinAction(item)}
                   />
                 ))}
