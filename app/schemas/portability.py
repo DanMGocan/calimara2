@@ -80,6 +80,9 @@ class DataPortabilityPost(BaseModel):
         return _trim_optional_string(value, 300, "Nota explicativă")
 
 
+MAX_IMPORT_POSTS = 500
+
+
 class DataExportManifest(BaseModel):
     format: str = "calimara-user-export"
     version: int = 1
@@ -88,6 +91,15 @@ class DataExportManifest(BaseModel):
     source_username: Optional[str] = None
     profile: DataPortabilityProfile = Field(default_factory=DataPortabilityProfile)
     posts: list[DataPortabilityPost] = Field(default_factory=list)
+
+    @field_validator("posts", mode="before")
+    @classmethod
+    def limit_post_count(cls, value):
+        # Checked before each post is parsed: every imported post costs an AI
+        # moderation job, so oversized files are rejected up front.
+        if isinstance(value, list) and len(value) > MAX_IMPORT_POSTS:
+            raise ValueError(f"Un import poate conține cel mult {MAX_IMPORT_POSTS} postări.")
+        return value
 
 
 class DataImportCreatedPost(BaseModel):

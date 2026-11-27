@@ -1,4 +1,8 @@
 from datetime import datetime
+from unittest.mock import patch
+
+import pytest
+from pydantic import ValidationError
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -114,7 +118,10 @@ class TestDataPortability:
         assert imported.ai_critic_requested is False
         assert imported.created_at != datetime(2026, 5, 20, 10, 0, 0)
         assert imported.slug != post.slug
-        assert len(self.publish_jobs(imported.id)) == 1
+        jobs = self.publish_jobs(imported.id)
+        assert len(jobs) == 1
+        assert jobs[0].status == "pending"
+        assert jobs[0].payload["imported"] is True
         assert snapshot.imported_view_count == 0
         assert snapshot.imported_likes_count == 0
         assert snapshot.imported_super_likes_count == 0
@@ -201,3 +208,49 @@ class TestDataPortability:
         snapshot = self.db.query(models.ImportedPostSnapshot).filter_by(user_id=author.id).one()
         assert snapshot.post_id == existing.id
         assert self.publish_jobs() == []
+
+    def test_failed_post_is_rolled_back_without_leaving_a_pending_orphan(self):
+        target = self.user("partial")
+        manifest = schemas.DataExportManifest.model_validate(
+            {
+                "export_id": "partial-posts",
+                "exported_at": "2026-11-27T00:00:00Z",
+                "posts": [
+                    {"stable_id": "ok-1", "title": "Bun", "content": "<p>Unu</p>"},
+                    {"stable_id": "bad-2", "title": "Stricat", "content": "<p>Doi</p>"},
+                    {"stable_id": "ok-3", "title": "Tot bun", "content": "<p>Trei</p>"},
+                ],
+            }
+        )
+        real_snapshot = data_portability._add_import_snapshot
+
+        def flaky_snapshot(db, **kwargs):
+            if kwargs["stable_id"] == "bad-2":
+                raise RuntimeError("boom")
+            return real_snapshot(db, **kwargs)
+
+        with patch.object(data_portability, "_add_import_snapshot", side_effect=flaky_snapshot):
+            report = data_portability.import_user_data(self.db, target, manifest)
+
+        titles = sorted(p.title for p in self.db.query(models.Post).filter_by(user_id=target.id))
+        assert report.posts_created == 2
+        assert report.posts_failed == 1
+        assert titles == ["Bun", "Tot bun"]
+        assert len(self.publish_jobs()) == 2
+        assert self.db.query(models.ImportedPostSnapshot).filter_by(user_id=target.id).count() == 2
+
+    def test_manifest_rejects_more_posts_than_the_import_cap(self):
+        from app.schemas.portability import MAX_IMPORT_POSTS
+
+        posts = [
+            {"stable_id": f"p-{i}", "title": f"T{i}", "content": "<p>x</p>"}
+            for i in range(MAX_IMPORT_POSTS + 1)
+        ]
+        with pytest.raises(ValidationError, match="cel mult"):
+            schemas.DataExportManifest.model_validate(
+                {"export_id": "big", "exported_at": "2026-11-27T00:00:00Z", "posts": posts}
+            )
+        ok = schemas.DataExportManifest.model_validate(
+            {"export_id": "max", "exported_at": "2026-11-27T00:00:00Z", "posts": posts[:MAX_IMPORT_POSTS]}
+        )
+        assert len(ok.posts) == MAX_IMPORT_POSTS

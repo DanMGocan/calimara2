@@ -110,6 +110,36 @@ class AIQueueTests(unittest.TestCase):
         self.assertEqual(follower_notification.link, f"//{user.username}.calimara.ro/{post.slug}")
         self.assertEqual(follower_notification.extra_data["post_id"], post.id)
 
+    def test_imported_post_publish_job_approves_without_rewards_or_follower_notifications(self):
+        user = self.make_user()
+        follower = self.make_user("importfollower")
+        post = crud.create_user_post(
+            self.db,
+            schemas.PostCreate(title="Arhivă", content="Un text importat.", category="poezie", ai_critic=False),
+            user_id=user.id,
+        )
+        crud.create_follow(self.db, follower.id, user.id)
+        self.db.add(ai_queue.build_imported_post_publish_job(post))
+        self.db.commit()
+        approved = SimpleNamespace(
+            status=moderation.ModerationStatus.APPROVED,
+            toxicity_score=0.0,
+            reason="ok",
+        )
+
+        with patch.object(ai_queue.moderation, "moderate_post_with_logging", return_value=approved) as moderate:
+            processed = ai_queue.process_ai_jobs(self.db, limit=1, worker="test-worker")
+
+        self.assertEqual(processed, 1)
+        moderate.assert_called_once()
+        self.db.refresh(post)
+        self.assertEqual(post.moderation_status, "approved")
+        self.assertEqual(self.db.query(models.GologaniTransaction).filter_by(source_type="post").count(), 0)
+        self.assertEqual(
+            self.db.query(models.Notification).filter_by(user_id=follower.id, type="followed_user_new_post").count(),
+            0,
+        )
+
     def test_tts_generation_failure_keeps_ai_job_retryable(self):
         user = self.make_user()
         post = crud.create_user_post(

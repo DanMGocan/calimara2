@@ -222,7 +222,6 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
 
     errors: list[str] = []
     created_posts: list[schemas.DataImportCreatedPost] = []
-    new_posts: list[models.Post] = []
     skipped_posts: list[str] = []
     failed = 0
 
@@ -251,6 +250,9 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
         if exists:
             skipped_posts.append(post_data.title)
             continue
+        # One savepoint per post: a post that fails leaves nothing behind (no
+        # orphan post without snapshot or job) and does not poison the session.
+        savepoint = db.begin_nested()
         try:
             existing_post = _existing_own_export_post(db, user, manifest, post_data, stable_id)
             if existing_post:
@@ -263,10 +265,10 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
                     post_data=post_data,
                     stable_id=stable_id,
                 )
+                savepoint.commit()
                 skipped_posts.append(post_data.title)
                 continue
             post = _create_imported_post(db, user, post_data)
-            new_posts.append(post)
             _add_import_snapshot(
                 db,
                 user=user,
@@ -276,14 +278,18 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
                 post_data=post_data,
                 stable_id=stable_id,
             )
-            created_posts.append(
-                schemas.DataImportCreatedPost(
-                    title=post.title,
-                    slug=post.slug,
-                    source_stable_id=stable_id,
-                )
+            # Same moderation pipeline as POST /api/postari/, queued in the same
+            # transaction so no imported post can stay pending without a job.
+            db.add(ai_queue.build_imported_post_publish_job(post))
+            created = schemas.DataImportCreatedPost(
+                title=post.title,
+                slug=post.slug,
+                source_stable_id=stable_id,
             )
+            savepoint.commit()
+            created_posts.append(created)
         except Exception as exc:
+            savepoint.rollback()
             failed += 1
             errors.append(f"Nu am putut importa „{post_data.title}”: {exc}")
 
@@ -296,11 +302,6 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
     except Exception:
         db.rollback()
         raise
-
-    # Same moderation pipeline as POST /api/postari/. Enqueued after the commit
-    # because enqueue_ai_job commits on its own.
-    for post in new_posts:
-        ai_queue.enqueue_post_publish_job(db, post, ai_critic_requested=False)
 
     message = (
         f"Import finalizat: {len(created_posts)} postări create, "
