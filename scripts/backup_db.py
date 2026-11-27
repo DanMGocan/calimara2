@@ -165,7 +165,13 @@ def main() -> int:
         return 1
 
     now = datetime.now(timezone.utc)
-    client = object_storage._s3_client()
+    try:
+        client = object_storage._s3_client()
+    except Exception as exc:
+        message = f"storage client: {type(exc).__name__}: {exc}"[:500]
+        print(f"Backup FAILED: {message}", file=sys.stderr)
+        _write_status(ok=False, error=message, bucket=bucket)
+        return 1
     status: dict = {"bucket": bucket}
     errors: list[str] = []
 

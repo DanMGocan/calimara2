@@ -194,3 +194,24 @@ def test_media_sources_match_storage_modules(monkeypatch, tmp_path, name):
     monkeypatch.setenv("PROFILE_MEDIA_LOCAL_DIR", str(tmp_path / "p"))
     sources = backup.media_sources()
     assert sources[name] == tmp_path / ("a" if name == "audio" else "p")
+
+
+def test_client_failure_is_recorded_not_crashed(monkeypatch, tmp_path):
+    import json
+    from app import object_storage
+
+    status_file = tmp_path / "last_backup.json"
+    monkeypatch.setattr(backup, "STATUS_FILE", status_file)
+    monkeypatch.setattr(backup, "PROJECT_ROOT", tmp_path)  # no .env loaded from here
+    for name in backup.REQUIRED:
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("HETZNER_S3_BUCKET", BUCKET)
+
+    def boom():
+        raise ValueError("bad endpoint")
+
+    monkeypatch.setattr(object_storage, "_s3_client", boom)
+
+    assert backup.main() == 1
+    status = json.loads(status_file.read_text())
+    assert status["ok"] is False and "bad endpoint" in status["error"]
