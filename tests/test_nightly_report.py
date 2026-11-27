@@ -62,9 +62,9 @@ def test_app_log_counts_real_errors_and_webhooks():
     errors, stripe = report.summarize_app_log(LOG)
 
     assert errors.ok is False
-    assert errors.detail.startswith("1 tracebacks, 2 server errors")
+    assert errors.detail.startswith("0 tracebacks, 2 server errors")
+    assert "Plus 1 expected errors while the database restarted" in errors.detail
     assert "/api/audio/postari/10 ×2" in errors.detail
-    assert "psycopg2.OperationalError: connection refused" in errors.detail
     assert stripe.ok is False and "1 accepted, 1 rejected (HTTP 400)" in stripe.detail
 
 
@@ -138,3 +138,35 @@ def test_backup_status_tolerates_naive_time_and_nulls(tmp_path):
         sweep={"deleted": None, "deleted_bytes": None},
     )
     assert all(c.ok for c in report.check_backup(NOW, path))
+
+
+def test_recent_db_restart_is_informational():
+    check = report.describe_db_restart(NOW - timedelta(hours=2), NOW)
+    assert check.ok is True and "security update" in check.detail
+    assert report.describe_db_restart(NOW - timedelta(days=3), NOW) is None
+
+
+def test_app_crashes_are_flagged(monkeypatch):
+    answers = {"is-active": "active\n", "show": "2\n"}
+    monkeypatch.setattr(report, "_run", lambda cmd, timeout=30: answers[cmd[1]])
+    checks = report.check_services()
+    assert [c.name for c in checks] == ["App service", "PostgreSQL", "App crashes"]
+    assert checks[2].ok is False
+
+
+def test_db_restart_tracebacks_alone_are_ok_but_real_ones_fail():
+    restart = 'Traceback (most recent call last):\nsqlalchemy.exc.InvalidatePoolError: ()\n' \
+        'Traceback (most recent call last):\npsycopg2.OperationalError: Connection refused\n'
+    errors, _ = report.summarize_app_log(restart)
+    assert errors.ok is True and "Plus 2 expected" in errors.detail
+
+    real = restart + 'Traceback (most recent call last):\nKeyError: \'title\'\n'
+    errors, _ = report.summarize_app_log(real)
+    assert errors.ok is False and errors.detail.startswith("1 tracebacks") and "KeyError: 'title'" in errors.detail
+
+
+def test_atexit_shutdown_tracebacks_are_ignored():
+    log = ("Exception ignored in atexit callback: <function shutdown at 0x7f>\n"
+           "Traceback (most recent call last):\n  File \"/usr/lib/python3.12/logging/__init__.py\", line 2263, in shutdown\n")
+    errors, _ = report.summarize_app_log(log)
+    assert errors.ok is True and errors.detail.startswith("0 tracebacks")

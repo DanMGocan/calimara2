@@ -117,11 +117,25 @@ def check_services() -> list[Check]:
     for unit, label in (("calimara", "App service"), ("postgresql@16-main", "PostgreSQL")):
         state = _run(["systemctl", "is-active", unit]).strip() or "unknown"
         checks.append(Check(label, state == "active", state))
-    restarts = len(re.findall(r"Started calimara\.service", _run(
-        ["journalctl", "-u", "calimara", "--since", "-24h", "--no-pager", "-q"], timeout=60)))
-    if restarts > 3:
-        checks.append(Check("App restarts", False, f"{restarts} restarts in 24h."))
+    # systemd counts automatic restarts after crashes (Restart=always), not deploys.
+    crashes = _run(["systemctl", "show", "calimara", "-p", "NRestarts", "--value"]).strip()
+    if crashes.isdigit() and int(crashes) > 0:
+        checks.append(Check("App crashes", False, f"systemd restarted the app {crashes} times after it crashed."))
     return checks
+
+
+def describe_db_restart(started: datetime, now: datetime) -> Check | None:
+    """Informational line when PostgreSQL restarted in the last 24 hours."""
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    if now - started > timedelta(hours=24):
+        return None
+    local = started.astimezone().strftime("%H:%M")
+    return Check(
+        "PostgreSQL restart", True,
+        f"Restarted at {local} (usually an automatic security update); reachable again. "
+        "Errors logged during those seconds are expected.",
+    )
 
 
 def check_disk(path: str = "/") -> list[Check]:
@@ -130,21 +144,48 @@ def check_disk(path: str = "/") -> list[Check]:
     return [Check("Disk space", percent < DISK_WARN_PERCENT, f"{percent:.0f}% used, {usage.free / 1024**3:.0f} GB free.")]
 
 
+_DB_DOWN = (
+    "connection refused", "could not connect to server", "the database system is shutting down",
+    "the database system is starting up", "terminating connection due to administrator command",
+    "server closed the connection unexpectedly", "invalidatepoolerror",
+)
+_ERROR_LINE = re.compile(r"^[\w.]*(?:Error|Exception)\b:? .*$", re.MULTILINE)
+
+
+def _classify_tracebacks(log: str) -> tuple[int, int, list[str]]:
+    """(real tracebacks, database-restart tracebacks, error lines of the real ones).
+
+    Restarts print SystemExit tracebacks from run.py's signal handler, and a
+    PostgreSQL restart (automatic security updates) makes in-flight queries
+    fail for a few seconds: neither is a bug.
+    """
+    real = db_down = 0
+    lines: list[str] = []
+    chunks = log.split("Traceback (most recent call last)")
+    for before, block in zip(chunks, chunks[1:]):
+        block = block.split("\nINFO:", 1)[0]
+        announced_at_exit = "Exception ignored in atexit callback" in before[-300:]
+        if announced_at_exit or "SystemExit" in block or "in signal_handler" in block:
+            continue
+        if any(marker in block.lower() for marker in _DB_DOWN):
+            db_down += 1
+            continue
+        real += 1
+        lines += [line.strip() for line in _ERROR_LINE.findall(block) if not line.startswith("Exception ignored")]
+    return real, db_down, lines
+
+
 def summarize_app_log(log: str) -> list[Check]:
     """Errors and failed requests from the app's log text."""
-    # Restarts print SystemExit tracebacks from run.py's signal handler: not errors.
-    shutdowns = len(re.findall(r"^SystemExit\b", log, flags=re.MULTILINE))
-    tracebacks = max(0, log.count("Traceback (most recent call last)") - shutdowns)
-    error_lines = [
-        line.strip() for line in re.findall(r"^[\w.]*(?:Error|Exception)\b:? .*$", log, flags=re.MULTILINE)
-        if not line.startswith("Exception ignored")
-    ]
+    tracebacks, db_restart_errors, error_lines = _classify_tracebacks(log)
     server_errors = re.findall(r'"[A-Z]+ (\S+) HTTP/[\d.]+" (5\d\d)', log)
     webhook = re.findall(r'"POST /api/stripe/notificare HTTP/[\d.]+" (\d{3})', log)
     webhook_bad = [code for code in webhook if code != "200"]
 
     checks = []
     detail = f"{tracebacks} tracebacks, {len(server_errors)} server errors (5xx)."
+    if db_restart_errors:
+        detail += f" (Plus {db_restart_errors} expected errors while the database restarted.)"
     if server_errors:
         paths: dict[str, int] = {}
         for path, _code in server_errors:
@@ -184,6 +225,9 @@ def check_database(now: datetime) -> list[Check]:
     try:
         db.execute(text("SELECT 1"))
         checks = [Check("Database", True, "Reachable.")]
+        restart = describe_db_restart(db.execute(text("SELECT pg_postmaster_start_time()")).scalar(), now)
+        if restart:
+            checks.append(restart)
         sent = db.query(func.count(models.EmailOutbox.id)).filter(
             models.EmailOutbox.status == "sent", models.EmailOutbox.updated_at >= since).scalar() or 0
         failed = db.query(func.count(models.EmailOutbox.id)).filter(
