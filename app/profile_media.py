@@ -39,7 +39,7 @@ MEDIA_KINDS = {
 
 
 def profile_media_dir() -> Path:
-    configured = os.getenv("PROFILE_MEDIA_LOCAL_DIR", "temp/profile-media")
+    configured = os.getenv("PROFILE_MEDIA_LOCAL_DIR", "media/profile-media")
     path = Path(configured)
     if not path.is_absolute():
         path = PROJECT_ROOT / path

@@ -1,5 +1,5 @@
 [Unit]
-Description=Calimara database backup to Hetzner Object Storage (keeps newest 3)
+Description=Calimara database and media backup to object storage (30 days)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
