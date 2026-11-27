@@ -47,8 +47,9 @@ def main() -> int:
             except Exception as exc:
                 if worker_errors.database_unavailable(exc):
                     # Usually PostgreSQL restarting after a security update: wait, no traceback.
-                    print("Email worker: database unavailable, retrying in 5s", file=sys.stderr)
-                    time.sleep(max(args.sleep, 5))
+                    delay = max(args.sleep, 5)
+                    print(f"Email worker: database unavailable, retrying in {delay:g}s", file=sys.stderr)
+                    time.sleep(delay)
                     continue
                 print(f"Email worker iteration failed: {exc}", file=sys.stderr)
                 traceback.print_exc()

@@ -146,12 +146,22 @@ def test_recent_db_restart_is_informational():
     assert report.describe_db_restart(NOW - timedelta(days=3), NOW) is None
 
 
-def test_app_crashes_are_flagged(monkeypatch):
+def test_only_new_app_crashes_are_flagged(monkeypatch, tmp_path):
+    monkeypatch.setattr(report, "STATE_FILE", tmp_path / "state.json")
     answers = {"is-active": "active\n", "show": "2\n"}
     monkeypatch.setattr(report, "_run", lambda cmd, timeout=30: answers[cmd[1]])
-    checks = report.check_services()
-    assert [c.name for c in checks] == ["App service", "PostgreSQL", "App crashes"]
-    assert checks[2].ok is False
+
+    first = report.check_services()
+    assert [c.name for c in first] == ["App service", "PostgreSQL", "App crashes"]
+    assert first[2].ok is False and "2 times" in first[2].detail
+
+    assert [c.name for c in report.check_services()] == ["App service", "PostgreSQL"]  # same total: nothing new
+
+    answers["show"] = "3\n"
+    assert "1 times" in report.check_services()[2].detail
+
+    answers["show"] = "1\n"  # counter reset by systemd, then one crash
+    assert "1 times" in report.check_services()[2].detail
 
 
 def test_db_restart_tracebacks_alone_are_ok_but_real_ones_fail():
@@ -170,3 +180,10 @@ def test_atexit_shutdown_tracebacks_are_ignored():
            "Traceback (most recent call last):\n  File \"/usr/lib/python3.12/logging/__init__.py\", line 2263, in shutdown\n")
     errors, _ = report.summarize_app_log(log)
     assert errors.ok is True and errors.detail.startswith("0 tracebacks")
+
+
+def test_connection_refused_outside_the_database_still_fails():
+    log = ('Traceback (most recent call last):\n'
+           'httpx.ConnectError: [Errno 111] Connection refused\n')
+    errors, _ = report.summarize_app_log(log)
+    assert errors.ok is False and errors.detail.startswith("1 tracebacks")

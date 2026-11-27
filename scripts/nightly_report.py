@@ -29,6 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 BACKUP_STATUS_FILE = PROJECT_ROOT / "logs" / "last_backup.json"
+STATE_FILE = PROJECT_ROOT / "logs" / "nightly_report_state.json"
 BACKUP_MAX_AGE = timedelta(hours=26)
 DISK_WARN_PERCENT = 85
 
@@ -118,10 +119,28 @@ def check_services() -> list[Check]:
         state = _run(["systemctl", "is-active", unit]).strip() or "unknown"
         checks.append(Check(label, state == "active", state))
     # systemd counts automatic restarts after crashes (Restart=always), not deploys.
-    crashes = _run(["systemctl", "show", "calimara", "-p", "NRestarts", "--value"]).strip()
-    if crashes.isdigit() and int(crashes) > 0:
-        checks.append(Check("App crashes", False, f"systemd restarted the app {crashes} times after it crashed."))
+    # The counter is a running total, so compare with what the last report saw.
+    total = _run(["systemctl", "show", "calimara", "-p", "NRestarts", "--value"]).strip()
+    if total.isdigit():
+        new_crashes = _new_crashes(int(total))
+        if new_crashes:
+            checks.append(Check("App crashes", False, f"systemd restarted the app {new_crashes} times after it crashed."))
     return checks
+
+
+def _new_crashes(total: int, state_file: Path | None = None) -> int:
+    """Crash restarts since the previous report (the counter resets when systemd reloads)."""
+    state_file = state_file or STATE_FILE
+    try:
+        previous = int(json.loads(state_file.read_text(encoding="utf-8")).get("n_restarts", 0))
+    except (OSError, ValueError, TypeError):
+        previous = 0
+    try:
+        state_file.parent.mkdir(parents=True, exist_ok=True)
+        state_file.write_text(json.dumps({"n_restarts": total}), encoding="utf-8")
+    except OSError:
+        pass
+    return total - previous if total >= previous else total
 
 
 def describe_db_restart(started: datetime, now: datetime) -> Check | None:
@@ -167,7 +186,9 @@ def _classify_tracebacks(log: str) -> tuple[int, int, list[str]]:
         announced_at_exit = "Exception ignored in atexit callback" in before[-300:]
         if announced_at_exit or "SystemExit" in block or "in signal_handler" in block:
             continue
-        if any(marker in block.lower() for marker in _DB_DOWN):
+        lowered = block.lower()
+        is_database_error = any(name in lowered for name in ("psycopg2", "sqlalchemy.exc", "invalidatepoolerror"))
+        if is_database_error and any(marker in lowered for marker in _DB_DOWN):
             db_down += 1
             continue
         real += 1
