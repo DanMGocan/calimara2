@@ -8957,12 +8957,24 @@ textarea.cal-input {
   background: var(--paper);
 }
 .forum-author-name {
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 5px;
   max-width: 100%;
   font-family: var(--serif);
   font-size: 18px;
   font-weight: 600;
+  line-height: 1.2;
   color: var(--ink);
+}
+.forum-author-name .author-link-name,
+.forum-page .author-link-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.forum-page .author-link {
+  flex-wrap: wrap;
 }
 .forum-author-stats {
   width: 100%;
@@ -10669,6 +10681,7 @@ a.forum-badge-new:focus-visible {
   }
 
   .forum-author-name {
+    align-items: flex-start;
     justify-content: flex-start;
   }
 

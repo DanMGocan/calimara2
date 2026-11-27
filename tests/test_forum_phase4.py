@@ -371,6 +371,14 @@ class ForumPhase4Tests(unittest.TestCase):
         self.assertIn("<blockquote>", payload.content)
         self.assertIn("<strong>cititor (#1) a scris:</strong>", payload.content)
 
+    def test_forum_author_tier_badge_stacks_below_username(self):
+        from pathlib import Path
+
+        css = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
+        self.assertIn(".forum-author-name {\n  flex-direction: column;", css)
+        self.assertIn(".forum-author-name .author-link-name,\n.forum-page .author-link-name {\n  max-width: 100%;\n  overflow-wrap: anywhere;\n}", css)
+        self.assertIn("  .forum-author-name {\n    align-items: flex-start;\n    justify-content: flex-start;\n  }", css)
+
 
 if __name__ == "__main__":
     unittest.main()
