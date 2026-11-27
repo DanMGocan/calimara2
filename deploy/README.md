@@ -5,6 +5,7 @@ Copies of the files installed outside the repo, for reference and re-installatio
 | File | Installed at | Purpose |
 |------|--------------|---------|
 | `systemd/calimara-backup.{service,timer}` | `/etc/systemd/system/` | Daily 03:30 `scripts/backup_db.py` → object storage (Contabo): DB dumps in `backups/db/` kept 30 days (`BACKUP_KEEP_DAYS`, newest `BACKUP_KEEP` always kept); `media/` mirrored to `backups/media/`, deleted files kept 30 days in `backups/media-deleted/<date>/` |
+| `systemd/calimara-nightly-report.{service,timer}` | `/etc/systemd/system/` | Daily 04:30 `scripts/nightly_report.py` emails a health report (backup, website, services, database, emails, AI jobs, app errors, Stripe notifications, disk) to `NIGHTLY_REPORT_EMAIL` (default contact@calimara.ro) via Brevo. Preview with `--dry-run`. |
 | `systemd/calimara-cloudflare-sync.{service,timer}` | `/etc/systemd/system/` | Weekly refresh of Cloudflare IP ranges |
 | `sbin/calimara-cloudflare-sync` | `/usr/local/sbin/` | Writes nginx real-IP config; UFW allows 80/443 only from Cloudflare (SSH untouched) |
 | `nginx/security-headers.conf` | `/etc/nginx/conf.d/` | HSTS, nosniff, frame-ancestors, Referrer-Policy, Permissions-Policy |

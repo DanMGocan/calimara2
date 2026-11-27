@@ -1,0 +1,12 @@
+[Unit]
+Description=Calimara nightly health report email
+After=network-online.target postgresql.service calimara-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=dan
+Group=dan
+WorkingDirectory=/home/dan/calimara2
+ExecStart=/home/dan/calimara2/.venv/bin/python /home/dan/calimara2/scripts/nightly_report.py
+Nice=10
