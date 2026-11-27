@@ -16,6 +16,9 @@ photos are treated as deleted. A file that disappeared locally is moved
 to backups/media-deleted/<YYYYMMDD>/ and removed after BACKUP_KEEP_DAYS, so an
 accidental wipe of the media folder can be undone for a month. If a whole media
 folder is missing, nothing is moved for it at all.
+
+Server cleanup: after a successful media backup, local files older than a day
+that nothing references are deleted from the server (app/media_cleanup.py).
 """
 
 import json
@@ -81,28 +84,14 @@ def media_sources() -> dict[str, Path]:
 
 def referenced_media_keys() -> dict[str, set[str]]:
     """Storage keys of every local file the database still uses, per media source."""
-    from app import models
+    from app import media_cleanup
     from app.database import SessionLocal
 
     db = SessionLocal()
     try:
-        audio = {
-            key for (key,) in db.query(models.PostAudio.storage_key)
-            .filter(models.PostAudio.storage_backend == "local", models.PostAudio.storage_key.isnot(None))
-        }
-        photos: set[str] = set()
-        for model in (models.User, models.Club):
-            for row in db.query(
-                model.profile_photo_storage_backend, model.profile_photo_storage_key,
-                model.cover_photo_storage_backend, model.cover_photo_storage_key,
-            ):
-                if row[0] == "local" and row[1]:
-                    photos.add(row[1])
-                if row[2] == "local" and row[3]:
-                    photos.add(row[3])
+        return media_cleanup.referenced_media_keys(db)
     finally:
         db.close()
-    return {"audio": audio, "profile-media": photos}
 
 
 def sync_media(
@@ -241,6 +230,18 @@ def main() -> int:
               f"purged {media['purged']}")
     except Exception as exc:
         errors.append(f"media: {type(exc).__name__}: {exc}"[:500])
+    else:
+        # Only after a good backup run: delete server files nothing uses any more.
+        try:
+            from app import media_cleanup
+
+            sweep = media_cleanup.sweep_unreferenced_local_files(referenced_media_keys(), media_sources(), now=now)
+            status["sweep"] = sweep
+            print(f"Server cleanup: deleted {sweep['deleted']} unused files ({sweep['deleted_bytes'] / 1024:.1f} KiB)")
+            for warning in sweep["skipped_folders"]:
+                errors.append(f"server cleanup skipped, looks wrong: {warning}")
+        except Exception as exc:
+            errors.append(f"server cleanup: {type(exc).__name__}: {exc}"[:500])
 
     if errors:
         for error in errors:
