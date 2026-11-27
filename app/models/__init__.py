@@ -87,3 +87,9 @@ __all__ = [
     "EmailOutbox",
     "AuthEmailCode",
 ]
+
+
+# Delete stored media files when the rows that use them go away.
+from app import media_cleanup as _media_cleanup  # noqa: E402
+
+_media_cleanup.register()

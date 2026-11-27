@@ -9,7 +9,7 @@ from sqlalchemy import String, and_, case, func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
-from .. import admin, crud, email_service, integrations_guide, invitations, models, moderation, object_storage, performance, platform_access, schemas, statistics
+from .. import admin, crud, email_service, integrations_guide, invitations, media_cleanup, models, moderation, object_storage, performance, platform_access, schemas, statistics
 from ..database import get_db
 from ..utils import author_public_url, post_public_url
 from ..week_util import utcnow_naive
@@ -1660,6 +1660,8 @@ def delete_admin_user(
     metadata = {"username": user.username, "email": user.email}
     db.expunge(user)
     try:
+        # Bulk deletes below skip ORM hooks: queue the user's files explicitly.
+        media_cleanup.mark_user_media(db, user_id)
         deleted_content = _delete_user_owned_content(db, user_id)
         deleted_count = (
             db.query(models.User)
