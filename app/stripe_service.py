@@ -58,7 +58,7 @@ PREMIUM_TIER_DETAILS = {
             "3 super-aprecieri pe lună",
             "Player audio nelimitat",
             "60.000 caractere pentru Diacritice pe lună",
-            "50.000 caractere pentru generare audio pe lună",
+            "25.000 caractere pentru generare audio pe lună",
             "Experiență fără reclame când ești conectat",
             "Imagine de profil și copertă premium",
         ],
@@ -66,12 +66,12 @@ PREMIUM_TIER_DETAILS = {
     "cronicar": {
         "name": "Cronicar",
         "eyebrow": "Argint",
-        "summary": "Generează audio pentru textele tale: 100.000 caractere per ciclu de facturare.",
+        "summary": "Generează audio pentru textele tale: 50.000 caractere per ciclu de facturare.",
         "benefits": [
             "Tot ce include Trubadur",
             "4 super-aprecieri pe lună",
             "120.000 caractere pentru Diacritice pe lună",
-            "100.000 caractere pentru generare audio",
+            "50.000 caractere pentru generare audio",
             "Conversie text în fișier audio pentru textele tale",
             "Administrare audio din dashboard",
             "Analitice avansate zilnice prin email",
@@ -80,12 +80,12 @@ PREMIUM_TIER_DETAILS = {
     "rapsod": {
         "name": "Rapsod",
         "eyebrow": "Aur",
-        "summary": "Generează 200.000 caractere per ciclu și poți încărca înregistrări audio de autor.",
+        "summary": "Generează 100.000 caractere per ciclu și poți încărca înregistrări audio de autor.",
         "benefits": [
             "Tot ce include Cronicar",
             "5 super-aprecieri pe lună",
             "180.000 caractere pentru Diacritice pe lună",
-            "200.000 caractere pentru generare audio",
+            "100.000 caractere pentru generare audio",
             "Încărcare înregistrări audio de autor",
             "Moderare și publicare audio pentru postări aprobate",
         ],

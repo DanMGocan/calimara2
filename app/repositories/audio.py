@@ -6,9 +6,9 @@ from ._shared import *
 
 AUDIO_TTS_MONTHLY_QUOTAS = {
     "free": 1_000,
-    "trubadur": 50_000,
-    "cronicar": 100_000,
-    "rapsod": 200_000,
+    "trubadur": 25_000,
+    "cronicar": 50_000,
+    "rapsod": 100_000,
 }
 
 AUDIO_LISTEN_MODES = {"poezie", "proza_scurta", "toate"}

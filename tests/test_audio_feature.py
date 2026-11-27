@@ -189,9 +189,9 @@ class AudioFeatureTests(unittest.TestCase):
         owner = self.user("owner", "cronicar")
         payload = audio_service.audio_quota_payload(self.db, owner)
         self.assertTrue(payload["can_request"])
-        self.assertEqual(payload["limit"], 100000)
+        self.assertEqual(payload["limit"], 50000)
         self.assertEqual(payload["used"], 0)
-        self.assertEqual(payload["remaining"], 100000)
+        self.assertEqual(payload["remaining"], 50000)
 
     def test_audio_quota_payload_for_free_and_trubadur_tiers(self):
         free = self.user("free")
@@ -209,15 +209,15 @@ class AudioFeatureTests(unittest.TestCase):
         self.assertFalse(trubadur.has_audio_access)
         self.assertTrue(trubadur_payload["can_request"])
         self.assertEqual(trubadur_payload["premium_tier"], "trubadur")
-        self.assertEqual(trubadur_payload["limit"], 50000)
-        self.assertEqual(trubadur_payload["remaining"], 50000)
+        self.assertEqual(trubadur_payload["limit"], 25000)
+        self.assertEqual(trubadur_payload["remaining"], 25000)
 
     def test_audio_quota_payload_for_author_audio_tier(self):
         owner = self.user("owner", "rapsod")
         payload = audio_service.audio_quota_payload(self.db, owner)
         self.assertTrue(payload["can_request"])
-        self.assertEqual(payload["limit"], 200000)
-        self.assertEqual(payload["remaining"], 200000)
+        self.assertEqual(payload["limit"], 100000)
+        self.assertEqual(payload["remaining"], 100000)
 
     def test_audio_quota_ignores_failed_tts_rows(self):
         owner = self.user("owner", "cronicar")
@@ -236,7 +236,7 @@ class AudioFeatureTests(unittest.TestCase):
         payload = audio_service.audio_quota_payload(self.db, owner)
 
         self.assertEqual(payload["used"], 0)
-        self.assertEqual(payload["remaining"], 100000)
+        self.assertEqual(payload["remaining"], 50000)
 
     def test_manual_tts_request_queues_and_counts_characters(self):
         owner = self.user("owner", "cronicar")
