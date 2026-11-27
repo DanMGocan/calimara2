@@ -320,7 +320,9 @@ const ABOUT_SECTIONS = [
   }
 ];
 
-const LEGAL_UPDATED_AT = "Ultima actualizare: 22 mai 2026.";
+const LEGAL_UPDATED_AT = "Ultima actualizare: 27 noiembrie 2026.";
+const OPERATOR_ADDRESS = "11 College Court, Portobello, Dublin, Irlanda";
+const OPERATOR = `Daniel Mihai, persoană fizică, cu adresa ${OPERATOR_ADDRESS}`;
 
 const PRIVACY_SECTIONS = [
   {
@@ -331,7 +333,7 @@ const PRIVACY_SECTIONS = [
       "Călimara este o platformă literară cu profiluri de autor, texte publice, ciorne, comentarii, mesaje, cluburi, teatru colaborativ, Ștafeta, audio, Premium, reclame, notificări și instrumente de administrare a contului."
     ],
     items: [
-      "Operatorul platformei este Călimara, disponibilă la calimara.ro.",
+      `Călimara (calimara.ro) este administrată de ${OPERATOR}, care este și operatorul datelor tale.`,
       "Contactul pentru confidențialitate, conturi și întrebări juridice este contact@calimara.ro.",
       "Nu vindem datele tale personale.",
       "Nu stocăm datele cardului. Plățile Premium sunt procesate prin Stripe.",
@@ -342,7 +344,7 @@ const PRIVACY_SECTIONS = [
     id: "operator-contact",
     title: "Operator și contact",
     paragraphs: [
-      "Pentru datele prelucrate direct de platformă, operatorul este Călimara. Folosim datele doar pentru a oferi serviciul, pentru a proteja comunitatea, pentru a gestiona abonamentele și pentru a respecta obligațiile legale aplicabile.",
+      `Operatorul datelor prelucrate de platformă este ${OPERATOR}. Călimara nu este o companie, ci un proiect administrat de această persoană. Folosim datele doar pentru a oferi serviciul, pentru a proteja comunitatea, pentru a gestiona abonamentele și pentru a respecta obligațiile legale aplicabile.`,
       <>Pentru orice cerere legată de datele tale, scrie la <a href="mailto:contact@calimara.ro">contact@calimara.ro</a>. Încearcă să folosești adresa de email a contului tău, ca să putem verifica mai ușor cererea.</>
     ],
     items: [
@@ -506,14 +508,18 @@ const PRIVACY_SECTIONS = [
     id: "destinatari-transferuri",
     title: "Furnizori și transferuri",
     paragraphs: [
-      "Pentru ca platforma să funcționeze, folosim furnizori tehnici. Aceștia pot primi doar datele necesare serviciului pe care îl oferă. În funcție de furnizor și de configurarea activă, datele pot fi prelucrate în afara României sau a Spațiului Economic European.",
-      "Când datele sunt transferate în afara Spațiului Economic European, folosim mecanismele disponibile prin furnizorii respectivi, cum ar fi clauze contractuale standard, decizii de adecvare sau alte garanții permise de lege."
+      "Pentru ca platforma să funcționeze, folosim furnizori tehnici. Fiecare primește doar datele necesare serviciului pe care îl oferă și le prelucrează în numele nostru. Unii furnizori se află în afara Spațiului Economic European, de regulă în Statele Unite.",
+      "Când datele ajung în afara Spațiului Economic European, transferul se face pe baza Cadrului UE-SUA privind protecția datelor, a clauzelor contractuale standard aprobate de Comisia Europeană sau a altor garanții permise de lege."
     ],
     items: [
-      "Google poate fi folosit pentru autentificare, reclame AdSense și instrumente de consimțământ publicitar.",
-      "Stripe este folosit pentru plăți, abonamente și portalul de client.",
-      "Brevo sau un furnizor similar poate fi folosit pentru emailuri.",
-      "Furnizorii de găzduire, stocare, securitate, generare audio, procesare text și monitorizare pot prelucra date tehnice sau conținut strict necesar funcției folosite.",
+      "Găzduire și copii de siguranță: Contabo (Germania), unde rulează serverul și unde păstrăm copiile de siguranță ale bazei de date și ale fișierelor, cel mult 30 de zile.",
+      "Livrare și protecție a site-ului: Cloudflare, prin care trece traficul către calimara.ro (adrese IP și date tehnice ale cererilor).",
+      "Plăți: Stripe (Irlanda), pentru plăți, abonamente și portalul de client.",
+      "Emailuri: Brevo (Franța), pentru trimiterea emailurilor de cont și a notificărilor.",
+      "Autentificare: Google, dacă alegi să intri cu contul Google.",
+      "Procesare automată a textului: servicii externe care primesc textul trimis spre moderare, corectarea diacriticelor, formatare sau comentarii de atelier, doar pentru a returna rezultatul.",
+      "Sinteză vocală și transcriere: Google Cloud, pentru generarea audio din text și verificarea lecturilor de autor.",
+      <>Lista exactă a furnizorilor de procesare automată a textului este disponibilă la cerere, la <a href="mailto:contact@calimara.ro">contact@calimara.ro</a>.</>,
       "Autoritățile publice pot primi date doar când există o obligație legală sau o solicitare validă."
     ]
   },
@@ -536,7 +542,7 @@ const PRIVACY_SECTIONS = [
     id: "drepturi",
     title: "Drepturile tale",
     paragraphs: [
-      "Dacă locuiești în România sau în Uniunea Europeană, ai drepturi legate de datele tale personale. Unele drepturi se aplică în orice situație, iar altele depind de temeiul prelucrării și de context.",
+      "Dacă locuiești în Uniunea Europeană, inclusiv în România, ai drepturi legate de datele tale personale. Unele drepturi se aplică în orice situație, iar altele depind de temeiul prelucrării și de context.",
       <>Pentru exercitarea drepturilor, scrie la <a href="mailto:contact@calimara.ro">contact@calimara.ro</a>. Putem cere informații suplimentare pentru confirmarea identității, mai ales când cererea privește accesul, exportul sau ștergerea contului.</>
     ],
     items: [
@@ -547,7 +553,7 @@ const PRIVACY_SECTIONS = [
       "Dreptul la portabilitate: poți cere datele într-un format utilizabil, unde se aplică.",
       "Dreptul la opoziție: te poți opune anumitor prelucrări bazate pe interes legitim sau marketing direct.",
       "Dreptul de a retrage consimțământul: poți retrage consimțământul pentru prelucrările bazate pe consimțământ, fără a afecta ce s-a întâmplat înainte de retragere.",
-      "Dreptul de a depune plângere: poți contacta autoritatea de protecție a datelor competentă, inclusiv ANSPDCP în România."
+      "Dreptul de a depune plângere: poți contacta Data Protection Commission din Irlanda (dataprotection.ie), autoritatea competentă pentru operator, sau autoritatea din țara în care locuiești, de exemplu ANSPDCP în România."
     ]
   },
   {
@@ -604,6 +610,7 @@ const TERMS_SECTIONS = [
     ],
     items: [
       "Călimara este o platformă literară pentru citire, publicare, ateliere, comunitate și funcții asociate autorilor.",
+      `Platforma este administrată de ${OPERATOR}. În acești termeni, „noi” înseamnă această persoană.`,
       "Unele funcții sunt publice, unele cer autentificare, iar unele sunt disponibile doar pentru anumite planuri Premium.",
       "Politica de confidențialitate explică separat ce date prelucrăm și de ce.",
       <>Contactul pentru întrebări despre termeni este <a href="mailto:contact@calimara.ro">contact@calimara.ro</a>.</>
@@ -739,10 +746,15 @@ const TERMS_SECTIONS = [
     id: "premium",
     title: "Premium, plăți și anulare",
     paragraphs: [
-      "Planurile Premium extind funcțiile platformei. Beneficiile, prețurile și limitele active sunt cele afișate în pagina Premium și în fluxul de plată la momentul achiziției.",
+      `Planurile Premium sunt vândute de ${OPERATOR}. Beneficiile, prețurile și limitele active sunt cele afișate în pagina Premium și în fluxul de plată la momentul achiziției. Prețul afișat la plată este prețul final.`,
       "Plățile sunt procesate prin Stripe. Călimara nu stochează datele complete ale cardului. Abonamentul poate fi gestionat prin Stripe Customer Portal, când portalul este disponibil pentru contul tău."
     ],
     items: [
+      "Abonamentele se plătesc lunar și se reînnoiesc automat până când le anulezi. Le poți anula oricând din portalul de client, iar anularea oprește plățile viitoare.",
+      "Premium începe imediat după plată. Când accepți termenii la plată, ceri ca serviciul să înceapă imediat, în perioada de retragere.",
+      "Rambursare în 14 zile: poți cere rambursarea integrală a primei plăți a unui abonament, sau a unei plăți de tip cafea, în 14 zile de la plată, fără să explici motivul. Scrie la contact@calimara.ro de pe adresa contului tău.",
+      "Rambursarea se face prin Stripe, pe aceeași metodă de plată, în cel mult 14 zile de la cerere. După rambursare, beneficiile Premium plătite cu acea plată se opresc.",
+      "Plățile de reînnoire lunară nu se rambursează automat, dar poți anula oricând ca să nu mai fie taxată luna următoare. Dacă o plată a fost făcută din greșeală, scrie-ne și analizăm cererea.",
       "Beneficiile Premium sunt active cât timp abonamentul este valid conform stării primite de la Stripe.",
       "Dacă anulezi abonamentul, beneficiile pot rămâne active până la finalul perioadei deja plătite, în funcție de regulile Stripe și de plan.",
       "Dacă plata eșuează, beneficiile Premium pot fi suspendate, reduse sau retrase.",
@@ -812,11 +824,12 @@ const TERMS_SECTIONS = [
     id: "lege-contact",
     title: "Legea aplicabilă și contact",
     paragraphs: [
-      "Acești termeni sunt redactați pentru folosirea platformei în România și Uniunea Europeană. Drepturile obligatorii ale consumatorilor și ale persoanelor vizate rămân aplicabile acolo unde legea le oferă.",
+      "Acești termeni sunt guvernați de legea din Irlanda. Dacă ești consumator în altă țară din Uniunea Europeană, păstrezi protecția oferită de legile obligatorii ale țării în care locuiești și poți apela la instanțele de acolo.",
       "Înainte de orice dispută, te rugăm să ne contactezi cu detalii clare. În multe situații, problemele de cont, plată, moderare sau conținut pot fi rezolvate mai rapid prin dialog."
     ],
     items: [
       <>Pentru întrebări despre termeni, scrie la <a href="mailto:contact@calimara.ro">contact@calimara.ro</a>.</>,
+      `Adresa poștală: ${OPERATOR_ADDRESS}.`,
       "Pentru cereri de confidențialitate, folosește aceeași adresă și menționează contul vizat.",
       "Putem actualiza termenii atunci când schimbăm funcții, furnizori, reguli sau obligații legale.",
       "Data ultimei actualizări apare la începutul paginii."
