@@ -21,6 +21,7 @@ DEFAULT_FORUM_SECTIONS = (
 FORUM_SECTIONS = tuple(item["slug"] for item in DEFAULT_FORUM_SECTIONS)
 PUBLIC_FORUM_STATUSES = ("approved", "pending", "flagged")
 FORUM_THREAD_SORTS = ("activity", "newest", "replies")
+FORUM_EDIT_WINDOW = timedelta(minutes=30)
 
 
 class ForumSectionError(ValueError):
@@ -490,49 +491,179 @@ def create_forum_reply(
 
 def _notify_forum_reply_approved(db: Session, reply: models.ForumReply) -> None:
     thread = reply.thread or get_forum_thread(db, reply.thread_id)
-    if not thread or thread.author_id == reply.author_id:
+    if not thread:
         return
     author = reply.author or get_user_by_id(db, reply.author_id)
-    create_notification(
-        db=db,
-        user_id=thread.author_id,
-        notif_type="forum_reply",
-        title="Răspuns nou în discuția ta",
-        message=f"{author.username if author else 'Un utilizator'} a răspuns în „{thread.title}\".",
-        link=f"/discutii/{thread.slug}",
-        extra_data={"thread_id": thread.id, "reply_id": reply.id, "thread_slug": thread.slug},
-    )
+    author_name = author.username if author else "Un utilizator"
+    if thread.author_id != reply.author_id:
+        create_notification(
+            db=db,
+            user_id=thread.author_id,
+            notif_type="forum_reply",
+            title="Răspuns nou în discuția ta",
+            message=f"{author_name} a răspuns în „{thread.title}\".",
+            link=f"/discutii/{thread.slug}",
+            extra_data={"thread_id": thread.id, "reply_id": reply.id, "thread_slug": thread.slug},
+        )
+    follower_ids = [
+        row[0]
+        for row in (
+            db.query(models.User.id)
+            .join(models.ForumThreadFollow, models.ForumThreadFollow.user_id == models.User.id)
+            .filter(
+                models.ForumThreadFollow.thread_id == thread.id,
+                models.User.id != reply.author_id,
+                models.User.id != thread.author_id,
+                models.User.is_suspended == False,
+            )
+            .all()
+        )
+    ]
+    for follower_id in follower_ids:
+        create_notification(
+            db=db,
+            user_id=follower_id,
+            notif_type="forum_reply",
+            title="Răspuns nou într-o discuție urmărită",
+            message=f"{author_name} a răspuns în „{thread.title}\".",
+            link=f"/discutii/{thread.slug}#reply-{reply.id}",
+            extra_data={"thread_id": thread.id, "reply_id": reply.id, "thread_slug": thread.slug},
+        )
 
 def apply_forum_thread_moderation_result(db: Session, thread: models.ForumThread, moderation_result) -> models.ForumThread:
     was_approved = thread.moderation_status == "approved"
+    is_edit = thread.edited_at is not None
     thread.moderation_status = _forum_status_value(moderation_result)
     thread.toxicity_score = getattr(moderation_result, "toxicity_score", None)
     thread.moderation_reason = getattr(moderation_result, "reason", None)
-    if thread.moderation_status == "approved":
+    if thread.moderation_status == "approved" and not is_edit:
         thread.last_activity_at = func.now()
     db.commit()
     db.refresh(thread)
-    if thread.moderation_status == "approved" and not was_approved:
+    if thread.moderation_status == "approved" and not was_approved and not is_edit:
         award_content_approved(db, "forum_thread", thread)
         notify_mentions_for_forum_thread(db, thread)
     return thread
 
 def apply_forum_reply_moderation_result(db: Session, reply: models.ForumReply, moderation_result) -> models.ForumReply:
     was_approved = reply.moderation_status == "approved"
+    is_edit = reply.edited_at is not None
     reply.moderation_status = _forum_status_value(moderation_result)
     reply.toxicity_score = getattr(moderation_result, "toxicity_score", None)
     reply.moderation_reason = getattr(moderation_result, "reason", None)
-    if reply.moderation_status == "approved":
+    if reply.moderation_status == "approved" and not is_edit:
         thread = reply.thread or get_forum_thread(db, reply.thread_id)
         if thread:
             thread.last_activity_at = func.now()
     db.commit()
     db.refresh(reply)
-    if reply.moderation_status == "approved" and not was_approved:
+    if reply.moderation_status == "approved" and not was_approved and not is_edit:
         award_content_approved(db, "forum_reply", reply)
         _notify_forum_reply_approved(db, reply)
         notify_mentions_for_forum_reply(db, reply)
     return reply
+
+def _within_edit_window(created_at: Optional[datetime]) -> bool:
+    if created_at is None:
+        return False
+    naive = created_at.replace(tzinfo=None) if created_at.tzinfo is not None else created_at
+    return (utcnow_naive() - naive) <= FORUM_EDIT_WINDOW
+
+def forum_thread_edit_error(
+    user: Optional[models.User], thread: models.ForumThread, db: Optional[Session] = None
+) -> Optional[str]:
+    if user is None:
+        return "not_allowed"
+    if thread.moderation_status == "rejected" or (
+        db is not None and content_has_human_rejection(db, "forum_thread", thread.id)
+    ):
+        return "not_found"
+    if can_moderate_forum(user):
+        return None
+    if thread.author_id != user.id:
+        return "not_allowed"
+    if thread.is_locked:
+        return "locked"
+    section = get_forum_section_by_slug(db, thread.section) if db is not None else None
+    if section is not None and section.is_archived:
+        return "archived"
+    if not _within_edit_window(thread.created_at):
+        return "edit_window_expired"
+    return None
+
+def can_edit_forum_thread(
+    user: Optional[models.User], thread: models.ForumThread, db: Optional[Session] = None
+) -> bool:
+    return forum_thread_edit_error(user, thread, db=db) is None
+
+def forum_reply_edit_error(
+    user: Optional[models.User], reply: models.ForumReply, db: Optional[Session] = None
+) -> Optional[str]:
+    if user is None:
+        return "not_allowed"
+    if reply.moderation_status == "rejected" or (
+        db is not None and content_has_human_rejection(db, "forum_reply", reply.id)
+    ):
+        return "not_found"
+    thread = reply.thread or (get_forum_thread(db, reply.thread_id) if db is not None else None)
+    if thread is None or thread.moderation_status == "rejected" or (
+        db is not None and content_has_human_rejection(db, "forum_thread", thread.id)
+    ):
+        return "not_found"
+    if can_moderate_forum(user):
+        return None
+    if reply.author_id != user.id:
+        return "not_allowed"
+    if thread.is_locked:
+        return "locked"
+    section = get_forum_section_by_slug(db, thread.section) if db is not None else None
+    if section is not None and section.is_archived:
+        return "archived"
+    if not _within_edit_window(reply.created_at):
+        return "edit_window_expired"
+    return None
+
+def can_edit_forum_reply(
+    user: Optional[models.User], reply: models.ForumReply, db: Optional[Session] = None
+) -> bool:
+    return forum_reply_edit_error(user, reply, db=db) is None
+
+def update_forum_thread(
+    db: Session, actor: models.User, thread: models.ForumThread, data: schemas.ForumThreadUpdate
+) -> tuple[Optional[models.ForumThread], Optional[str]]:
+    error = forum_thread_edit_error(actor, thread, db=db)
+    if error:
+        return None, error
+    thread.title = data.title.strip()
+    thread.content = data.content.strip()
+    thread.edited_at = utcnow_naive()
+    thread.edited_by = actor.id
+    thread.moderation_status = "pending"
+    thread.moderation_reason = None
+    thread.toxicity_score = None
+    thread.moderated_by = None
+    thread.moderated_at = None
+    db.commit()
+    db.refresh(thread)
+    return thread, None
+
+def update_forum_reply(
+    db: Session, actor: models.User, reply: models.ForumReply, data: schemas.ForumReplyUpdate
+) -> tuple[Optional[models.ForumReply], Optional[str]]:
+    error = forum_reply_edit_error(actor, reply, db=db)
+    if error:
+        return None, error
+    reply.content = data.content.strip()
+    reply.edited_at = utcnow_naive()
+    reply.edited_by = actor.id
+    reply.moderation_status = "pending"
+    reply.moderation_reason = None
+    reply.toxicity_score = None
+    reply.moderated_by = None
+    reply.moderated_at = None
+    db.commit()
+    db.refresh(reply)
+    return reply, None
 
 def delete_forum_thread(db: Session, actor: models.User, thread: models.ForumThread) -> bool:
     if thread.author_id != actor.id and not can_moderate_forum(actor):
@@ -739,6 +870,192 @@ def forum_threads_with_new_replies(db: Session, user: Optional[models.User], thr
         .all()
     )
     return {row[0] for row in rows}
+
+
+def get_forum_thread_read(
+    db: Session, user: Optional[models.User], thread_id: int
+) -> Optional[models.ForumThreadRead]:
+    if user is None or not getattr(user, "id", None):
+        return None
+    return (
+        db.query(models.ForumThreadRead)
+        .filter(models.ForumThreadRead.thread_id == thread_id, models.ForumThreadRead.user_id == user.id)
+        .first()
+    )
+
+
+def first_unread_forum_reply_id(
+    db: Session,
+    user: Optional[models.User],
+    thread: models.ForumThread,
+    replies: List[models.ForumReply],
+) -> Optional[int]:
+    """Return the first reply created after `user` last read `thread`, excluding `user`'s own replies."""
+    read = get_forum_thread_read(db, user, thread.id)
+    if read is None or read.last_read_at is None:
+        return None
+    for reply in replies:
+        if reply.author_id == user.id:
+            continue
+        if reply.created_at is not None and reply.created_at > read.last_read_at:
+            return reply.id
+    return None
+
+
+def forum_threads_first_unread_reply_ids(
+    db: Session, user: Optional[models.User], thread_ids: List[int]
+) -> Dict[int, int]:
+    """Map thread_id -> earliest unread public reply id for threads in `thread_ids`."""
+    if user is None or not getattr(user, "id", None) or not thread_ids:
+        return {}
+    rows = (
+        db.query(models.ForumReply.thread_id, models.ForumReply.id)
+        .join(
+            models.ForumThreadRead,
+            and_(
+                models.ForumThreadRead.thread_id == models.ForumReply.thread_id,
+                models.ForumThreadRead.user_id == user.id,
+            ),
+        )
+        .filter(
+            models.ForumReply.thread_id.in_(thread_ids),
+            models.ForumReply.author_id != user.id,
+            models.ForumReply.created_at > models.ForumThreadRead.last_read_at,
+            models.ForumReply.moderation_status.in_(PUBLIC_FORUM_STATUSES),
+            not_human_rejected_condition("forum_reply", models.ForumReply.id),
+        )
+        .order_by(
+            models.ForumReply.thread_id.asc(),
+            models.ForumReply.created_at.asc(),
+            models.ForumReply.id.asc(),
+        )
+        .all()
+    )
+    first_by_thread: Dict[int, int] = {}
+    for thread_id, reply_id in rows:
+        if thread_id not in first_by_thread:
+            first_by_thread[thread_id] = reply_id
+    return first_by_thread
+
+
+# ===================================
+# THREAD FOLLOWS & REPLY LIKES
+# ===================================
+
+def is_following_forum_thread(db: Session, user: Optional[models.User], thread_id: int) -> bool:
+    if user is None or not getattr(user, "id", None):
+        return False
+    return (
+        db.query(models.ForumThreadFollow.id)
+        .filter(models.ForumThreadFollow.thread_id == thread_id, models.ForumThreadFollow.user_id == user.id)
+        .first()
+        is not None
+    )
+
+
+def count_forum_thread_followers(db: Session, thread_id: int) -> int:
+    return int(
+        db.query(func.count(models.ForumThreadFollow.id))
+        .filter(models.ForumThreadFollow.thread_id == thread_id)
+        .scalar()
+        or 0
+    )
+
+
+def follow_forum_thread(
+    db: Session, user: models.User, thread: models.ForumThread
+) -> tuple[bool, Optional[str]]:
+    if not can_view_forum_thread(user, thread, db=db):
+        return False, "not_found"
+    if is_following_forum_thread(db, user, thread.id):
+        return True, None
+    db.add(models.ForumThreadFollow(thread_id=thread.id, user_id=user.id))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+    return True, None
+
+
+def unfollow_forum_thread(db: Session, user: models.User, thread_id: int) -> bool:
+    row = (
+        db.query(models.ForumThreadFollow)
+        .filter(models.ForumThreadFollow.thread_id == thread_id, models.ForumThreadFollow.user_id == user.id)
+        .first()
+    )
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def forum_reply_like_stats(
+    db: Session, reply_ids: List[int], viewer: Optional[models.User] = None
+) -> Dict[int, Dict[str, Any]]:
+    stats: Dict[int, Dict[str, Any]] = {
+        reply_id: {"like_count": 0, "liked_by_me": False} for reply_id in reply_ids
+    }
+    if not reply_ids:
+        return stats
+    counts = (
+        db.query(models.ForumReplyLike.reply_id, func.count(models.ForumReplyLike.id))
+        .filter(models.ForumReplyLike.reply_id.in_(reply_ids))
+        .group_by(models.ForumReplyLike.reply_id)
+        .all()
+    )
+    for reply_id, count in counts:
+        stats[reply_id]["like_count"] = int(count or 0)
+    if viewer is not None and getattr(viewer, "id", None):
+        liked_rows = (
+            db.query(models.ForumReplyLike.reply_id)
+            .filter(
+                models.ForumReplyLike.reply_id.in_(reply_ids),
+                models.ForumReplyLike.user_id == viewer.id,
+            )
+            .all()
+        )
+        for (reply_id,) in liked_rows:
+            stats[reply_id]["liked_by_me"] = True
+    return stats
+
+
+def like_forum_reply(
+    db: Session, user: models.User, reply: models.ForumReply
+) -> tuple[Optional[dict], Optional[str]]:
+    thread = reply.thread or get_forum_thread(db, reply.thread_id)
+    if not thread or not can_view_forum_thread(user, thread, db=db):
+        return None, "not_found"
+    if reply.moderation_status != "approved" or content_has_human_rejection(db, "forum_reply", reply.id):
+        return None, "not_available"
+    if reply.author_id == user.id:
+        return None, "self_like"
+    existing = (
+        db.query(models.ForumReplyLike.id)
+        .filter(models.ForumReplyLike.reply_id == reply.id, models.ForumReplyLike.user_id == user.id)
+        .first()
+    )
+    if not existing:
+        db.add(models.ForumReplyLike(reply_id=reply.id, user_id=user.id))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+    stats = forum_reply_like_stats(db, [reply.id], viewer=user)[reply.id]
+    return {"reply_id": reply.id, **stats}, None
+
+
+def unlike_forum_reply(db: Session, user: models.User, reply: models.ForumReply) -> dict:
+    existing = (
+        db.query(models.ForumReplyLike)
+        .filter(models.ForumReplyLike.reply_id == reply.id, models.ForumReplyLike.user_id == user.id)
+        .first()
+    )
+    if existing:
+        db.delete(existing)
+        db.commit()
+    stats = forum_reply_like_stats(db, [reply.id], viewer=user)[reply.id]
+    return {"reply_id": reply.id, **stats}
 
 
 def get_forum_threads_for_moderation(

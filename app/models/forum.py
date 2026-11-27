@@ -51,6 +51,8 @@ class ForumThread(Base):
     pinned_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     locked_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    edited_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -105,6 +107,8 @@ class ForumReply(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     pinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     pinned_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    edited_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    edited_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -133,3 +137,31 @@ class ForumThreadRead(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     first_read_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     last_read_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class ForumThreadFollow(Base):
+    """Users following a forum thread to receive notifications on new replies."""
+
+    __tablename__ = "forum_thread_follows"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "user_id", name="uq_forum_thread_follows_thread_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    thread_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class ForumReplyLike(Base):
+    """Simple like/apreciere toggle on an approved forum reply."""
+
+    __tablename__ = "forum_reply_likes"
+    __table_args__ = (
+        UniqueConstraint("reply_id", "user_id", name="uq_forum_reply_likes_reply_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    reply_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_replies.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

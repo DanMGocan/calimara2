@@ -1236,6 +1236,8 @@ CREATE TABLE forum_threads (
     pinned_by INT,
     locked_at TIMESTAMP,
     locked_by INT,
+    edited_at TIMESTAMP,
+    edited_by INT,
     moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
         CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
     moderation_reason TEXT,
@@ -1249,7 +1251,8 @@ CREATE TABLE forum_threads (
     CONSTRAINT fk_forum_threads_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_forum_threads_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL,
     CONSTRAINT fk_forum_threads_pinned_by FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_forum_threads_locked_by FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_forum_threads_locked_by FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_forum_threads_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_forum_threads_author ON forum_threads(author_id);
@@ -1270,6 +1273,8 @@ CREATE TABLE forum_replies (
     is_pinned BOOLEAN DEFAULT FALSE NOT NULL,
     pinned_at TIMESTAMP,
     pinned_by INT,
+    edited_at TIMESTAMP,
+    edited_by INT,
     moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
         CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
     moderation_reason TEXT,
@@ -1282,7 +1287,8 @@ CREATE TABLE forum_replies (
     CONSTRAINT fk_forum_replies_thread FOREIGN KEY (thread_id) REFERENCES forum_threads(id) ON DELETE CASCADE,
     CONSTRAINT fk_forum_replies_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_forum_replies_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT fk_forum_replies_pinned_by FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_forum_replies_pinned_by FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_forum_replies_edited_by FOREIGN KEY (edited_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_forum_replies_thread_created ON forum_replies(thread_id, created_at ASC);
@@ -1305,6 +1311,40 @@ CREATE TABLE forum_thread_reads (
 );
 
 CREATE INDEX idx_forum_thread_reads_user ON forum_thread_reads(user_id);
+
+-- ===================================
+-- FORUM THREAD FOLLOWS TABLE
+-- ===================================
+CREATE TABLE forum_thread_follows (
+    id SERIAL PRIMARY KEY,
+    thread_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT uq_forum_thread_follows_thread_user UNIQUE (thread_id, user_id),
+    CONSTRAINT fk_forum_thread_follows_thread FOREIGN KEY (thread_id) REFERENCES forum_threads(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_thread_follows_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_forum_thread_follows_thread ON forum_thread_follows(thread_id);
+CREATE INDEX idx_forum_thread_follows_user ON forum_thread_follows(user_id);
+
+-- ===================================
+-- FORUM REPLY LIKES TABLE
+-- ===================================
+CREATE TABLE forum_reply_likes (
+    id SERIAL PRIMARY KEY,
+    reply_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT uq_forum_reply_likes_reply_user UNIQUE (reply_id, user_id),
+    CONSTRAINT fk_forum_reply_likes_reply FOREIGN KEY (reply_id) REFERENCES forum_replies(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_reply_likes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_forum_reply_likes_reply ON forum_reply_likes(reply_id);
+CREATE INDEX idx_forum_reply_likes_user ON forum_reply_likes(user_id);
 
 -- ===================================
 -- USER AWARDS TABLE
