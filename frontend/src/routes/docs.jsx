@@ -224,8 +224,12 @@ const DOC_SECTIONS = [
   {
     id: "forum",
     title: "Discuții",
-    summary: "Forumul are secțiuni pentru anunțuri, discuții generale, poezie și proză scurtă.",
+    summary: "Forumul are secțiuni administrate din panoul admin (tabul Forum): adminii le creează, editează, ordonează, arhivează sau șterg.",
     bullets: [
+      "/discutii afișează secțiunile cu numărul de discuții și răspunsuri și ultima postare; fiecare secțiune are pagina /discutii/sectiune/<slug>, cu discuțiile fixate deasupra, paginare și ordonare.",
+      "Secțiunile marcate „doar echipa” primesc discuții noi doar de la admini și moderatori; secțiunile arhivate rămân lizibile, dar nu mai primesc discuții sau răspunsuri.",
+      "Moderatorii pot fixa, închide și muta discuții și pot fixa răspunsuri direct din pagina discuției; răspunsurile fixate apar deasupra firului.",
+      "Răspunsurile sunt numerotate și paginate câte 20; legăturile #reply-<id> deschid pagina potrivită. Prima vizită a unui cititor numără o vizualizare, iar discuțiile cu răspunsuri noi de la ultima vizită sunt marcate „nou”.",
       "Threadurile și răspunsurile pending/flagged apar în firul normal cu overlay translucid până la decizia de aprobare sau respingere; după respingere nu mai apar în forum.",
       "Moderatorii pot șterge sau schimba starea discuțiilor, iar adminii pot administra conținutul din panoul central.",
       "Threadurile și răspunsurile aprobate au steag roșu de raportare în colțul din dreapta jos și trimit sesizările către tabul Raportări din panoul admin.",

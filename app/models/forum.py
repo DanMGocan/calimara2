@@ -11,10 +11,27 @@ from sqlalchemy.sql import func
 from .base import Base
 
 
+class ForumSection(Base):
+    """Admin-managed forum section. Threads refer to it by `slug` (forum_threads.section)."""
+
+    __tablename__ = "forum_sections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(60), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    staff_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class ForumThread(Base):
     __tablename__ = "forum_threads"
     __table_args__ = (
-        CheckConstraint("section IN ('anunturi', 'general', 'poezie', 'proza_scurta')", name="ck_forum_threads_section"),
         CheckConstraint(
             "moderation_status IN ('pending', 'approved', 'flagged', 'rejected')",
             name="ck_forum_threads_moderation_status",
@@ -23,13 +40,17 @@ class ForumThread(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    section: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    section: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     slug: Mapped[str] = mapped_column(String(220), unique=True, index=True, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pinned_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    locked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    locked_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -81,6 +102,9 @@ class ForumReply(Base):
     thread_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False, index=True)
     author_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    pinned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    pinned_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     moderation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     moderation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -94,3 +118,18 @@ class ForumReply(Base):
     thread: Mapped["ForumThread"] = relationship("ForumThread", foreign_keys=[thread_id], back_populates="replies")
     author: Mapped["User"] = relationship("User", foreign_keys=[author_id], back_populates="forum_replies")
     moderator: Mapped[Optional["User"]] = relationship("User", foreign_keys=[moderated_by])
+
+
+class ForumThreadRead(Base):
+    """One row per (thread, reader): counts unique views and tracks unread activity."""
+
+    __tablename__ = "forum_thread_reads"
+    __table_args__ = (
+        UniqueConstraint("thread_id", "user_id", name="uq_forum_thread_reads_thread_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    thread_id: Mapped[int] = mapped_column(Integer, ForeignKey("forum_threads.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    first_read_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    last_read_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

@@ -150,5 +150,5 @@ class GologaniRewardSettingOut(BaseModel):
 # FORUM SCHEMAS
 # ===================================
 
-ForumSection = Literal["anunturi", "general", "poezie", "proza_scurta"]
+ForumSection = str
 ForumModerationStatus = Literal["pending", "approved", "flagged", "rejected"]

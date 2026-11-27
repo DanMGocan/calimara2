@@ -6,6 +6,7 @@ import { contentTypeLabel, decisionLabel, formatDateTime, formatGologani, format
 import { AuthRequired, PageShell, StatusPanel } from "../app/layout.jsx";
 import { blogUrl, mainPath } from "../app/paths.js";
 import { safeExternalUrl } from "../app/urls.js";
+import { AdminForumPanel } from "./admin-forum.jsx";
 
 const PREMIUM_TIER_LABELS = {
   free: "Gratuit",
@@ -31,7 +32,7 @@ const INVITATION_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ADMIN_NAV_GROUPS = [
   {
     label: "Platformă",
-    items: ["overview", "access", "users", "content", "submissions", "email"]
+    items: ["overview", "access", "users", "content", "forum", "submissions", "email"]
   },
   {
     label: "Moderare",
@@ -1475,6 +1476,7 @@ function AdminDashboardView({ user }) {
         ["access", "Acces", (state.platformAccess?.allowed_count || 0) + (state.platformAccess?.invitation_count || 0)],
         ["users", "Utilizatori", state.users.length],
         ["content", "Conținut", state.content.length],
+        ["forum", "Forum", Object.values(state.overview?.moderation?.content_by_status?.forum_threads || {}).reduce((sum, value) => sum + Number(value || 0), 0)],
         ["submissions", "Sesizări", state.submissionsTotal],
         ["email", "Email", state.emailCampaigns.length],
         ["pending", "Moderare", state.pending.length + state.flagged.length],
@@ -1954,6 +1956,8 @@ function AdminDashboardView({ user }) {
           </div>
         </AdminPanel>
       ) : null}
+
+      {!state.loading && !state.error && canAdmin && activeTab === "forum" ? <AdminForumPanel /> : null}
 
       {!state.loading && !state.error && canAdmin && activeTab === "qaReport" ? (
         <AdminPanel

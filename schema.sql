@@ -1193,19 +1193,49 @@ CREATE INDEX idx_stafeta_segments_status ON stafeta_segments(moderation_status);
 CREATE INDEX idx_stafeta_segments_next_target ON stafeta_segments(next_target_user_id);
 
 -- ===================================
+-- FORUM SECTIONS TABLE
+-- ===================================
+CREATE TABLE forum_sections (
+    id SERIAL PRIMARY KEY,
+    slug VARCHAR(60) UNIQUE NOT NULL,
+    name VARCHAR(80) NOT NULL,
+    description VARCHAR(300),
+    position INT DEFAULT 0 NOT NULL,
+    staff_only BOOLEAN DEFAULT FALSE NOT NULL,
+    is_featured BOOLEAN DEFAULT FALSE NOT NULL,
+    is_archived BOOLEAN DEFAULT FALSE NOT NULL,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_forum_sections_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_forum_sections_position ON forum_sections(position, id);
+
+INSERT INTO forum_sections (slug, name, description, position, staff_only, is_featured) VALUES
+    ('anunturi', 'Anunțuri', 'Noutăți și anunțuri de la echipa Călimara.', 0, TRUE, TRUE),
+    ('general', 'Discuții generale', 'Întrebări și conversații libere între autori.', 1, FALSE, FALSE),
+    ('poezie', 'Poezie', 'Despre scrisul și cititul poeziei.', 2, FALSE, FALSE),
+    ('proza_scurta', 'Proză scurtă', 'Despre proză scurtă: tehnică, lecturi, ateliere.', 3, FALSE, FALSE);
+
+-- ===================================
 -- FORUM THREADS TABLE
 -- ===================================
 CREATE TABLE forum_threads (
     id SERIAL PRIMARY KEY,
     author_id INT NOT NULL,
-    section VARCHAR(40) NOT NULL
-        CHECK (section IN ('anunturi', 'general', 'poezie', 'proza_scurta')),
+    section VARCHAR(60) NOT NULL,
     title VARCHAR(160) NOT NULL,
     slug VARCHAR(220) UNIQUE NOT NULL,
     content TEXT NOT NULL,
     view_count INT DEFAULT 0 NOT NULL,
     is_locked BOOLEAN DEFAULT FALSE NOT NULL,
     is_pinned BOOLEAN DEFAULT FALSE NOT NULL,
+    pinned_at TIMESTAMP,
+    pinned_by INT,
+    locked_at TIMESTAMP,
+    locked_by INT,
     moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
         CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
     moderation_reason TEXT,
@@ -1217,7 +1247,9 @@ CREATE TABLE forum_threads (
     last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_forum_threads_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_forum_threads_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_forum_threads_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_forum_threads_pinned_by FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_forum_threads_locked_by FOREIGN KEY (locked_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_forum_threads_author ON forum_threads(author_id);
@@ -1225,6 +1257,7 @@ CREATE INDEX idx_forum_threads_section_activity ON forum_threads(section, last_a
 CREATE INDEX idx_forum_threads_status_activity ON forum_threads(moderation_status, is_pinned DESC, last_activity_at DESC);
 CREATE INDEX idx_forum_threads_last_activity ON forum_threads(last_activity_at DESC);
 CREATE INDEX idx_forum_threads_slug ON forum_threads(slug);
+CREATE INDEX idx_forum_threads_section_pinned_activity ON forum_threads(section, is_pinned DESC, last_activity_at DESC);
 
 -- ===================================
 -- FORUM REPLIES TABLE
@@ -1234,6 +1267,9 @@ CREATE TABLE forum_replies (
     thread_id INT NOT NULL,
     author_id INT NOT NULL,
     content TEXT NOT NULL,
+    is_pinned BOOLEAN DEFAULT FALSE NOT NULL,
+    pinned_at TIMESTAMP,
+    pinned_by INT,
     moderation_status VARCHAR(20) DEFAULT 'pending' NOT NULL
         CHECK (moderation_status IN ('pending', 'approved', 'flagged', 'rejected')),
     moderation_reason TEXT,
@@ -1245,12 +1281,30 @@ CREATE TABLE forum_replies (
 
     CONSTRAINT fk_forum_replies_thread FOREIGN KEY (thread_id) REFERENCES forum_threads(id) ON DELETE CASCADE,
     CONSTRAINT fk_forum_replies_author FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE,
-    CONSTRAINT fk_forum_replies_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL
+    CONSTRAINT fk_forum_replies_moderator FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_forum_replies_pinned_by FOREIGN KEY (pinned_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_forum_replies_thread_created ON forum_replies(thread_id, created_at ASC);
 CREATE INDEX idx_forum_replies_author ON forum_replies(author_id);
 CREATE INDEX idx_forum_replies_status ON forum_replies(moderation_status);
+
+-- ===================================
+-- FORUM THREAD READS TABLE
+-- ===================================
+CREATE TABLE forum_thread_reads (
+    id SERIAL PRIMARY KEY,
+    thread_id INT NOT NULL,
+    user_id INT NOT NULL,
+    first_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT uq_forum_thread_reads_thread_user UNIQUE (thread_id, user_id),
+    CONSTRAINT fk_forum_thread_reads_thread FOREIGN KEY (thread_id) REFERENCES forum_threads(id) ON DELETE CASCADE,
+    CONSTRAINT fk_forum_thread_reads_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_forum_thread_reads_user ON forum_thread_reads(user_id);
 
 -- ===================================
 -- USER AWARDS TABLE

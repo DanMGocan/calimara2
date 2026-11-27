@@ -31,6 +31,7 @@ const ROUTE_COMPONENTS = {
   forum: lazy(() => import("../routes/forum.jsx")),
   forumCreate: lazy(() => import("../routes/forum.jsx")),
   forumThread: lazy(() => import("../routes/forum.jsx")),
+  forumSection: lazy(() => import("../routes/forum.jsx")),
   shop: lazy(() => import("../routes/economy.jsx")),
   inventory: lazy(() => import("../routes/economy.jsx")),
   premium: lazy(() => import("../routes/premium.jsx")),
@@ -93,6 +94,7 @@ export function routeForLocation() {
   if (path.startsWith("/stafeta/")) return { name: "stafetaWork", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/discutii") return { name: "forum" };
   if (path === "/discutii/nou") return { name: "forumCreate" };
+  if (path.startsWith("/discutii/sectiune/")) return { name: "forumSection", slug: decodeURIComponent(path.split("/")[3] || "") };
   if (path.startsWith("/discutii/")) return { name: "forumThread", slug: decodeURIComponent(path.split("/")[2] || "") };
   if (path === "/magazin") return { name: "shop" };
   if (path === "/inventar") return { name: "inventory" };
