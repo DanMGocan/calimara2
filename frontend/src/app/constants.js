@@ -73,7 +73,7 @@ export const CONTENT_TYPE_LABELS = {
   stafeta_segment: "Ștafeta"
 };
 
-export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "clubs", "club", "forum", "forumCreate", "forumThread", "theatreCreate", "stafeta", "stafetaCreate", "stafetaWork", "shop", "inventory", "playlists", "referrals", "admin", "docs"]);
+export const PROTECTED_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages", "friends", "usersDirectory", "clubs", "club", "forum", "forumCreate", "forumThread", "forumSection", "theatreCreate", "stafeta", "stafetaCreate", "stafetaWork", "shop", "inventory", "playlists", "referrals", "admin", "docs"]);
 export const AUTHOR_SUBDOMAIN_ROUTES = new Set(["dashboard", "profileSettings", "create", "messages"]);
 export const AD_SUPPORTED_ROUTES = new Set(["landing", "clubs", "club", "theatre", "theatrePlay", "blog", "post", "series"]);
 export const ADS_ENABLED = import.meta.env.VITE_ADS_ENABLED === "true";

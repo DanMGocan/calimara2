@@ -1,16 +1,17 @@
-import { api } from "./client.js";
+import { api, buildQuery } from "./client.js";
 
-export function fetchForumThreads(section = "general") {
-  const params = section && section !== "toate" ? `?section=${encodeURIComponent(section)}` : "";
-  return api.get(`/api/forum/discutii${params}`);
+export function fetchForumThreads({ section, q, sort, page, perPage } = {}) {
+  const query = buildQuery({ section, q, sort, page, per_page: perPage });
+  return api.get(`/api/forum/discutii${query}`);
 }
 
 export function fetchForumSections() {
   return api.get("/api/forum/sectiuni");
 }
 
-export function fetchForumThread(slug) {
-  return api.get(`/api/forum/discutii/${encodeURIComponent(slug)}`);
+export function fetchForumThread(slug, { page, reply } = {}) {
+  const query = buildQuery({ page, reply });
+  return api.get(`/api/forum/discutii/${encodeURIComponent(slug)}${query}`);
 }
 
 export function createForumThread(data) {
@@ -37,6 +38,43 @@ export function deleteForumReply(replyId) {
   return api.delete(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}`);
 }
 
-export function updateForumThreadState(threadId, action) {
-  return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/stare`, { action });
+// action: "lock" | "unlock" | "pin" | "unpin" | "move" (move needs `section`).
+export function updateForumThreadState(threadId, action, section) {
+  return api.post(`/api/forum/discutii/${encodeURIComponent(threadId)}/stare`, section ? { action, section } : { action });
+}
+
+// action: "pin" | "unpin"
+export function updateForumReplyState(replyId, action) {
+  return api.post(`/api/forum/raspunsuri/${encodeURIComponent(replyId)}/stare`, { action });
+}
+
+// Admin: forum sections and thread tools.
+export function fetchAdminForumSections() {
+  return api.get("/api/admin/forum/sectiuni");
+}
+
+export function createAdminForumSection(data) {
+  return api.post("/api/admin/forum/sectiuni", data);
+}
+
+export function updateAdminForumSection(sectionId, data) {
+  return api.put(`/api/admin/forum/sectiuni/${encodeURIComponent(sectionId)}`, data);
+}
+
+export function reorderAdminForumSections(sectionIds) {
+  return api.post("/api/admin/forum/sectiuni/ordine", { section_ids: sectionIds });
+}
+
+export function deleteAdminForumSection(sectionId, moveTo) {
+  const query = buildQuery({ move_to: moveTo });
+  return api.delete(`/api/admin/forum/sectiuni/${encodeURIComponent(sectionId)}${query}`);
+}
+
+export function fetchAdminForumThreads({ section, status, pinned, locked, q, page, perPage } = {}) {
+  const query = buildQuery({ section, status, pinned, locked, q, page, per_page: perPage });
+  return api.get(`/api/admin/forum/discutii${query}`);
+}
+
+export function bulkAdminForumThreads(threadIds, action, section) {
+  return api.post("/api/admin/forum/discutii/actiuni", section ? { thread_ids: threadIds, action, section } : { thread_ids: threadIds, action });
 }

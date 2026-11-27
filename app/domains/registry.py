@@ -46,6 +46,7 @@ DOMAIN_ROUTERS = [
     premium.router,
     audio.router,
     forum.router,
+    forum.admin_router,
     economy.router,
     writing.router,
 ]

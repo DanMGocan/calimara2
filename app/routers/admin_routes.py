@@ -1973,6 +1973,8 @@ def update_admin_content(
     item = _content_object(db, content_type, content_id)
     if not item:
         raise HTTPException(status_code=404, detail="Conținutul nu a fost găsit")
+    if data.section is not None and content_type == "forum_thread" and not crud.is_forum_section(db, data.section):
+        raise HTTPException(status_code=400, detail="Secțiune invalidă")
     changed = {}
     for field in ("title", "content", "category", "section"):
         value = getattr(data, field)

@@ -401,6 +401,12 @@ def build_page_metadata(db: Session, request: Request) -> PageMetadata:
             return _theatre_metadata(play)
         return _noindex_metadata(path, title="Piesă inexistentă", not_found=True)
 
+    if path.startswith("/discutii/sectiune/"):
+        section_slug = path.split("/", 3)[3]
+        if section_slug and "/" not in section_slug and db.query(models.ForumSection.id).filter(models.ForumSection.slug == section_slug).first():
+            return _noindex_metadata(path)
+        return _noindex_metadata(path, title="Secțiune inexistentă", not_found=True)
+
     if path.startswith("/discutii/") and path != "/discutii/nou":
         # Forum is members-only: never expose thread titles/content to crawlers, only 404 missing slugs.
         slug = path.split("/", 2)[2]

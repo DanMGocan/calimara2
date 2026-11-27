@@ -180,7 +180,7 @@ class AdminContentUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=160)
     content: Optional[str] = None
     category: Optional[PostCategory] = None
-    section: Optional[Literal["anunturi", "general", "poezie", "proza_scurta"]] = None
+    section: Optional[str] = Field(None, min_length=1, max_length=60)
     moderation_status: Optional[AdminModerationStatus] = None
     reason: str = Field(..., min_length=1, max_length=1000)
 

@@ -63,7 +63,7 @@ def test_every_main_domain_frontend_route_is_not_a_404(db):
     prefixes = set(re.findall(r'path\.startsWith\("([^"]+)"\)', main_section))
     assert exact and prefixes
     # Slug routes for content looked up in the DB (series/theatre/forum) 404 only when the slug is missing.
-    db_backed = {"/serii/", "/teatru/", "/discutii/"}
+    db_backed = {"/serii/", "/teatru/", "/discutii/", "/discutii/sectiune/"}
     wrongly_404 = [p for p in exact if seo.build_page_metadata(db, _request(p)).not_found]
     wrongly_404 += [p + "x" for p in prefixes - db_backed if seo.build_page_metadata(db, _request(p + "x")).not_found]
     assert wrongly_404 == []
@@ -78,7 +78,7 @@ def test_every_subdomain_frontend_route_is_not_a_404(db):
     assert wrongly_404 == []
 
 
-@pytest.mark.parametrize("path", ["/nu-exista", "/panou/extra", "/serii/lipsa", "/teatru/lipsa", "/discutii/lipsa", "/serii"])
+@pytest.mark.parametrize("path", ["/nu-exista", "/panou/extra", "/serii/lipsa", "/teatru/lipsa", "/discutii/lipsa", "/discutii/sectiune/lipsa", "/serii"])
 def test_unknown_or_missing_main_pages_are_404(db, path):
     assert seo.build_page_metadata(db, _request(path)).not_found
 
@@ -129,3 +129,10 @@ def test_post_with_comments_likes_and_feature_can_be_deleted(db):
     assert db.get(models.Post, post_id) is None
     assert db.query(models.Comment).filter_by(post_id=post_id).count() == 0
     assert db.query(models.Like).filter_by(post_id=post_id).count() == 0
+
+
+def test_existing_forum_section_page_is_not_a_404(db):
+    db.add(models.ForumSection(slug="atelier", name="Atelier", position=0))
+    db.commit()
+    assert not seo.build_page_metadata(db, _request("/discutii/sectiune/atelier")).not_found
+    assert seo.build_page_metadata(db, _request("/discutii/sectiune/atelier/extra")).not_found

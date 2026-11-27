@@ -3537,7 +3537,7 @@ class BackendStabilizationTests(unittest.TestCase):
         self.assertEqual([item.id for item in crud.list_forum_replies_for_thread(self.db, thread.id, None)], [reply.id])
         crud.apply_forum_reply_moderation_result(self.db, reply, approved)
 
-        sections = forum_routes.list_forum_sections_api()
+        sections = forum_routes.list_forum_sections_api(db=self.db, current_user=None)
         listing = forum_routes.list_forum_threads_api(section="general", db=self.db, current_user=None)
         detail = forum_routes.get_forum_thread_api(thread.slug, db=self.db, current_user=None)
 

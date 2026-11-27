@@ -11,7 +11,7 @@ from .clubs import Club, ClubMember, ClubJoinRequest, ClubBoardMessage, ClubAchi
 from .theatre import TheatrePlay, TheatreMember, TheatreCharacter, TheatreJoinRequest, TheatreScene, TheatreEntry
 from .stafeta import StafetaParticipant, StafetaWork, StafetaAssignment, StafetaSegment
 from .economy import GologaniTransaction, GologaniRewardSetting, ShopItem, UserInventoryItem, UserEquippedItem
-from .forum import ForumThread, ForumReply
+from .forum import ForumSection, ForumThread, ForumReply, ForumThreadRead
 from .messaging import Conversation, Message
 from .social import Friendship, UserFollow
 from .moderation import ModerationLog, ModerationWord
@@ -66,6 +66,8 @@ __all__ = [
     "UserEquippedItem",
     "ForumThread",
     "ForumReply",
+    "ForumSection",
+    "ForumThreadRead",
     "Conversation",
     "Message",
     "Friendship",
