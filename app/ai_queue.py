@@ -46,6 +46,24 @@ def _post_matches_job(post: models.Post, job: models.AIJob) -> bool:
     return not expected or expected == _post_hash(post)
 
 
+def build_imported_post_publish_job(post: models.Post) -> models.AIJob:
+    """Unsaved publish job for a post created by a JSON import.
+
+    The caller adds it in the same transaction as the post, so a post can never
+    be left pending without a job. The ``imported`` flag makes approval skip the
+    new-post rewards and follower notifications (see _handle_post_publish).
+    """
+    return models.AIJob(
+        job_type=JOB_POST_PUBLISH,
+        target_type="post",
+        target_id=post.id,
+        payload={"content_hash": _post_hash(post), "imported": True},
+        max_attempts=3,
+        status="pending",
+        run_after=utcnow_naive(),
+    )
+
+
 def enqueue_post_publish_job(
     db: Session,
     post: models.Post,
@@ -250,13 +268,16 @@ def _handle_post_publish(db: Session, job: models.AIJob) -> None:
             link=None,
         )
     elif post.moderation_status == "approved":
-        crud.award_content_approved(db, "post", post)
-        emit_post_approved(db, post)
-        try:
-            crud.notify_followers_of_new_post(db, post)
-        except Exception:
-            db.rollback()
-            logger.exception("Could not notify followers for approved post %s", post.id)
+        # Imported archives are moderated like new posts, but must not pay out
+        # gologani/achievements per post or notify followers once per old post.
+        if not (job.payload or {}).get("imported"):
+            crud.award_content_approved(db, "post", post)
+            emit_post_approved(db, post)
+            try:
+                crud.notify_followers_of_new_post(db, post)
+            except Exception:
+                db.rollback()
+                logger.exception("Could not notify followers for approved post %s", post.id)
         enqueue_post_approval_jobs(db, post)
 
 

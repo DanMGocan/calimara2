@@ -4,13 +4,12 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from . import audio_storage, crud, models, profile_media, rich_text, schemas
+from . import ai_queue, crud, models, rich_text, schemas
 from .repositories.slugs import generate_slug
-from .utils import get_avatar_url, get_cover_url, normalize_external_url, post_public_url, validate_social_url, validate_youtube_playlist_url
+from .utils import normalize_external_url, post_public_url, validate_social_url, validate_youtube_playlist_url
 
 
 EXPORT_FORMAT = "calimara-user-export"
@@ -60,62 +59,8 @@ def _naive(value: Optional[datetime]) -> Optional[datetime]:
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _media_url_if_visible(user: models.User, kind: str) -> Optional[str]:
-    config = profile_media.media_kind_config(kind)
-    key = getattr(user, f"{config['prefix']}_storage_key", None)
-    if not key or not user.is_premium:
-        return None
-    return profile_media.public_media_url(user.username, kind)
-
-
 def _profile_payload(user: models.User) -> dict[str, Any]:
     return {field: getattr(user, field, None) for field in PROFILE_FIELDS}
-
-
-def _media_payload(user: models.User) -> dict[str, Optional[str]]:
-    profile_photo_url = _media_url_if_visible(user, "profil")
-    cover_photo_url = _media_url_if_visible(user, "coperta")
-    cover_seed = user.cover_seed or f"{user.username}-cover-sky"
-    return {
-        "profile_photo_url": profile_photo_url,
-        "cover_photo_url": cover_photo_url,
-        "avatar_url": profile_photo_url or get_avatar_url(user, size=160),
-        "cover_url": cover_photo_url or get_cover_url(cover_seed),
-    }
-
-
-def _post_counts(db: Session, posts: list[models.Post]) -> tuple[dict[int, int], dict[int, int]]:
-    if not posts:
-        return {}, {}
-    post_ids = [post.id for post in posts]
-    like_counts = dict(
-        db.query(models.Like.post_id, func.count(models.Like.id))
-        .filter(models.Like.post_id.in_(post_ids))
-        .group_by(models.Like.post_id)
-        .all()
-    )
-    super_like_counts = dict(
-        db.query(models.SuperLike.post_id, func.count(models.SuperLike.id))
-        .filter(models.SuperLike.post_id.in_(post_ids))
-        .group_by(models.SuperLike.post_id)
-        .all()
-    )
-    return like_counts, super_like_counts
-
-
-def _audio_payload(db: Session, post: models.Post) -> Optional[dict[str, Any]]:
-    audio = crud.get_best_audio_for_post(db, post.id)
-    if not audio:
-        return None
-    extension = audio_storage.extension_for_content_type(audio.content_type)
-    filename = f"{post.owner.username if post.owner else 'calimara'}-{post.slug}-audio.{extension}"
-    return {
-        "playback_url": audio_storage.playback_url(audio),
-        "download_url": audio_storage.download_url(audio, filename),
-        "source": audio.source,
-        "content_type": audio.content_type,
-        "duration_seconds": audio.duration_seconds,
-    }
 
 
 def _stable_post_id(user: models.User, post: models.Post) -> str:
@@ -133,7 +78,6 @@ def export_user_data(db: Session, user: models.User) -> dict[str, Any]:
         .order_by(models.Post.created_at.asc(), models.Post.id.asc())
         .all()
     )
-    like_counts, super_like_counts = _post_counts(db, posts)
     exported_posts = []
     for post in posts:
         exported_posts.append(
@@ -148,12 +92,6 @@ def export_user_data(db: Session, user: models.User) -> dict[str, Any]:
                 "created_at": _iso(post.created_at),
                 "updated_at": _iso(post.updated_at),
                 "public_url": post_public_url(user, post.slug),
-                "metrics": {
-                    "view_count": int(post.view_count or 0),
-                    "likes_count": int(like_counts.get(post.id, 0) or 0),
-                    "super_likes_count": int(super_like_counts.get(post.id, 0) or 0),
-                },
-                "audio": _audio_payload(db, post),
             }
         )
     return {
@@ -163,7 +101,6 @@ def export_user_data(db: Session, user: models.User) -> dict[str, Any]:
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "source_username": user.username,
         "profile": _profile_payload(user),
-        "media": _media_payload(user),
         "posts": exported_posts,
     }
 
@@ -185,10 +122,14 @@ def _normalize_link(field: str, value: Optional[str], errors: list[str]) -> Opti
 
 
 def _apply_profile_import(user: models.User, profile: schemas.DataPortabilityProfile, errors: list[str]) -> bool:
+    # Only fields present in the file are applied: the user already set up their
+    # profile before importing, so a file that omits a field must not clear it.
     changed = False
-    values = profile.model_dump()
+    values = profile.model_dump(exclude_unset=True)
     for field in PROFILE_FIELDS:
-        value = values.get(field)
+        if field not in values:
+            continue
+        value = values[field]
         if field.endswith("_url"):
             value = _normalize_link(field, value, errors)
         if getattr(user, field, None) != value:
@@ -204,22 +145,18 @@ def _source_stable_id(post: schemas.DataPortabilityPost) -> str:
 
 
 def _create_imported_post(db: Session, user: models.User, post_data: schemas.DataPortabilityPost) -> models.Post:
-    base_slug = post_data.slug or generate_slug(post_data.title)
-    slug = crud.ensure_unique_slug(db, base_slug)
-    created_at = _naive(post_data.created_at) or datetime.utcnow()
-    updated_at = _naive(post_data.updated_at) or created_at
+    # Imported posts are treated exactly like freshly written ones: new slug,
+    # new timestamps, zero metrics, and pending until the moderation job runs.
     post = models.Post(
         user_id=user.id,
         title=post_data.title,
-        slug=slug,
+        slug=crud.ensure_unique_slug(db, generate_slug(post_data.title)),
         content=post_data.content,
         explanatory_note=post_data.explanatory_note,
         category=post_data.category or "poezie",
-        view_count=int(post_data.metrics.view_count or 0),
-        moderation_status="approved",
+        view_count=0,
+        moderation_status="pending",
         ai_critic_requested=False,
-        created_at=created_at,
-        updated_at=updated_at,
     )
     db.add(post)
     db.flush()
@@ -268,16 +205,13 @@ def _add_import_snapshot(
             source_slug=post_data.slug,
             source_title=post_data.title,
             source_created_at=_naive(post_data.created_at),
-            imported_view_count=int(post_data.metrics.view_count or 0),
-            imported_likes_count=int(post_data.metrics.likes_count or 0),
-            imported_super_likes_count=int(post_data.metrics.super_likes_count or 0),
+            imported_view_count=0,
+            imported_likes_count=0,
+            imported_super_likes_count=0,
             public_url=post_data.public_url,
-            audio_playback_url=post_data.audio.playback_url if post_data.audio else None,
-            audio_download_url=post_data.audio.download_url if post_data.audio else None,
-            extra_data={
-                "audio": post_data.audio.model_dump() if post_data.audio else None,
-                "original_slug": post_data.slug,
-            },
+            audio_playback_url=None,
+            audio_download_url=None,
+            extra_data={"original_slug": post_data.slug},
         )
     )
 
@@ -297,8 +231,8 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
         source_export_id=manifest.export_id,
         source_username=manifest.source_username,
         source_created_at=_naive(manifest.exported_at),
-        profile_snapshot=manifest.profile.model_dump(),
-        media_snapshot=manifest.media.model_dump(),
+        profile_snapshot=manifest.profile.model_dump(exclude_unset=True),
+        media_snapshot={},
     )
     db.add(import_record)
     db.flush()
@@ -316,6 +250,9 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
         if exists:
             skipped_posts.append(post_data.title)
             continue
+        # One savepoint per post: a post that fails leaves nothing behind (no
+        # orphan post without snapshot or job) and does not poison the session.
+        savepoint = db.begin_nested()
         try:
             existing_post = _existing_own_export_post(db, user, manifest, post_data, stable_id)
             if existing_post:
@@ -328,6 +265,7 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
                     post_data=post_data,
                     stable_id=stable_id,
                 )
+                savepoint.commit()
                 skipped_posts.append(post_data.title)
                 continue
             post = _create_imported_post(db, user, post_data)
@@ -340,14 +278,18 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
                 post_data=post_data,
                 stable_id=stable_id,
             )
-            created_posts.append(
-                schemas.DataImportCreatedPost(
-                    title=post.title,
-                    slug=post.slug,
-                    source_stable_id=stable_id,
-                )
+            # Same moderation pipeline as POST /api/postari/, queued in the same
+            # transaction so no imported post can stay pending without a job.
+            db.add(ai_queue.build_imported_post_publish_job(post))
+            created = schemas.DataImportCreatedPost(
+                title=post.title,
+                slug=post.slug,
+                source_stable_id=stable_id,
             )
+            savepoint.commit()
+            created_posts.append(created)
         except Exception as exc:
+            savepoint.rollback()
             failed += 1
             errors.append(f"Nu am putut importa „{post_data.title}”: {exc}")
 
@@ -365,6 +307,8 @@ def import_user_data(db: Session, user: models.User, manifest: schemas.DataExpor
         f"Import finalizat: {len(created_posts)} postări create, "
         f"{len(skipped_posts)} duplicate sărite."
     )
+    if created_posts:
+        message += " Postările noi intră în moderare înainte de publicare."
     if failed:
         message += f" {failed} postări au eșuat."
     return schemas.DataImportReport(
