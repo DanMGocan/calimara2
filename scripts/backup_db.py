@@ -10,7 +10,9 @@ are always kept, so a long run of failed backups never empties the history.
 Restore with:  pg_restore --clean --no-owner -d calimara_db <file>.dump
 
 Media: the local audio and profile-media folders are mirrored to backups/media/.
-Only new or changed files are uploaded. A file that disappeared locally is moved
+Only new or changed files are uploaded, and only files the database still points
+to (post audio, user and club photos); leftovers of deleted posts or replaced
+photos are treated as deleted. A file that disappeared locally is moved
 to backups/media-deleted/<YYYYMMDD>/ and removed after BACKUP_KEEP_DAYS, so an
 accidental wipe of the media folder can be undone for a month. If a whole media
 folder is missing, nothing is moved for it at all.
@@ -77,10 +79,48 @@ def media_sources() -> dict[str, Path]:
     return {"audio": audio_storage.local_audio_dir(), "profile-media": profile_media.profile_media_dir()}
 
 
-def sync_media(client, bucket: str, sources: dict[str, Path], *, now: datetime, keep_days: int) -> dict:
-    """Mirror local media folders to backups/media/; see the module docstring for deletions."""
+def referenced_media_keys() -> dict[str, set[str]]:
+    """Storage keys of every local file the database still uses, per media source."""
+    from app import models
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        audio = {
+            key for (key,) in db.query(models.PostAudio.storage_key)
+            .filter(models.PostAudio.storage_backend == "local", models.PostAudio.storage_key.isnot(None))
+        }
+        photos: set[str] = set()
+        for model in (models.User, models.Club):
+            for row in db.query(
+                model.profile_photo_storage_backend, model.profile_photo_storage_key,
+                model.cover_photo_storage_backend, model.cover_photo_storage_key,
+            ):
+                if row[0] == "local" and row[1]:
+                    photos.add(row[1])
+                if row[2] == "local" and row[3]:
+                    photos.add(row[3])
+    finally:
+        db.close()
+    return {"audio": audio, "profile-media": photos}
+
+
+def sync_media(
+    client,
+    bucket: str,
+    sources: dict[str, Path],
+    *,
+    now: datetime,
+    keep_days: int,
+    referenced: dict[str, set[str]] | None = None,
+) -> dict:
+    """Mirror local media folders to backups/media/; see the module docstring for deletions.
+
+    With `referenced`, files whose storage key is not in it are left out of the
+    backup (their existing copies move to media-deleted like any deleted file).
+    """
     remote = {obj["Key"]: obj for obj in _list_all(client, bucket, MEDIA_PREFIX)}
-    uploaded = moved = files = total_bytes = 0
+    uploaded = moved = files = total_bytes = unreferenced = 0
     seen: set[str] = set()
     present_sources: list[str] = []
 
@@ -91,7 +131,11 @@ def sync_media(client, bucket: str, sources: dict[str, Path], *, now: datetime, 
         for path in sorted(root.rglob("*")):
             if path.is_symlink() or not path.is_file():
                 continue
-            key = f"{MEDIA_PREFIX}{name}/{path.relative_to(root).as_posix()}"
+            relative = path.relative_to(root).as_posix()
+            if referenced is not None and relative not in referenced.get(name, set()):
+                unreferenced += 1
+                continue
+            key = f"{MEDIA_PREFIX}{name}/{relative}"
             seen.add(key)
             stat = path.stat()
             files += 1
@@ -121,7 +165,10 @@ def sync_media(client, bucket: str, sources: dict[str, Path], *, now: datetime, 
             client.delete_object(Bucket=bucket, Key=obj["Key"])
             purged += 1
 
-    return {"files": files, "bytes": total_bytes, "uploaded": uploaded, "moved_to_deleted": moved, "purged": purged}
+    return {
+        "files": files, "bytes": total_bytes, "uploaded": uploaded, "unreferenced": unreferenced,
+        "moved_to_deleted": moved, "purged": purged,
+    }
 
 
 def backup_database(client, bucket: str, *, now: datetime, keep_days: int, keep_min: int) -> dict:
@@ -185,10 +232,12 @@ def main() -> int:
         errors.append(f"database: {type(exc).__name__}: {exc}"[:500])
 
     try:
-        media = sync_media(client, bucket, media_sources(), now=now, keep_days=keep_days)
+        media = sync_media(
+            client, bucket, media_sources(), now=now, keep_days=keep_days, referenced=referenced_media_keys()
+        )
         status["media"] = media
         print(f"Media backup OK: {media['files']} files ({media['bytes'] / 1024:.1f} KiB), "
-              f"uploaded {media['uploaded']}, moved to media-deleted {media['moved_to_deleted']}, "
+              f"uploaded {media['uploaded']}, skipped {media['unreferenced']} unused, moved to media-deleted {media['moved_to_deleted']}, "
               f"purged {media['purged']}")
     except Exception as exc:
         errors.append(f"media: {type(exc).__name__}: {exc}"[:500])

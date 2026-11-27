@@ -215,3 +215,60 @@ def test_client_failure_is_recorded_not_crashed(monkeypatch, tmp_path):
     assert backup.main() == 1
     status = json.loads(status_file.read_text())
     assert status["ok"] is False and "bad endpoint" in status["error"]
+
+
+def test_unreferenced_files_are_not_backed_up_and_old_copies_expire(tmp_path):
+    sources = _media(tmp_path)
+    s3 = FakeS3()
+    backup.sync_media(s3, BUCKET, sources, now=NOW, keep_days=30)
+
+    # Post 2 was deleted: its row is gone but the file is still on disk.
+    referenced = {"audio": {"posts/1/tts.mp3"}, "profile-media": {"users/7/avatar.webp"}}
+    result = backup.sync_media(s3, BUCKET, sources, now=NOW, keep_days=30, referenced=referenced)
+
+    assert result["unreferenced"] == 1 and result["moved_to_deleted"] == 1
+    assert "backups/media/audio/posts/2.wav" not in s3.objects
+    assert "backups/media-deleted/20261127/audio/posts/2.wav" in s3.objects
+    assert "backups/media/audio/posts/1/tts.mp3" in s3.objects
+
+    s3.uploads.clear()
+    backup.sync_media(s3, BUCKET, sources, now=NOW + timedelta(days=31), keep_days=30, referenced=referenced)
+    assert s3.uploads == []
+    assert not any(key.startswith("backups/media-deleted/") for key in s3.objects)
+
+
+def test_referenced_keys_come_from_audio_users_and_clubs(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from app import database, models
+
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    models.Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr(database, "SessionLocal", Session)
+
+    with Session() as db:
+        user = models.User(
+            username="ana", email="ana@x.t", google_id="g-ana",
+            profile_photo_storage_backend="local", profile_photo_storage_key="users/1/avatar.webp",
+            cover_photo_storage_backend="s3", cover_photo_storage_key="users/1/cover.webp",
+        )
+        db.add(user)
+        db.flush()
+        db.add(models.Club(
+            owner_id=user.id, title="Club", slug="club", speciality="poezie",
+            cover_photo_storage_backend="local", cover_photo_storage_key="clubs/1/cover.webp",
+        ))
+        post = models.Post(user_id=user.id, title="T", slug="ana-t", content="c")
+        db.add(post)
+        db.flush()
+        db.add(models.PostAudio(post_id=post.id, source="tts", storage_backend="local", storage_key="posts/1/tts.mp3"))
+        db.add(models.PostAudio(post_id=post.id, source="author", storage_backend="s3", storage_key="posts/1/old.mp3"))
+        db.commit()
+
+    keys = backup.referenced_media_keys()
+
+    assert keys["audio"] == {"posts/1/tts.mp3"}
+    assert keys["profile-media"] == {"users/1/avatar.webp", "clubs/1/cover.webp"}
