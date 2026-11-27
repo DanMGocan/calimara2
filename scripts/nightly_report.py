@@ -71,6 +71,8 @@ def check_backup(now: datetime, status_file: Path = BACKUP_STATUS_FILE) -> list[
     except (OSError, ValueError):
         return [Check("Backup", False, "No backup status found: the backup has not run.")]
     at = datetime.fromisoformat(data["at"]) if data.get("at") else None
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
     if at is None or now - at > BACKUP_MAX_AGE:
         when = at.strftime("%Y-%m-%d %H:%M UTC") if at else "never"
         return [Check("Backup", False, f"Last backup ran {when}, more than 26 hours ago.")]
@@ -82,26 +84,32 @@ def check_backup(now: datetime, status_file: Path = BACKUP_STATUS_FILE) -> list[
     if media:
         checks.append(Check(
             "Media backup", True,
-            f"{media.get('files', 0)} files ({_kib(media.get('bytes', 0))}), {media.get('uploaded', 0)} uploaded, "
-            f"{media.get('moved_to_deleted', 0)} moved to media-deleted.",
+            f"{media.get('files') or 0} files ({_kib(media.get('bytes') or 0)}), {media.get('uploaded') or 0} uploaded, "
+            f"{media.get('moved_to_deleted') or 0} moved to media-deleted.",
         ))
     sweep = data.get("sweep")
     if sweep:
         checks.append(Check(
             "Server file cleanup", True,
-            f"Deleted {sweep.get('deleted', 0)} unused files ({_kib(sweep.get('deleted_bytes', 0))}).",
+            f"Deleted {sweep.get('deleted') or 0} unused files ({_kib(sweep.get('deleted_bytes') or 0)}).",
         ))
     return checks
 
 
+def _website_check(name: str, url: str) -> Check:
+    try:
+        code = _http_status(url)
+    except Exception as exc:  # refused, timeout, DNS: the site is down for visitors
+        return Check(name, False, f"Unreachable: {type(exc).__name__}: {exc}"[:300])
+    return Check(name, code == 200, f"HTTP {code}")
+
+
 def check_website() -> list[Check]:
-    checks = []
-    local = _http_status("http://127.0.0.1:8000/")
-    checks.append(Check("Website (server)", local == 200, f"HTTP {local}"))
     domain = os.getenv("MAIN_DOMAIN", "calimara.ro").strip() or "calimara.ro"
-    public = _http_status(f"https://{domain}/")
-    checks.append(Check(f"Website (https://{domain})", public == 200, f"HTTP {public}"))
-    return checks
+    return [
+        _website_check("Website (server)", "http://127.0.0.1:8000/"),
+        _website_check(f"Website (https://{domain})", f"https://{domain}/"),
+    ]
 
 
 def check_services() -> list[Check]:

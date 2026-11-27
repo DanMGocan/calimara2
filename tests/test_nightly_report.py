@@ -116,3 +116,25 @@ def test_sends_to_configured_recipient(monkeypatch):
 
     assert report.main([]) == 0
     assert sent["to"] == "contact@calimara.ro" and "all OK" in sent["subject"]
+
+
+def test_website_down_still_checks_public_site(monkeypatch):
+    def fake(url):
+        if "127.0.0.1" in url:
+            raise ConnectionRefusedError("refused")
+        return 200
+
+    monkeypatch.setattr(report, "_http_status", fake)
+    local, public = report.check_website()
+
+    assert local.ok is False and "refused" in local.detail
+    assert public.ok is True
+
+
+def test_backup_status_tolerates_naive_time_and_nulls(tmp_path):
+    path = _status(
+        tmp_path, ok=True, at=(NOW - timedelta(hours=1)).replace(tzinfo=None).isoformat(), size_bytes=None,
+        kept=None, media={"files": None, "bytes": None, "uploaded": None, "moved_to_deleted": None},
+        sweep={"deleted": None, "deleted_bytes": None},
+    )
+    assert all(c.ok for c in report.check_backup(NOW, path))
