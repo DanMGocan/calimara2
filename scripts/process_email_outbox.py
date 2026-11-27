@@ -14,7 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from app import email_service
+from app import email_service, worker_errors
 from app.database import SessionLocal
 
 
@@ -45,6 +45,12 @@ def main() -> int:
             try:
                 processed = run_once(args.limit, worker_id)
             except Exception as exc:
+                if worker_errors.database_unavailable(exc):
+                    # Usually PostgreSQL restarting after a security update: wait, no traceback.
+                    delay = max(args.sleep, 5)
+                    print(f"Email worker: database unavailable, retrying in {delay:g}s", file=sys.stderr)
+                    time.sleep(delay)
+                    continue
                 print(f"Email worker iteration failed: {exc}", file=sys.stderr)
                 traceback.print_exc()
                 time.sleep(args.sleep)
