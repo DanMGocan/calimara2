@@ -2136,7 +2136,7 @@ function AdminDashboardView({ user }) {
 
       {!state.loading && !state.error && canAdmin && activeTab === "artStyles" ? (
         <AdminPanel
-          title="Stil vizual — Magazin și artefacte"
+          title="Stil vizual: Magazin și artefacte"
           description="Patru direcții picturale pentru același obiect (manuscris victorian, PNG cu fundal transparent). Schimbă fundalul de probă pentru a verifica transparența și alege stilul de bază pentru viitorul ghid vizual."
           actions={(
             <div className="admin-controls" role="group" aria-label="Fundal de previzualizare">
@@ -2158,7 +2158,7 @@ function AdminDashboardView({ user }) {
             {ART_STYLE_MOCKUPS.map((mockup) => (
               <article className={`admin-style-card${mockup.approved ? " is-approved" : ""}`} key={mockup.id}>
                 <div className={`admin-style-stage backdrop-${styleBackdrop}`}>
-                  <img src={mockup.imageUrl} alt={`${mockup.name} — manuscris victorian`} loading="lazy" />
+                  <img src={mockup.imageUrl} alt={`${mockup.name}, manuscris victorian`} loading="lazy" />
                 </div>
                 <div className="admin-style-body">
                   <div className="admin-badges">

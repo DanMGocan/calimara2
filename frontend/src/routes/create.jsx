@@ -326,7 +326,7 @@ function CreatePostView({ user }) {
     if (formattingWithAi || submitting) return;
     const visibleContent = htmlToText(content);
     if (!visibleContent) {
-      setStatus("Scrie sau lipește un text înainte să cureți formatarea cu AI.");
+      setStatus("Scrie sau lipește un text înainte să cureți formatarea.");
       return;
     }
 
@@ -340,9 +340,9 @@ function CreatePostView({ user }) {
       }
       setContent(result.content);
       setDiacriticsReview(null);
-      setDraftStatus("Formatarea AI a fost aplicată. Verifică textul înainte să publici.");
+      setDraftStatus("Formatarea a fost curățată. Verifică textul înainte să publici.");
     } catch (requestError) {
-      setStatus(requestError.message || "Nu am putut curăța formatarea cu AI.");
+      setStatus(requestError.message || "Nu am putut curăța formatarea.");
     } finally {
       setFormattingWithAi(false);
     }
@@ -384,7 +384,7 @@ function CreatePostView({ user }) {
           enterMode="soft-break"
           pasteMode={category === "poezie" ? "poetry" : "prose"}
           showFormatCleanup
-          formatCleanupLabel="Curăță formatarea cu AI"
+          formatCleanupLabel="Curăță formatarea"
           formatCleanupBusy={formattingWithAi}
           onFormatCleanup={formatContentWithAi}
         />

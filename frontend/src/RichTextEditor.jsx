@@ -821,7 +821,7 @@ export function RichTextEditor({
         <div className="rich-text-editor-actions">
           <button className="cal-btn subtle icon-text" type="button" onClick={handleFormatCleanup} disabled={disabled || formatCleanupBusy}>
             <FiRefreshCcw aria-hidden="true" />
-            {formatCleanupBusy ? "Se curăță cu AI..." : formatCleanupLabel}
+            {formatCleanupBusy ? "Se curăță formatarea..." : formatCleanupLabel}
           </button>
         </div>
       ) : null}

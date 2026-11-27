@@ -43,10 +43,8 @@ def test_frontend_copy_keeps_common_romanian_diacritics():
         "Dezvoltat si hostat": "Dezvoltat și hostat",
         "in Uniunea Europeana": "în Uniunea Europeană",
         "Selecteaza una din optiunile": "Selectează una din opțiunile",
-        "Textul a fost trimis in Franta": "Textul a fost trimis în Franța",
-        "se intoarce imediat si va aparea": "se întoarce imediat și va apărea",
-        "Daca Mistral": "Dacă Mistral",
-        "catre un moderator uman": "către un moderator uman",
+        "Se intoarce imediat si va aparea": "Se întoarce imediat și va apărea",
+        "Daca verificarea automata": "Dacă verificarea automată",
         "Toti utilizatorii": "Toți utilizatorii",
         "Pagina nu a putut fi afisata": "Pagina nu a putut fi afișată",
         "prefixelor Calimara": "prefixelor Călimara",
@@ -590,7 +588,8 @@ def test_pending_post_moderation_uses_reader_overlay():
     styles = (ROOT / "frontend" / "src" / "index.css").read_text(encoding="utf-8")
     docs = (ROOT / "frontend" / "src" / "routes" / "docs.jsx").read_text(encoding="utf-8")
 
-    assert "Textul a fost trimis în Franța, la Mistral, pentru moderare" in constants
+    assert "Textul a fost trimis la moderare." in constants
+    assert "Mistral" not in constants
     assert 'export const MODERATING_STATUSES = new Set(["pending", "flagged"]);' in constants
     assert '<StatusPanel title="Text în curs de moderare">' not in post_route
     assert 'moderationOverlayText={MODERATING_STATUSES.has(data.post.moderation_status) ? TEXT_MODERATION_MESSAGE : ""}' in post_route

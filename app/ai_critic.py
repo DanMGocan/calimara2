@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from typing import Optional
 from dotenv import load_dotenv
@@ -18,13 +19,13 @@ AI_CRITIC_MAX_TOKENS = int(os.getenv("AI_CRITIC_MAX_TOKENS", "400"))
 
 CRITIQUE_MAX_CHARS = 1500
 
-CRITIC_PROMPT = """Ești un critic literar român experimentat, cu ureche pentru poezia și proza scurtă contemporană. Cunoști tradiția literaturii române — de la Eminescu, Arghezi, Bacovia, Blaga și Nichita Stănescu până la vocile contemporane — și poți plasa un text în contextul ei atunci când e relevant.
+CRITIC_PROMPT = """Ești un critic literar român experimentat, cu ureche pentru poezia și proza scurtă contemporană. Cunoști tradiția literaturii române, de la Eminescu, Arghezi, Bacovia, Blaga și Nichita Stănescu până la vocile contemporane, și poți plasa un text în contextul ei atunci când e relevant.
 
 Pe platforma Călimara primești texte de la scriitori amatori și semi-profesioniști (poezie sau proză scurtă) și ți se cere o opinie literară onestă, directă, în limba română. Rolul tău public pe platformă este „Robotul Călimara”, dar vocea ta este a unui critic care respectă autorul suficient cât să fie sincer.
 
 Abordează textul astfel:
 - Citește atent și identifică unul sau două elemente concrete care ies în evidență: o imagine, o metaforă, alegerea unui cuvânt, ritmul, cezura, construcția narativă, tonul, finalul.
-- Numește ce funcționează și, dacă e cazul, ce slăbește textul. Nu evita observația critică, dar formuleaz-o cu respect — fără să umilești autorul.
+- Numește ce funcționează și, dacă e cazul, ce slăbește textul. Nu evita observația critică, dar formuleaz-o cu respect, fără să umilești autorul.
 - Dacă textul are ecouri dintr-un curent sau dintr-un autor anume, poți semnala asta pe scurt.
 - Evită laudele generice („frumos text", „bravo", „emoționant") și evită rezumatul sau parafraza.
 - Nu da note, nu da ierarhii, nu pretinde că ești om.
@@ -32,6 +33,7 @@ Abordează textul astfel:
 Forma răspunsului:
 - 2–4 propoziții, concise, la persoana întâi.
 - Fără introducere formală, fără ghilimele, fără prefixe de tip „Opinia mea:" sau „Robotul:".
+- Nu folosi linia lungă de pauză; folosește virgula, punctul sau două puncte.
 - Returnează DOAR textul opiniei."""
 
 
@@ -47,7 +49,7 @@ if AI_CRITIC_ENABLED:
         except Exception as e:
             logger.error(f"Failed to initialize Mistral client for AI critic: {e}")
     else:
-        logger.warning("AI critic: MISTRAL_API_KEY missing — free-tier critiques disabled")
+        logger.warning("AI critic: MISTRAL_API_KEY missing; free-tier critiques disabled")
 
     if ANTHROPIC_API_KEY:
         try:
@@ -57,7 +59,7 @@ if AI_CRITIC_ENABLED:
         except Exception as e:
             logger.error(f"Failed to initialize Anthropic client for AI critic: {e}")
     else:
-        logger.warning("AI critic: ANTHROPIC_API_KEY missing — premium critiques will fall back to free tier")
+        logger.warning("AI critic: ANTHROPIC_API_KEY missing; premium critiques will fall back to free tier")
 else:
     logger.info("AI critic disabled via AI_CRITIC_ENABLED")
 
@@ -103,6 +105,14 @@ def _critique_with_mistral(title: str, content: str) -> Optional[str]:
     return text or None
 
 
+_LONG_DASH_RE = re.compile("\\s*\u2014\\s*")
+
+
+def _strip_long_dashes(text: str) -> str:
+    """Replace em dashes, which the site does not use, with a comma."""
+    return _LONG_DASH_RE.sub(", ", text)
+
+
 def generate_critique(title: str, content: str, is_premium: bool, *, raise_on_failure: bool = False) -> Optional[str]:
     """Generate a short literary critique. Returns None on any failure."""
     if not AI_CRITIC_ENABLED:
@@ -122,7 +132,7 @@ def generate_critique(title: str, content: str, is_premium: bool, *, raise_on_fa
                 raise RuntimeError(f"AI critic ({provider}) returned empty critique")
             return None
 
-        critique = critique.strip().strip('"').strip()
+        critique = _strip_long_dashes(critique.strip().strip('"').strip())
         if len(critique) > CRITIQUE_MAX_CHARS:
             critique = critique[:CRITIQUE_MAX_CHARS].rsplit(" ", 1)[0] + "…"
 

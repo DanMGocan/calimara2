@@ -526,7 +526,7 @@ def post_board_message(
         parent = get_board_message(db, parent_id)
         if not parent or parent.club_id != club.id:
             return None, "bad_parent"
-        # Don't allow nesting beyond one level — replies-of-replies are flattened
+        # Don't allow nesting beyond one level; replies-of-replies are flattened
         # to siblings of the original reply (frontend renders as a single thread).
         if parent.parent_id is not None:
             parent_id = parent.parent_id

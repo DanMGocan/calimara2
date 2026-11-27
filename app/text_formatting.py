@@ -55,18 +55,18 @@ def _load_json_response(text: str) -> dict:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Răspunsul AI pentru formatare nu a fost JSON valid.") from exc
+        raise RuntimeError("Răspunsul serviciului de formatare nu a fost JSON valid.") from exc
     if not isinstance(parsed, dict):
-        raise RuntimeError("Răspunsul AI pentru formatare a avut format invalid.")
+        raise RuntimeError("Răspunsul serviciului de formatare a avut format invalid.")
     return parsed
 
 
 def _validate_post_limit(category: str, content: str) -> None:
     limit = POST_CONTENT_CHARACTER_LIMITS.get(category)
     if limit is None:
-        raise RuntimeError("Serviciul AI a returnat o categorie invalidă.")
+        raise RuntimeError("Serviciul de formatare a returnat o categorie invalidă.")
     if len(rich_text.rich_text_to_plain_text(content)) > limit:
-        raise RuntimeError("Serviciul AI a returnat un text prea lung pentru categoria detectată.")
+        raise RuntimeError("Serviciul de formatare a returnat un text prea lung pentru categoria detectată.")
 
 
 def _messages_for_post_formatting(*, content: str, category: PostCategory) -> list[dict]:
@@ -92,9 +92,9 @@ def validate_post_formatting_context(*, content: str, category: PostCategory) ->
 
 def format_post_content(*, content: str, category: PostCategory) -> dict:
     if not AI_FORMATTING_ENABLED:
-        raise RuntimeError("Curățarea formatării cu AI este dezactivată.")
+        raise RuntimeError("Curățarea formatării este dezactivată.")
     if not client:
-        raise RuntimeError("Serviciul AI pentru formatare nu este configurat.")
+        raise RuntimeError("Serviciul de formatare nu este configurat.")
 
     original_content = rich_text.sanitize_rich_text(content)
     messages = _messages_for_post_formatting(content=content, category=category)
@@ -110,7 +110,7 @@ def format_post_content(*, content: str, category: PostCategory) -> dict:
         )
     except Exception as exc:
         logger.warning("AI post formatting request failed: %s", exc)
-        raise RuntimeError("Serviciul AI pentru formatare este temporar indisponibil. Încearcă din nou.") from exc
+        raise RuntimeError("Serviciul de formatare este temporar indisponibil. Încearcă din nou.") from exc
 
     parsed = _load_json_response((response.choices[0].message.content or "").strip())
     detected_category = parsed.get("category", category)
@@ -122,7 +122,7 @@ def format_post_content(*, content: str, category: PostCategory) -> dict:
         formatted_content = rich_text.sanitize_rich_text(formatted_content)
 
     if not isinstance(formatted_content, str) or not rich_text.rich_text_to_plain_text(formatted_content):
-        raise RuntimeError("Serviciul AI nu a returnat un text formatat valid.")
+        raise RuntimeError("Serviciul de formatare nu a returnat un text formatat valid.")
 
     _validate_post_limit(detected_category, formatted_content)
 

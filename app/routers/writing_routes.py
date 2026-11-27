@@ -113,9 +113,8 @@ def add_diacritics_api(
         raise HTTPException(
             status_code=413,
             detail=(
-                "Textul este prea lung pentru modelul AI configurat. "
-                f"Estimare: {exc.estimated_input_tokens} tokeni intrare, "
-                f"rezervă răspuns: {exc.max_output_tokens}, limită: {exc.context_limit}."
+                "Textul este prea lung pentru a fi procesat automat. "
+                "Împarte-l în fragmente mai scurte și încearcă din nou."
             ),
         )
     except RuntimeError as exc:
@@ -155,9 +154,8 @@ def format_post_with_ai_api(
         raise HTTPException(
             status_code=413,
             detail=(
-                "Textul este prea lung pentru modelul AI configurat. "
-                f"Estimare: {exc.estimated_input_tokens} tokeni intrare, "
-                f"rezervă răspuns: {exc.max_output_tokens}, limită: {exc.context_limit}."
+                "Textul este prea lung pentru a fi procesat automat. "
+                "Împarte-l în fragmente mai scurte și încearcă din nou."
             ),
         )
     except RuntimeError as exc:
