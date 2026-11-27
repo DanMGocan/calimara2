@@ -323,6 +323,15 @@ def serve_favicon():
     return FileResponse(favicon_path, media_type="image/png")
 
 
+@app.get("/og-image.jpg", include_in_schema=False)
+def serve_og_image():
+    """Link-preview image (og:image); without this route the SPA catch-all would answer with HTML."""
+    image_path = os.path.join(FRONTEND_DIST, "og-image.jpg")
+    if not os.path.isfile(image_path):
+        return JSONResponse(status_code=404, content={"detail": "Image not found"})
+    return FileResponse(image_path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
 if os.path.isdir(FRONTEND_DIST):
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.isdir(assets_dir):
