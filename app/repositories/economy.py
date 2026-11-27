@@ -85,7 +85,7 @@ DEFAULT_SHOP_ITEMS = [
     {
         "slug": "sicriul-de-plumb-al-lui-bacovia",
         "name": "Sicriul de plumb al lui Bacovia",
-        "description": "„Dormeau adânc sicriele de plumb...” — artefact simbolist din universul lui George Bacovia.",
+        "description": "„Dormeau adânc sicriele de plumb...” Un artefact simbolist din universul lui George Bacovia.",
         "price": 220,
         "slot": "profile_badge",
         "asset_url": "/assets/items/profile_badge/sicriul-de-plumb-al-lui-bacovia.png",

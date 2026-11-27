@@ -616,7 +616,7 @@ def confirm_password_reset(
 
 @router.get("/autentificare/configurare")
 def auth_setup_page(request: Request):
-    """Setup page for new authenticated users — served by React frontend"""
+    """Setup page for new authenticated users, served by React frontend"""
     pending_auth = _pending_auth_from_session(request)
     if not pending_auth:
         return RedirectResponse(url=f"{_frontend_base_url(request)}/?auth_modal=1", status_code=status.HTTP_302_FOUND)
@@ -652,9 +652,8 @@ def add_setup_diacritics(
         raise HTTPException(
             status_code=413,
             detail=(
-                "Textul este prea lung pentru modelul AI configurat. "
-                f"Estimare: {exc.estimated_input_tokens} tokeni intrare, "
-                f"rezervă răspuns: {exc.max_output_tokens}, limită: {exc.context_limit}."
+                "Textul este prea lung pentru a fi procesat automat. "
+                "Împarte-l în fragmente mai scurte și încearcă din nou."
             ),
         )
     except RuntimeError as exc:

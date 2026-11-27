@@ -581,7 +581,7 @@ def test_writing_diacritics_endpoint_surfaces_service_errors(db, monkeypatch):
     _mark_diacritics_service_available(monkeypatch)
 
     def fail(**kwargs):
-        raise RuntimeError("Serviciul AI nu este disponibil.")
+        raise RuntimeError("Serviciul de diacritice nu este disponibil.")
 
     monkeypatch.setattr(writing_routes.diacritics, "add_diacritics", fail)
     handler = getattr(writing_routes.add_diacritics_api, "__wrapped__", writing_routes.add_diacritics_api)
@@ -595,7 +595,7 @@ def test_writing_diacritics_endpoint_surfaces_service_errors(db, monkeypatch):
         )
 
     assert exc.value.status_code == 503
-    assert exc.value.detail == "Serviciul AI nu este disponibil."
+    assert exc.value.detail == "Serviciul de diacritice nu este disponibil."
     assert db.query(models.DiacriticsUsageEvent).one().status == "failed"
     alert = db.query(models.EmailOutbox).filter_by(email_type=email_service.EMAIL_TYPE_SYSTEM_ALERT).one()
     assert alert.recipient_email == "contact@calimara.ro"

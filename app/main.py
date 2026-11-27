@@ -129,7 +129,7 @@ async def slow_request_logger(request: Request, call_next):
         logger.warning("Slow request %sms while handling %s", elapsed_ms, _request_context(request))
     return response
 
-# CORS Middleware — build origin regex from env-configured domain.
+# CORS Middleware: build origin regex from env-configured domain.
 _allowed_origin_hosts = [re.escape(MAIN_DOMAIN)]
 if SUBDOMAIN_SUFFIX:
     _allowed_origin_hosts.insert(0, rf".*{re.escape(SUBDOMAIN_SUFFIX)}")
@@ -206,7 +206,7 @@ app.add_middleware(SubdomainMiddleware)
 for router in DOMAIN_ROUTERS:
     app.include_router(router)
 
-# React frontend — serve built assets from frontend/dist/
+# React frontend: serve built assets from frontend/dist/
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "dist")
 LEGACY_FRONTEND_PATHS = {
     "/admin",

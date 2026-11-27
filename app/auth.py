@@ -38,7 +38,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
 
     if user_id is None:
         # Session may hold pre-signup state (e.g. google_user during OAuth
-        # setup). Don't touch it — only logged-in sessions are epoch-guarded.
+        # setup). Don't touch it; only logged-in sessions are epoch-guarded.
         return None
 
     # Invalidate logged-in sessions from before the last DB reinitialization.

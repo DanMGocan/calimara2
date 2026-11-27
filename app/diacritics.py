@@ -93,11 +93,11 @@ def _load_json_response(text: str) -> dict:
             try:
                 parsed = json.loads(cleaned[start:end + 1])
             except json.JSONDecodeError:
-                raise RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.") from exc
+                raise RuntimeError("Răspunsul serviciului de diacritice nu a fost JSON valid.") from exc
         else:
-            raise RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.") from exc
+            raise RuntimeError("Răspunsul serviciului de diacritice nu a fost JSON valid.") from exc
     if not isinstance(parsed, dict):
-        raise RuntimeError("Răspunsul AI pentru diacritice a avut format invalid.")
+        raise RuntimeError("Răspunsul serviciului de diacritice a avut format invalid.")
     return parsed
 
 
@@ -115,14 +115,14 @@ def diacritics_service_status() -> dict:
     if not client:
         return {
             "service_available": False,
-            "service_unavailable_reason": "Serviciul AI pentru diacritice nu este configurat.",
+            "service_unavailable_reason": "Serviciul de diacritice nu este configurat.",
             "service_retry_after_seconds": None,
         }
     remaining = _provider_cooldown_remaining_seconds()
     if remaining > 0:
         return {
             "service_available": False,
-            "service_unavailable_reason": _provider_unavailable_reason or "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou.",
+            "service_unavailable_reason": _provider_unavailable_reason or "Serviciul de diacritice este temporar indisponibil. Încearcă din nou.",
             "service_retry_after_seconds": remaining,
         }
     return {
@@ -135,7 +135,7 @@ def diacritics_service_status() -> dict:
 def ensure_diacritics_service_available() -> None:
     status = diacritics_service_status()
     if not status["service_available"]:
-        raise RuntimeError(status["service_unavailable_reason"] or "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou.")
+        raise RuntimeError(status["service_unavailable_reason"] or "Serviciul de diacritice este temporar indisponibil. Încearcă din nou.")
 
 
 def _open_provider_cooldown(reason: str) -> None:
@@ -164,7 +164,7 @@ def _complete_chat(messages: list[dict]) -> object:
         )
     except Exception as exc:
         logger.warning("AI diacritics request failed: %s", exc)
-        message = "Serviciul AI pentru diacritice este temporar indisponibil. Încearcă din nou."
+        message = "Serviciul de diacritice este temporar indisponibil. Încearcă din nou."
         _open_provider_cooldown(message)
         raise RuntimeError(message) from exc
 
@@ -181,7 +181,7 @@ def _complete_json(messages: list[dict]) -> dict:
                 logger.warning("AI diacritics returned invalid JSON; retrying once: %s", exc)
                 continue
             raise
-    raise last_error or RuntimeError("Răspunsul AI pentru diacritice nu a fost JSON valid.")
+    raise last_error or RuntimeError("Răspunsul serviciului de diacritice nu a fost JSON valid.")
 
 
 def validate_diacritics_request_context(*, title: Optional[str], content: str, kind: str) -> None:
@@ -263,7 +263,7 @@ def add_diacritics(*, title: Optional[str], content: str, kind: str) -> dict:
         converted_content = rich_text.sanitize_rich_text(converted_content)
 
     if not isinstance(converted_content, str) or not rich_text.rich_text_to_plain_text(converted_content):
-        raise RuntimeError("Serviciul AI nu a returnat un text valid.")
+        raise RuntimeError("Serviciul de diacritice nu a returnat un text valid.")
 
     return {
         "title": converted_title,

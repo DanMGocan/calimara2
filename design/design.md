@@ -1,4 +1,4 @@
-# calimara.ro — Design System
+# calimara.ro: Design System
 
 A minimal editorial design system for a Romanian poetry and short-prose platform. Modern, sleek, near-monochrome with an atmospheric WW1 visual motif (stormy sky + shelled forest) fading behind clean white paper.
 
@@ -8,7 +8,7 @@ Use this document as the single source of truth for all pages beyond the landing
 
 ## 1. Brand voice
 
-- **Tone**: quiet, literary, contemplative. Romanian first — do not translate to English.
+- **Tone**: quiet, literary, contemplative. Romanian first; do not translate to English.
 - **Copy style**: concise, lowercase labels where possible, serif for reading, sans for UI chrome.
 - **Imagery metaphor**: early 20th-century Romanian literary journals; the WW1 background is atmospheric, never illustrative or decorative filler.
 
@@ -57,9 +57,9 @@ Default two-column for reading surfaces:
 ### Footer
 
 Three-column grid (`1fr auto 1fr`):
-- Left: legal links (Politica de confidențialitate / Termeni și condiții / Contact) — underline-on-hover, muted ink.
+- Left: legal links (Politica de confidențialitate / Termeni și condiții / Contact); underline-on-hover, muted ink.
 - Center: `© 2026 călimara.ro`
-- Right: social icons — 34px white circles, 2px black border, black icon inside. Hover inverts to solid black + white icon + 1px lift.
+- Right: social icons: 34px white circles, 2px black border, black icon inside. Hover inverts to solid black + white icon + 1px lift.
 
 ---
 
@@ -105,7 +105,7 @@ Near-monochrome with a single warm accent.
   --ink-faint:      #8a8a8f;
   --hairline:       #e4e4e0;
   --hairline-strong:#c9c9c4;
-  --accent:         #b84a2a; /* ember — used sparingly */
+  --accent:         #b84a2a; /* ember: used sparingly */
   --like:           #d93838; /* heart-filled state only */
 }
 ```
@@ -175,7 +175,7 @@ Sans 13px `--ink-mute`, dots are 3px circles (`--ink-faint`), `gap: 10px`.
 
 ### Kind badge
 
-Small uppercase mono kicker above a title — `11px`, `letter-spacing: 0.14em`, `--ink-faint`. Used to label page type (Poezie, Proză scurtă, Autor, Colecție, etc.).
+Small uppercase mono kicker above a title: `11px`, `letter-spacing: 0.14em`, `--ink-faint`. Used to label page type (Poezie, Proză scurtă, Autor, Colecție, etc.).
 
 ### Reveal text (for literary reading views)
 
@@ -224,8 +224,8 @@ Global fixed overlay behind all content. Two raster PNG layers with CSS masks:
 
 - Sky = stormy WW1 scene (biplane silhouette, crows).
 - Forest = shattered trees, barbed wire, muddy craters.
-- Both assets are monochrome PNGs with transparency fading to white. Never SVG — raster gives the painterly quality.
-- The middle band (~26% of viewport) is clean white — this is where headlines and primary content live.
+- Both assets are monochrome PNGs with transparency fading to white. Never SVG; raster gives the painterly quality.
+- The middle band (~26% of viewport) is clean white; this is where headlines and primary content live.
 
 Every page must include this background. It is the literal visual signature of the platform.
 
@@ -237,7 +237,7 @@ Every page must include this background. It is the literal visual signature of t
 - Easing: `cubic-bezier(0.2, 0.7, 0.2, 1)` for entrances, `ease` for micro-transitions.
 - Hover translateY never exceeds 1–2px.
 - Page transitions between pieces: 320ms opacity + 8px translateY on the whole `.piece-wrap`.
-- Respect `prefers-reduced-motion` — disable all transforms and fades, keep opacity instant.
+- Respect `prefers-reduced-motion`; disable all transforms and fades, keep opacity instant.
 
 ---
 
@@ -258,7 +258,7 @@ Every page must include this background. It is the literal visual signature of t
 ```
 [ nav ]
 [ stage grid ]
-  ├─ left-col (sticky): primary actions — "Poezie la întâmplare" / "Proză la întâmplare"
+  ├─ left-col (sticky): primary actions: "Poezie la întâmplare" / "Proză la întâmplare"
   └─ piece-wrap
         ├─ kind badge (mono kicker)
         ├─ title (serif display)
@@ -284,7 +284,7 @@ Every page must include this background. It is the literal visual signature of t
 ### Profile / auth
 
 - Single centered card (max 480px), 1px hairline border, 10px radius, 32px padding.
-- Sans 13px labels above inputs. Primary button matches the unified button style (no filled variant needed — this is a quiet platform).
+- Sans 13px labels above inputs. Primary button matches the unified button style (no filled variant needed; this is a quiet platform).
 
 ### Modals / menus
 
@@ -321,10 +321,10 @@ Every page with readable content must include a "PDF" button that triggers `wind
 
 - **No build step**: React 18 + Babel Standalone inline, one CSS file per page group, one or two JSX files per page. Load order: React → ReactDOM → Babel → content data → JSX.
 - **Split JSX** into `lib/<page>.jsx` (components) and `lib/<page>-content.js` (data on `window`). Keep files under ~600 lines.
-- **Global styles** in `lib/landing.css` — new pages add their CSS by `@import`-ing or extending this file; do not duplicate tokens.
+- **Global styles** in `lib/landing.css`: new pages add their CSS by `@import`-ing or extending this file; do not duplicate tokens.
 - **Cache-bust** URLs with `?v=N` when iterating on dev, but never bump gratuitously in production.
 - **Images**: `/assets/bg-sky.png`, `/assets/bg-forest.png`. Any new imagery must be monochrome PNG with transparent edges.
-- **Illustrated items & collectibles**: All shop items (clothing, artefacts, badges, frames) and editorial illustrations must follow [`design/art-style.md`](./art-style.md) (*Tuș și laviu sepia* — fine dip-pen sepia ink, translucent warm sepia washes, single `#b84a2a` ember accent, true RGBA transparent PNG).
+- **Illustrated items & collectibles**: All shop items (clothing, artefacts, badges, frames) and editorial illustrations must follow [`design/art-style.md`](./art-style.md) (*Tuș și laviu sepia*: fine dip-pen sepia ink, translucent warm sepia washes, single `#b84a2a` ember accent, true RGBA transparent PNG).
 
 ---
 
@@ -332,11 +332,11 @@ Every page with readable content must include a "PDF" button that triggers `wind
 
 - Do not use Inter, system-ui, Poppins, or generic Google slab/serif stacks other than Roboto Serif.
 - Do not add emoji, gradient fills, glass-morphism, drop shadows, or "colorful" backgrounds.
-- Do not invent new accent colors. One accent only — ember (#b84a2a).
+- Do not invent new accent colors. One accent only: ember (#b84a2a).
 - Do not add "hero sections" with large stock photography. The WW1 background IS the visual identity.
-- Do not use dark mode — the platform is intentionally light-only.
+- Do not use dark mode; the platform is intentionally light-only.
 - Do not add filler stats ("1,248 authors · 9,712 texts") unless they directly serve navigation. No data slop.
 - Do not translate Romanian UI strings to English.
 - Do not center prose body paragraphs; left-align only. Titles and kickers may center contextually, but reading copy is always left.
-- Do not scale buttons with hover — only `translateY(1–2px)` is allowed.
+- Do not scale buttons with hover; only `translateY(1–2px)` is allowed.
 - Do not rely on SVG illustration for the atmospheric background. PNG only.

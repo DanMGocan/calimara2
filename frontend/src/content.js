@@ -12,7 +12,7 @@ un cuvânt pe care l-am păstrat
 pentru altă iarnă.
 
 Și totuși ceva
-mai bate încet în geam —
+mai bate încet în geam –
 poate-o frunză, poate-o amintire
 care nu știe că s-a dus.`
   },
@@ -21,12 +21,12 @@ care nu știe că s-a dus.`
     author: "George Bacovia",
     year: "1916",
     body: `Dormeau adânc sicriele de plumb,
-Și flori de plumb și funerar vestmânt —
+Și flori de plumb și funerar vestmânt –
 Stam singur în cavou... și era vânt...
 Și scârțâiau coroanele de plumb.
 
 Dormea întors amorul meu de plumb
-Pe flori de plumb, și-am început să-l strig —
+Pe flori de plumb, și-am început să-l strig –
 Stam singur lângă mort... și era frig...
 Și-i atârnau aripile de plumb.`
   },
@@ -40,7 +40,7 @@ Sunt singur, și mă duce-un gând
 Spre locuințele lacustre.
 
 Și parcă dorm pe scânduri ude,
-În spate mă izbește-un val —
+În spate mă izbește-un val –
 Tresar prin somn, și mi se pare
 Că n-am tras podul de la mal.`
   }

@@ -18,7 +18,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Configuration — all values from .env
+# Configuration: all values from .env
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MODERATION_ENABLED = os.getenv("MODERATION_ENABLED", "True").lower() == "true"
 MODERATION_CLASSIFIER_MODEL = os.getenv("MODERATION_CLASSIFIER_MODEL", "mistral-moderation-2603")
@@ -474,7 +474,7 @@ def _moderate_text(text: str, db: Optional[Session] = None) -> ModerationResult:
         llm_verdict = review_content_with_llm(text, flagged, romanian_signals)
 
         if llm_verdict.get("safe", False):
-            logger.info(f"Pass 2: SAFE — {llm_verdict.get('reason', '')}")
+            logger.info(f"Pass 2: SAFE: {llm_verdict.get('reason', '')}")
             return ModerationResult(
                 status=ModerationStatus.APPROVED,
                 toxicity_score=toxicity_score,
@@ -488,7 +488,7 @@ def _moderate_text(text: str, db: Optional[Session] = None) -> ModerationResult:
             )
 
         # Both passes reject → manual moderation queue
-        logger.info(f"Pass 2: UNSAFE — {llm_verdict.get('reason', '')}")
+        logger.info(f"Pass 2: UNSAFE: {llm_verdict.get('reason', '')}")
         return ModerationResult(
             status=ModerationStatus.FLAGGED,
             toxicity_score=toxicity_score,

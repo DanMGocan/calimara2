@@ -110,7 +110,7 @@ AUTHORS = [
 
 
 POSTS = [
-    # ── gocandan — Ion Creangă ──────────────────────────────
+    # ── gocandan: Ion Creangă ──────────────────────────────
     {
         "author": "gocandan",
         "title": "Punguța cu doi bani",
@@ -216,7 +216,7 @@ POSTS = [
             """
         ),
     },
-    # ── dangocan — Mihai Eminescu ───────────────────────────
+    # ── dangocan: Mihai Eminescu ───────────────────────────
     {
         "author": "dangocan",
         "title": "Somnoroase păsărele",
@@ -968,7 +968,7 @@ def _build_db_url() -> str:
     port = os.getenv("DB_PORT", "5432")
     name = os.getenv("DB_NAME", "calimara_db")
     if not user or not password:
-        raise SystemExit("DB_USER / DB_PASSWORD missing from env — cannot seed.")
+        raise SystemExit("DB_USER / DB_PASSWORD missing from env; cannot seed.")
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
 

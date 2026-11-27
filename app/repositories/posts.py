@@ -153,7 +153,7 @@ def get_random_posts_by_category(db: Session, category: str, limit: int = 10):
 def _view_weighted_order_key():
     # Efraimidis–Spirakis weighted random: LN(RANDOM()) is always negative,
     # so multiplying by the positive weight POWER(view_count + 1, alpha)
-    # and sorting DESC picks the row with the smallest |LN(R)| / weight —
+    # and sorting DESC picks the row with the smallest |LN(R)| / weight,
     # i.e. sampling probability ∝ 1 / (view_count + 1)^alpha.
     alpha = float(os.getenv("LANDING_VIEW_DECAY_ALPHA", "0.5"))
     if alpha == 0:

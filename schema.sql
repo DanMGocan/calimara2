@@ -1382,7 +1382,7 @@ VALUES
     (
         'sicriul-de-plumb-al-lui-bacovia',
         'Sicriul de plumb al lui Bacovia',
-        '„Dormeau adânc sicriele de plumb...” — artefact simbolist din universul lui George Bacovia.',
+        '„Dormeau adânc sicriele de plumb...” Un artefact simbolist din universul lui George Bacovia.',
         220,
         'profile_badge',
         '/assets/items/profile_badge/sicriul-de-plumb-al-lui-bacovia.png',

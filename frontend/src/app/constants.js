@@ -83,7 +83,7 @@ export const ADSENSE_SLOTS = {
   inline: (import.meta.env.VITE_ADSENSE_SLOT_INLINE || "").trim(),
   postFooter: (import.meta.env.VITE_ADSENSE_SLOT_POST_FOOTER || "").trim()
 };
-export const TEXT_MODERATION_MESSAGE = "Textul a fost trimis în Franța, la Mistral, pentru moderare. Dar se întoarce imediat și va apărea pe platformă! Dacă Mistral zice nu, atunci va fi moderat de către un moderator uman.";
+export const TEXT_MODERATION_MESSAGE = "Textul a fost trimis la moderare. Se întoarce imediat și va apărea pe platformă! Dacă verificarea automată îl oprește, va fi revizuit de un moderator uman.";
 export const MODERATING_STATUSES = new Set(["pending", "flagged"]);
 export const POST_DRAFT_AUTOSAVE_MS = 15000;
 export const MODERATION_LABELS = {
