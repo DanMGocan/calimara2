@@ -235,3 +235,20 @@ def test_burger_menu_holds_every_hidden_mobile_nav_entry():
     assert "onNotifications={openProfilePanel}" in app
     assert "onOpenAudioPlayer={listeningPlayer.canListen ? listeningPlayer.openListening : undefined}" in app
     assert "notificationCount={notificationCount}" in app[app.index("<SideMenu"):]
+
+
+def test_site_feedback_modal_confirms_then_closes_after_submit():
+    source = read_frontend("app/layout.jsx")
+    modal = source[source.index("function SiteFeedbackModal("):source.index("export function Footer(")]
+
+    assert "const SITE_FEEDBACK_CLOSE_DELAY_MS = 2000;" in source
+    # Successful submit flips to a confirmation view instead of leaving the form open.
+    assert "setSent(true);" in modal
+    assert ") : sent ? (" in modal
+    assert 'role="status">Mulțumim! Mesajul a fost trimis.</p>' in modal
+    # The confirmation closes the modal on a timer that is cleared on unmount/close.
+    assert "window.setTimeout(() => onCloseRef.current(), SITE_FEEDBACK_CLOSE_DELAY_MS)" in modal
+    assert "return () => window.clearTimeout(timer);" in modal
+    assert "}, [open, sent]);" in modal
+    # Reopening the modal starts from a fresh form.
+    assert "setSent(false);" in modal

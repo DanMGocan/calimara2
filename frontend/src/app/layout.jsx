@@ -741,6 +741,7 @@ const SITE_FEEDBACK_ENTRIES = {
   feedback: { kind: "feedback", label: "Sugestii", Icon: MdOutlineFeedback },
   bug: { kind: "bug", label: "Gândaci", Icon: LiaBugSolid }
 };
+const SITE_FEEDBACK_CLOSE_DELAY_MS = 2000;
 const CALIMARA_FACEBOOK_URL = "https://www.facebook.com/calimararo";
 const EU_FOOTER_MESSAGE = "Dezvoltat și hostat, cu dragoste, în Uniunea Europeană";
 
@@ -764,17 +765,26 @@ function feedbackClientContext() {
 function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
   const { openAuthModal } = useAuthModal();
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState("");
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const activeEntry = entry ?? SITE_FEEDBACK_ENTRIES.feedback;
 
   useEffect(() => {
     setMessage("");
-    setStatus("");
+    setSent(false);
     setError("");
     setSubmitting(false);
   }, [open]);
+
+  // After a successful submit, show the confirmation briefly, then close the modal.
+  useEffect(() => {
+    if (!open || !sent) return undefined;
+    const timer = window.setTimeout(() => onCloseRef.current(), SITE_FEEDBACK_CLOSE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, sent]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -796,7 +806,6 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
       return;
     }
     setSubmitting(true);
-    setStatus("");
     setError("");
     try {
       await createSiteFeedback({
@@ -806,7 +815,7 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
         client_context: feedbackClientContext()
       });
       setMessage("");
-      setStatus("Mesajul a fost trimis.");
+      setSent(true);
     } catch (requestError) {
       setError(requestError.message || "Nu am putut trimite mesajul.");
     } finally {
@@ -839,6 +848,8 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
               Autentificare
             </button>
           </div>
+        ) : sent ? (
+          <p className="feedback-modal-body feedback-sent" role="status">Mulțumim! Mesajul a fost trimis.</p>
         ) : (
           <form className="feedback-form" onSubmit={submit}>
             <label className="cal-label" htmlFor="site-feedback-message">Mesaj</label>
@@ -857,7 +868,6 @@ function SiteFeedbackModal({ open, entry, user, authLoaded, onClose }) {
                 {submitting ? "Se trimite..." : "Trimite"}
               </button>
             </div>
-            {status ? <div className="inline-status">{status}</div> : null}
             {error ? <div className="inline-error">{error}</div> : null}
           </form>
         )}
