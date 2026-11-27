@@ -6,7 +6,7 @@ import { blogUrl, mainPath, profileAvatarUrl, profileCoverUrl } from "./paths.js
 const SITE_NAME = "călimara.ro";
 const DEFAULT_TITLE = "călimara.ro, platformă modernă de poezie și proză";
 const DEFAULT_DESCRIPTION = "Călimara este o platformă literară pentru poezie, proză scurtă, profiluri de autori, teatru colaborativ și discuții.";
-const DEFAULT_IMAGE = "/favicon.png";
+const DEFAULT_IMAGE = "/og-image.jpg";
 
 const PRIVATE_ROUTE_NAMES = new Set([
   ...PROTECTED_ROUTES,
@@ -72,7 +72,7 @@ function currentCanonicalUrl() {
 }
 
 function absoluteUrl(value) {
-  if (typeof window === "undefined") return value || "https://calimara.ro/favicon.png";
+  if (typeof window === "undefined") return value || "https://calimara.ro/og-image.jpg";
   if (!value) return new URL(DEFAULT_IMAGE, window.location.origin).toString();
   if (String(value).startsWith("//")) return `${window.location.protocol}${value}`;
   return new URL(value, window.location.origin).toString();

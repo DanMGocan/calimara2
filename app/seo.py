@@ -22,7 +22,7 @@ SITE_NAME = "călimara.ro"
 SITE_LANGUAGE = "ro"
 DEFAULT_TITLE = "călimara.ro, platformă modernă de poezie și proză"
 DEFAULT_DESCRIPTION = "Călimara este o platformă literară pentru poezie, proză scurtă, profiluri de autori, teatru colaborativ și discuții."
-DEFAULT_IMAGE_PATH = "/favicon.png"
+DEFAULT_IMAGE_PATH = "/og-image.jpg"  # 1200x630 link-preview image
 SITEMAP_LIMIT = 50_000
 
 # Kept in sync with frontend/src/app/router.jsx (see tests/test_not_found_pages.py).
