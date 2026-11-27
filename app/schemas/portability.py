@@ -52,27 +52,6 @@ class DataPortabilityProfile(BaseModel):
         return _trim_optional_string(value, 1000, "Linkul")
 
 
-class DataPortabilityMedia(BaseModel):
-    profile_photo_url: Optional[str] = None
-    cover_photo_url: Optional[str] = None
-    avatar_url: Optional[str] = None
-    cover_url: Optional[str] = None
-
-
-class DataPortabilityPostMetrics(BaseModel):
-    view_count: int = Field(default=0, ge=0)
-    likes_count: int = Field(default=0, ge=0)
-    super_likes_count: int = Field(default=0, ge=0)
-
-
-class DataPortabilityAudioLink(BaseModel):
-    playback_url: Optional[str] = None
-    download_url: Optional[str] = None
-    source: Optional[str] = None
-    content_type: Optional[str] = None
-    duration_seconds: Optional[float] = None
-
-
 class DataPortabilityPost(BaseModel):
     stable_id: str = Field(..., min_length=1, max_length=500)
     source_id: Optional[int] = Field(None, ge=1)
@@ -84,8 +63,6 @@ class DataPortabilityPost(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     public_url: Optional[str] = None
-    metrics: DataPortabilityPostMetrics = Field(default_factory=DataPortabilityPostMetrics)
-    audio: Optional[DataPortabilityAudioLink] = None
 
     @field_validator("title", mode="before")
     @classmethod
@@ -110,7 +87,6 @@ class DataExportManifest(BaseModel):
     exported_at: datetime
     source_username: Optional[str] = None
     profile: DataPortabilityProfile = Field(default_factory=DataPortabilityProfile)
-    media: DataPortabilityMedia = Field(default_factory=DataPortabilityMedia)
     posts: list[DataPortabilityPost] = Field(default_factory=list)
 
 

@@ -16,7 +16,7 @@ from .super_likes import SuperLike, SuperLikeQuota
 from .premium import PremiumTierKey, PremiumPlan, PremiumCheckoutResponse, PremiumCheckoutRequest, PremiumPortalResponse, PremiumStatus, CoffeeOffer, CoffeeCheckoutRequest
 from .audio import PostAudioStatus, PostAudioDeleteResponse, AudioTrack, SeriesAudioPlaylist, AudioPlaylistCreate, AudioPlaylistUpdate, AudioPlaylistAddPostRequest, AudioPlaylistSummary, AudioPlaylistItem, AudioPlaylistDetail, AudioPlaylistList, AudioPlaylistPlayback, AudioConversionQuota, TTSConversionRequest, TTSConversionItem, TTSConversionResponse, AudioListenSecondsRequest, AudioListenSecondsResponse, AudioListenQuota
 from .feedback import SiteFeedbackKind, SiteFeedbackStatus, SiteFeedbackCreate, SiteFeedbackUpdate, SiteFeedbackReplyCreate, SiteFeedbackOut
-from .portability import DataPortabilityProfile, DataPortabilityMedia, DataPortabilityPostMetrics, DataPortabilityAudioLink, DataPortabilityPost, DataExportManifest, DataImportCreatedPost, DataImportReport
+from .portability import DataPortabilityProfile, DataPortabilityPost, DataExportManifest, DataImportCreatedPost, DataImportReport
 
 __all__ = [
     "PostCategory",
@@ -238,9 +238,6 @@ __all__ = [
     "SiteFeedbackReplyCreate",
     "SiteFeedbackOut",
     "DataPortabilityProfile",
-    "DataPortabilityMedia",
-    "DataPortabilityPostMetrics",
-    "DataPortabilityAudioLink",
     "DataPortabilityPost",
     "DataExportManifest",
     "DataImportCreatedPost",
